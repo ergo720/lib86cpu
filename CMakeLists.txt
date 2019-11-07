@@ -11,9 +11,9 @@ INCLUDE(FindThreads)
 #
 SET(CMAKE_BUILD_TYPE "Debug")
 
-# Add LLVM flags only to C++.
+# Add compiler flags.
 IF(MSVC)
-SET(CMAKE_CXX_FLAGS "/std:c++17")
+SET(CMAKE_CXX_FLAGS "/std:c++17 /EHsc")
 ELSE(MSVC)
 SET(CMAKE_CXX_FLAGS "-std=c++17")
 ENDIF(MSVC)

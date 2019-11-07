@@ -1,0 +1,14 @@
+/*
+ * x86cpu types
+ *
+ * ergo720                Copyright (c) 2019
+ * the libcpu developers  Copyright (c) 2009-2010
+ */
+
+#pragma once
+
+
+typedef uint32_t addr_t;
+typedef uint16_t io_port_t;
+
+#include "x86_types.h"
