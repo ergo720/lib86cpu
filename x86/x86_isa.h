@@ -1,12 +1,11 @@
 /*
- * instruction decoding (shared by disassembler and translator)
+ * instruction decoding
  *
  * ergo720                Copyright (c) 2019
  * the libcpu developers  Copyright (c) 2009-2010
  */
 
-#ifndef X86_ISA_H
-#define X86_ISA_H
+#pragma once
 
 #define CF_SHIFT    0
 #define PF_SHIFT    2
@@ -34,5 +33,3 @@ typedef enum arch_x86_opcode {
 #include "x86_instr.h"
 #undef DECLARE_OPC
 } arch_x86_opcode_t;
-
-#endif /* X86_ISA_H */

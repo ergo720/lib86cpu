@@ -10,6 +10,7 @@
 #include "config.h"
 #include "platform.h"
 #include <stdint.h>
+#include <unordered_map>
 #include "types.h"
 #include "interval_tree.h"
 
@@ -17,7 +18,6 @@
 namespace llvm {
 	class LLVMContext;
 	class BasicBlock;
-	class ExecutionEngine;
 	class Function;
 	class Module;
 	class PointerType;
@@ -25,7 +25,7 @@ namespace llvm {
 	class Value;
 	class DataLayout;
 	namespace orc {
-		class LLLazyJIT;
+		class LLJIT;
 	}
 }
 
@@ -33,22 +33,45 @@ using namespace llvm;
 
 // x86cpu error flags
 enum x86cpu_status {
-	X86CPU_NO_MEMORY = -3,
+	X86CPU_NO_MEMORY = -5,
 	X86CPU_INVALID_PARAMETER,
-	X86CPU_LLVM_INTERNAL_ERROR,
+	X86CPU_LLVM_ERROR,
+	X86CPU_UNKNOWN_INSTR,
+	X86CPU_OP_NOT_IMPLEMENTED,
 	X86CPU_SUCCESS,
 };
 
-#define X86CPU_CHECK_SUCCESS(status) (((x86cpu_status)(status)) == 0)
+#define X86CPU_CHECK_SUCCESS(status) (static_cast<x86cpu_status>(status) == 0)
 
-#define CPU_FLAG_SWAPMEM  (1 << 0)
-#define CPU_INTEL_SYNTAX  (1 << 1)
+#define CPU_FLAG_SWAPMEM        (1 << 0)
+#define CPU_INTEL_SYNTAX        (1 << 1)
+#define CPU_FLAG_FP80           (1 << 2)
+#define CPU_CODEGEN_OPTIMIZE    (1 << 3)
+#define CPU_PRINT_IR            (1 << 4)
+#define CPU_PRINT_IR_OPTIMIZED  (1 << 5)
 
 #define CPU_INTEL_SYNTAX_SHIFT  1
 
+#define CPU_NUM_REGS 29
+
+#ifdef DEBUG_LOG
+#define LOG(...) do { printf(__VA_ARGS__); } while(0)
+#else
+#define LOG(...)
+#endif
+
 // mmio/pmio access handlers
-typedef uint32_t(*fp_read)(addr_t addr, size_t size, void *opaque);
-typedef void        (*fp_write)(addr_t addr, size_t size, uint32_t value, void *opaque);
+typedef uint32_t  (*fp_read)(addr_t addr, size_t size, void *opaque);
+typedef void      (*fp_write)(addr_t addr, size_t size, uint32_t value, void *opaque);
+
+// memory region type
+enum mem_type_t {
+	MEM_UNMAPPED,
+	MEM_RAM,
+	MEM_MMIO,
+	MEM_PMIO,
+	MEM_ALIAS,
+};
 
 template<typename T>
 struct memory_region_t {
@@ -73,30 +96,50 @@ struct sort_by_priority
 	}
 };
 
-// memory region type
-enum mem_type_t {
-	MEM_UNMAPPED,
-	MEM_RAM,
-	MEM_MMIO,
-	MEM_PMIO,
-	MEM_ALIAS,
+struct translated_code_t {
+	LLVMContext *ctx;
+	Module *mod;
+	void *ptr_code;
+	void *jmp_offset[2];
 };
 
-typedef struct cpu {
-	uint32_t flags;
+struct disas_ctx_t {
+	bool emit_pc_code;
+	size_t tc_instr_size;
+	Value *next_pc;
+};
 
-	gpr_t gpr;
-	fpr_t fpr;
-	uint8_t *RAM;
+struct regs_layout_t {
+	const unsigned bits_size;
+	const unsigned idx;
+	const char *name;
+};
+
+struct cpu_t {
+	uint32_t cpu_flags;
+	const char *cpu_name;
+	const regs_layout_t *regs_layout;
+	regs_t regs;
+	uint8_t *ram;
+	uint32_t *test;
 	std::unique_ptr<interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>> memory_space_tree;
 	std::unique_ptr<interval_tree<io_port_t, std::unique_ptr<memory_region_t<io_port_t>>>> io_space_tree;
 	std::set<std::tuple<addr_t, addr_t, const std::unique_ptr<memory_region_t<addr_t>> &>, sort_by_priority<addr_t>> memory_out;
 	std::set<std::tuple<io_port_t, io_port_t, const std::unique_ptr<memory_region_t<io_port_t>> &>, sort_by_priority<io_port_t>> io_out;
-} cpu_t;
+	// TODO: how large should the code cache be? At the moment, this can grow without bounds...
+	std::unordered_map<addr_t, std::unique_ptr<translated_code_t>> code_cache;
+
+	/* llvm specific variables */
+	std::unique_ptr<orc::LLJIT> jit;
+	DataLayout *dl;
+	Value *ptr_ram;
+	Value *ptr_regs;
+};
 
 // cpu api
 API_FUNC x86cpu_status cpu_new(size_t ramsize, cpu_t *&out);
 API_FUNC void cpu_free(cpu_t *cpu);
+API_FUNC x86cpu_status cpu_run(cpu_t *cpu);
 
 // memory api
 API_FUNC x86cpu_status memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority);

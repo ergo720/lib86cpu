@@ -9,9 +9,7 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "x86cpu.h"
 #include "x86_isa.h"
-#include "x86_decode.h"
 #include "x86_internal.h"
 
 extern const char *mnemo[];
@@ -358,37 +356,35 @@ print_operand(addr_t pc, char *operands, size_t size, struct x86_instr *instr, s
 }
 
 int
-disasm_instr_att(cpu_t *cpu, addr_t pc, char *line, unsigned int max_line)
+disasm_instr_att(cpu_t *cpu, addr_t pc, x86_instr *instr, char *line, unsigned int max_line)
 {
-	struct x86_instr instr;
 	char operands[32];
 	int len = 0;
 
-	assert(((cpu->flags & CPU_INTEL_SYNTAX) >> CPU_INTEL_SYNTAX_SHIFT) == 0);
-	if (decode_instr(cpu, &instr, pc)) {
-		fprintf(stderr, "error: unable to decode opcode %x\n", instr.opcode_byte);
-		exit(1);
+	assert(((cpu->cpu_flags & CPU_INTEL_SYNTAX) >> CPU_INTEL_SYNTAX_SHIFT) == 0);
+	if (decode_instr(cpu, instr, pc)) {
+		return -1;
 	}
 
 	operands[0] = '\0';
 
 	/* AT&T syntax operands */
-	if (!(instr.flags & OP3_NONE))
-		len += print_operand(pc, operands+len, sizeof(operands)-len, &instr, &instr.operand[OPNUM_THIRD], CPU_PE_MODE);
+	if (!(instr->flags & OP3_NONE))
+		len += print_operand(pc, operands+len, sizeof(operands)-len, instr, &instr->operand[OPNUM_THIRD], CPU_PE_MODE);
 
-	if (!(instr.flags & SRC_NONE) && !(instr.flags & OP3_NONE))
+	if (!(instr->flags & SRC_NONE) && !(instr->flags & OP3_NONE))
 		len += snprintf(operands+len, sizeof(operands)-len, ",");
 
-	if (!(instr.flags & SRC_NONE))
-		len += print_operand(pc, operands+len, sizeof(operands)-len, &instr, &instr.operand[OPNUM_SRC], CPU_PE_MODE);
+	if (!(instr->flags & SRC_NONE))
+		len += print_operand(pc, operands+len, sizeof(operands)-len, instr, &instr->operand[OPNUM_SRC], CPU_PE_MODE);
 
-	if (!(instr.flags & SRC_NONE) && !(instr.flags & DST_NONE))
+	if (!(instr->flags & SRC_NONE) && !(instr->flags & DST_NONE))
 		len += snprintf(operands+len, sizeof(operands)-len, ",");
 
-	if (!(instr.flags & DST_NONE))
-		len += print_operand(pc, operands+len, sizeof(operands)-len, &instr, &instr.operand[OPNUM_DST], CPU_PE_MODE);
+	if (!(instr->flags & DST_NONE))
+		len += print_operand(pc, operands+len, sizeof(operands)-len, instr, &instr->operand[OPNUM_DST], CPU_PE_MODE);
 
-    snprintf(line, max_line, "%s%s%-*s%s %s", lock_names[instr.lock_prefix], prefix_names[instr.rep_prefix], (int)strlen(to_mnemonic(&instr)), to_mnemonic(&instr), add_instr_suffix(&instr), operands);
+    snprintf(line, max_line, "%s%s%-*s%s %s", lock_names[instr->lock_prefix], prefix_names[instr->rep_prefix], (int)strlen(to_mnemonic(instr)), to_mnemonic(instr), add_instr_suffix(instr), operands);
 
-    return get_instr_length(&instr);
+    return get_instr_length(instr);
 }

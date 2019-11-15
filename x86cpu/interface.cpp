@@ -5,7 +5,9 @@
  * the libcpu developers  Copyright (c) 2009-2010
  */
 
-/* project global headers */
+#include "llvm/IR/Module.h"
+#include "llvm/Support/TargetSelect.h"
+#include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "x86cpu.h"
 #include "x86_internal.h"
 
@@ -14,39 +16,132 @@ x86cpu_status
 cpu_new(size_t ramsize, cpu_t *&out)
 {
 	cpu_t *cpu;
-	x86cpu_status status = X86CPU_SUCCESS;
+	out = nullptr;
+
+	printf("Creating new cpu...\n");
 
 	cpu = new cpu_t();
 	if (cpu == nullptr) {
-		status = X86CPU_NO_MEMORY;
-		goto fail;
+		return X86CPU_NO_MEMORY;
 	}
 
-	cpu->RAM = new uint8_t[ramsize]();
-	if (cpu->RAM == nullptr) {
-		status = X86CPU_NO_MEMORY;
-		goto fail;
+	cpu->ram = new uint8_t[ramsize]();
+	if (cpu->ram == nullptr) {
+		cpu_free(cpu);
+		return X86CPU_NO_MEMORY;
 	}
 
-	status = cpu_x86_init(cpu);
-	if (!X86CPU_CHECK_SUCCESS(status)) {
-		goto fail;
+	cpu_x86_init(cpu);
+
+	std::unique_ptr<memory_region_t<addr_t>> mem_region(new memory_region_t<addr_t>);
+	addr_t start;
+	addr_t end;
+	cpu->memory_space_tree = interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>::create();
+	start = 0;
+	end = UINT32_MAX;
+	cpu->memory_space_tree->insert(start, end, std::move(mem_region));
+	std::unique_ptr<memory_region_t<io_port_t>> io_region(new memory_region_t<io_port_t>);
+	io_port_t start_io;
+	io_port_t end_io;
+	cpu->io_space_tree = interval_tree<io_port_t, std::unique_ptr<memory_region_t<io_port_t>>>::create();
+	start_io = 0;
+	end_io = UINT16_MAX;
+	cpu->io_space_tree->insert(start_io, end_io, std::move(io_region));
+
+	// init llvm
+	InitializeNativeTarget();
+	InitializeNativeTargetAsmParser();
+	InitializeNativeTargetAsmPrinter();
+	auto jtmb = orc::JITTargetMachineBuilder::detectHost();
+	if (!jtmb) {
+		cpu_free(cpu);
+		return X86CPU_LLVM_ERROR;
 	}
+	SubtargetFeatures features;
+	StringMap<bool> host_features;
+	if (sys::getHostCPUFeatures(host_features))
+		for (auto &F : host_features) {
+			features.AddFeature(F.first(), F.second);
+		}
+	jtmb->setCPU(sys::getHostCPUName())
+		.addFeatures(features.getFeatures())
+		.setRelocationModel(None)
+		.setCodeModel(None);
+	auto dl = jtmb->getDefaultDataLayoutForTarget();
+	if (!dl) {
+		cpu_free(cpu);
+		return X86CPU_LLVM_ERROR;
+	}
+	cpu->dl = new DataLayout(*dl);
+	if (cpu->dl == nullptr) {
+		cpu_free(cpu);
+		return X86CPU_NO_MEMORY;
+	}
+	// XXX use sys::getHostNumPhysicalCores from llvm to exclude logical cores?
+	auto jit = orc::LLJIT::Create(std::move(*jtmb), *dl, std::thread::hardware_concurrency());
+	if (!jit) {
+		cpu_free(cpu);
+		return X86CPU_LLVM_ERROR;
+	}
+	cpu->jit = std::move(*jit);
+	cpu->jit->getMainJITDylib().setGenerator(
+		*orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(*dl));
+#ifdef _WIN32
+	// workaround for llvm bug D65548
+	cpu->jit->getObjLinkingLayer().setOverrideObjectFlagsWithResponsibilityFlags(true);
+#endif
+
+	// check if FP80 and FP128 are supported by this architecture
+	std::string data_layout = cpu->dl->getStringRepresentation();
+	if (data_layout.find("f80") != std::string::npos) {
+		LOG("INFO: FP80 supported.\n");
+		cpu->cpu_flags |= CPU_FLAG_FP80;
+	}
+
+	// check if we need to swap guest memory.
+	if (cpu->dl->isBigEndian()) {
+		cpu->cpu_flags |= CPU_FLAG_SWAPMEM;
+	}
+
+	printf("Created new cpu \"%s\"\n", cpu->cpu_name);
 
 	out = cpu;
-	return status;
-
-fail:
-	out = nullptr;
-	cpu_free(cpu);
-	return status;
+	return X86CPU_SUCCESS;
 }
 
 void
 cpu_free(cpu_t *cpu)
 {
-	delete[] cpu->RAM;
+	if (cpu->dl) {
+		delete cpu->dl;
+	}
+	if (cpu->ram) {
+		delete[] cpu->ram;
+	}
+
+	cpu->code_cache.clear();
+
+	llvm_shutdown();
+
 	delete cpu;
+}
+
+x86cpu_status
+cpu_run(cpu_t *cpu)
+{
+	// main cpu loop
+	while (true) {
+		x86cpu_status status = cpu_exec_tc(cpu);
+		switch (status)
+		{
+		case X86CPU_LLVM_ERROR:
+		case X86CPU_NO_MEMORY:
+		case X86CPU_UNKNOWN_INSTR:
+		case X86CPU_OP_NOT_IMPLEMENTED:
+			// these are fatal errors, simply exit the cpu loop
+			return status;
+		}
+	}
 }
 
 x86cpu_status

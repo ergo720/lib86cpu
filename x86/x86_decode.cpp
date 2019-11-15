@@ -1190,7 +1190,7 @@ decode_modrm_addr_modes(struct x86_instr *instr, uint8_t prot)
 }
 
 int
-decode_instr(cpu_t *cpu, struct x86_instr *instr, addr_t pc)
+decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc)
 {
 	addr_t start_pc;
 	unsigned decode_group;
@@ -1200,14 +1200,11 @@ decode_instr(cpu_t *cpu, struct x86_instr *instr, addr_t pc)
 	uint8_t bits;
 	char use_intel;
 
-	/* Set default values into the decoded x86 instruction struct */
-	*instr = { 0 };
-
 	// Start decoding here, initially using decode_table_one :
 	start_pc = pc;
 	decode_group = 0;
 	no_fixed_size = 1;
-	use_intel = (cpu->flags & CPU_INTEL_SYNTAX) >> CPU_INTEL_SYNTAX_SHIFT;
+	use_intel = (cpu->cpu_flags & CPU_INTEL_SYNTAX) >> CPU_INTEL_SYNTAX_SHIFT;
 	instr_byte = ram_read<uint8_t>(cpu, &pc);
 	while(true) {
 		decode = decode_tables[decode_group][instr_byte];

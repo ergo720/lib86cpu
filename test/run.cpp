@@ -115,7 +115,6 @@ main(int argc, char **argv)
 
 	ramsize = 1 * 1024 * 1024;
 	code_start = 0xF0000;
-	code_entry = 0xFFFF0;
 
 #endif
 
@@ -144,8 +143,10 @@ main(int argc, char **argv)
 		return 1;
 	}
 
-	ifs.read((char *)&cpu->RAM[code_start], length);
+	ifs.read((char *)&cpu->ram[code_start], length);
 	ifs.close();
+
+	cpu->cpu_flags = (CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED | CPU_CODEGEN_OPTIMIZE);
 
 #if TEST386_ASM
 
@@ -159,11 +160,11 @@ main(int argc, char **argv)
 		return 1;
 	}
 
-	cpu->gpr.eip = 0xFFFFFFF0;
-
 #else
 
-	cpu->gpr.cr0 = 1;
+	cpu->regs.cs = 0;
+	cpu->regs.cs_hidden.base = 0;
+	cpu->regs.eip = code_entry;
 
 	if (!X86CPU_CHECK_SUCCESS(memory_init_region_ram(cpu, 0, ramsize, 1))) {
 		printf("Failed to initialize ram memory!\n");
@@ -171,6 +172,10 @@ main(int argc, char **argv)
 	}
 
 #endif
+
+	cpu_run(cpu);
+
+	cpu_free(cpu);
 
 	return 0;
 }
