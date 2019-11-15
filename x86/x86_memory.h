@@ -7,7 +7,7 @@
 #pragma once
 
 #include "llvm/support/SwapByteOrder.h"
-#include "x86cpu.h"
+#include "lib86cpu.h"
 
 
 addr_t get_ram_addr(cpu_t *cpu, addr_t pc);

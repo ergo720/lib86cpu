@@ -1,11 +1,11 @@
 # This cmake file is borrowed from libcpu, Copyright (c) 2009-2010, the libcpu developers
 
-PROJECT(x86cpu)
+PROJECT(lib86cpu)
 
 ADD_LIBRARY(cpu SHARED
 			interface.cpp)
 
-ADD_DEFINITIONS(-DX86CPU_BUILD_CORE)
+ADD_DEFINITIONS(-DLIB86CPU_BUILD_CORE)
 
 TARGET_LINK_LIBRARIES(cpu x86)
 IF(HAVE_LIBREADLINE)

@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "x86cpu.h"
+#include "lib86cpu.h"
 #include <stdint.h>
 
 

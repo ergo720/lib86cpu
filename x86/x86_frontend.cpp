@@ -14,7 +14,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/LinkAllPasses.h"
-#include "x86cpu.h"
+#include "lib86cpu.h"
 #include "x86_frontend.h"
 #include "x86_internal.h"
 

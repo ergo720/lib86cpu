@@ -1,5 +1,5 @@
 /*
- * x86cpu types
+ * lib86cpu types
  *
  * ergo720                Copyright (c) 2019
  * the libcpu developers  Copyright (c) 2009-2010
@@ -31,17 +31,17 @@ namespace llvm {
 
 using namespace llvm;
 
-// x86cpu error flags
-enum x86cpu_status {
-	X86CPU_NO_MEMORY = -5,
-	X86CPU_INVALID_PARAMETER,
-	X86CPU_LLVM_ERROR,
-	X86CPU_UNKNOWN_INSTR,
-	X86CPU_OP_NOT_IMPLEMENTED,
-	X86CPU_SUCCESS,
+// lib86cpu error flags
+enum lib86cpu_status {
+	LIB86CPU_NO_MEMORY = -5,
+	LIB86CPU_INVALID_PARAMETER,
+	LIB86CPU_LLVM_ERROR,
+	LIB86CPU_UNKNOWN_INSTR,
+	LIB86CPU_OP_NOT_IMPLEMENTED,
+	LIB86CPU_SUCCESS,
 };
 
-#define X86CPU_CHECK_SUCCESS(status) (static_cast<x86cpu_status>(status) == 0)
+#define LIB86CPU_CHECK_SUCCESS(status) (static_cast<lib86cpu_status>(status) == 0)
 
 #define CPU_FLAG_SWAPMEM        (1 << 0)
 #define CPU_INTEL_SYNTAX        (1 << 1)
@@ -137,12 +137,12 @@ struct cpu_t {
 };
 
 // cpu api
-API_FUNC x86cpu_status cpu_new(size_t ramsize, cpu_t *&out);
+API_FUNC lib86cpu_status cpu_new(size_t ramsize, cpu_t *&out);
 API_FUNC void cpu_free(cpu_t *cpu);
-API_FUNC x86cpu_status cpu_run(cpu_t *cpu);
+API_FUNC lib86cpu_status cpu_run(cpu_t *cpu);
 
 // memory api
-API_FUNC x86cpu_status memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority);
-API_FUNC x86cpu_status memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read read_func, fp_write write_func, void *opaque, int priority);
-API_FUNC x86cpu_status memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority);
-API_FUNC x86cpu_status memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space);
+API_FUNC lib86cpu_status memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority);
+API_FUNC lib86cpu_status memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read read_func, fp_write write_func, void *opaque, int priority);
+API_FUNC lib86cpu_status memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority);
+API_FUNC lib86cpu_status memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space);

@@ -8,11 +8,11 @@
 #include "llvm/IR/Module.h"
 #include "llvm/Support/TargetSelect.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
-#include "x86cpu.h"
+#include "lib86cpu.h"
 #include "x86_internal.h"
 
 
-x86cpu_status
+lib86cpu_status
 cpu_new(size_t ramsize, cpu_t *&out)
 {
 	cpu_t *cpu;
@@ -22,13 +22,13 @@ cpu_new(size_t ramsize, cpu_t *&out)
 
 	cpu = new cpu_t();
 	if (cpu == nullptr) {
-		return X86CPU_NO_MEMORY;
+		return LIB86CPU_NO_MEMORY;
 	}
 
 	cpu->ram = new uint8_t[ramsize]();
 	if (cpu->ram == nullptr) {
 		cpu_free(cpu);
-		return X86CPU_NO_MEMORY;
+		return LIB86CPU_NO_MEMORY;
 	}
 
 	cpu_x86_init(cpu);
@@ -55,7 +55,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 	auto jtmb = orc::JITTargetMachineBuilder::detectHost();
 	if (!jtmb) {
 		cpu_free(cpu);
-		return X86CPU_LLVM_ERROR;
+		return LIB86CPU_LLVM_ERROR;
 	}
 	SubtargetFeatures features;
 	StringMap<bool> host_features;
@@ -70,18 +70,18 @@ cpu_new(size_t ramsize, cpu_t *&out)
 	auto dl = jtmb->getDefaultDataLayoutForTarget();
 	if (!dl) {
 		cpu_free(cpu);
-		return X86CPU_LLVM_ERROR;
+		return LIB86CPU_LLVM_ERROR;
 	}
 	cpu->dl = new DataLayout(*dl);
 	if (cpu->dl == nullptr) {
 		cpu_free(cpu);
-		return X86CPU_NO_MEMORY;
+		return LIB86CPU_NO_MEMORY;
 	}
 	// XXX use sys::getHostNumPhysicalCores from llvm to exclude logical cores?
 	auto jit = orc::LLJIT::Create(std::move(*jtmb), *dl, std::thread::hardware_concurrency());
 	if (!jit) {
 		cpu_free(cpu);
-		return X86CPU_LLVM_ERROR;
+		return LIB86CPU_LLVM_ERROR;
 	}
 	cpu->jit = std::move(*jit);
 	cpu->jit->getMainJITDylib().setGenerator(
@@ -106,7 +106,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 	printf("Created new cpu \"%s\"\n", cpu->cpu_name);
 
 	out = cpu;
-	return X86CPU_SUCCESS;
+	return LIB86CPU_SUCCESS;
 }
 
 void
@@ -126,25 +126,25 @@ cpu_free(cpu_t *cpu)
 	delete cpu;
 }
 
-x86cpu_status
+lib86cpu_status
 cpu_run(cpu_t *cpu)
 {
 	// main cpu loop
 	while (true) {
-		x86cpu_status status = cpu_exec_tc(cpu);
+		lib86cpu_status status = cpu_exec_tc(cpu);
 		switch (status)
 		{
-		case X86CPU_LLVM_ERROR:
-		case X86CPU_NO_MEMORY:
-		case X86CPU_UNKNOWN_INSTR:
-		case X86CPU_OP_NOT_IMPLEMENTED:
+		case LIB86CPU_LLVM_ERROR:
+		case LIB86CPU_NO_MEMORY:
+		case LIB86CPU_UNKNOWN_INSTR:
+		case LIB86CPU_OP_NOT_IMPLEMENTED:
 			// these are fatal errors, simply exit the cpu loop
 			return status;
 		}
 	}
 }
 
-x86cpu_status
+lib86cpu_status
 memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 {
 	addr_t end;
@@ -152,7 +152,7 @@ memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 	std::set<std::tuple<addr_t, addr_t, const std::unique_ptr<memory_region_t<addr_t>> &>> out;
 
 	if (size == 0) {
-		return X86CPU_INVALID_PARAMETER;
+		return LIB86CPU_INVALID_PARAMETER;
 	}
 
 	end = start + size - 1;
@@ -160,7 +160,7 @@ memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 
 	for (auto &region : out) {
 		if (std::get<2>(region)->priority == priority) {
-			return X86CPU_INVALID_PARAMETER;
+			return LIB86CPU_INVALID_PARAMETER;
 		}
 	}
 
@@ -169,20 +169,20 @@ memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 	ram->priority = priority;
 
 	if (cpu->memory_space_tree->insert(start, end, std::move(ram))) {
-		return X86CPU_SUCCESS;
+		return LIB86CPU_SUCCESS;
 	}
 	else {
-		return X86CPU_INVALID_PARAMETER;
+		return LIB86CPU_INVALID_PARAMETER;
 	}
 }
 
-x86cpu_status
+lib86cpu_status
 memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read read_func, fp_write write_func, void *opaque, int priority)
 {
 	bool inserted;
 
 	if (size == 0) {
-		return X86CPU_INVALID_PARAMETER;
+		return LIB86CPU_INVALID_PARAMETER;
 	}
 
 	if (io_space) {
@@ -192,7 +192,7 @@ memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_r
 		std::set<std::tuple<io_port_t, io_port_t, const std::unique_ptr<memory_region_t<io_port_t>> &>> out;
 
 		if (start > 65535 || (start + size) > 65536) {
-			return X86CPU_INVALID_PARAMETER;
+			return LIB86CPU_INVALID_PARAMETER;
 		}
 
 		start_io = static_cast<io_port_t>(start);
@@ -201,7 +201,7 @@ memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_r
 
 		for (auto &region : out) {
 			if (std::get<2>(region)->priority == priority) {
-				return X86CPU_INVALID_PARAMETER;
+				return LIB86CPU_INVALID_PARAMETER;
 			}
 		}
 
@@ -230,7 +230,7 @@ memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_r
 
 		for (auto &region : out) {
 			if (std::get<2>(region)->priority == priority) {
-				return X86CPU_INVALID_PARAMETER;
+				return LIB86CPU_INVALID_PARAMETER;
 			}
 		}
 
@@ -251,15 +251,15 @@ memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_r
 	}
 
 	if (inserted) {
-		return X86CPU_SUCCESS;
+		return LIB86CPU_SUCCESS;
 	}
 	else {
-		return X86CPU_INVALID_PARAMETER;
+		return LIB86CPU_INVALID_PARAMETER;
 	}
 }
 
 // XXX Are aliased regions allowed in the io space as well?
-x86cpu_status
+lib86cpu_status
 memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority)
 {
 	addr_t end;
@@ -268,7 +268,7 @@ memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_
 	std::set<std::tuple<addr_t, addr_t, const std::unique_ptr<memory_region_t<addr_t>> &>> out;
 
 	if (ori_size == 0) {
-		return X86CPU_INVALID_PARAMETER;
+		return LIB86CPU_INVALID_PARAMETER;
 	}
 
 	aliased_region = nullptr;
@@ -276,7 +276,7 @@ memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_
 	cpu->memory_space_tree->search(ori_start, end, out);
 
 	if (out.empty()) {
-		return X86CPU_INVALID_PARAMETER;
+		return LIB86CPU_INVALID_PARAMETER;
 	}
 
 	for (auto &region : out) {
@@ -287,7 +287,7 @@ memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_
 	}
 
 	if (!aliased_region) {
-		return X86CPU_INVALID_PARAMETER;
+		return LIB86CPU_INVALID_PARAMETER;
 	}
 
 	end = alias_start + ori_size - 1;
@@ -295,7 +295,7 @@ memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_
 
 	for (auto &region : out) {
 		if (std::get<2>(region)->priority == priority) {
-			return X86CPU_INVALID_PARAMETER;
+			return LIB86CPU_INVALID_PARAMETER;
 		}
 	}
 
@@ -306,14 +306,14 @@ memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_
 	alias->aliased_region = aliased_region;
 
 	if (cpu->memory_space_tree->insert(alias_start, end, std::move(alias))) {
-		return X86CPU_SUCCESS;
+		return LIB86CPU_SUCCESS;
 	}
 	else {
-		return X86CPU_INVALID_PARAMETER;
+		return LIB86CPU_INVALID_PARAMETER;
 	}
 }
 
-x86cpu_status
+lib86cpu_status
 memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 {
 	bool deleted;
@@ -334,9 +334,9 @@ memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 	}
 
 	if (deleted) {
-		return X86CPU_SUCCESS;
+		return LIB86CPU_SUCCESS;
 	}
 	else {
-		return X86CPU_INVALID_PARAMETER;
+		return LIB86CPU_INVALID_PARAMETER;
 	}
 }

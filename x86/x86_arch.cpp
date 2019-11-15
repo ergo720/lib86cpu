@@ -4,7 +4,7 @@
  * ergo720                Copyright (c) 2019
  */
 
-#include "x86cpu.h"
+#include "lib86cpu.h"
 #include "x86_internal.h"
 
 

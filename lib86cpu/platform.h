@@ -12,7 +12,7 @@
 #endif /* defined(_WIN32) */
 
 #if HAVE_DECLSPEC_DLLEXPORT
-#  ifdef X86CPU_BUILD_CORE
+#  ifdef LIB86CPU_BUILD_CORE
 #    define API_FUNC __declspec(dllexport)
 #  else
 #    define API_FUNC __declspec(dllimport)

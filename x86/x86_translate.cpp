@@ -13,12 +13,12 @@
 #include "llvm/IR/Module.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 
-#define BAD fprintf(stderr, "%s: unimplemented instruction encountered at line %d\n", __func__, __LINE__); return X86CPU_OP_NOT_IMPLEMENTED
+#define BAD fprintf(stderr, "%s: unimplemented instruction encountered at line %d\n", __func__, __LINE__); return LIB86CPU_OP_NOT_IMPLEMENTED
 
 typedef void (*entry_t)(uint8_t *ram, regs_t *regs);
 
 
-static x86cpu_status
+static lib86cpu_status
 cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx)
 {
 	bool translate_next = true;
@@ -40,7 +40,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx)
 		bytes = disasm_instr(cpu, pc, &instr, disassembly_line, sizeof(disassembly_line));
 		if (bytes < 0) {
 			fprintf(stderr, "error: unable to decode opcode %x\n", instr.opcode_byte);
-			return X86CPU_UNKNOWN_INSTR;
+			return LIB86CPU_UNKNOWN_INSTR;
 		}
 
 		printf(".,%08lx ", static_cast<unsigned long>(pc));
@@ -55,7 +55,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx)
 		bytes = decode_instr(cpu, &instr, pc);
 		if (bytes < 0) {
 			printf("error: unable to decode opcode %x\n", instr.opcode_byte);
-			return X86CPU_UNKNOWN_INSTR;
+			return LIB86CPU_UNKNOWN_INSTR;
 		}
 
 #endif
@@ -282,13 +282,13 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx)
 		case X86_OPC_XOR:         BAD;
 		default:
 			fprintf(stderr, "INVALID %s:%d\n", __func__, __LINE__);
-			return X86CPU_OP_NOT_IMPLEMENTED;
+			return LIB86CPU_OP_NOT_IMPLEMENTED;
 		}
 	} while (translate_next);
 
 	disas_ctx->tc_instr_size = tc_instr_size;
 
-	return X86CPU_SUCCESS;
+	return LIB86CPU_SUCCESS;
 }
 
 static addr_t
@@ -297,10 +297,10 @@ get_pc(cpu_t *cpu)
 	return cpu->regs.cs_hidden.base + cpu->regs.eip;
 }
 
-x86cpu_status
+lib86cpu_status
 cpu_exec_tc(cpu_t *cpu)
 {
-	x86cpu_status status = X86CPU_SUCCESS;
+	lib86cpu_status status = LIB86CPU_SUCCESS;
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
 	entry_t entry = nullptr;
 
@@ -316,13 +316,13 @@ cpu_exec_tc(cpu_t *cpu)
 			std::unique_ptr<translated_code_t> tc(new translated_code_t);
 			tc->ctx = new LLVMContext();
 			if (tc->ctx == nullptr) {
-				status = X86CPU_NO_MEMORY;
+				status = LIB86CPU_NO_MEMORY;
 				return status;
 			}
 			tc->mod = new Module(cpu->cpu_name, _CTX());
 			if (tc->mod == nullptr) {
 				delete tc->ctx;
-				status = X86CPU_NO_MEMORY;
+				status = LIB86CPU_NO_MEMORY;
 				return status;
 			}
 
@@ -334,7 +334,7 @@ cpu_exec_tc(cpu_t *cpu)
 			// start guest code translation
 			disas_ctx_t disas_ctx;
 			status = cpu_translate(cpu, pc, bb, &disas_ctx);
-			if (!X86CPU_CHECK_SUCCESS(status)) {
+			if (!LIB86CPU_CHECK_SUCCESS(status)) {
 				delete tc->mod;
 				delete tc->ctx;
 				return status;
@@ -356,7 +356,7 @@ cpu_exec_tc(cpu_t *cpu)
 			orc::ThreadSafeContext tsc(std::unique_ptr<LLVMContext>(tc->ctx));
 			orc::ThreadSafeModule tsm(std::unique_ptr<Module>(tc->mod), tsc);
 			if (cpu->jit->addIRModule(std::move(tsm))) {
-				status = X86CPU_LLVM_ERROR;
+				status = LIB86CPU_LLVM_ERROR;
 				delete tc->mod;
 				delete tc->ctx;
 				return status;

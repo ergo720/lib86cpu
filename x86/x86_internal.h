@@ -9,7 +9,7 @@
 #include "x86_decode.h"
 
 void cpu_x86_init(cpu_t *cpu);
-x86cpu_status cpu_exec_tc(cpu_t *cpu);
+lib86cpu_status cpu_exec_tc(cpu_t *cpu);
 int disasm_instr(cpu_t *cpu, addr_t pc, x86_instr *instr, char *line, unsigned int max_line);
 int decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc);
 

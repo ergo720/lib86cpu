@@ -1,11 +1,11 @@
 /*
- * x86cpu test app loader
+ * lib86cpu test app loader
  *
  * ergo720                Copyright (c) 2019
  * the libcpu developers  Copyright (c) 2009-2010
  */
 
-#include "x86cpu.h"
+#include "lib86cpu.h"
 #include <cstdio>
 #include <string>
 #include <fstream>
@@ -138,8 +138,8 @@ main(int argc, char **argv)
 		return 1;
 	}
 
-	if (!X86CPU_CHECK_SUCCESS(cpu_new(ramsize, cpu))) {
-		printf("Failed to initialize x86cpu!\n");
+	if (!LIB86CPU_CHECK_SUCCESS(cpu_new(ramsize, cpu))) {
+		printf("Failed to initialize lib86cpu!\n");
 		return 1;
 	}
 
@@ -150,12 +150,12 @@ main(int argc, char **argv)
 
 #if TEST386_ASM
 
-	if (!X86CPU_CHECK_SUCCESS(memory_init_region_ram(cpu, 0, ramsize, 1))) {
+	if (!LIB86CPU_CHECK_SUCCESS(memory_init_region_ram(cpu, 0, ramsize, 1))) {
 		printf("Failed to initialize ram memory!\n");
 		return 1;
 	}
 
-	if (!X86CPU_CHECK_SUCCESS(memory_init_region_alias(cpu, 0xFFFF0000, 0xF0000, 0x10000, 1))) {
+	if (!LIB86CPU_CHECK_SUCCESS(memory_init_region_alias(cpu, 0xFFFF0000, 0xF0000, 0x10000, 1))) {
 		printf("Failed to initialize aliased ram memory!\n");
 		return 1;
 	}
@@ -166,7 +166,7 @@ main(int argc, char **argv)
 	cpu->regs.cs_hidden.base = 0;
 	cpu->regs.eip = code_entry;
 
-	if (!X86CPU_CHECK_SUCCESS(memory_init_region_ram(cpu, 0, ramsize, 1))) {
+	if (!LIB86CPU_CHECK_SUCCESS(memory_init_region_ram(cpu, 0, ramsize, 1))) {
 		printf("Failed to initialize ram memory!\n");
 		return 1;
 	}

@@ -59,5 +59,5 @@ int main() {
 "
 HAVE_DECLSPEC_DLLEXPORT)
 
-configure_file(x86cpu/config.h.cmake x86cpu/config.h)
-INCLUDE_DIRECTORIES(${PROJECT_BINARY_DIR}/x86cpu)
+configure_file(lib86cpu/config.h.cmake lib86cpu/config.h)
+INCLUDE_DIRECTORIES(${PROJECT_BINARY_DIR}/lib86cpu)
