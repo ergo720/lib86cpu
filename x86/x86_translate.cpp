@@ -13,7 +13,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 
-#define BAD fprintf(stderr, "%s: unimplemented instruction encountered at line %d\n", __func__, __LINE__); return LIB86CPU_OP_NOT_IMPLEMENTED
+#define BAD printf("%s: unimplemented instruction encountered at line %d\n", __func__, __LINE__); return LIB86CPU_OP_NOT_IMPLEMENTED
 
 typedef void (*entry_t)(uint8_t *ram, regs_t *regs);
 
@@ -39,7 +39,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx)
 
 		bytes = disasm_instr(cpu, pc, &instr, disassembly_line, sizeof(disassembly_line));
 		if (bytes < 0) {
-			fprintf(stderr, "error: unable to decode opcode %x\n", instr.opcode_byte);
+			printf("error: unable to decode opcode %x\n", instr.opcode_byte);
 			return LIB86CPU_UNKNOWN_INSTR;
 		}
 
@@ -281,7 +281,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx)
 		case X86_OPC_XLATB:       BAD;
 		case X86_OPC_XOR:         BAD;
 		default:
-			fprintf(stderr, "INVALID %s:%d\n", __func__, __LINE__);
+			printf("INVALID %s:%d\n", __func__, __LINE__);
 			return LIB86CPU_OP_NOT_IMPLEMENTED;
 		}
 	} while (translate_next);
