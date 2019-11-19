@@ -14,12 +14,18 @@
 #include "x86_frontend.h"
 #include "x86_memory.h"
 
-#define BAD       printf("%s: unimplemented instruction encountered at line %d\n", __func__, __LINE__); return LIB86CPU_OP_NOT_IMPLEMENTED
-#define BAD_MODE  printf("%s: instruction at line %d not implemented in %s mode\n", __func__, __LINE__, disas_ctx->pe_mode ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
+#define BAD       printf("%s: encountered unimplemented instruction %s\n", __func__, get_instr_name(instr.opcode)); return LIB86CPU_OP_NOT_IMPLEMENTED
+#define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), disas_ctx->pe_mode ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
 #define UNREACHABLE do { printf("%s: unreachable line %d reached!\n", __func__, __LINE__); } while(0); return LIB86CPU_UNREACHABLE
 
 typedef void (*entry_t)(uint8_t *ram, regs_t *regs);
 
+
+const char *
+get_instr_name(unsigned num)
+{
+	return mnemo[num];
+}
 
 static lib86cpu_status
 cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, translated_code_t *tc)

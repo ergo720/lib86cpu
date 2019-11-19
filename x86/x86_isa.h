@@ -33,3 +33,5 @@ typedef enum arch_x86_opcode {
 #include "x86_instr.h"
 #undef DECLARE_OPC
 } arch_x86_opcode_t;
+
+const char *get_instr_name(unsigned num);

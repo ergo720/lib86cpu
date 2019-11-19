@@ -14,6 +14,7 @@ int disasm_instr(cpu_t *cpu, addr_t pc, x86_instr *instr, char *line, unsigned i
 int decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc);
 
 extern cpu_t *cpu_copy;
+extern const char *mnemo[];
 
 // reg indexes in cpu->regs_layout
 #define EAX_idx     0

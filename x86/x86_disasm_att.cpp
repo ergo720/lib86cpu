@@ -12,8 +12,6 @@
 #include "x86_isa.h"
 #include "x86_internal.h"
 
-extern const char *mnemo[];
-
 static const char *to_mnemonic(struct x86_instr *instr)
 {
 	return mnemo[instr->opcode];
