@@ -11,6 +11,9 @@
 
 
 addr_t get_ram_addr(cpu_t *cpu, addr_t pc);
+JIT_EXTERNAL_CALL_C uint8_t mem_read8(addr_t addr);
+JIT_EXTERNAL_CALL_C uint16_t mem_read16(addr_t addr);
+JIT_EXTERNAL_CALL_C uint32_t mem_read32(addr_t addr);
 
 /*
  * ram specific accessors
@@ -84,7 +87,7 @@ T mem_read(cpu_t *cpu, addr_t addr)
 		switch (std::get<2>(*cpu->memory_out.begin())->type)
 		{
 		case MEM_RAM: {
-			return arch_x86_ram_read<T>(cpu, &addr);
+			return ram_read<T>(cpu, &addr);
 		}
 		break;
 
@@ -108,7 +111,7 @@ T mem_read(cpu_t *cpu, addr_t addr)
 				region = region->aliased_region;
 				alias_offset += region->alias_offset;
 			}
-			return arch_x86_mem_read<T>(cpu, region->start + alias_offset + (addr - std::get<0>(*cpu->memory_out.begin())));
+			return mem_read<T>(cpu, region->start + alias_offset + (addr - std::get<0>(*cpu->memory_out.begin())));
 		}
 		break;
 
@@ -144,7 +147,7 @@ void mem_write(cpu_t *cpu, addr_t addr, T value)
 		switch (std::get<2>(*cpu->memory_out.begin())->type)
 		{
 		case MEM_RAM: {
-			arch_x86_ram_write<T>(cpu, &addr, value);
+			ram_write<T>(cpu, &addr, value);
 		}
 		break;
 
@@ -166,7 +169,7 @@ void mem_write(cpu_t *cpu, addr_t addr, T value)
 				region = region->aliased_region;
 				alias_offset += region->alias_offset;
 			}
-			arch_x86_mem_write<T>(cpu, region->start + alias_offset + (addr - std::get<0>(*cpu->memory_out.begin())), value);
+			mem_write<T>(cpu, region->start + alias_offset + (addr - std::get<0>(*cpu->memory_out.begin())), value);
 		}
 		break;
 

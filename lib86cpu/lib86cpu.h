@@ -33,11 +33,12 @@ using namespace llvm;
 
 // lib86cpu error flags
 enum lib86cpu_status {
-	LIB86CPU_NO_MEMORY = -5,
+	LIB86CPU_NO_MEMORY = -6,
 	LIB86CPU_INVALID_PARAMETER,
 	LIB86CPU_LLVM_ERROR,
 	LIB86CPU_UNKNOWN_INSTR,
 	LIB86CPU_OP_NOT_IMPLEMENTED,
+	LIB86CPU_UNREACHABLE,
 	LIB86CPU_SUCCESS,
 };
 
@@ -107,6 +108,7 @@ struct disas_ctx_t {
 	bool emit_pc_code;
 	size_t tc_instr_size;
 	Value *next_pc;
+	bool pe_mode;
 };
 
 struct regs_layout_t {
@@ -134,6 +136,7 @@ struct cpu_t {
 	DataLayout *dl;
 	Value *ptr_ram;
 	Value *ptr_regs;
+	Function *ptr_mem_ldfn[3];
 };
 
 // cpu api

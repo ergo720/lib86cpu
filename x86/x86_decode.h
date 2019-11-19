@@ -11,6 +11,11 @@
 #include "lib86cpu.h"
 #include <stdint.h>
 
+#define SIZE32 0
+#define SIZE16 1
+#define ADDR32 0
+#define ADDR16 1
+
 
 enum x86_operand_type {
 	OPTYPE_IMM,
@@ -28,14 +33,15 @@ enum x86_operand_type {
 	OPTYPE_SIB_DISP,
 };
 
-enum x86_seg_override {
-	NO_OVERRIDE,
-	ES_OVERRIDE,
-	CS_OVERRIDE,
-	SS_OVERRIDE,
-	DS_OVERRIDE,
-	FS_OVERRIDE,
-	GS_OVERRIDE,
+// must have the same order used by cpu->regs_layout
+enum x86_segment : uint8_t {
+	ES,
+	CS,
+	SS,
+	DS,
+	FS,
+	GS,
+	DEFAULT,
 };
 
 enum x86_rep_prefix {
@@ -186,6 +192,7 @@ struct x86_instr { /* Instances of x86_instr are populated in arch_x86_decode_in
 	uint8_t         base;        /* SIB base */
 	uint8_t         idx;         /* SIB index */
 	uint8_t         scale;       /* SIB scale */
+	uint8_t         seg;         /* Segment used by the instr */
 	uint32_t        disp;        /* Address displacement */
 	union {
 		uint32_t    imm_data[2]; /* Immediate data; src/op3 (0), dst/seg sel (1) */
@@ -197,7 +204,7 @@ struct x86_instr { /* Instances of x86_instr are populated in arch_x86_decode_in
 	union {
 		struct {
 #define SEG_OVERRIDE 0
-			uint8_t seg_override; /* See enum x86_seg_override */
+			uint8_t seg_override; /* See enum x86_segment */
 #define REP_OVERRIDE 1
 			uint8_t rep_prefix; /* See enum x86_rep_prefix */
 #define LOCK_PREFIX 2

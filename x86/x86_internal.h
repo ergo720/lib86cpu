@@ -13,6 +13,8 @@ lib86cpu_status cpu_exec_tc(cpu_t *cpu);
 int disasm_instr(cpu_t *cpu, addr_t pc, x86_instr *instr, char *line, unsigned int max_line);
 int decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc);
 
+extern cpu_t *cpu_copy;
+
 // reg indexes in cpu->regs_layout
 #define EAX_idx     0
 #define ECX_idx     1
@@ -43,6 +45,12 @@ int decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc);
 #define DR7_idx     26
 #define EFLAGS_idx  27
 #define EIP_idx     28
+
+#define SEG_offset  8
+
+#define SEG_SEL_idx     0
+#define SEG_HIDDEN_idx  1
+#define SEG_BASE_idx    0
 
 #define CRO_PE_SHIFT 0
 #define CR0_PE_MASK (1 << CRO_PE_SHIFT)

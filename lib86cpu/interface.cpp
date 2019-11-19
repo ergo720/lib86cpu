@@ -105,7 +105,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 
 	printf("Created new cpu \"%s\"\n", cpu->cpu_name);
 
-	out = cpu;
+	out = cpu_copy = cpu;
 	return LIB86CPU_SUCCESS;
 }
 
@@ -138,6 +138,7 @@ cpu_run(cpu_t *cpu)
 		case LIB86CPU_NO_MEMORY:
 		case LIB86CPU_UNKNOWN_INSTR:
 		case LIB86CPU_OP_NOT_IMPLEMENTED:
+		case LIB86CPU_UNREACHABLE:
 			// these are fatal errors, simply exit the cpu loop
 			return status;
 		}

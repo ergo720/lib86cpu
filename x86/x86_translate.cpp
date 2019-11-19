@@ -5,26 +5,31 @@
  * the libcpu developers  Copyright (c) 2009-2010
  */
 
+#include "llvm/IR/LLVMContext.h"
+#include "llvm/IR/Module.h"
+#include "llvm/ExecutionEngine/Orc/LLJIT.h"
+#include "llvm/IR/Instructions.h"
 #include "x86_internal.h"
 #include "x86_isa.h"
 #include "x86_frontend.h"
 #include "x86_memory.h"
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
-#include "llvm/ExecutionEngine/Orc/LLJIT.h"
 
-#define BAD printf("%s: unimplemented instruction encountered at line %d\n", __func__, __LINE__); return LIB86CPU_OP_NOT_IMPLEMENTED
+#define BAD       printf("%s: unimplemented instruction encountered at line %d\n", __func__, __LINE__); return LIB86CPU_OP_NOT_IMPLEMENTED
+#define BAD_MODE  printf("%s: instruction at line %d not implemented in %s mode\n", __func__, __LINE__, disas_ctx->pe_mode ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
+#define UNREACHABLE do { printf("%s: unreachable line %d reached!\n", __func__, __LINE__); } while(0); return LIB86CPU_UNREACHABLE
 
 typedef void (*entry_t)(uint8_t *ram, regs_t *regs);
 
 
 static lib86cpu_status
-cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx)
+cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, translated_code_t *tc)
 {
 	bool translate_next = true;
 	disas_ctx->emit_pc_code = true;
 	disas_ctx->next_pc = nullptr;
 	size_t tc_instr_size = 0;
+	uint8_t size_mode;
+	uint8_t addr_mode;
 
 	do {
 
@@ -61,6 +66,20 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx)
 #endif
 
 		tc_instr_size += bytes;
+
+		if (disas_ctx->pe_mode ^ instr.op_size_override) {
+			size_mode = SIZE32;
+		}
+		else {
+			size_mode = SIZE16;
+		}
+
+		if (disas_ctx->pe_mode ^ instr.addr_size_override) {
+			addr_mode = ADDR32;
+		}
+		else {
+			addr_mode = ADDR16;
+		}
 
 		switch (instr.opcode) {
 		case X86_OPC_AAA:         BAD;
@@ -143,7 +162,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx)
 		case X86_OPC_JGE:         BAD;
 		case X86_OPC_JL:          BAD;
 		case X86_OPC_JLE:         BAD;
-		case X86_OPC_JMP:         BAD;
 		case X86_OPC_JNA:         BAD;
 		case X86_OPC_JNAE:        BAD;
 		case X86_OPC_JNB:         BAD;
@@ -179,7 +197,68 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx)
 		case X86_OPC_LIDTD:       BAD;
 		case X86_OPC_LIDTL:       BAD;
 		case X86_OPC_LIDTW:       BAD;
-		case X86_OPC_LJMP:        BAD;
+		case X86_OPC_LJMP: // AT&T
+		case X86_OPC_JMP: {
+			Value *new_eip;
+			Value *new_sel;
+			switch (instr.opcode_byte)
+			{
+			case 0xE9:
+			case 0xEB:
+				BAD;
+			case 0xEA: {
+				new_eip = CONST32(instr.operand[OPNUM_SRC].imm);
+				new_sel = CONST16(instr.operand[OPNUM_SRC].seg_sel);
+			}
+			break;
+
+			case 0xFF: {
+				if (instr.reg_opc == 5) {
+					assert(instr.operand[OPNUM_SRC].type == OPTYPE_MEM ||
+						instr.operand[OPNUM_SRC].type == OPTYPE_MEM_DISP ||
+						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_MEM ||
+						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_DISP);
+					Value *sel_addr, *offset_addr = GET_OP(OPNUM_SRC, addr_mode);
+					if (size_mode == SIZE16) {
+						new_eip = ZEXT32(CallInst::Create(cpu->ptr_mem_ldfn[MEM_LD16_idx], offset_addr, "", bb));
+						sel_addr = ADD(offset_addr, CONST32(2));
+					}
+					else {
+						new_eip = CallInst::Create(cpu->ptr_mem_ldfn[MEM_LD32_idx], offset_addr, "", bb);
+						sel_addr = ADD(offset_addr, CONST32(4));
+					}
+					new_sel = CallInst::Create(cpu->ptr_mem_ldfn[MEM_LD16_idx], sel_addr, "", bb);
+				}
+				else if(instr.reg_opc == 4) {
+					BAD;
+				}
+				else {
+					UNREACHABLE;
+				}
+			}
+			break;
+
+			default:
+				UNREACHABLE;
+			}
+
+			if (disas_ctx->pe_mode) {
+				BAD_MODE;
+			}
+			else {
+				if (size_mode == SIZE16) {
+					new_eip = AND(new_eip, CONST32(0x0000FFFF));
+				}
+				ST_REG(new_eip, EIP_idx);
+				ST_SEG(new_sel, CS_idx);
+				ST_SEG_HIDDEN(SHL(ZEXT32(new_sel), CONST32(4)), CS_idx, SEG_BASE_idx);
+				disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), new_eip);
+				disas_ctx->emit_pc_code = false;
+				translate_next = false;
+			}
+		}
+		break;
+
 		case X86_OPC_LLDT:        BAD;
 		case X86_OPC_LMSW:        BAD;
 		case X86_OPC_LODS:        BAD;
@@ -281,8 +360,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx)
 		case X86_OPC_XLATB:       BAD;
 		case X86_OPC_XOR:         BAD;
 		default:
-			printf("INVALID %s:%d\n", __func__, __LINE__);
-			return LIB86CPU_OP_NOT_IMPLEMENTED;
+			UNREACHABLE;
 		}
 	} while (translate_next);
 
@@ -326,6 +404,9 @@ cpu_exec_tc(cpu_t *cpu)
 				return status;
 			}
 
+			// add to the module the memory functions that will be called when the guest needs to access the memory
+			get_mem_fn(cpu, tc.get());
+
 			Function *func = create_tc_prologue(cpu, tc.get());
 
 			// create the bb for the function, it will hold all the tranlsated code tor this code block
@@ -333,7 +414,8 @@ cpu_exec_tc(cpu_t *cpu)
 
 			// start guest code translation
 			disas_ctx_t disas_ctx;
-			status = cpu_translate(cpu, pc, bb, &disas_ctx);
+			disas_ctx.pe_mode = CPU_PE_MODE;
+			status = cpu_translate(cpu, pc, bb, &disas_ctx, tc.get());
 			if (!LIB86CPU_CHECK_SUCCESS(status)) {
 				delete tc->mod;
 				delete tc->ctx;

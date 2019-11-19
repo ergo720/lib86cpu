@@ -98,7 +98,7 @@ static const uint64_t decode_table_one[256] = {
 	/*[0x23]*/	X86_OPC_AND | ADDRMOD_RM_REG | WIDTH_WORD,
 	/*[0x24]*/	X86_OPC_AND | ADDRMOD_IMM_ACC | WIDTH_BYTE,
 	/*[0x25]*/	X86_OPC_AND | ADDRMOD_IMM_ACC | WIDTH_WORD,
-	/*[0x26]*/	X86_OPC_PREFIX(SEG_OVERRIDE, ES_OVERRIDE),
+	/*[0x26]*/	X86_OPC_PREFIX(SEG_OVERRIDE, ES),
 	/*[0x27]*/	X86_OPC_DAA | ADDRMOD_IMPLIED,
 	/*[0x28]*/	X86_OPC_SUB | ADDRMOD_REG_RM | WIDTH_BYTE,
 	/*[0x29]*/	X86_OPC_SUB | ADDRMOD_REG_RM | WIDTH_WORD,
@@ -106,7 +106,7 @@ static const uint64_t decode_table_one[256] = {
 	/*[0x2B]*/	X86_OPC_SUB | ADDRMOD_RM_REG | WIDTH_WORD,
 	/*[0x2C]*/	X86_OPC_SUB | ADDRMOD_IMM_ACC | WIDTH_BYTE,
 	/*[0x2D]*/	X86_OPC_SUB | ADDRMOD_IMM_ACC | WIDTH_WORD,
-	/*[0x2E]*/	X86_OPC_PREFIX(SEG_OVERRIDE, CS_OVERRIDE),
+	/*[0x2E]*/	X86_OPC_PREFIX(SEG_OVERRIDE, CS),
 	/*[0x2F]*/	X86_OPC_DAS | ADDRMOD_IMPLIED,
 	/*[0x30]*/	X86_OPC_XOR | ADDRMOD_REG_RM | WIDTH_BYTE,
 	/*[0x31]*/	X86_OPC_XOR | ADDRMOD_REG_RM | WIDTH_WORD,
@@ -114,7 +114,7 @@ static const uint64_t decode_table_one[256] = {
 	/*[0x33]*/	X86_OPC_XOR | ADDRMOD_RM_REG | WIDTH_WORD,
 	/*[0x34]*/	X86_OPC_XOR | ADDRMOD_IMM_ACC | WIDTH_BYTE,
 	/*[0x35]*/	X86_OPC_XOR | ADDRMOD_IMM_ACC | WIDTH_WORD,
-	/*[0x36]*/	X86_OPC_PREFIX(SEG_OVERRIDE, SS_OVERRIDE),
+	/*[0x36]*/	X86_OPC_PREFIX(SEG_OVERRIDE, SS),
 	/*[0x37]*/	X86_OPC_AAA | ADDRMOD_IMPLIED,
 	/*[0x38]*/	X86_OPC_CMP | ADDRMOD_REG_RM | WIDTH_BYTE,
 	/*[0x39]*/	X86_OPC_CMP | ADDRMOD_REG_RM | WIDTH_WORD,
@@ -122,7 +122,7 @@ static const uint64_t decode_table_one[256] = {
 	/*[0x3B]*/	X86_OPC_CMP | ADDRMOD_RM_REG | WIDTH_WORD,
 	/*[0x3C]*/	X86_OPC_CMP | ADDRMOD_IMM_ACC | WIDTH_BYTE,
 	/*[0x3D]*/	X86_OPC_CMP | ADDRMOD_IMM_ACC | WIDTH_WORD,
-	/*[0x3E]*/	X86_OPC_PREFIX(SEG_OVERRIDE, DS_OVERRIDE),
+	/*[0x3E]*/	X86_OPC_PREFIX(SEG_OVERRIDE, DS),
 	/*[0x3F]*/	X86_OPC_AAS | ADDRMOD_IMPLIED,
 	/*[0x40]*/	X86_OPC_INC | ADDRMOD_REG | WIDTH_WORD,
 	/*[0x41]*/	X86_OPC_INC | ADDRMOD_REG | WIDTH_WORD,
@@ -160,8 +160,8 @@ static const uint64_t decode_table_one[256] = {
 	/*[0x61]*/	X86_OPC_POPA | ADDRMOD_IMPLIED | WIDTH_WORD,
 	/*[0x62]*/	X86_OPC_DIFF_SYNTAX(0) | ADDRMOD_RM_REG,
 	/*[0x63]*/	X86_OPC_FIXED_SIZE(0) | ADDRMOD_REG_RM | WIDTH_WORD,
-	/*[0x64]*/	X86_OPC_PREFIX(SEG_OVERRIDE, FS_OVERRIDE),
-	/*[0x65]*/	X86_OPC_PREFIX(SEG_OVERRIDE, GS_OVERRIDE),
+	/*[0x64]*/	X86_OPC_PREFIX(SEG_OVERRIDE, FS),
+	/*[0x65]*/	X86_OPC_PREFIX(SEG_OVERRIDE, GS),
 	/*[0x66]*/	X86_OPC_PREFIX(OPERAND_SIZE_OVERRIDE, 1),
 	/*[0x67]*/	X86_OPC_PREFIX(ADDRESS_SIZE_OVERRIDE, 1),
 	/*[0x68]*/	X86_OPC_PUSH | ADDRMOD_IMM | WIDTH_WORD,
@@ -1189,6 +1189,62 @@ decode_modrm_addr_modes(struct x86_instr *instr, uint8_t prot)
 	}
 }
 
+static void
+set_instr_seg(x86_instr *instr, uint8_t pe)
+{
+	uint8_t seg = DS;
+
+	if (instr->mod == 3) {
+		instr->seg = seg;
+		return;
+	}
+	else if (instr->seg_override != DEFAULT) {
+		instr->seg = instr->seg_override;
+		return;
+	}
+
+	switch (instr->addr_size_override ^ pe)
+	{
+	case 0: { // 16 addr mode
+		switch (instr->rm)
+		{
+		case 2:
+		case 3:
+			seg = SS;
+			break;
+
+		case 6:
+			if (instr->mod != 0) {
+				seg = SS;
+			}
+			break;
+		}
+	}
+	break;
+
+	case 1: { // 32 addr mode
+		switch (instr->rm)
+		{
+		case 4:
+			if (instr->base == 4 || instr->base == 5) {
+				seg = SS;
+			}
+			break;
+
+		case 5:
+			if (instr->mod != 0) {
+				seg = SS;
+			}
+			break;
+		}
+	}
+	break;
+
+	}
+
+	instr->seg = seg;
+}
+
 int
 decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc)
 {
@@ -1205,6 +1261,7 @@ decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc)
 	decode_group = 0;
 	no_fixed_size = 1;
 	use_intel = (cpu->cpu_flags & CPU_INTEL_SYNTAX) >> CPU_INTEL_SYNTAX_SHIFT;
+	instr->seg_override = DEFAULT;
 	instr_byte = ram_read<uint8_t>(cpu, &pc);
 	while(true) {
 		decode = decode_tables[decode_group][instr_byte];
@@ -1290,6 +1347,8 @@ decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc)
 
 	if (instr->flags & REL_MASK)
 		decode_rel(cpu, instr, &pc);
+
+	set_instr_seg(instr, CPU_PE_MODE);
 
 	decode_src_operand(instr);
 

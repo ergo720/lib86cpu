@@ -135,13 +135,13 @@ static const char *sib_scale_names[] = {
 };
 
 static const char *seg_override_names[] = {
-	"",
 	"%es:",
 	"%cs:",
 	"%ss:",
 	"%ds:",
 	"%fs:",
-	"%gs:"
+	"%gs:",
+	"",
 };
 
 static const char *lock_names[] = {
