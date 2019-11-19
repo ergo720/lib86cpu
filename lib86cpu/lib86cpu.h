@@ -123,7 +123,6 @@ struct cpu_t {
 	const regs_layout_t *regs_layout;
 	regs_t regs;
 	uint8_t *ram;
-	uint32_t *test;
 	std::unique_ptr<interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>> memory_space_tree;
 	std::unique_ptr<interval_tree<io_port_t, std::unique_ptr<memory_region_t<io_port_t>>>> io_space_tree;
 	std::set<std::tuple<addr_t, addr_t, const std::unique_ptr<memory_region_t<addr_t>> &>, sort_by_priority<addr_t>> memory_out;
