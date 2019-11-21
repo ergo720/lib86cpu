@@ -396,6 +396,7 @@ cpu_exec_tc(cpu_t *cpu)
 	lib86cpu_status status = LIB86CPU_SUCCESS;
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
 	entry_t entry = nullptr;
+	static uint64_t func_idx = 0ULL;
 
 	// this will exit only in the case of errors
 	while (true) {
@@ -422,7 +423,7 @@ cpu_exec_tc(cpu_t *cpu)
 			// add to the module the memory functions that will be called when the guest needs to access the memory
 			get_mem_fn(cpu, tc.get());
 
-			Function *func = create_tc_prologue(cpu, tc.get());
+			Function *func = create_tc_prologue(cpu, tc.get(), func_idx);
 
 			// create the bb for the function, it will hold all the tranlsated code tor this code block
 			BasicBlock *bb = BasicBlock::Create(_CTX(), "", func, 0);
@@ -437,7 +438,7 @@ cpu_exec_tc(cpu_t *cpu)
 				return status;
 			}
 
-			Function *tail = create_tc_epilogue(cpu, tc.get(), func, &disas_ctx);
+			Function *tail = create_tc_epilogue(cpu, tc.get(), func, &disas_ctx, func_idx);
 
 			if (cpu->cpu_flags & CPU_PRINT_IR) {
 				tc->mod->print(errs(), nullptr);
@@ -461,7 +462,7 @@ cpu_exec_tc(cpu_t *cpu)
 
 			tc->ptr_code = (void *)(cpu->jit->lookup(func->getName())->getAddress());
 			assert(tc->ptr_code);
-			tc->jmp_offset[0] = (void *)(cpu->jit->lookupLinkerMangled("_tail")->getAddress()); // TODO: how to retrieve the mangled name?
+			tc->jmp_offset[0] = (void *)(cpu->jit->lookupLinkerMangled("_tail_" + std::to_string(func_idx))->getAddress()); // TODO: how to retrieve the mangled name?
 			tc->jmp_offset[1] = nullptr;
 			assert(tc->jmp_offset);
 
@@ -471,6 +472,7 @@ cpu_exec_tc(cpu_t *cpu)
 
 			ptr_tc = tc.get();
 			cpu->code_cache.insert(std::make_pair(pc, std::move(tc)));
+			func_idx++;
 		}
 		else {
 			ptr_tc = it->second.get();

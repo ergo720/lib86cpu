@@ -11,8 +11,8 @@ Value *get_struct_member_pointer(Value *gep_start, const unsigned gep_index, tra
 Value * get_r8h_pointer(Value *gep_start, translated_code_t *tc, BasicBlock *bb);
 
 void get_mem_fn(cpu_t *cpu, translated_code_t *tc);
-Function *create_tc_prologue(cpu_t *cpu, translated_code_t *tc);
-Function *create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, Function *func, disas_ctx_t *disas_ctx);
+Function *create_tc_prologue(cpu_t *cpu, translated_code_t *tc, uint64_t func_idx);
+Function *create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, Function *func, disas_ctx_t *disas_ctx, uint64_t func_idx);
 void optimize(translated_code_t *tc, Function *func);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlock *bb, unsigned opnum, uint8_t addr_mode);
 

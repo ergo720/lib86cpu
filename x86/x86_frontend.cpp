@@ -105,7 +105,7 @@ get_mem_fn(cpu_t *cpu, translated_code_t *tc)
 }
 
 Function *
-create_tc_prologue(cpu_t *cpu, translated_code_t *tc)
+create_tc_prologue(cpu_t *cpu, translated_code_t *tc, uint64_t func_idx)
 {
 	PointerType *type_pi8 = PointerType::get(getIntegerType(8), 0);           // ram ptr
 	StructType *type_struct_reg_t = get_struct_reg(cpu, tc);
@@ -122,9 +122,9 @@ create_tc_prologue(cpu_t *cpu, translated_code_t *tc)
 
 	// create the tranlsation function
 	Function *func = Function::Create(
-		type_func,                     // func type
-		GlobalValue::ExternalLinkage,  // linkage
-		"main",                        // name
+		type_func,                           // func type
+		GlobalValue::ExternalLinkage,        // linkage
+		"main_" + std::to_string(func_idx),  // name
 		tc->mod);
 	func->setCallingConv(CallingConv::C);
 	func->addAttribute(1U, Attribute::NoCapture);
@@ -139,7 +139,7 @@ create_tc_prologue(cpu_t *cpu, translated_code_t *tc)
 }
 
 Function *
-create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, Function *func, disas_ctx_t *disas_ctx)
+create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, Function *func, disas_ctx_t *disas_ctx, uint64_t func_idx)
 {
 	IntegerType *type_i32 = getIntegerType(32);  // pc ptr
 	std::vector<Type *> type_func_args;
@@ -152,9 +152,9 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, Function *func, disas_ctx_
 
 	// create the tail function
 	Function *tail = Function::Create(
-		type_func,                     // func type
-		GlobalValue::ExternalLinkage,  // linkage
-		"tail",                        // name
+		type_func,                           // func type
+		GlobalValue::ExternalLinkage,        // linkage
+		"tail_" + std::to_string(func_idx),  // name
 		tc->mod);
 	tail->setCallingConv(CallingConv::Fast);
 
