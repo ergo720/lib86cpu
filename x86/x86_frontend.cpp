@@ -171,6 +171,7 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, Function *func, disas_ctx_
 
 	InlineAsm *ia = InlineAsm::get(type_func_asm, "mov ecx, $$-1\n\tmov ecx, $$-2\n\tmov ecx, $$-3\n\tmov ecx, $$-4", "~{ecx}", true, false, InlineAsm::AsmDialect::AD_Intel);
 	CallInst::Create(ia, "", bb);
+	tc->jmp_code_size = 20;
 
 #else
 #error don't know how to construct the tc epilogue on this platform

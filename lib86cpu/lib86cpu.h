@@ -102,6 +102,7 @@ struct translated_code_t {
 	Module *mod;
 	void *ptr_code;
 	void *jmp_offset[2];
+	size_t jmp_code_size;
 };
 
 struct disas_ctx_t {
