@@ -6,10 +6,6 @@
 
 #include "x86_memory.h"
 
-// XXX: keep a copy of the cpu ptr around so that the mem functions don't need it as an argument when called from guest code,
-// which would require to declare the entire cpu struct in llvm, which is painful
-cpu_t *cpu_copy = nullptr;
-
 
 addr_t
 get_ram_addr(cpu_t *cpu, addr_t pc)
@@ -49,19 +45,19 @@ get_ram_addr(cpu_t *cpu, addr_t pc)
 }
 
 uint8_t
-mem_read8(addr_t addr)
+mem_read8(uint8_t *cpu, addr_t addr)
 {
-	return mem_read<uint8_t>(cpu_copy, addr);
+	return mem_read<uint8_t>(reinterpret_cast<cpu_t *>(cpu), addr);
 }
 
 uint16_t
-mem_read16(addr_t addr)
+mem_read16(uint8_t *cpu, addr_t addr)
 {
-	return mem_read<uint16_t>(cpu_copy, addr);
+	return mem_read<uint16_t>(reinterpret_cast<cpu_t *>(cpu), addr);
 }
 
 uint32_t
-mem_read32(addr_t addr)
+mem_read32(uint8_t *cpu, addr_t addr)
 {
-	return mem_read<uint32_t>(cpu_copy, addr);
+	return mem_read<uint32_t>(reinterpret_cast<cpu_t *>(cpu), addr);
 }

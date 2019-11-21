@@ -109,7 +109,7 @@ struct disas_ctx_t {
 	bool emit_pc_code;
 	size_t tc_instr_size;
 	Value *next_pc;
-	bool pe_mode;
+	uint8_t pe_mode;
 };
 
 struct regs_layout_t {
@@ -134,7 +134,7 @@ struct cpu_t {
 	/* llvm specific variables */
 	std::unique_ptr<orc::LLJIT> jit;
 	DataLayout *dl;
-	Value *ptr_ram;
+	Value *ptr_cpu;
 	Value *ptr_regs;
 	Function *ptr_mem_ldfn[3];
 };

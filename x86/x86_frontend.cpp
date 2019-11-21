@@ -96,20 +96,23 @@ optimize(translated_code_t *tc, Function *func)
 void
 get_mem_fn(cpu_t *cpu, translated_code_t *tc)
 {
+	// NOTE: trying to pass a void* results in an assertion failure in getOrInsertFunction ("Invalid type for pointer element!"). Reading online resources,
+	// this seems to be because llvm doesn't support the void* type. Instead, this is usually handled by passing a i8* instead so we do that way
+
 	static size_t bit_size[3] = { 8, 16, 32 };
 	static const char *func_name[3] = { "mem_read8", "mem_read16", "mem_read32" };
 
 	for (uint8_t i = 0; i < 3; i++) {
-		cpu->ptr_mem_ldfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name[i], getIntegerType(bit_size[i]), getIntegerType(32)));
+		cpu->ptr_mem_ldfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name[i], getIntegerType(bit_size[i]), PointerType::get(getIntegerType(8), 0), getIntegerType(32)));
 	}
 }
 
 Function *
 create_tc_prologue(cpu_t *cpu, translated_code_t *tc, uint64_t func_idx)
 {
-	PointerType *type_pi8 = PointerType::get(getIntegerType(8), 0);           // ram ptr
+	PointerType *type_pi8 = PointerType::get(getIntegerType(8), 0);            // cpu ptr
 	StructType *type_struct_reg_t = get_struct_reg(cpu, tc);
-	PointerType *type_pstruct_reg_t = PointerType::get(type_struct_reg_t, 0); // regs_t ptr
+	PointerType *type_pstruct_reg_t = PointerType::get(type_struct_reg_t, 0);  // regs_t ptr
 
 	std::vector<Type *> type_func_args;
 	type_func_args.push_back(type_pi8);
@@ -130,8 +133,8 @@ create_tc_prologue(cpu_t *cpu, translated_code_t *tc, uint64_t func_idx)
 	func->addAttribute(1U, Attribute::NoCapture);
 
 	Function::arg_iterator args = func->arg_begin();
-	cpu->ptr_ram = args++;
-	cpu->ptr_ram->setName("ram");
+	cpu->ptr_cpu = args++;
+	cpu->ptr_cpu->setName("cpu");
 	cpu->ptr_regs = args++;
 	cpu->ptr_regs->setName("regs");
 

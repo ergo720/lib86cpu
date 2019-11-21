@@ -105,7 +105,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 
 	printf("Created new cpu \"%s\"\n", cpu->cpu_name);
 
-	out = cpu_copy = cpu;
+	out = cpu;
 	return LIB86CPU_SUCCESS;
 }
 

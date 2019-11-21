@@ -21,7 +21,7 @@
 #define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), disas_ctx->pe_mode ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
 #define UNREACHABLE do { printf("%s: unreachable line %d reached!\n", __func__, __LINE__); } while(0); return LIB86CPU_UNREACHABLE
 
-typedef void (*entry_t)(uint8_t *ram, regs_t *regs);
+typedef void (*entry_t)(uint8_t *cpu, regs_t *regs);
 
 
 const char *
@@ -238,14 +238,14 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_DISP);
 					Value *sel_addr, *offset_addr = GET_OP(OPNUM_SRC, addr_mode);
 					if (size_mode == SIZE16) {
-						new_eip = ZEXT32(CallInst::Create(cpu->ptr_mem_ldfn[MEM_LD16_idx], offset_addr, "", bb));
+						new_eip = ZEXT32(CallInst::Create(cpu->ptr_mem_ldfn[MEM_LD16_idx], std::vector<Value *> { cpu->ptr_cpu, offset_addr }, "", bb));
 						sel_addr = ADD(offset_addr, CONST32(2));
 					}
 					else {
-						new_eip = CallInst::Create(cpu->ptr_mem_ldfn[MEM_LD32_idx], offset_addr, "", bb);
+						new_eip = CallInst::Create(cpu->ptr_mem_ldfn[MEM_LD32_idx], std::vector<Value *> { cpu->ptr_cpu, offset_addr }, "", bb);
 						sel_addr = ADD(offset_addr, CONST32(4));
 					}
-					new_sel = CallInst::Create(cpu->ptr_mem_ldfn[MEM_LD16_idx], sel_addr, "", bb);
+					new_sel = CallInst::Create(cpu->ptr_mem_ldfn[MEM_LD16_idx], std::vector<Value *> { cpu->ptr_cpu, sel_addr }, "", bb);
 				}
 				else if(instr.reg_opc == 4) {
 					BAD;
@@ -537,6 +537,6 @@ cpu_exec_tc(cpu_t *cpu)
 
 		// run the translated code
 		entry = static_cast<entry_t>(ptr_tc->ptr_code);
-		entry(cpu->ram, &cpu->regs);
+		entry(reinterpret_cast<uint8_t *>(cpu), &cpu->regs);
 	}
 }

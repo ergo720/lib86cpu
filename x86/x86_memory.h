@@ -11,9 +11,9 @@
 
 
 addr_t get_ram_addr(cpu_t *cpu, addr_t pc);
-JIT_EXTERNAL_CALL_C uint8_t mem_read8(addr_t addr);
-JIT_EXTERNAL_CALL_C uint16_t mem_read16(addr_t addr);
-JIT_EXTERNAL_CALL_C uint32_t mem_read32(addr_t addr);
+JIT_EXTERNAL_CALL_C uint8_t mem_read8(uint8_t *cpu, addr_t addr);
+JIT_EXTERNAL_CALL_C uint16_t mem_read16(uint8_t *cpu, addr_t addr);
+JIT_EXTERNAL_CALL_C uint32_t mem_read32(uint8_t *cpu, addr_t addr);
 
 /*
  * ram specific accessors
