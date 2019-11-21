@@ -205,8 +205,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 		case X86_OPC_LIDTW:       BAD;
 		case X86_OPC_LJMP: // AT&T
 		case X86_OPC_JMP: {
-			Value *new_eip;
-			Value *new_sel;
+			Value *new_eip, *new_sel;
 			switch (instr.opcode_byte)
 			{
 			case 0xE9:
@@ -252,9 +251,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 				BAD_MODE;
 			}
 			else {
-				if (size_mode == SIZE16) {
-					new_eip = AND(new_eip, CONST32(0x0000FFFF));
-				}
 				ST_REG(new_eip, EIP_idx);
 				ST_SEG(new_sel, CS_idx);
 				ST_SEG_HIDDEN(SHL(ZEXT32(new_sel), CONST32(4)), CS_idx, SEG_BASE_idx);

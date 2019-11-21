@@ -205,16 +205,16 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 	switch (operand->type) {
 	case OPTYPE_IMM:
 		if (instr->flags & (SRC_IMM8 | OP3_IMM8)) {
-			return ZEXT32(CONST8(operand->imm));
+			return CONST8(operand->imm);
 		}
 		else if (instr->flags & DST_IMM16) {
-			return ZEXT32(CONST16(operand->imm));
+			return CONST16(operand->imm);
 		}
 		switch (instr->flags & WIDTH_MASK) {
 		case WIDTH_BYTE:
-			return ZEXT32(CONST8(operand->imm));
+			return CONST8(operand->imm);
 		case WIDTH_WORD:
-			return ZEXT32(CONST16(operand->imm));
+			return CONST16(operand->imm);
 		case WIDTH_DWORD:
 			return CONST32(operand->imm);
 		default:
@@ -483,12 +483,17 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 	case OPTYPE_SEG_REG:
 		switch (operand->reg) {
 		case 0:
+			return GEP_ES();
 		case 1:
+			return GEP_CS();
 		case 2:
+			return GEP_SS();
 		case 3:
+			return GEP_DS();
 		case 4:
+			return GEP_FS();
 		case 5:
-			return ZEXT32(LD_SEG(operand->reg + SEG_offset));
+			return GEP_GS();
 		case 6:
 		case 7:
 			assert(0 && "operand->reg specifies a reserved segment register!\n");
@@ -541,9 +546,9 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 	case OPTYPE_REL:
 		switch (instr->flags & WIDTH_MASK) {
 		case WIDTH_BYTE:
-			return ZEXT32(CONST8(operand->rel));
+			return CONST8(operand->rel);
 		case WIDTH_WORD:
-			return ZEXT32(CONST16(operand->rel));
+			return CONST16(operand->rel);
 		case WIDTH_DWORD:
 			return CONST32(operand->rel);
 		default:
