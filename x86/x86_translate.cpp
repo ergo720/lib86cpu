@@ -110,7 +110,17 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 		case X86_OPC_CDQ:         BAD;
 		case X86_OPC_CLC:         BAD;
 		case X86_OPC_CLD:         BAD;
-		case X86_OPC_CLI:         BAD;
+		case X86_OPC_CLI:
+			if (disas_ctx->pe_mode) {
+				BAD_MODE;
+			}
+			else {
+				Value *eflags = LD_REG(EFLAGS_idx);
+				eflags = AND(eflags, CONST32(~(1 << IF_shift)));
+				ST_REG(eflags, EFLAGS_idx);
+			}
+			break;
+
 		case X86_OPC_CLTD:        BAD;
 		case X86_OPC_CLTS:        BAD;
 		case X86_OPC_CMC:         BAD;
@@ -364,6 +374,9 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 		default:
 			UNREACHABLE;
 		}
+
+		pc += bytes;
+
 	} while (translate_next);
 
 	disas_ctx->tc_instr_size = tc_instr_size;

@@ -47,6 +47,24 @@ extern const char *mnemo[];
 #define EFLAGS_idx  27
 #define EIP_idx     28
 
+#define CF_shift    0
+#define PF_shift    2
+#define AF_shift    4
+#define ZF_shift    6
+#define SF_shift    7
+#define TF_shift    8
+#define IF_shift    9
+#define DF_shift    10
+#define OF_shift    11
+#define IOPL_shift  12
+#define NT_shift    14
+#define RF_shift    16
+#define VM_shift    17
+#define AC_shift    18
+#define VIF_shift   19
+#define VIP_shift   20
+#define ID_shift    21
+
 #define SEG_offset  8
 
 #define SEG_SEL_idx     0
