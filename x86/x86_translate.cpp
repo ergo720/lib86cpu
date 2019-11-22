@@ -283,7 +283,40 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 		case X86_OPC_LSL:         BAD;
 		case X86_OPC_LSS:         BAD;
 		case X86_OPC_LTR:         BAD;
-		case X86_OPC_MOV:         BAD;
+		case X86_OPC_MOV:
+			switch (instr.opcode_byte)
+			{
+			case 0xB0:
+			case 0xB1:
+			case 0xB2:
+			case 0xB3:
+			case 0xB4:
+			case 0xB5:
+			case 0xB6:
+			case 0xB7: {
+				Value *reg8 = GET_OP(OPNUM_DST, addr_mode);
+				ST_REG_val(CONST8(instr.operand[OPNUM_SRC].imm), reg8);
+			}
+			break;
+
+			case 0xB8:
+			case 0xB9:
+			case 0xBA:
+			case 0xBB:
+			case 0xBC:
+			case 0xBD:
+			case 0xBE:
+			case 0xBF: {
+				Value *reg = GET_OP(OPNUM_DST, addr_mode);
+				ST_REG_val(size_mode == SIZE16 ? CONST16(instr.operand[OPNUM_SRC].imm) : CONST32(instr.operand[OPNUM_SRC].imm), reg);
+			}
+			break;
+
+			default:
+				BAD;
+			}
+			break;
+
 		case X86_OPC_MOVS:        BAD;
 		case X86_OPC_MOVSX:       BAD;
 		case X86_OPC_MOVSXB:      BAD;

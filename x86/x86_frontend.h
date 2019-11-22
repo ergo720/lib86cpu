@@ -63,7 +63,7 @@ Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlo
 #define GEP_R32(idx)   GEP(cpu->ptr_regs, idx)
 #define GEP_R16(idx)   IBITCAST16(GEP(cpu->ptr_regs, idx))
 #define GEP_R8L(idx)   IBITCAST8(GEP(cpu->ptr_regs, idx))
-#define GEP_R8H(idx)   get_r8h_pointer(IBITCAST8(GEP(cpu->ptr_regs, idx)), tc, bb) // XXX untested!
+#define GEP_R8H(idx)   get_r8h_pointer(IBITCAST8(GEP(cpu->ptr_regs, idx)), tc, bb)
 #define GEP_SEL(idx)   GEP(GEP(cpu->ptr_regs, idx), SEG_SEL_idx)
 #define GEP_EAX()      GEP_R32(EAX_idx)
 #define GEP_ECX()      GEP_R32(ECX_idx)
@@ -96,6 +96,7 @@ Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlo
 #define GEP_EIP()      GEP_R32(EIP_idx)
 
 #define ST_REG(val, idx) new StoreInst(val, GEP(cpu->ptr_regs, idx), bb)
+#define ST_REG_val(val, reg) new StoreInst(val, reg, bb)
 #define ST_SEG(val, seg) new StoreInst(val, GEP_SEL(seg), bb)
 #define ST_SEG_HIDDEN(val, seg, idx) new StoreInst(val, GEP(GEP(GEP(cpu->ptr_regs, seg), SEG_HIDDEN_idx), idx), bb)
 #define LD_REG(idx) new LoadInst(GEP(cpu->ptr_regs, idx), "", false, bb)
