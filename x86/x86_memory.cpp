@@ -61,3 +61,18 @@ mem_read32(uint8_t *cpu, addr_t addr)
 {
 	return mem_read<uint32_t>(reinterpret_cast<cpu_t *>(cpu), addr);
 }
+
+void io_write8(uint8_t *cpu, io_port_t port, uint8_t value)
+{
+	io_write<uint8_t>(reinterpret_cast<cpu_t *>(cpu), port, value);
+}
+
+void io_write16(uint8_t *cpu, io_port_t port, uint16_t value)
+{
+	io_write<uint16_t>(reinterpret_cast<cpu_t *>(cpu), port, value);
+}
+
+void io_write32(uint8_t *cpu, io_port_t port, uint32_t value)
+{
+	io_write<uint32_t>(reinterpret_cast<cpu_t *>(cpu), port, value);
+}

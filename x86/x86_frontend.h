@@ -24,6 +24,9 @@ Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlo
 #define MEM_LD8_idx  0
 #define MEM_LD16_idx 1
 #define MEM_LD32_idx 2
+#define IO_ST8_idx  0
+#define IO_ST16_idx 1
+#define IO_ST32_idx 2
 
 #define GET_OP(n, m) get_operand(cpu, &instr, tc, bb, n, m)
 
@@ -101,5 +104,6 @@ Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlo
 #define ST_SEG_HIDDEN(val, seg, idx) new StoreInst(val, GEP(GEP(GEP(cpu->ptr_regs, seg), SEG_HIDDEN_idx), idx), bb)
 #define LD_REG(idx) new LoadInst(GEP(cpu->ptr_regs, idx), "", false, bb)
 #define LD_R16(idx) new LoadInst(GEP_R16(idx), "", false, bb)
+#define LD_R8L(idx) new LoadInst(GEP_R8L(idx), "", false, bb)
 #define LD_SEG(seg) new LoadInst(GEP_SEL(seg), "", false, bb)
 #define LD_SEG_HIDDEN(seg, idx) new LoadInst(GEP(GEP(GEP(cpu->ptr_regs, seg), SEG_HIDDEN_idx), idx), "", false, bb)

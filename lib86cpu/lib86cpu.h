@@ -137,6 +137,7 @@ struct cpu_t {
 	Value *ptr_cpu;
 	Value *ptr_regs;
 	Function *ptr_mem_ldfn[3];
+	Function *ptr_mem_stfn[3];
 };
 
 // cpu api

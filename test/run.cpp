@@ -10,6 +10,27 @@
 #include <string>
 #include <fstream>
 
+#define TEST386_POST_PORT 0x190
+
+
+void test386_write_handler(addr_t addr, size_t size, uint32_t value, void *opaque)
+{
+	switch (addr)
+	{
+	case TEST386_POST_PORT: {
+		if (size == 1) {
+			printf("Test number is %d\n", value);
+		}
+		else {
+			printf("Unhandled i/o port size at port %d\n", TEST386_POST_PORT);
+		}
+	}
+	break;
+
+	default:
+		printf("Unhandled i/o write at port %d\n", addr);
+	}
+}
 
 void print_help()
 {
@@ -157,6 +178,11 @@ main(int argc, char **argv)
 
 	if (!LIB86CPU_CHECK_SUCCESS(memory_init_region_alias(cpu, 0xFFFF0000, 0xF0000, 0x10000, 1))) {
 		printf("Failed to initialize aliased ram memory!\n");
+		return 1;
+	}
+
+	if (!LIB86CPU_CHECK_SUCCESS(memory_init_region_io(cpu, TEST386_POST_PORT, 0x1, true, nullptr, test386_write_handler, nullptr, 1))) {
+		printf("Failed to initialize post i/o port!\n");
 		return 1;
 	}
 

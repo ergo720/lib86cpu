@@ -100,10 +100,15 @@ get_mem_fn(cpu_t *cpu, translated_code_t *tc)
 	// this seems to be because llvm doesn't support the void* type. Instead, this is usually handled by passing a i8* instead so we do that way
 
 	static size_t bit_size[3] = { 8, 16, 32 };
-	static const char *func_name[3] = { "mem_read8", "mem_read16", "mem_read32" };
+	static const char *func_name_ld[3] = { "mem_read8", "mem_read16", "mem_read32" };
+	static const char *func_name_st[3] = { "io_write8", "io_write16", "io_write32" };
 
 	for (uint8_t i = 0; i < 3; i++) {
-		cpu->ptr_mem_ldfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name[i], getIntegerType(bit_size[i]), PointerType::get(getIntegerType(8), 0), getIntegerType(32)));
+		cpu->ptr_mem_ldfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), PointerType::get(getIntegerType(8), 0), getIntegerType(32)));
+	}
+
+	for (uint8_t i = 0; i < 3; i++) {
+		cpu->ptr_mem_stfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_st[i], getVoidType(), PointerType::get(getIntegerType(8), 0), getIntegerType(16), getIntegerType(bit_size[i])));
 	}
 }
 

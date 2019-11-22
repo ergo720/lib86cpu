@@ -329,7 +329,19 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 		case X86_OPC_NOP:         BAD;
 		case X86_OPC_NOT:         BAD;
 		case X86_OPC_OR:          BAD;
-		case X86_OPC_OUT:         BAD;
+		case X86_OPC_OUT:
+			switch (instr.opcode_byte)
+			{
+			case 0xEE: {
+				CallInst::Create(cpu->ptr_mem_stfn[IO_ST8_idx], std::vector<Value *> { cpu->ptr_cpu, LD_R16(EDX_idx), LD_R8L(EAX_idx) }, "", bb);
+			}
+			break;
+
+			default:
+				BAD;
+			}
+			break;
+
 		case X86_OPC_OUTS:        BAD;
 		case X86_OPC_POP:         BAD;
 		case X86_OPC_POPA:        BAD;

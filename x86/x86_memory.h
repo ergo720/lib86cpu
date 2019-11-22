@@ -14,6 +14,9 @@ addr_t get_ram_addr(cpu_t *cpu, addr_t pc);
 JIT_EXTERNAL_CALL_C uint8_t mem_read8(uint8_t *cpu, addr_t addr);
 JIT_EXTERNAL_CALL_C uint16_t mem_read16(uint8_t *cpu, addr_t addr);
 JIT_EXTERNAL_CALL_C uint32_t mem_read32(uint8_t *cpu, addr_t addr);
+JIT_EXTERNAL_CALL_C void io_write8(uint8_t *cpu, io_port_t port, uint8_t value);
+JIT_EXTERNAL_CALL_C void io_write16(uint8_t *cpu, io_port_t port, uint16_t value);
+JIT_EXTERNAL_CALL_C void io_write32(uint8_t *cpu, io_port_t port, uint32_t value);
 
 /*
  * ram specific accessors
@@ -197,24 +200,24 @@ void mem_write(cpu_t *cpu, addr_t addr, T value)
  * pmio specific accessors
  */
 template<typename T>
-T io_read(cpu_t *cpu, io_port_t addr)
+T io_read(cpu_t *cpu, io_port_t port)
 {
 	io_port_t end;
 
-	end = addr + sizeof(T) - 1;
-	cpu->io_space_tree->search(addr, end, cpu->io_out);
+	end = port + sizeof(T) - 1;
+	cpu->io_space_tree->search(port, end, cpu->io_out);
 
-	if ((addr >= std::get<0>(*cpu->io_out.begin())) && (end <= std::get<1>(*cpu->io_out.begin()))) {
+	if ((port >= std::get<0>(*cpu->io_out.begin())) && (end <= std::get<1>(*cpu->io_out.begin()))) {
 		switch (std::get<2>(*cpu->io_out.begin())->type)
 		{
 		case MEM_PMIO: {
 			T value = 0;
 			memory_region_t<io_port_t> *region = std::get<2>(*cpu->io_out.begin()).get();
 			if (region->read_handler) {
-				value = region->read_handler(addr, sizeof(T), region->opaque);
+				value = region->read_handler(port, sizeof(T), region->opaque);
 			}
 			else {
-				printf("%s: unhandled PMIO read at address %#02hx with size %d\n", __func__, addr, sizeof(T));
+				printf("%s: unhandled PMIO read at port %#02hx with size %d\n", __func__, port, sizeof(T));
 			}
 			return value;
 		}
@@ -222,7 +225,7 @@ T io_read(cpu_t *cpu, io_port_t addr)
 
 		case MEM_UNMAPPED: {
 			// TODO: handle this properly instead of just aborting
-			printf("%s: memory access to unmapped memory at address %#02hx with size %d\n", __func__, addr, sizeof(T));
+			printf("%s: memory access to unmapped memory at port %#02hx with size %d\n", __func__, port, sizeof(T));
 			exit(1);
 		}
 		break;
@@ -235,36 +238,36 @@ T io_read(cpu_t *cpu, io_port_t addr)
 	}
 	else {
 		// TODO: handle this properly instead of just aborting
-		printf("%s: io access at address %#02hx with size %d is not completely inside a memory region\n", __func__, addr, sizeof(T));
+		printf("%s: io access at address %#02hx with size %d is not completely inside a memory region\n", __func__, port, sizeof(T));
 		exit(1);
 	}
 }
 
 template<typename T>
-void io_write(cpu_t *cpu, io_port_t addr, T value)
+void io_write(cpu_t *cpu, io_port_t port, T value)
 {
 	io_port_t end;
 
-	end = addr + sizeof(T) - 1;
-	cpu->io_space_tree->search(addr, end, cpu->io_out);
+	end = port + sizeof(T) - 1;
+	cpu->io_space_tree->search(port, end, cpu->io_out);
 
-	if ((addr >= std::get<0>(*cpu->io_out.begin())) && (end <= std::get<1>(*cpu->io_out.begin()))) {
+	if ((port >= std::get<0>(*cpu->io_out.begin())) && (end <= std::get<1>(*cpu->io_out.begin()))) {
 		switch (std::get<2>(*cpu->io_out.begin())->type)
 		{
 		case MEM_PMIO: {
 			memory_region_t<io_port_t> *region = std::get<2>(*cpu->io_out.begin()).get();
 			if (region->write_handler) {
-				region->write_handler(addr, sizeof(T), value, region->opaque);
+				region->write_handler(port, sizeof(T), value, region->opaque);
 			}
 			else {
-				printf("%s: unhandled PMIO write at address %#02hx with size %d\n", __func__, addr, sizeof(T));
+				printf("%s: unhandled PMIO write at port %#02hx with size %d\n", __func__, port, sizeof(T));
 			}
 		}
 		break;
 
 		case MEM_UNMAPPED: {
 			// TODO: handle this properly instead of just aborting
-			printf("%s: memory access to unmapped memory at address %#02hx with size %d\n", __func__, addr, sizeof(T));
+			printf("%s: memory access to unmapped memory at port %#02hx with size %d\n", __func__, port, sizeof(T));
 			exit(1);
 		}
 		break;
@@ -276,7 +279,7 @@ void io_write(cpu_t *cpu, io_port_t addr, T value)
 	}
 	else {
 		// TODO: handle this properly instead of just aborting
-		printf("%s: io access at address %#02hx with size %d is not completely inside a memory region\n", __func__, addr, sizeof(T));
+		printf("%s: io access at port %#02hx with size %d is not completely inside a memory region\n", __func__, port, sizeof(T));
 		exit(1);
 	}
 }
