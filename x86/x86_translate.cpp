@@ -13,13 +13,10 @@
 #include "x86_isa.h"
 #include "x86_frontend.h"
 #include "x86_memory.h"
-#ifdef _WIN32
-#include "Windows.h"
-#endif
 
 #define BAD       printf("%s: encountered unimplemented instruction %s\n", __func__, get_instr_name(instr.opcode)); return LIB86CPU_OP_NOT_IMPLEMENTED
 #define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), disas_ctx->pe_mode ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
-#define UNREACHABLE do { printf("%s: unreachable line %d reached!\n", __func__, __LINE__); } while(0); return LIB86CPU_UNREACHABLE
+#define UNREACHABLE printf("%s: unreachable line %d reached!\n", __func__, __LINE__); return LIB86CPU_UNREACHABLE
 
 typedef void (*entry_t)(uint8_t *cpu, regs_t *regs);
 
@@ -484,17 +481,11 @@ cpu_exec_tc(cpu_t *cpu)
 		// see if we can link the previous tc with the current one
 		if (prev_tc != nullptr) {
 
-#ifdef _WIN32
+		// llvm marks the generated code memory as read/execute (it's done by Memory::protectMappedMemory), which triggers an access violation when
+		// we try to write to it during the tc linking phase. So, we temporarily mark it as writable and then restore the write protection.
+		// NOTE: perhaps we can use the llvm SectionMemoryManager to do this somehow...
 
-			// llvm marks the generated code memory as read/execute (it's done by Memory::protectMappedMemory), which triggers an access violation when
-			// we try to write to it during the tc linking phase. So, we temporarily mark it as writable and then restore the write protection.
-			// TODO: perhaps we can use the llvm SectionMemoryManager to do this somehow...
-
-			DWORD old_perms;
-			assert(VirtualProtect(static_cast<LPVOID>(prev_tc->jmp_offset[0]), prev_tc->jmp_code_size, PAGE_EXECUTE_READWRITE, &old_perms));
-#else
-#error don't know how to chanage memory permissions on this OS'
-#endif
+		tc_protect(prev_tc->jmp_offset[0], prev_tc->jmp_code_size, false);
 
 #if defined __i386 || defined _M_IX86
 
@@ -524,13 +515,7 @@ cpu_exec_tc(cpu_t *cpu)
 #error don't know how to patch tc on this platform
 #endif
 
-#ifdef _WIN32
-
-			assert(VirtualProtect(static_cast<LPVOID>(prev_tc->jmp_offset[0]), prev_tc->jmp_code_size, old_perms, &old_perms));
-#else
-#error don't know how to chanage memory permissions on this OS'
-#endif
-
+		tc_protect(prev_tc->jmp_offset[0], prev_tc->jmp_code_size, true);
 		}
 
 		prev_tc = ptr_tc;

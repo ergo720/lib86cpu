@@ -556,7 +556,7 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 		case WIDTH_DWORD:
 			return CONST32(operand->rel);
 		default:
-			assert(0 && "Missing operand size in OPTYPE_REL (calling %s on an instruction without operands?)\n", __func__);
+			assert(0 && "Missing operand size in OPTYPE_REL (calling %s on an instruction without operands?)\n");
 			return nullptr;
 		}
 	case OPTYPE_SIB_MEM:

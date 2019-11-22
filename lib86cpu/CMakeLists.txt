@@ -3,7 +3,8 @@
 PROJECT(lib86cpu)
 
 ADD_LIBRARY(cpu SHARED
-			interface.cpp)
+			interface.cpp
+			osfunc.cpp)
 
 ADD_DEFINITIONS(-DLIB86CPU_BUILD_CORE)
 
