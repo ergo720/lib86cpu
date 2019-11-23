@@ -237,14 +237,14 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_DISP);
 					Value *sel_addr, *offset_addr = GET_OP(OPNUM_SRC);
 					if (size_mode == SIZE16) {
-						new_eip = ZEXT32(CallInst::Create(cpu->ptr_mem_ldfn[MEM_LD16_idx], std::vector<Value *> { cpu->ptr_cpu, offset_addr }, "", bb));
+						new_eip = ZEXT32(LD_MEM(MEM_LD16_idx, offset_addr));
 						sel_addr = ADD(offset_addr, CONST32(2));
 					}
 					else {
-						new_eip = CallInst::Create(cpu->ptr_mem_ldfn[MEM_LD32_idx], std::vector<Value *> { cpu->ptr_cpu, offset_addr }, "", bb);
+						new_eip = LD_MEM(MEM_LD32_idx, offset_addr);
 						sel_addr = ADD(offset_addr, CONST32(4));
 					}
-					new_sel = CallInst::Create(cpu->ptr_mem_ldfn[MEM_LD16_idx], std::vector<Value *> { cpu->ptr_cpu, sel_addr }, "", bb);
+					new_sel = LD_MEM(MEM_LD16_idx, sel_addr);
 				}
 				else if(instr.reg_opc == 4) {
 					BAD;
@@ -335,7 +335,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 			switch (instr.opcode_byte)
 			{
 			case 0xEE: {
-				CallInst::Create(cpu->ptr_mem_stfn[IO_ST8_idx], std::vector<Value *> { cpu->ptr_cpu, LD_R16(EDX_idx), LD_R8L(EAX_idx) }, "", bb);
+				ST_MEM(IO_ST8_idx, LD_R16(EDX_idx), LD_R8L(EAX_idx));
 			}
 			break;
 
@@ -441,9 +441,9 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 				case OPTYPE_MEM_DISP:
 				case OPTYPE_SIB_MEM:
 				case OPTYPE_SIB_DISP:
-					val = CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu, rm }, "", bb);
+					val = LD_MEM(idx, rm);
 					val = XOR(val, LD_REG_val(reg));
-					CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu, rm, val }, "", bb);
+					ST_MEM(idx, rm, val);
 					break;
 
 				default:
