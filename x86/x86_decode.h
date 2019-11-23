@@ -13,6 +13,7 @@
 
 #define SIZE32 0
 #define SIZE16 1
+#define SIZE8  2
 #define ADDR32 0
 #define ADDR16 1
 

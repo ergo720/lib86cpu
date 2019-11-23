@@ -118,11 +118,17 @@ struct regs_layout_t {
 	const char *name;
 };
 
+struct lazy_eflags_t {
+	uint32_t result;
+	uint32_t auxbits;
+};
+
 struct cpu_t {
 	uint32_t cpu_flags;
 	const char *cpu_name;
 	const regs_layout_t *regs_layout;
 	regs_t regs;
+	lazy_eflags_t lazy_eflags;
 	uint8_t *ram;
 	std::unique_ptr<interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>> memory_space_tree;
 	std::unique_ptr<interval_tree<io_port_t, std::unique_ptr<memory_region_t<io_port_t>>>> io_space_tree;
@@ -136,8 +142,9 @@ struct cpu_t {
 	DataLayout *dl;
 	Value *ptr_cpu;
 	Value *ptr_regs;
+	Value *ptr_eflags;
 	Function *ptr_mem_ldfn[3];
-	Function *ptr_mem_stfn[3];
+	Function *ptr_mem_stfn[6];
 };
 
 // cpu api

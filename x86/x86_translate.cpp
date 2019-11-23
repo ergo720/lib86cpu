@@ -18,7 +18,7 @@
 #define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), disas_ctx->pe_mode ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
 #define UNREACHABLE printf("%s: unreachable line %d reached!\n", __func__, __LINE__); return LIB86CPU_UNREACHABLE
 
-typedef void (*entry_t)(uint8_t *cpu, regs_t *regs);
+typedef void (*entry_t)(uint8_t *cpu, regs_t *regs, lazy_eflags_t *lazy_eflags);
 
 
 const char *
@@ -36,6 +36,8 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 	size_t tc_instr_size = 0;
 	uint8_t size_mode;
 	uint8_t addr_mode;
+	// we can use the same indexes for both loads and stores because they have the same order in cpu->ptr_mem_xxfn
+	static uint8_t fn_idx[3] = { MEM_LD32_idx, MEM_LD16_idx, MEM_LD8_idx };
 
 	do {
 
@@ -233,7 +235,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 						instr.operand[OPNUM_SRC].type == OPTYPE_MEM_DISP ||
 						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_MEM ||
 						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_DISP);
-					Value *sel_addr, *offset_addr = GET_OP(OPNUM_SRC, addr_mode);
+					Value *sel_addr, *offset_addr = GET_OP(OPNUM_SRC);
 					if (size_mode == SIZE16) {
 						new_eip = ZEXT32(CallInst::Create(cpu->ptr_mem_ldfn[MEM_LD16_idx], std::vector<Value *> { cpu->ptr_cpu, offset_addr }, "", bb));
 						sel_addr = ADD(offset_addr, CONST32(2));
@@ -294,7 +296,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 			case 0xB5:
 			case 0xB6:
 			case 0xB7: {
-				Value *reg8 = GET_OP(OPNUM_DST, addr_mode);
+				Value *reg8 = GET_OP(OPNUM_DST);
 				ST_REG_val(CONST8(instr.operand[OPNUM_SRC].imm), reg8);
 			}
 			break;
@@ -307,7 +309,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 			case 0xBD:
 			case 0xBE:
 			case 0xBF: {
-				Value *reg = GET_OP(OPNUM_DST, addr_mode);
+				Value *reg = GET_OP(OPNUM_DST);
 				ST_REG_val(size_mode == SIZE16 ? CONST16(instr.operand[OPNUM_SRC].imm) : CONST32(instr.operand[OPNUM_SRC].imm), reg);
 			}
 			break;
@@ -415,7 +417,49 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 		case X86_OPC_XADD:        BAD;
 		case X86_OPC_XCHG:        BAD;
 		case X86_OPC_XLATB:       BAD;
-		case X86_OPC_XOR:         BAD;
+		case X86_OPC_XOR:
+			switch (instr.opcode_byte)
+			{
+			case 0x30:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x31: {
+				Value *reg = GET_OP(OPNUM_SRC);
+				Value *rm = GET_OP(OPNUM_DST);
+				Value *val;
+				uint8_t idx = fn_idx[size_mode];
+				switch (instr.operand[OPNUM_DST].type)
+				{
+				case OPTYPE_REG:
+					val = LD_REG_val(rm);
+					val = XOR(val, LD_REG_val(reg));
+					ST_REG_val(val, rm);
+					break;
+
+				case OPTYPE_MEM:
+				case OPTYPE_MEM_DISP:
+				case OPTYPE_SIB_MEM:
+				case OPTYPE_SIB_DISP:
+					val = CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu, rm }, "", bb);
+					val = XOR(val, LD_REG_val(reg));
+					CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu, rm, val }, "", bb);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+
+				ST_FLG_RES(size_mode == SIZE32 ? val : SEXT32(val));
+				ST_FLG_AUX(CONST32(0));
+			}
+			break;
+
+			default:
+				BAD;
+			}
+			break;
+
 		default:
 			UNREACHABLE;
 		}
@@ -567,6 +611,6 @@ cpu_exec_tc(cpu_t *cpu)
 
 		// run the translated code
 		entry = static_cast<entry_t>(ptr_tc->ptr_code);
-		entry(reinterpret_cast<uint8_t *>(cpu), &cpu->regs);
+		entry(reinterpret_cast<uint8_t *>(cpu), &cpu->regs, &cpu->lazy_eflags);
 	}
 }

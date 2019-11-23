@@ -72,6 +72,17 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 	return StructType::create(_CTX(), type_struct_reg_t_fields, "struct.regs_t", false);
 }
 
+static StructType *
+get_struct_eflags(cpu_t *cpu, translated_code_t *tc)
+{
+	std::vector<Type *>type_struct_eflags_t_fields;
+
+	type_struct_eflags_t_fields.push_back(getIntegerType(32));
+	type_struct_eflags_t_fields.push_back(getIntegerType(32));
+
+	return StructType::create(_CTX(), type_struct_eflags_t_fields, "struct.eflags_t", false);
+}
+
 static void
 calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, disas_ctx_t *disas_ctx)
 {
@@ -99,29 +110,33 @@ get_mem_fn(cpu_t *cpu, translated_code_t *tc)
 	// NOTE: trying to pass a void* results in an assertion failure in getOrInsertFunction ("Invalid type for pointer element!"). Reading online resources,
 	// this seems to be because llvm doesn't support the void* type. Instead, this is usually handled by passing a i8* instead so we do that way
 
-	static size_t bit_size[3] = { 8, 16, 32 };
+	static size_t bit_size[6] = { 8, 16, 32, 8, 16, 32 };
+	static size_t arg_size[6] = { 32, 32, 32, 16, 16, 16 };
 	static const char *func_name_ld[3] = { "mem_read8", "mem_read16", "mem_read32" };
-	static const char *func_name_st[3] = { "io_write8", "io_write16", "io_write32" };
+	static const char *func_name_st[6] = { "mem_write8", "mem_write16", "mem_write32", "io_write8", "io_write16", "io_write32" };
 
 	for (uint8_t i = 0; i < 3; i++) {
 		cpu->ptr_mem_ldfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), PointerType::get(getIntegerType(8), 0), getIntegerType(32)));
 	}
 
-	for (uint8_t i = 0; i < 3; i++) {
-		cpu->ptr_mem_stfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_st[i], getVoidType(), PointerType::get(getIntegerType(8), 0), getIntegerType(16), getIntegerType(bit_size[i])));
+	for (uint8_t i = 0; i < 6; i++) {
+		cpu->ptr_mem_stfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_st[i], getVoidType(), PointerType::get(getIntegerType(8), 0), getIntegerType(arg_size[i]), getIntegerType(bit_size[i])));
 	}
 }
 
 Function *
 create_tc_prologue(cpu_t *cpu, translated_code_t *tc, uint64_t func_idx)
 {
-	PointerType *type_pi8 = PointerType::get(getIntegerType(8), 0);            // cpu ptr
+	PointerType *type_pi8 = PointerType::get(getIntegerType(8), 0);                  // cpu ptr
 	StructType *type_struct_reg_t = get_struct_reg(cpu, tc);
-	PointerType *type_pstruct_reg_t = PointerType::get(type_struct_reg_t, 0);  // regs_t ptr
+	PointerType *type_pstruct_reg_t = PointerType::get(type_struct_reg_t, 0);        // regs_t ptr
+	StructType *type_struct_eflags_t = get_struct_eflags(cpu, tc);
+	PointerType *type_pstruct_eflags_t = PointerType::get(type_struct_eflags_t, 0);  // lazy_eflags_t ptr
 
 	std::vector<Type *> type_func_args;
 	type_func_args.push_back(type_pi8);
 	type_func_args.push_back(type_pstruct_reg_t);
+	type_func_args.push_back(type_pstruct_eflags_t);
 
 	FunctionType *type_func = FunctionType::get(
 		getVoidType(),    // void ret
@@ -142,6 +157,8 @@ create_tc_prologue(cpu_t *cpu, translated_code_t *tc, uint64_t func_idx)
 	cpu->ptr_cpu->setName("cpu");
 	cpu->ptr_regs = args++;
 	cpu->ptr_regs->setName("regs");
+	cpu->ptr_eflags = args++;
+	cpu->ptr_eflags->setName("eflags");
 
 	return func;
 }

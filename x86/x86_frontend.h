@@ -24,11 +24,17 @@ Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlo
 #define MEM_LD8_idx  0
 #define MEM_LD16_idx 1
 #define MEM_LD32_idx 2
-#define IO_ST8_idx  0
-#define IO_ST16_idx 1
-#define IO_ST32_idx 2
+#define IO_LD8_idx   3
+#define IO_LD16_idx  4
+#define IO_LD32_idx  5
+#define MEM_ST8_idx  0
+#define MEM_ST16_idx 1
+#define MEM_ST32_idx 2
+#define IO_ST8_idx   3
+#define IO_ST16_idx  4
+#define IO_ST32_idx  5
 
-#define GET_OP(n, m) get_operand(cpu, &instr, tc, bb, n, m)
+#define GET_OP(op) get_operand(cpu, &instr, tc, bb, op, addr_mode)
 
 #define CONSTs(s, v) ConstantInt::get(getIntegerType(s), v)
 #define CONST1(v) CONSTs(1, v)
@@ -59,6 +65,7 @@ Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlo
 #define ADD(a,b) BinaryOperator::Create(Instruction::Add, a, b, "", bb)
 #define MUL(a,b) BinaryOperator::Create(Instruction::Mul, a, b, "", bb)
 #define AND(a,b) BinaryOperator::Create(Instruction::And, a, b, "", bb)
+#define XOR(a,b) BinaryOperator::Create(Instruction::Xor, a, b, "", bb)
 #define SHR(a,sh) BinaryOperator::Create(Instruction::LShr, a, sh, "", bb)
 #define SHL(a,sh) BinaryOperator::Create(Instruction::Shl, a, sh, "", bb)
 
@@ -103,7 +110,14 @@ Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlo
 #define ST_SEG(val, seg) new StoreInst(val, GEP_SEL(seg), bb)
 #define ST_SEG_HIDDEN(val, seg, idx) new StoreInst(val, GEP(GEP(GEP(cpu->ptr_regs, seg), SEG_HIDDEN_idx), idx), bb)
 #define LD_REG(idx) new LoadInst(GEP(cpu->ptr_regs, idx), "", false, bb)
+#define LD_REG_val(reg) new LoadInst(reg, "", false, bb)
 #define LD_R16(idx) new LoadInst(GEP_R16(idx), "", false, bb)
 #define LD_R8L(idx) new LoadInst(GEP_R8L(idx), "", false, bb)
 #define LD_SEG(seg) new LoadInst(GEP_SEL(seg), "", false, bb)
 #define LD_SEG_HIDDEN(seg, idx) new LoadInst(GEP(GEP(GEP(cpu->ptr_regs, seg), SEG_HIDDEN_idx), idx), "", false, bb)
+
+// the lazy eflags idea comes from reading these two papers:
+// How Bochs Works Under the Hood (2nd edition) http://bochs.sourceforge.net/How%20the%20Bochs%20works%20under%20the%20hood%202nd%20edition.pdf
+// A Proposal for Hardware-Assisted Arithmetic Overflow Detection for Array and Bitfield Operations http://www.emulators.com/docs/LazyOverflowDetect_Final.pdf
+#define ST_FLG_RES(val) new StoreInst(val, GEP(cpu->ptr_eflags, 0), bb)
+#define ST_FLG_AUX(val) new StoreInst(val, GEP(cpu->ptr_eflags, 1), bb)
