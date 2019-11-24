@@ -1194,12 +1194,12 @@ set_instr_seg(x86_instr *instr, uint8_t pe)
 {
 	uint8_t seg = DS;
 
-	if (instr->mod == 3) {
-		instr->seg = seg;
+	if (instr->seg_override != DEFAULT) {
+		instr->seg = instr->seg_override;
 		return;
 	}
-	else if (instr->seg_override != DEFAULT) {
-		instr->seg = instr->seg_override;
+	else if (instr->mod == 3) {
+		instr->seg = seg;
 		return;
 	}
 
