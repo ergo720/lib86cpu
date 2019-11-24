@@ -314,6 +314,36 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 			}
 			break;
 
+			case 0x8E: {
+				if (disas_ctx->pe_mode) {
+					BAD_MODE;
+				}
+				// assert that we are not loading the CS or a reserved register. TODO: this should raise an exception
+				assert(instr.operand[OPNUM_DST].reg != 1 && instr.operand[OPNUM_DST].reg < 6);
+				Value *rm = GET_OP(OPNUM_SRC);
+				Value *val;
+				switch (instr.operand[OPNUM_SRC].type)
+				{
+				case OPTYPE_REG:
+					val = LD_REG_val(rm);
+					break;
+
+				case OPTYPE_MEM:
+				case OPTYPE_MEM_DISP:
+				case OPTYPE_SIB_MEM:
+				case OPTYPE_SIB_DISP:
+					val = LD_MEM(MEM_LD16_idx, rm);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+
+				ST_SEG(val, instr.operand[OPNUM_DST].reg + SEG_offset);
+				ST_SEG_HIDDEN(SHL(ZEXT32(val), CONST32(4)), instr.operand[OPNUM_DST].reg + SEG_offset, SEG_BASE_idx);
+			}
+			break;
+
 			default:
 				BAD;
 			}
