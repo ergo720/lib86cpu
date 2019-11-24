@@ -288,32 +288,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 		case X86_OPC_MOV:
 			switch (instr.opcode_byte)
 			{
-			case 0xB0:
-			case 0xB1:
-			case 0xB2:
-			case 0xB3:
-			case 0xB4:
-			case 0xB5:
-			case 0xB6:
-			case 0xB7: {
-				Value *reg8 = GET_OP(OPNUM_DST);
-				ST_REG_val(CONST8(instr.operand[OPNUM_SRC].imm), reg8);
-			}
-			break;
-
-			case 0xB8:
-			case 0xB9:
-			case 0xBA:
-			case 0xBB:
-			case 0xBC:
-			case 0xBD:
-			case 0xBE:
-			case 0xBF: {
-				Value *reg = GET_OP(OPNUM_DST);
-				ST_REG_val(size_mode == SIZE16 ? CONST16(instr.operand[OPNUM_SRC].imm) : CONST32(instr.operand[OPNUM_SRC].imm), reg);
-			}
-			break;
-
 			case 0x8E: {
 				if (disas_ctx->pe_mode) {
 					BAD_MODE;
@@ -341,6 +315,76 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 
 				ST_SEG(val, instr.operand[OPNUM_DST].reg + SEG_offset);
 				ST_SEG_HIDDEN(SHL(ZEXT32(val), CONST32(4)), instr.operand[OPNUM_DST].reg + SEG_offset, SEG_BASE_idx);
+			}
+			break;
+
+			case 0xB0:
+			case 0xB1:
+			case 0xB2:
+			case 0xB3:
+			case 0xB4:
+			case 0xB5:
+			case 0xB6:
+			case 0xB7: {
+				Value *reg8 = GET_OP(OPNUM_DST);
+				ST_REG_val(CONST8(instr.operand[OPNUM_SRC].imm), reg8);
+			}
+			break;
+
+			case 0xB8:
+			case 0xB9:
+			case 0xBA:
+			case 0xBB:
+			case 0xBC:
+			case 0xBD:
+			case 0xBE:
+			case 0xBF: {
+				Value *reg = GET_OP(OPNUM_DST);
+				ST_REG_val(size_mode == SIZE16 ? CONST16(instr.operand[OPNUM_SRC].imm) : CONST32(instr.operand[OPNUM_SRC].imm), reg);
+			}
+			break;
+
+			case 0xC6:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xC7: {
+				Value *rm = GET_OP(OPNUM_DST);
+				Value *val;
+				switch (size_mode)
+				{
+				case SIZE8:
+					val = CONST8(instr.operand[OPNUM_SRC].imm);
+					break;
+
+				case SIZE16:
+					val = CONST16(instr.operand[OPNUM_SRC].imm);
+					break;
+
+				case SIZE32:
+					val = CONST32(instr.operand[OPNUM_SRC].imm);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+
+				switch (instr.operand[OPNUM_DST].type)
+				{
+				case OPTYPE_REG:
+					ST_REG_val(val, rm);
+					break;
+
+				case OPTYPE_MEM:
+				case OPTYPE_MEM_DISP:
+				case OPTYPE_SIB_MEM:
+				case OPTYPE_SIB_DISP:
+					ST_MEM(fn_idx[size_mode], rm, val);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
 			}
 			break;
 
@@ -458,7 +502,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 				Value *reg = GET_OP(OPNUM_SRC);
 				Value *rm = GET_OP(OPNUM_DST);
 				Value *val;
-				uint8_t idx = fn_idx[size_mode];
 				switch (instr.operand[OPNUM_DST].type)
 				{
 				case OPTYPE_REG:
@@ -471,9 +514,9 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 				case OPTYPE_MEM_DISP:
 				case OPTYPE_SIB_MEM:
 				case OPTYPE_SIB_DISP:
-					val = LD_MEM(idx, rm);
+					val = LD_MEM(fn_idx[size_mode], rm);
 					val = XOR(val, LD_REG_val(reg));
-					ST_MEM(idx, rm, val);
+					ST_MEM(fn_idx[size_mode], rm, val);
 					break;
 
 				default:
