@@ -160,7 +160,50 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 		case X86_OPC_IDIV:        BAD;
 		case X86_OPC_IMUL:        BAD;
 		case X86_OPC_IN:          BAD;
-		case X86_OPC_INC:         BAD;
+		case X86_OPC_INC: {
+			switch (instr.opcode_byte)
+			{
+			case 0x40:
+			case 0x41:
+			case 0x42:
+			case 0x43:
+			case 0x44:
+			case 0x45:
+			case 0x46:
+			case 0x47: {
+				Value *sum, *val, *cf, *reg = GET_OP(OPNUM_SRC);
+				switch (size_mode)
+				{
+				case SIZE16:
+					val = LD_R16_val(reg);
+					sum = ADD(val, CONST16(1));
+					ST_R16_val(sum, reg);
+					ST_FLG_RES_ext(sum);
+					cf = AND(new LoadInst(GEP(cpu->ptr_eflags, 1), "", false, bb), CONST8(2));
+					ST_FLG_AUX(OR(AND(GEN_SUM_VEC16(val, CONST16(1), sum), NOT(CONST8(2))), cf));
+					break;
+
+				case SIZE32:
+					val = LD_REG_val(reg);
+					sum = ADD(sum, CONST32(1));
+					ST_REG_val(sum, reg);
+					ST_FLG_RES(sum);
+					cf = AND(new LoadInst(GEP(cpu->ptr_eflags, 1), "", false, bb), CONST8(2));
+					ST_FLG_AUX(OR(AND(GEN_SUM_VEC32(val, CONST32(1), sum), NOT(CONST8(2))), cf));
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+			}
+			break;
+
+			default:
+				BAD;
+			}
+		}
+		break;
+
 		case X86_OPC_INS:         BAD;
 		case X86_OPC_INT3:        BAD;
 		case X86_OPC_INT:         BAD;
@@ -523,8 +566,8 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 					UNREACHABLE;
 				}
 
-				ST_FLG_RES(size_mode == SIZE32 ? val : SEXT32(val));
-				ST_FLG_AUX(CONST32(0));
+				size_mode == SIZE32 ? ST_FLG_RES(val) : ST_FLG_RES_ext(val);
+				ST_FLG_AUX(CONST8(0));
 			}
 			break;
 

@@ -78,7 +78,7 @@ get_struct_eflags(cpu_t *cpu, translated_code_t *tc)
 	std::vector<Type *>type_struct_eflags_t_fields;
 
 	type_struct_eflags_t_fields.push_back(getIntegerType(32));
-	type_struct_eflags_t_fields.push_back(getIntegerType(32));
+	type_struct_eflags_t_fields.push_back(getIntegerType(8));
 
 	return StructType::create(_CTX(), type_struct_eflags_t_fields, "struct.eflags_t", false);
 }

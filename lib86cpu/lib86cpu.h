@@ -120,7 +120,7 @@ struct regs_layout_t {
 
 struct lazy_eflags_t {
 	uint32_t result;
-	uint32_t auxbits;
+	uint8_t auxbits;
 };
 
 struct cpu_t {
