@@ -83,12 +83,12 @@ get_struct_eflags(cpu_t *cpu, translated_code_t *tc)
 	return StructType::create(_CTX(), type_struct_eflags_t_fields, "struct.eflags_t", false);
 }
 
-static void
-calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, disas_ctx_t *disas_ctx)
+Value *
+calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size_t instr_size)
 {
-	Value *next_eip = ADD(CONST32(cpu->regs.eip), CONST32(disas_ctx->tc_instr_size));
-	new StoreInst(next_eip, GEP_EIP(), bb);
-	disas_ctx->next_pc = ADD(CONST32(cpu->regs.cs_hidden.base), next_eip);
+	Value * next_eip = BinaryOperator::Create(Instruction::Add, CONST32(cpu->regs.eip), CONST32(instr_size), "", bb);
+	new StoreInst(next_eip, get_struct_member_pointer(cpu->ptr_regs, EIP_idx, tc, bb), bb);
+	return BinaryOperator::Create(Instruction::Add, CONST32(cpu->regs.cs_hidden.base), next_eip, "", bb);
 }
 
 void
@@ -124,9 +124,10 @@ get_mem_fn(cpu_t *cpu, translated_code_t *tc)
 	}
 }
 
-Function *
-create_tc_prologue(cpu_t *cpu, translated_code_t *tc, uint64_t func_idx)
+FunctionType *
+create_tc_fntype(cpu_t *cpu, translated_code_t *tc)
 {
+	IntegerType *type_i32 = getIntegerType(32);                                      // pc ptr
 	PointerType *type_pi8 = PointerType::get(getIntegerType(8), 0);                  // cpu ptr
 	StructType *type_struct_reg_t = get_struct_reg(cpu, tc);
 	PointerType *type_pstruct_reg_t = PointerType::get(type_struct_reg_t, 0);        // regs_t ptr
@@ -134,6 +135,7 @@ create_tc_prologue(cpu_t *cpu, translated_code_t *tc, uint64_t func_idx)
 	PointerType *type_pstruct_eflags_t = PointerType::get(type_struct_eflags_t, 0);  // lazy_eflags_t ptr
 
 	std::vector<Type *> type_func_args;
+	type_func_args.push_back(type_i32);
 	type_func_args.push_back(type_pi8);
 	type_func_args.push_back(type_pstruct_reg_t);
 	type_func_args.push_back(type_pstruct_eflags_t);
@@ -143,41 +145,61 @@ create_tc_prologue(cpu_t *cpu, translated_code_t *tc, uint64_t func_idx)
 		type_func_args,   // args
 		false);
 
-	// create the tranlsation function
+	return type_func;
+}
+
+Function *
+create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, uint64_t func_idx)
+{
+	// create the function which calls the translation function
+	Function *start = Function::Create(
+		fntype,                               // func type
+		GlobalValue::ExternalLinkage,         // linkage
+		"start_" + std::to_string(func_idx),  // name
+		tc->mod);
+	start->setCallingConv(CallingConv::C);
+	start->addAttribute(1U, Attribute::NoCapture);
+
+	// create the bb of the start function
+	BasicBlock *bb = BasicBlock::Create(_CTX(), "", start, 0);
+
+	Function::arg_iterator args_start = start->arg_begin();
+	Value *dummy = args_start++;
+	Value *ptr_cpu = args_start++;
+	Value *ptr_regs = args_start++;
+	Value *ptr_eflags = args_start++;
+
+	// create the translation function, it will hold all the translated code
 	Function *func = Function::Create(
-		type_func,                           // func type
+		fntype,                              // func type
 		GlobalValue::ExternalLinkage,        // linkage
 		"main_" + std::to_string(func_idx),  // name
 		tc->mod);
-	func->setCallingConv(CallingConv::C);
-	func->addAttribute(1U, Attribute::NoCapture);
+	func->setCallingConv(CallingConv::Fast);
 
-	Function::arg_iterator args = func->arg_begin();
-	cpu->ptr_cpu = args++;
+	Function::arg_iterator args_func = func->arg_begin();
+	args_func++;
+	cpu->ptr_cpu = args_func++;
 	cpu->ptr_cpu->setName("cpu");
-	cpu->ptr_regs = args++;
+	cpu->ptr_regs = args_func++;
 	cpu->ptr_regs->setName("regs");
-	cpu->ptr_eflags = args++;
+	cpu->ptr_eflags = args_func++;
 	cpu->ptr_eflags->setName("eflags");
+
+	// insert a call to the translation function and a ret for the start function
+	CallInst *ci = CallInst::Create(func, std::vector<Value *> { dummy, ptr_cpu, ptr_regs, ptr_eflags }, "", bb);
+	ci->setCallingConv(CallingConv::Fast);
+	ReturnInst::Create(_CTX(), bb);
 
 	return func;
 }
 
 Function *
-create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, Function *func, disas_ctx_t *disas_ctx, uint64_t func_idx)
+create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disas_ctx_t *disas_ctx, uint64_t func_idx)
 {
-	IntegerType *type_i32 = getIntegerType(32);  // pc ptr
-	std::vector<Type *> type_func_args;
-	type_func_args.push_back(type_i32);
-
-	FunctionType *type_func = FunctionType::get(
-		getVoidType(),    // void ret
-		type_func_args,   // args
-		false);
-
 	// create the tail function
 	Function *tail = Function::Create(
-		type_func,                           // func type
+		fntype,                              // func type
 		GlobalValue::ExternalLinkage,        // linkage
 		"tail_" + std::to_string(func_idx),  // name
 		tc->mod);
@@ -204,19 +226,11 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, Function *func, disas_ctx_
 
 	ReturnInst::Create(_CTX(), bb);
 
-	// emit code to calculate the pc if required
-	if (disas_ctx->emit_pc_code) {
-		calc_next_pc_emit(cpu, tc, &func->getEntryBlock(), disas_ctx);
-	}
-
-	// insert a call to the tail function and a ret instr for the translation function
-	CallInst *ci = CallInst::Create(tail, disas_ctx->next_pc, "", &func->getEntryBlock());
+	// insert a call to the tail function and a ret for the main function
+	CallInst *ci = CallInst::Create(tail, std::vector<Value *> { disas_ctx->next_pc, cpu->ptr_cpu, cpu->ptr_regs, cpu->ptr_eflags }, "", disas_ctx->bb);
 	ci->setCallingConv(CallingConv::Fast);
-	ReturnInst::Create(_CTX(), &func->getEntryBlock());
-
-	// finally, verify that the generated functions are good
-	verifyFunction(*tail, &errs());
-	verifyFunction(*func, &errs());
+	ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+	ReturnInst::Create(_CTX(), disas_ctx->bb);
 
 	return tail;
 }

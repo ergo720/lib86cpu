@@ -18,7 +18,7 @@
 #define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), disas_ctx->pe_mode ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
 #define UNREACHABLE printf("%s: unreachable line %d reached!\n", __func__, __LINE__); return LIB86CPU_UNREACHABLE
 
-typedef void (*entry_t)(uint8_t *cpu, regs_t *regs, lazy_eflags_t *lazy_eflags);
+typedef void (*entry_t)(uint32_t dummy, uint8_t *cpu, regs_t *regs, lazy_eflags_t *lazy_eflags);
 
 
 const char *
@@ -28,14 +28,13 @@ get_instr_name(unsigned num)
 }
 
 static lib86cpu_status
-cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, translated_code_t *tc)
+cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *tc)
 {
 	bool translate_next = true;
-	disas_ctx->emit_pc_code = true;
-	disas_ctx->next_pc = nullptr;
-	size_t tc_instr_size = 0;
+	size_t instr_size = 0;
 	uint8_t size_mode;
 	uint8_t addr_mode;
+	BasicBlock *bb = disas_ctx->bb;
 	// we can use the same indexes for both loads and stores because they have the same order in cpu->ptr_mem_xxfn
 	static uint8_t fn_idx[3] = { MEM_LD32_idx, MEM_LD16_idx, MEM_LD8_idx };
 
@@ -73,7 +72,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 
 #endif
 
-		tc_instr_size += bytes;
+		instr_size += bytes;
 
 		if (disas_ctx->pe_mode ^ instr.op_size_override) {
 			size_mode = SIZE32;
@@ -310,7 +309,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 				ST_SEG(new_sel, CS_idx);
 				ST_SEG_HIDDEN(SHL(ZEXT32(new_sel), CONST32(4)), CS_idx, SEG_BASE_idx);
 				disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), new_eip);
-				disas_ctx->emit_pc_code = false;
 				translate_next = false;
 			}
 		}
@@ -319,7 +317,53 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 		case X86_OPC_LLDT:        BAD;
 		case X86_OPC_LMSW:        BAD;
 		case X86_OPC_LODS:        BAD;
-		case X86_OPC_LOOP:        BAD;
+		case X86_OPC_LOOP: {
+			assert(instr.opcode_byte == 0xE2);
+
+			Value *val, *zero;
+			switch (addr_mode)
+			{
+			case ADDR16:
+				val = SUB(LD_R16(ECX_idx), CONST16(1));
+				ST_R16(val, ECX_idx);
+				zero = CONST16(0);
+				break;
+
+			case ADDR32:
+				val = SUB(LD_REG(ECX_idx), CONST32(1));
+				ST_REG(val, ECX_idx);
+				zero = CONST32(0);
+				break;
+
+			default:
+				UNREACHABLE;
+			}
+
+			Value *dst_pc = new AllocaInst(getIntegerType(32), 0, "", bb);
+			BasicBlock *bb_loop = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+			BasicBlock *bb_exit = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+			BR_COND(bb_exit, bb_loop, ICMP_EQ(val, zero), bb);
+			disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+
+			Value *exit_pc = calc_next_pc_emit(cpu, tc, bb_exit, instr_size);
+			new StoreInst(exit_pc, dst_pc, bb_exit);
+			BR_UNCOND(disas_ctx->bb, bb_exit);
+
+			addr_t loop_eip = (pc - cpu->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
+			if (size_mode == SIZE16) {
+				loop_eip &= 0x0000FFFF;
+			}
+			bb = bb_loop;
+			new StoreInst(CONST32(loop_eip), GEP_EIP(), bb_loop);
+			new StoreInst(CONST32(loop_eip + cpu->regs.cs_hidden.base), dst_pc, bb_loop);
+			BR_UNCOND(disas_ctx->bb, bb_loop);
+
+			disas_ctx->next_pc = new LoadInst(dst_pc, "", false, disas_ctx->bb);
+
+			translate_next = false;
+		}
+		break;
+
 		case X86_OPC_LOOPE:       BAD;
 		case X86_OPC_LOOPNE:      BAD;
 		case X86_OPC_LOOPNZ:      BAD;
@@ -584,8 +628,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, BasicBlock *bb, disas_ctx_t *disas_ctx, tra
 
 	} while (translate_next);
 
-	disas_ctx->tc_instr_size = tc_instr_size;
-
 	return LIB86CPU_SUCCESS;
 }
 
@@ -628,22 +670,24 @@ cpu_exec_tc(cpu_t *cpu)
 			// add to the module the memory functions that will be called when the guest needs to access the memory
 			get_mem_fn(cpu, tc.get());
 
-			Function *func = create_tc_prologue(cpu, tc.get(), func_idx);
+			FunctionType *fntype = create_tc_fntype(cpu, tc.get());
+			Function *func = create_tc_prologue(cpu, tc.get(), fntype, func_idx);
 
-			// create the bb for the function, it will hold all the tranlsated code tor this code block
-			BasicBlock *bb = BasicBlock::Create(_CTX(), "", func, 0);
-
-			// start guest code translation
+			// prepare the disas ctx
 			disas_ctx_t disas_ctx;
 			disas_ctx.pe_mode = CPU_PE_MODE;
-			status = cpu_translate(cpu, pc, bb, &disas_ctx, tc.get());
+			disas_ctx.func = func;
+			disas_ctx.bb = BasicBlock::Create(_CTX(), "", func, 0);
+
+			// start guest code translation
+			status = cpu_translate(cpu, pc, &disas_ctx, tc.get());
 			if (!LIB86CPU_CHECK_SUCCESS(status)) {
 				delete tc->mod;
 				delete tc->ctx;
 				return status;
 			}
 
-			Function *tail = create_tc_epilogue(cpu, tc.get(), func, &disas_ctx, func_idx);
+			Function *tail = create_tc_epilogue(cpu, tc.get(), fntype, &disas_ctx, func_idx);
 
 			if (cpu->cpu_flags & CPU_PRINT_IR) {
 				tc->mod->print(errs(), nullptr);
@@ -665,11 +709,12 @@ cpu_exec_tc(cpu_t *cpu)
 				return status;
 			}
 
-			tc->ptr_code = (void *)(cpu->jit->lookup(func->getName())->getAddress());
+			tc->ptr_code = (void *)(cpu->jit->lookup("start_" + std::to_string(func_idx))->getAddress());
 			assert(tc->ptr_code);
 			tc->jmp_offset[0] = (void *)(cpu->jit->lookupLinkerMangled("_tail_" + std::to_string(func_idx))->getAddress()); // TODO: how to retrieve the mangled name?
 			tc->jmp_offset[1] = nullptr;
-			assert(tc->jmp_offset);
+			tc->jmp_offset[2] = (void *)(cpu->jit->lookupLinkerMangled("_main_" + std::to_string(func_idx))->getAddress());
+			assert(tc->jmp_offset[0] && tc->jmp_offset[2]);
 
 			// llvm will delete the context and the module by itself, so we just null both the pointers now to prevent accidental usage
 			tc->ctx = nullptr;
@@ -694,16 +739,16 @@ cpu_exec_tc(cpu_t *cpu)
 
 #if defined __i386 || defined _M_IX86
 
-			// TODO: endianness?
-			static uint32_t cmp_instr = 0x81f9;
-			static uint32_t je_instr = 0x0f84;
-			static uint32_t jmp_instr = 0xe9;
-			static uint32_t nop_instr = 0x90;
+			static uint16_t cmp_instr = 0xf981;
+			static uint16_t je_instr = 0x840f;
+			static uint8_t jmp_instr = 0xe9;
+			static uint8_t nop_instr = 0x90;
 			if (prev_tc->jmp_offset[1] == nullptr) {
-				int32_t tc_offset = reinterpret_cast<uintptr_t>(ptr_tc->ptr_code) - reinterpret_cast<uintptr_t>((static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 6)) - 6;
+				int32_t tc_offset = reinterpret_cast<uintptr_t>(prev_tc->jmp_offset[2]) -
+					reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(ptr_tc->jmp_offset[0]) + 6 /*sizeof(cmp)*/ + 6 /*sizeof(je)*/);
 				memcpy(prev_tc->jmp_offset[0], &cmp_instr, 2);
 				memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 2, &pc, 4);                  // cmp ecx, pc
-				memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 6, &je_instr, 2);			 
+				memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 6, &je_instr, 2);
 				memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 8, &tc_offset, 4);           // je tc_offset
 				for (uint8_t i = 0; i < 3; i++) {														 
 					memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 12 + i, &nop_instr, 1);  // nop
@@ -711,7 +756,8 @@ cpu_exec_tc(cpu_t *cpu)
 				prev_tc->jmp_offset[1] = static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 15;
 			}
 			else {
-				int32_t tc_offset = reinterpret_cast<uintptr_t>(ptr_tc->ptr_code) - reinterpret_cast<uintptr_t>(prev_tc->jmp_offset[1]) - 5;
+				int32_t tc_offset = reinterpret_cast<uintptr_t>(prev_tc->jmp_offset[2]) -
+					reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(ptr_tc->jmp_offset[1]) + 5 /*sizeof(jmp)*/);
 				memcpy(prev_tc->jmp_offset[1], &jmp_instr, 1);
 				memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[1]) + 1, &tc_offset, 4);  // jmp tc_offset
 			}
@@ -727,6 +773,6 @@ cpu_exec_tc(cpu_t *cpu)
 
 		// run the translated code
 		entry = static_cast<entry_t>(ptr_tc->ptr_code);
-		entry(reinterpret_cast<uint8_t *>(cpu), &cpu->regs, &cpu->lazy_eflags);
+		entry(0, reinterpret_cast<uint8_t *>(cpu), &cpu->regs, &cpu->lazy_eflags);
 	}
 }

@@ -11,10 +11,12 @@ Value *get_struct_member_pointer(Value *gep_start, const unsigned gep_index, tra
 Value * get_r8h_pointer(Value *gep_start, translated_code_t *tc, BasicBlock *bb);
 
 void get_mem_fn(cpu_t *cpu, translated_code_t *tc);
-Function *create_tc_prologue(cpu_t *cpu, translated_code_t *tc, uint64_t func_idx);
-Function *create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, Function *func, disas_ctx_t *disas_ctx, uint64_t func_idx);
+FunctionType * create_tc_fntype(cpu_t *cpu, translated_code_t *tc);
+Function *create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, uint64_t func_idx);
+Function *create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disas_ctx_t *disas_ctx, uint64_t func_idx);
 void optimize(translated_code_t *tc, Function *func);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlock *bb, unsigned opnum, uint8_t addr_mode);
+Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size_t instr_size);
 
 
 #define _CTX() (*tc->ctx)
@@ -63,6 +65,7 @@ Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlo
 #define TRUNC32(v) TRUNCs(32, v)
 
 #define ADD(a,b) BinaryOperator::Create(Instruction::Add, a, b, "", bb)
+#define SUB(a,b) BinaryOperator::Create(Instruction::Sub, a, b, "", bb)
 #define MUL(a,b) BinaryOperator::Create(Instruction::Mul, a, b, "", bb)
 #define AND(a,b) BinaryOperator::Create(Instruction::And, a, b, "", bb)
 #define XOR(a,b) BinaryOperator::Create(Instruction::Xor, a, b, "", bb)
@@ -70,6 +73,9 @@ Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlo
 #define NOT(a) BinaryOperator::CreateNot(a, "", bb)
 #define SHR(a,sh) BinaryOperator::Create(Instruction::LShr, a, sh, "", bb)
 #define SHL(a,sh) BinaryOperator::Create(Instruction::Shl, a, sh, "", bb)
+#define BR_COND(t, f, val, bb) BranchInst::Create(t, f, val, bb)
+#define BR_UNCOND(t, bb) BranchInst::Create(t, bb)
+#define ICMP_EQ(a, b) new ICmpInst(*bb, ICmpInst::ICMP_EQ, a, b, "")
 
 #define GEP(ptr, idx)  get_struct_member_pointer(ptr, idx, tc, bb)
 #define GEP_R32(idx)   GEP(cpu->ptr_regs, idx)

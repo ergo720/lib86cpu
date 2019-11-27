@@ -101,13 +101,13 @@ struct translated_code_t {
 	LLVMContext *ctx;
 	Module *mod;
 	void *ptr_code;
-	void *jmp_offset[2];
+	void *jmp_offset[3];
 	size_t jmp_code_size;
 };
 
 struct disas_ctx_t {
-	bool emit_pc_code;
-	size_t tc_instr_size;
+	Function *func;
+	BasicBlock *bb;
 	Value *next_pc;
 	uint8_t pe_mode;
 };
