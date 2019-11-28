@@ -167,7 +167,8 @@ main(int argc, char **argv)
 	ifs.read((char *)&cpu->ram[code_start], length);
 	ifs.close();
 
-	cpu->cpu_flags = (CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED | CPU_CODEGEN_OPTIMIZE);
+	cpu->cpu_flags |= (print_ir ? (CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED) : 0) |
+		(intel_syntax ? CPU_INTEL_SYNTAX : 0) | CPU_CODEGEN_OPTIMIZE;
 
 #if TEST386_ASM
 
