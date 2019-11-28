@@ -124,6 +124,7 @@ Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size
 #define LD_R16(idx) new LoadInst(GEP_R16(idx), "", false, bb)
 #define LD_R16_val(reg) new LoadInst(reg, "", false, bb)
 #define LD_R8L(idx) new LoadInst(GEP_R8L(idx), "", false, bb)
+#define LD_R8H(idx) new LoadInst(GEP_R8H(idx), "", false, bb)
 #define LD_SEG(seg) new LoadInst(GEP_SEL(seg), "", false, bb)
 #define LD_SEG_HIDDEN(seg, idx) new LoadInst(GEP(GEP(GEP(cpu->ptr_regs, seg), SEG_HIDDEN_idx), idx), "", false, bb)
 
@@ -153,4 +154,5 @@ Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size
 #define ST_FLG_AUX(val) new StoreInst(val, GEP(cpu->ptr_eflags, 1), bb)
 #define ST_FLG_RES_ext(val) new StoreInst(SEXT32(val), GEP(cpu->ptr_eflags, 0), bb)
 #define ST_FLG_RES(val) new StoreInst(val, GEP(cpu->ptr_eflags, 0), bb)
-#define LD_CF() SHR(AND(new LoadInst(GEP(cpu->ptr_eflags, 1), "", false, bb), CONST8(2)), CONST8(1))
+#define LD_CF() AND(new LoadInst(GEP(cpu->ptr_eflags, 1), "", false, bb), CONST8(2))
+#define LD_OF() AND(new LoadInst(GEP(cpu->ptr_eflags, 1), "", false, bb), CONST8(1))

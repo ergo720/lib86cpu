@@ -170,7 +170,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			case 0x45:
 			case 0x46:
 			case 0x47: {
-				Value *sum, *val, *cf, *reg = GET_OP(OPNUM_SRC);
+				Value *sum, *val, *reg = GET_OP(OPNUM_SRC);
 				switch (size_mode)
 				{
 				case SIZE16:
@@ -178,8 +178,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					sum = ADD(val, CONST16(1));
 					ST_R16_val(sum, reg);
 					ST_FLG_RES_ext(sum);
-					cf = AND(new LoadInst(GEP(cpu->ptr_eflags, 1), "", false, bb), CONST8(2));
-					ST_FLG_AUX(OR(AND(GEN_SUM_VEC16(val, CONST16(1), sum), NOT(CONST8(2))), cf));
+					ST_FLG_AUX(OR(AND(GEN_SUM_VEC16(val, CONST16(1), sum), NOT(CONST8(2))), LD_CF()));
 					break;
 
 				case SIZE32:
@@ -187,8 +186,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					sum = ADD(sum, CONST32(1));
 					ST_REG_val(sum, reg);
 					ST_FLG_RES(sum);
-					cf = AND(new LoadInst(GEP(cpu->ptr_eflags, 1), "", false, bb), CONST8(2));
-					ST_FLG_AUX(OR(AND(GEN_SUM_VEC32(val, CONST32(1), sum), NOT(CONST8(2))), cf));
+					ST_FLG_AUX(OR(AND(GEN_SUM_VEC32(val, CONST32(1), sum), NOT(CONST8(2))), LD_CF()));
 					break;
 
 				default:
@@ -527,7 +525,16 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_ROL:         BAD;
 		case X86_OPC_ROR:         BAD;
 		case X86_OPC_RSM:         BAD;
-		case X86_OPC_SAHF:        BAD;
+		case X86_OPC_SAHF: {
+			assert(instr.opcode_byte == 0x9E);
+
+			Value *ah = ZEXT32(LD_R8H(EAX_idx));
+			ST_FLG_RES(OR(OR(SHL(XOR(AND(ah, CONST32(64)), CONST32(64)), CONST32(2)), SHL(AND(ah, CONST32(128)), CONST32(24))),
+				XOR(AND(ah, CONST32(4)), CONST32(4))));
+			ST_FLG_AUX(OR(TRUNC8(OR(SHL(AND(ah, CONST32(1)), CONST32(1)), AND(ah, CONST32(16)))), LD_OF()));
+		}
+		break;
+
 		case X86_OPC_SAL:         BAD;
 		case X86_OPC_SAR:         BAD;
 		case X86_OPC_SBB:         BAD;
