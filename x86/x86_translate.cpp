@@ -213,7 +213,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_INVLPG:      BAD;
 		case X86_OPC_IRET:        BAD;
 		case X86_OPC_JCXZ:        BAD;
-		case X86_OPC_JECXZ:       BAD;
+		case X86_OPC_JECXZ:
 		case X86_OPC_JO:
 		case X86_OPC_JNO:
 		case X86_OPC_JC:
@@ -295,6 +295,10 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0x7F:
 				val = AND(ICMP_NE(LD_ZF(), CONST32(0)), ICMP_EQ(LD_SF(), SHR(LD_OF(), CONST32(31)))); // ZF == 0 AND SF == OF
+				break;
+
+			case 0xE3:
+				val = addr_mode == ADDR16 ? ICMP_EQ(LD_R16(ECX_idx), CONST16(0)) : ICMP_EQ(LD_REG(ECX_idx), CONST32(0)); // ECX == 0
 				break;
 
 			default:
