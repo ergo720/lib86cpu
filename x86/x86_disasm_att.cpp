@@ -222,20 +222,20 @@ static bool check_suffix_override(struct x86_instr *instr)
 		break;
 	case X86_OPC_JO:
 	case X86_OPC_JNO:
-	case X86_OPC_JB:
-	case X86_OPC_JNB:
+	case X86_OPC_JC:
+	case X86_OPC_JNC:
 	case X86_OPC_JZ:
-	case X86_OPC_JNE:
+	case X86_OPC_JNZ:
 	case X86_OPC_JBE:
-	case X86_OPC_JA:
+	case X86_OPC_JNBE:
 	case X86_OPC_JS:
 	case X86_OPC_JNS:
-	case X86_OPC_JPE:
-	case X86_OPC_JPO:
+	case X86_OPC_JP:
+	case X86_OPC_JNP:
 	case X86_OPC_JL:
-	case X86_OPC_JGE:
+	case X86_OPC_JNL:
 	case X86_OPC_JLE:
-	case X86_OPC_JG:
+	case X86_OPC_JNLE:
 		return true;
 	case X86_OPC_LMSW:
 	case X86_OPC_INVLPG:

@@ -61,6 +61,12 @@ enum lib86cpu_status {
 #define LOG(...)
 #endif
 
+// used to generate the parity table
+#define P2(n) n, n ^ 1, n ^ 1, n
+#define P4(n) P2(n), P2(n ^ 1), P2(n ^ 1), P2(n)
+#define P6(n) P4(n), P4(n ^ 1), P4(n ^ 1), P4(n)
+#define GEN_TABLE P6(0), P6(1), P6(1), P6(0)
+
 // mmio/pmio access handlers
 typedef uint32_t  (*fp_read)(addr_t addr, size_t size, void *opaque);
 typedef void      (*fp_write)(addr_t addr, size_t size, uint32_t value, void *opaque);
@@ -120,7 +126,9 @@ struct regs_layout_t {
 
 struct lazy_eflags_t {
 	uint32_t result;
-	uint8_t auxbits;
+	uint32_t auxbits;
+	// returns 1 when parity is odd, 0 if even
+	uint8_t parity[256] = { GEN_TABLE };
 };
 
 struct cpu_t {

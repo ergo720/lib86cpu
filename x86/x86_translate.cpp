@@ -170,28 +170,32 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			case 0x45:
 			case 0x46:
 			case 0x47: {
-				Value *sum, *val, *reg = GET_OP(OPNUM_SRC);
+				Value *sum, *val, *cf_old, *reg = GET_OP(OPNUM_SRC);
 				switch (size_mode)
 				{
 				case SIZE16:
 					val = LD_R16_val(reg);
 					sum = ADD(val, CONST16(1));
+					cf_old = LD_CF();
 					ST_R16_val(sum, reg);
 					ST_FLG_RES_ext(sum);
-					ST_FLG_AUX(OR(AND(GEN_SUM_VEC16(val, CONST16(1), sum), NOT(CONST8(2))), LD_CF()));
+					ST_FLG_SUM_AUX16(val, CONST16(1), sum);
 					break;
 
 				case SIZE32:
 					val = LD_REG_val(reg);
 					sum = ADD(sum, CONST32(1));
+					cf_old = LD_CF();
 					ST_REG_val(sum, reg);
 					ST_FLG_RES(sum);
-					ST_FLG_AUX(OR(AND(GEN_SUM_VEC32(val, CONST32(1), sum), NOT(CONST8(2))), LD_CF()));
+					ST_FLG_SUM_AUX32(val, CONST32(1), sum);
 					break;
 
 				default:
 					UNREACHABLE;
 				}
+
+				ST_FLG_AUX(OR(OR(cf_old, SHR(XOR(cf_old, LD_OF()), CONST32(1))), AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF))));
 			}
 			break;
 
@@ -208,38 +212,120 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_INVD:        BAD;
 		case X86_OPC_INVLPG:      BAD;
 		case X86_OPC_IRET:        BAD;
-		case X86_OPC_JA:          BAD;
-		case X86_OPC_JAE:         BAD;
-		case X86_OPC_JB:          BAD;
-		case X86_OPC_JBE:         BAD;
-		case X86_OPC_JC:          BAD;
 		case X86_OPC_JCXZ:        BAD;
-		case X86_OPC_JE:          BAD;
 		case X86_OPC_JECXZ:       BAD;
-		case X86_OPC_JG:          BAD;
-		case X86_OPC_JGE:         BAD;
-		case X86_OPC_JL:          BAD;
-		case X86_OPC_JLE:         BAD;
-		case X86_OPC_JNA:         BAD;
-		case X86_OPC_JNAE:        BAD;
-		case X86_OPC_JNB:         BAD;
-		case X86_OPC_JNBE:        BAD;
-		case X86_OPC_JNC:         BAD;
-		case X86_OPC_JNE:         BAD;
-		case X86_OPC_JNG:         BAD;
-		case X86_OPC_JNGE:        BAD;
-		case X86_OPC_JNL:         BAD;
-		case X86_OPC_JNLE:        BAD;
-		case X86_OPC_JNO:         BAD;
-		case X86_OPC_JNP:         BAD;
-		case X86_OPC_JNS:         BAD;
-		case X86_OPC_JNZ:         BAD;
-		case X86_OPC_JO:          BAD;
-		case X86_OPC_JP:          BAD;
-		case X86_OPC_JPE:         BAD;
-		case X86_OPC_JPO:         BAD;
-		case X86_OPC_JS:          BAD;
-		case X86_OPC_JZ:          BAD;
+		case X86_OPC_JO:
+		case X86_OPC_JNO:
+		case X86_OPC_JC:
+		case X86_OPC_JNC:
+		case X86_OPC_JZ:
+		case X86_OPC_JNZ:
+		case X86_OPC_JBE:
+		case X86_OPC_JNBE:
+		case X86_OPC_JS:
+		case X86_OPC_JNS:
+		case X86_OPC_JP:
+		case X86_OPC_JNP:
+		case X86_OPC_JL:
+		case X86_OPC_JNL:
+		case X86_OPC_JLE:
+		case X86_OPC_JNLE: {
+			Value *val;
+			switch (instr.opcode_byte)
+			{
+			case 0x70:
+				val = ICMP_NE(LD_OF(), CONST32(0)); // OF != 0
+				break;
+
+			case 0x71:
+				val = ICMP_EQ(LD_OF(), CONST32(0)); // OF == 0
+				break;
+
+			case 0x72:
+				val = ICMP_NE(LD_CF(), CONST32(2)); // CF != 0
+				break;
+
+			case 0x73:
+				val = ICMP_EQ(LD_CF(), CONST32(0)); // CF == 0
+				break;
+
+			case 0x74:
+				val = ICMP_EQ(LD_ZF(), CONST32(0)); // ZF != 0
+				break;
+
+			case 0x75:
+				val = ICMP_NE(LD_ZF(), CONST32(0)); // ZF == 0
+				break;
+
+			case 0x76:
+				val = OR(ICMP_NE(LD_CF(), CONST32(0)), ICMP_EQ(LD_ZF(), CONST32(0))); // CF != 0 OR ZF != 0
+				break;
+
+			case 0x77:
+				val = AND(ICMP_EQ(LD_CF(), CONST32(0)), ICMP_NE(LD_ZF(), CONST32(0))); // CF == 0 AND ZF == 0
+				break;
+
+			case 0x78:
+				val = ICMP_NE(LD_SF(), CONST32(0)); // SF != 0
+				break;
+
+			case 0x79:
+				val = ICMP_EQ(LD_SF(), CONST32(0)); // SF == 0
+				break;
+
+			case 0x7A:
+				val = ICMP_EQ(LD_PARITY(LD_PF()), CONST8(0)); // PF != 0
+				break;
+
+			case 0x7B:
+				val = ICMP_NE(LD_PARITY(LD_PF()), CONST8(0)); // PF == 0
+				break;
+
+			case 0x7C:
+				val = ICMP_NE(LD_SF(), SHR(LD_OF(), CONST32(0x80000000))); // SF != OF
+				break;
+
+			case 0x7D:
+				val = ICMP_EQ(LD_SF(), SHR(LD_OF(), CONST32(0x80000000))); // SF == OF
+				break;
+
+			case 0x7E:
+				val = OR(ICMP_EQ(LD_ZF(), CONST32(0)), ICMP_NE(LD_SF(), SHR(LD_OF(), CONST32(0x80000000)))); // ZF != 0 OR SF != OF
+				break;
+
+			case 0x7F:
+				val = AND(ICMP_NE(LD_ZF(), CONST32(0)), ICMP_EQ(LD_SF(), SHR(LD_OF(), CONST32(0x80000000)))); // ZF == 0 AND SF == OF
+				break;
+
+			default:
+				BAD;
+			}
+
+			Value *dst_pc = new AllocaInst(getIntegerType(32), 0, "", bb);
+			BasicBlock *bb_jmp = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+			BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+			BR_COND(bb_jmp, bb_next, val, bb);
+			disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+
+			Value *next_pc = calc_next_pc_emit(cpu, tc, bb_next, instr_size);
+			new StoreInst(next_pc, dst_pc, bb_next);
+			BR_UNCOND(disas_ctx->bb, bb_next);
+
+			addr_t jump_eip = (pc - cpu->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
+			if (size_mode == SIZE16) {
+				jump_eip &= 0x0000FFFF;
+			}
+			bb = bb_jmp;
+			new StoreInst(CONST32(jump_eip), GEP_EIP(), bb_jmp);
+			new StoreInst(CONST32(jump_eip + cpu->regs.cs_hidden.base), dst_pc, bb_jmp);
+			BR_UNCOND(disas_ctx->bb, bb_jmp);
+
+			disas_ctx->next_pc = new LoadInst(dst_pc, "", false, disas_ctx->bb);
+
+			translate_next = false;
+		}
+		break;
+
 		case X86_OPC_LAHF:        BAD;
 		case X86_OPC_LAR:         BAD;
 		case X86_OPC_LCALL:       BAD;
@@ -257,24 +343,45 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_LIDTW:       BAD;
 		case X86_OPC_LJMP: // AT&T
 		case X86_OPC_JMP: {
-			Value *new_eip, *new_sel;
 			switch (instr.opcode_byte)
 			{
 			case 0xE9:
-			case 0xEB:
-				BAD;
+			case 0xEB: {
+				addr_t new_eip = (pc - cpu->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
+				if (size_mode == SIZE16) {
+					new_eip &= 0x0000FFFF;
+				}
+				ST_REG(CONST32(new_eip), EIP_idx);
+				disas_ctx->next_pc = CONST32(cpu->regs.cs_hidden.base + new_eip);
+			}
+			break;
+
 			case 0xEA: {
-				new_eip = CONST32(instr.operand[OPNUM_SRC].imm);
-				new_sel = CONST16(instr.operand[OPNUM_SRC].seg_sel);
+				if (disas_ctx->pe_mode) {
+					BAD_MODE;
+				}
+				addr_t new_eip = instr.operand[OPNUM_SRC].imm;
+				uint16_t new_sel = instr.operand[OPNUM_SRC].seg_sel;
+				if (size_mode == SIZE16) {
+					new_eip &= 0x0000FFFF;
+				}
+				ST_REG(CONST32(new_eip), EIP_idx);
+				ST_SEG(CONST16(new_sel), CS_idx);
+				ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
+				disas_ctx->next_pc = CONST32((static_cast<uint32_t>(new_sel) << 4) + new_eip);
 			}
 			break;
 
 			case 0xFF: {
 				if (instr.reg_opc == 5) {
+					if (disas_ctx->pe_mode) {
+						BAD_MODE;
+					}
 					assert(instr.operand[OPNUM_SRC].type == OPTYPE_MEM ||
 						instr.operand[OPNUM_SRC].type == OPTYPE_MEM_DISP ||
 						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_MEM ||
 						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_DISP);
+					Value *new_eip, *new_sel;
 					Value *sel_addr, *offset_addr = GET_OP(OPNUM_SRC);
 					if (size_mode == SIZE16) {
 						new_eip = ZEXT32(LD_MEM(MEM_LD16_idx, offset_addr));
@@ -285,6 +392,11 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 						sel_addr = ADD(offset_addr, CONST32(4));
 					}
 					new_sel = LD_MEM(MEM_LD16_idx, sel_addr);
+
+					ST_REG(new_eip, EIP_idx);
+					ST_SEG(new_sel, CS_idx);
+					ST_SEG_HIDDEN(SHL(ZEXT32(new_sel), CONST32(4)), CS_idx, SEG_BASE_idx);
+					disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), new_eip);
 				}
 				else if(instr.reg_opc == 4) {
 					BAD;
@@ -299,16 +411,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				UNREACHABLE;
 			}
 
-			if (disas_ctx->pe_mode) {
-				BAD_MODE;
-			}
-			else {
-				ST_REG(new_eip, EIP_idx);
-				ST_SEG(new_sel, CS_idx);
-				ST_SEG_HIDDEN(SHL(ZEXT32(new_sel), CONST32(4)), CS_idx, SEG_BASE_idx);
-				disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), new_eip);
-				translate_next = false;
-			}
+			translate_next = false;
 		}
 		break;
 
@@ -529,9 +632,11 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			assert(instr.opcode_byte == 0x9E);
 
 			Value *ah = ZEXT32(LD_R8H(EAX_idx));
-			ST_FLG_RES(OR(OR(SHL(XOR(AND(ah, CONST32(64)), CONST32(64)), CONST32(2)), SHL(AND(ah, CONST32(128)), CONST32(24))),
-				XOR(AND(ah, CONST32(4)), CONST32(4))));
-			ST_FLG_AUX(OR(TRUNC8(OR(SHL(AND(ah, CONST32(1)), CONST32(1)), AND(ah, CONST32(16)))), LD_OF()));
+			Value *sfd = SHR(AND(ah, CONST32(128)), CONST32(7));
+			Value *pdb = SHL(XOR(CONST32(4), AND(ah, CONST32(4))), CONST32(6));
+			Value *of_new = SHR(XOR(SHL(AND(ah, CONST32(1)), CONST32(31)), LD_OF()), CONST32(1));
+			ST_FLG_RES(SHL(XOR(AND(ah, CONST32(64)), CONST32(64)), CONST32(2)));
+			ST_FLG_AUX(OR(OR(OR(OR(SHL(AND(ah, CONST32(1)), CONST32(31)), SHR(AND(ah, CONST32(16)), CONST32(1))), of_new, CONST8(1)), sfd), pdb));
 		}
 		break;
 
@@ -618,7 +723,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				}
 
 				size_mode == SIZE32 ? ST_FLG_RES(val) : ST_FLG_RES_ext(val);
-				ST_FLG_AUX(CONST8(0));
+				ST_FLG_AUX(CONST32(0));
 			}
 			break;
 

@@ -22,6 +22,7 @@ Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size
 #define _CTX() (*tc->ctx)
 #define getIntegerType(x) (IntegerType::get(_CTX(), x))
 #define getVoidType() (Type::getVoidTy(_CTX()))
+#define getIntegerArrayType(x, n) (ArrayType::get(getIntegerType(x), n))
 
 #define MEM_LD8_idx  0
 #define MEM_LD16_idx 1
@@ -76,6 +77,7 @@ Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size
 #define BR_COND(t, f, val, bb) BranchInst::Create(t, f, val, bb)
 #define BR_UNCOND(t, bb) BranchInst::Create(t, bb)
 #define ICMP_EQ(a, b) new ICmpInst(*bb, ICmpInst::ICMP_EQ, a, b, "")
+#define ICMP_NE(a, b) new ICmpInst(*bb, ICmpInst::ICMP_NE, a, b, "")
 
 #define GEP(ptr, idx)  get_struct_member_pointer(ptr, idx, tc, bb)
 #define GEP_R32(idx)   GEP(cpu->ptr_regs, idx)
@@ -112,6 +114,7 @@ Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size
 #define GEP_DR7()      GEP_R32(DR7_idx)
 #define GEP_EFLAGS()   GEP_R32(EFLAGS_idx)
 #define GEP_EIP()      GEP_R32(EIP_idx)
+#define GEP_PARITY()   GEP(cpu->ptr_eflags, 2)
 
 #define ST_REG(val, idx) new StoreInst(val, GEP(cpu->ptr_regs, idx), bb)
 #define ST_REG_val(val, reg) new StoreInst(val, reg, bb)
@@ -131,20 +134,22 @@ Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size
 #define LD_MEM(idx, addr) CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu, addr }, "", bb)
 #define ST_MEM(idx, addr, val) CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu, addr, val }, "", bb)
 
+#define LD_PARITY(idx) new LoadInst(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST8(0), idx }, "", bb), "", false, bb)
+
 // the lazy eflags idea comes from reading these two papers:
 // How Bochs Works Under the Hood (2nd edition) http://bochs.sourceforge.net/How%20the%20Bochs%20works%20under%20the%20hood%202nd%20edition.pdf
 // A Proposal for Hardware-Assisted Arithmetic Overflow Detection for Array and Bitfield Operations http://www.emulators.com/docs/LazyOverflowDetect_Final.pdf
 #define SUM_COUT_VEC(a, b, s) OR(AND(a, b), AND(OR(a, b), NOT(s)))
 #define SUB_COUT_VEC(a, b, d) OR(AND(NOT(a), b), AND(NOT(XOR(a, b)), d))
-#define SHIFT_FLG8(a) OR(SHR(a, CONST8(6)), AND(a, CONST8(8)))
-#define SHIFT_FLG16(a) OR(SHR(a, CONST16(14)), AND(a, CONST16(8)))
-#define SHIFT_FLG32(a) OR(SHR(a, CONST32(30)), AND(a, CONST32(8)))
-#define GEN_SUM_VEC8(a, b, r) SHIFT_FLG8(SUM_COUT_VEC(a, b, r))
-#define GEN_SUM_VEC16(a, b, r) TRUNC8(SHIFT_FLG16(SUM_COUT_VEC(a, b, r)))
-#define GEN_SUM_VEC32(a, b, r) TRUNC8(SHIFT_FLG32(SUM_COUT_VEC(a, b, r)))
-#define GEN_SUB_VEC8(a, b, r) SHIFT_FLG8(SUB_COUT_VEC(a, b, r))
-#define GEN_SUB_VEC16(a, b, r) TRUNC8(SHIFT_FLG16(SUB_COUT_VEC(a, b, r)))
-#define GEN_SUB_VEC32(a, b, r) TRUNC8(SHIFT_FLG32(SUB_COUT_VEC(a, b, r)))
+#define MASK_FLG8(a) AND(OR(SHL(a, CONST32(24)), a), CONST32(0xC0000008))
+#define MASK_FLG16(a) AND(OR(SHL(a, CONST32(16)), a), CONST32(0xC0000008))
+#define MASK_FLG32(a) AND(a, CONST32(0xC0000008))
+#define GEN_SUM_VEC8(a, b, r) MASK_FLG8(ZEXT32(SUM_COUT_VEC(a, b, r)))
+#define GEN_SUM_VEC16(a, b, r) MASK_FLG16(ZEXT32(SUM_COUT_VEC(a, b, r)))
+#define GEN_SUM_VEC32(a, b, r) MASK_FLG32(SUM_COUT_VEC(a, b, r))
+#define GEN_SUB_VEC8(a, b, r) MASK_FLG8(ZEXT32(SUB_COUT_VEC(a, b, r)))
+#define GEN_SUB_VEC16(a, b, r) MASK_FLG16(ZEXT32(SUB_COUT_VEC(a, b, r)))
+#define GEN_SUB_VEC32(a, b, r) MASK_FLG32(SUB_COUT_VEC(a, b, r))
 #define ST_FLG_SUM_AUX8(a, b, r) new StoreInst(GEN_SUM_VEC8(a, b, r), GEP(cpu->ptr_eflags, 1), bb)
 #define ST_FLG_SUM_AUX16(a, b, r) new StoreInst(GEN_SUM_VEC16(a, b, r), GEP(cpu->ptr_eflags, 1), bb)
 #define ST_FLG_SUM_AUX32(a, b, r) new StoreInst(GEN_SUM_VEC32(a, b, r), GEP(cpu->ptr_eflags, 1), bb)
@@ -154,5 +159,10 @@ Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size
 #define ST_FLG_AUX(val) new StoreInst(val, GEP(cpu->ptr_eflags, 1), bb)
 #define ST_FLG_RES_ext(val) new StoreInst(SEXT32(val), GEP(cpu->ptr_eflags, 0), bb)
 #define ST_FLG_RES(val) new StoreInst(val, GEP(cpu->ptr_eflags, 0), bb)
-#define LD_CF() AND(new LoadInst(GEP(cpu->ptr_eflags, 1), "", false, bb), CONST8(2))
-#define LD_OF() AND(new LoadInst(GEP(cpu->ptr_eflags, 1), "", false, bb), CONST8(1))
+#define LD_FLG_RES() new LoadInst(GEP(cpu->ptr_eflags, 0), "", false, bb)
+#define LD_FLG_AUX() new LoadInst(GEP(cpu->ptr_eflags, 1), "", false, bb)
+#define LD_CF() AND(LD_FLG_AUX(), CONST32(0x80000000))
+#define LD_OF() AND(XOR(LD_FLG_AUX(), SHL(LD_FLG_AUX(), CONST32(1))), CONST32(0x80000000))
+#define LD_ZF() LD_FLG_RES()
+#define LD_SF() XOR(SHR(LD_FLG_RES(), CONST32(31)), AND(LD_FLG_AUX(), CONST32(1)))
+#define LD_PF() LD_PARITY(TRUNC8(XOR(LD_FLG_RES(), SHR(LD_FLG_AUX(), CONST32(8)))))
