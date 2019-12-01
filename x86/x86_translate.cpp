@@ -663,7 +663,48 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_SGDTD:       BAD;
 		case X86_OPC_SGDTL:       BAD;
 		case X86_OPC_SGDTW:       BAD;
-		case X86_OPC_SHL:         BAD;
+		case X86_OPC_SHL: {
+			switch (instr.opcode_byte)
+			{
+			case 0xD0: {
+				assert(instr.reg_opc == 4);
+
+				Value *rm = GET_OP(OPNUM_SRC);
+				Value *val, *cf;
+				switch (instr.operand[OPNUM_SRC].type)
+				{
+				case OPTYPE_REG:
+					val = LD_REG_val(rm);
+					cf = AND(val, CONST8(0xC0));
+					val = SHL(val, CONST8(1));
+					ST_REG_val(val, rm);
+					break;
+
+				case OPTYPE_MEM:
+				case OPTYPE_MEM_DISP:
+				case OPTYPE_SIB_MEM:
+				case OPTYPE_SIB_DISP:
+					val = LD_MEM(MEM_LD8_idx, rm);
+					cf = AND(val, CONST8(0xC0));
+					val = SHL(val, CONST8(1));
+					ST_MEM(MEM_ST8_idx, rm, val);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+
+				ST_FLG_RES_ext(val);
+				ST_FLG_AUX(SHL(ZEXT32(cf), CONST32(24)));
+			}
+			break;
+
+			default:
+				BAD;
+			}
+		}
+		break;
+
 		case X86_OPC_SHLD:        BAD;
 		case X86_OPC_SHR:         BAD;
 		case X86_OPC_SHRD:        BAD;
