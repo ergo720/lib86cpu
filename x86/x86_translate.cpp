@@ -282,19 +282,19 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				break;
 
 			case 0x7C:
-				val = ICMP_NE(LD_SF(), SHR(LD_OF(), CONST32(0x80000000))); // SF != OF
+				val = ICMP_NE(LD_SF(), SHR(LD_OF(), CONST32(31))); // SF != OF
 				break;
 
 			case 0x7D:
-				val = ICMP_EQ(LD_SF(), SHR(LD_OF(), CONST32(0x80000000))); // SF == OF
+				val = ICMP_EQ(LD_SF(), SHR(LD_OF(), CONST32(31))); // SF == OF
 				break;
 
 			case 0x7E:
-				val = OR(ICMP_EQ(LD_ZF(), CONST32(0)), ICMP_NE(LD_SF(), SHR(LD_OF(), CONST32(0x80000000)))); // ZF != 0 OR SF != OF
+				val = OR(ICMP_EQ(LD_ZF(), CONST32(0)), ICMP_NE(LD_SF(), SHR(LD_OF(), CONST32(31)))); // ZF != 0 OR SF != OF
 				break;
 
 			case 0x7F:
-				val = AND(ICMP_NE(LD_ZF(), CONST32(0)), ICMP_EQ(LD_SF(), SHR(LD_OF(), CONST32(0x80000000)))); // ZF == 0 AND SF == OF
+				val = AND(ICMP_NE(LD_ZF(), CONST32(0)), ICMP_EQ(LD_SF(), SHR(LD_OF(), CONST32(31)))); // ZF == 0 AND SF == OF
 				break;
 
 			default:
