@@ -39,6 +39,24 @@ Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size
 
 #define GET_OP(op) get_operand(cpu, &instr, tc, bb, op, addr_mode)
 
+#define GET_RM(idx, r, m) 	rm = GET_OP(idx); \
+switch (instr.operand[idx].type) \
+{ \
+case OPTYPE_REG: \
+	r \
+	break; \
+\
+case OPTYPE_MEM: \
+case OPTYPE_MEM_DISP: \
+case OPTYPE_SIB_MEM: \
+case OPTYPE_SIB_DISP: \
+	m \
+	break; \
+\
+default: \
+	UNREACHABLE; \
+}
+
 #define CONSTs(s, v) ConstantInt::get(getIntegerType(s), v)
 #define CONST1(v) CONSTs(1, v)
 #define CONST8(v) CONSTs(8, v)

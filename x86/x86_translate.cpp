@@ -36,7 +36,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 	uint8_t addr_mode;
 	BasicBlock *bb = disas_ctx->bb;
 	// we can use the same indexes for both loads and stores because they have the same order in cpu->ptr_mem_xxfn
-	static uint8_t fn_idx[3] = { MEM_LD32_idx, MEM_LD16_idx, MEM_LD8_idx };
+	static const uint8_t fn_idx[3] = { MEM_LD32_idx, MEM_LD16_idx, MEM_LD8_idx };
 
 	do {
 
@@ -141,7 +141,76 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_CMOVPO:      BAD;
 		case X86_OPC_CMOVS:       BAD;
 		case X86_OPC_CMOVZ:       BAD;
-		case X86_OPC_CMP:         BAD;
+		case X86_OPC_CMP: {
+			Value *val, *cmp, *sub, *rm;
+			switch (instr.opcode_byte)
+			{
+			case 0x3C:
+				size_mode = SIZE8;
+				val = LD_R8L(EAX_idx);
+				cmp = CONST8(instr.operand[OPNUM_SRC].imm);
+				break;
+
+			case 0x3D:
+				if (size_mode == SIZE16) {
+					val = LD_R16(EAX_idx);
+					cmp = CONST16(instr.operand[OPNUM_SRC].imm);
+				}
+				else {
+					val = LD_REG(EAX_idx);
+					cmp = CONST32(instr.operand[OPNUM_SRC].imm);
+				}
+				break;
+
+			case 0x80:
+			case 0x82:
+				assert(instr.reg_opc == 7);
+				size_mode = SIZE8;
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); , val = LD_MEM(fn_idx[size_mode], rm););
+				cmp = CONST8(instr.operand[OPNUM_SRC].imm);
+				break;
+
+			case 0x81:
+				assert(instr.reg_opc == 7);
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				cmp = size_mode == SIZE16 ? CONST16(instr.operand[OPNUM_SRC].imm) : CONST32(instr.operand[OPNUM_SRC].imm);
+				break;
+
+			case 0x83:
+				assert(instr.reg_opc == 7);
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				cmp = SEXT(size_mode == SIZE16 ? 16 : 32, CONST8(instr.operand[OPNUM_SRC].imm));
+				break;
+
+			default:
+				BAD;
+			}
+
+			sub = SUB(val, cmp);
+
+			switch (size_mode)
+			{
+			case SIZE8:
+				ST_FLG_RES_ext(sub);
+				ST_FLG_SUB_AUX8(val, cmp, sub);
+				break;
+
+			case SIZE16:
+				ST_FLG_RES_ext(sub);
+				ST_FLG_SUB_AUX16(val, cmp, sub);
+				break;
+
+			case SIZE32:
+				ST_FLG_RES(sub);
+				ST_FLG_SUB_AUX32(val, cmp, sub);
+				break;
+
+			default:
+				UNREACHABLE;
+			}
+		}
+		break;
+
 		case X86_OPC_CMPS:        BAD;
 		case X86_OPC_CMPXCHG8B:   BAD;
 		case X86_OPC_CMPXCHG:     BAD;
@@ -501,25 +570,8 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				}
 				// assert that we are not loading the CS or a reserved register. TODO: this should raise an exception
 				assert(instr.operand[OPNUM_DST].reg != 1 && instr.operand[OPNUM_DST].reg < 6);
-				Value *rm = GET_OP(OPNUM_SRC);
-				Value *val;
-				switch (instr.operand[OPNUM_SRC].type)
-				{
-				case OPTYPE_REG:
-					val = LD_REG_val(rm);
-					break;
-
-				case OPTYPE_MEM:
-				case OPTYPE_MEM_DISP:
-				case OPTYPE_SIB_MEM:
-				case OPTYPE_SIB_DISP:
-					val = LD_MEM(MEM_LD16_idx, rm);
-					break;
-
-				default:
-					UNREACHABLE;
-				}
-
+				Value *val, *rm;
+				GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(MEM_LD16_idx, rm););
 				ST_SEG(val, instr.operand[OPNUM_DST].reg + SEG_offset);
 				ST_SEG_HIDDEN(SHL(ZEXT32(val), CONST32(4)), instr.operand[OPNUM_DST].reg + SEG_offset, SEG_BASE_idx);
 			}
@@ -556,8 +608,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				[[fallthrough]];
 
 			case 0xC7: {
-				Value *rm = GET_OP(OPNUM_DST);
-				Value *val;
+				Value *val, *rm;
 				switch (size_mode)
 				{
 				case SIZE8:
@@ -576,22 +627,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					UNREACHABLE;
 				}
 
-				switch (instr.operand[OPNUM_DST].type)
-				{
-				case OPTYPE_REG:
-					ST_REG_val(val, rm);
-					break;
-
-				case OPTYPE_MEM:
-				case OPTYPE_MEM_DISP:
-				case OPTYPE_SIB_MEM:
-				case OPTYPE_SIB_DISP:
-					ST_MEM(fn_idx[size_mode], rm, val);
-					break;
-
-				default:
-					UNREACHABLE;
-				}
+				GET_RM(OPNUM_DST, ST_REG_val(val, rm);, ST_MEM(fn_idx[size_mode], rm, val););
 			}
 			break;
 
@@ -688,31 +724,9 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			case 0xD0: {
 				assert(instr.reg_opc == 4);
 
-				Value *rm = GET_OP(OPNUM_SRC);
-				Value *val, *cf;
-				switch (instr.operand[OPNUM_SRC].type)
-				{
-				case OPTYPE_REG:
-					val = LD_REG_val(rm);
-					cf = AND(val, CONST8(0xC0));
-					val = SHL(val, CONST8(1));
-					ST_REG_val(val, rm);
-					break;
-
-				case OPTYPE_MEM:
-				case OPTYPE_MEM_DISP:
-				case OPTYPE_SIB_MEM:
-				case OPTYPE_SIB_DISP:
-					val = LD_MEM(MEM_LD8_idx, rm);
-					cf = AND(val, CONST8(0xC0));
-					val = SHL(val, CONST8(1));
-					ST_MEM(MEM_ST8_idx, rm, val);
-					break;
-
-				default:
-					UNREACHABLE;
-				}
-
+				Value *val, *rm, *cf;
+				GET_RM(OPNUM_SRC, val = LD_REG_val(rm); cf = AND(val, CONST8(0xC0)); val = SHL(val, CONST8(1)); ST_REG_val(val, rm);,
+					val = LD_MEM(MEM_LD8_idx, rm); cf = AND(val, CONST8(0xC0)); val = SHL(val, CONST8(1)); ST_MEM(MEM_ST8_idx, rm, val););
 				ST_FLG_RES_ext(val);
 				ST_FLG_AUX(SHL(ZEXT32(cf), CONST32(24)));
 			}
@@ -759,29 +773,9 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0x31: {
 				Value *reg = GET_OP(OPNUM_SRC);
-				Value *rm = GET_OP(OPNUM_DST);
-				Value *val;
-				switch (instr.operand[OPNUM_DST].type)
-				{
-				case OPTYPE_REG:
-					val = LD_REG_val(rm);
-					val = XOR(val, LD_REG_val(reg));
-					ST_REG_val(val, rm);
-					break;
-
-				case OPTYPE_MEM:
-				case OPTYPE_MEM_DISP:
-				case OPTYPE_SIB_MEM:
-				case OPTYPE_SIB_DISP:
-					val = LD_MEM(fn_idx[size_mode], rm);
-					val = XOR(val, LD_REG_val(reg));
-					ST_MEM(fn_idx[size_mode], rm, val);
-					break;
-
-				default:
-					UNREACHABLE;
-				}
-
+				Value *val, *rm;
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = XOR(val, LD_REG_val(reg)); ST_REG_val(val, rm);,
+					val = LD_MEM(fn_idx[size_mode], rm); val = XOR(val, LD_REG_val(reg)); ST_MEM(fn_idx[size_mode], rm, val););
 				size_mode == SIZE32 ? ST_FLG_RES(val) : ST_FLG_RES_ext(val);
 				ST_FLG_AUX(CONST32(0));
 			}
