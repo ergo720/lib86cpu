@@ -184,7 +184,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 				case SIZE32:
 					val = LD_REG_val(reg);
-					sum = ADD(sum, CONST32(1));
+					sum = ADD(val, CONST32(1));
 					cf_old = LD_CF();
 					ST_REG_val(sum, reg);
 					ST_FLG_RES(sum);
@@ -212,7 +212,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_INVD:        BAD;
 		case X86_OPC_INVLPG:      BAD;
 		case X86_OPC_IRET:        BAD;
-		case X86_OPC_JCXZ:        BAD;
 		case X86_OPC_JECXZ:
 		case X86_OPC_JO:
 		case X86_OPC_JNO:
@@ -234,66 +233,82 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			switch (instr.opcode_byte)
 			{
 			case 0x70:
+			case 0x80:
 				val = ICMP_NE(LD_OF(), CONST32(0)); // OF != 0
 				break;
 
 			case 0x71:
+			case 0x81:
 				val = ICMP_EQ(LD_OF(), CONST32(0)); // OF == 0
 				break;
 
 			case 0x72:
+			case 0x82:
 				val = ICMP_NE(LD_CF(), CONST32(2)); // CF != 0
 				break;
 
 			case 0x73:
+			case 0x83:
 				val = ICMP_EQ(LD_CF(), CONST32(0)); // CF == 0
 				break;
 
 			case 0x74:
+			case 0x84:
 				val = ICMP_EQ(LD_ZF(), CONST32(0)); // ZF != 0
 				break;
 
 			case 0x75:
+			case 0x85:
 				val = ICMP_NE(LD_ZF(), CONST32(0)); // ZF == 0
 				break;
 
 			case 0x76:
+			case 0x86:
 				val = OR(ICMP_NE(LD_CF(), CONST32(0)), ICMP_EQ(LD_ZF(), CONST32(0))); // CF != 0 OR ZF != 0
 				break;
 
 			case 0x77:
+			case 0x87:
 				val = AND(ICMP_EQ(LD_CF(), CONST32(0)), ICMP_NE(LD_ZF(), CONST32(0))); // CF == 0 AND ZF == 0
 				break;
 
 			case 0x78:
+			case 0x88:
 				val = ICMP_NE(LD_SF(), CONST32(0)); // SF != 0
 				break;
 
 			case 0x79:
+			case 0x89:
 				val = ICMP_EQ(LD_SF(), CONST32(0)); // SF == 0
 				break;
 
 			case 0x7A:
+			case 0x8A:
 				val = ICMP_EQ(LD_PARITY(LD_PF()), CONST8(0)); // PF != 0
 				break;
 
 			case 0x7B:
+			case 0x8B:
 				val = ICMP_NE(LD_PARITY(LD_PF()), CONST8(0)); // PF == 0
 				break;
 
 			case 0x7C:
+			case 0x8C:
 				val = ICMP_NE(LD_SF(), SHR(LD_OF(), CONST32(31))); // SF != OF
 				break;
 
 			case 0x7D:
+			case 0x8D:
 				val = ICMP_EQ(LD_SF(), SHR(LD_OF(), CONST32(31))); // SF == OF
 				break;
 
 			case 0x7E:
+			case 0x8E:
 				val = OR(ICMP_EQ(LD_ZF(), CONST32(0)), ICMP_NE(LD_SF(), SHR(LD_OF(), CONST32(31)))); // ZF != 0 OR SF != OF
 				break;
 
 			case 0x7F:
+			case 0x8F:
 				val = AND(ICMP_NE(LD_ZF(), CONST32(0)), ICMP_EQ(LD_SF(), SHR(LD_OF(), CONST32(31)))); // ZF == 0 AND SF == OF
 				break;
 
@@ -302,7 +317,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				break;
 
 			default:
-				BAD;
+				UNREACHABLE;
 			}
 
 			Value *dst_pc = new AllocaInst(getIntegerType(32), 0, "", bb);
