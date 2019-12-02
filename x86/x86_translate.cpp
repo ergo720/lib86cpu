@@ -506,10 +506,28 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_LLDT:        BAD;
 		case X86_OPC_LMSW:        BAD;
 		case X86_OPC_LODS:        BAD;
-		case X86_OPC_LOOP: {
-			assert(instr.opcode_byte == 0xE2);
+		case X86_OPC_LOOP:
+		case X86_OPC_LOOPE:
+		case X86_OPC_LOOPNE: {
+			Value *val, *zero, *zf;
+			switch (instr.opcode_byte)
+			{
+			case 0xE0:
+				zf = ICMP_NE(LD_ZF(), CONST32(0));
+				break;
 
-			Value *val, *zero;
+			case 0xE1:
+				zf = ICMP_EQ(LD_ZF(), CONST32(0));
+				break;
+
+			case 0xE2:
+				zf = CONSTs(1, 1);
+				break;
+
+			default:
+				UNREACHABLE;
+			}
+
 			switch (addr_mode)
 			{
 			case ADDR16:
@@ -531,7 +549,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			Value *dst_pc = new AllocaInst(getIntegerType(32), 0, "", bb);
 			BasicBlock *bb_loop = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 			BasicBlock *bb_exit = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
-			BR_COND(bb_exit, bb_loop, ICMP_EQ(val, zero), bb);
+			BR_COND(bb_loop, bb_exit, AND(ICMP_NE(val, zero), zf), bb);
 			disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
 			Value *exit_pc = calc_next_pc_emit(cpu, tc, bb_exit, instr_size);
@@ -553,10 +571,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		}
 		break;
 
-		case X86_OPC_LOOPE:       BAD;
-		case X86_OPC_LOOPNE:      BAD;
-		case X86_OPC_LOOPNZ:      BAD;
-		case X86_OPC_LOOPZ:       BAD;
 		case X86_OPC_LRET:        BAD;
 		case X86_OPC_LSL:         BAD;
 		case X86_OPC_LSS:         BAD;
