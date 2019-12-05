@@ -62,16 +62,19 @@ default: \
 #define CONST8(v) CONSTs(8, v)
 #define CONST16(v) CONSTs(16, v)
 #define CONST32(v) CONSTs(32, v)
+#define CONST64(v) CONSTs(64, v)
 
 #define ZEXT(s, v) new ZExtInst(v, getIntegerType(s), "", bb)
 #define ZEXT8(v) ZEXT(8, v)
 #define ZEXT16(v) ZEXT(16, v)
 #define ZEXT32(v) ZEXT(32, v)
+#define ZEXT64(v) ZEXT(64, v)
 
 #define SEXT(s, v) new SExtInst(v, getIntegerType(s), "", bb)
 #define SEXT8(v) SEXT(8, v)
 #define SEXT16(v) SEXT(16, v)
 #define SEXT32(v) SEXT(32, v)
+#define SEXT64(v) SEXT(64, v)
 
 #define IBITCASTs(s, v) new BitCastInst(v, PointerType::getUnqual(getIntegerType(s)), "", bb)
 #define IBITCAST8(v) IBITCASTs(8, v)
@@ -96,6 +99,7 @@ default: \
 #define BR_UNCOND(t, bb) BranchInst::Create(t, bb)
 #define ICMP_EQ(a, b) new ICmpInst(*bb, ICmpInst::ICMP_EQ, a, b, "")
 #define ICMP_NE(a, b) new ICmpInst(*bb, ICmpInst::ICMP_NE, a, b, "")
+#define NOT_ZERO(s,v) AND(SHR(OR(v, SUB(CONSTs(s, 0), v)), CONSTs(s, s-1)), CONSTs(s, 1))
 
 #define GEP(ptr, idx)  get_struct_member_pointer(ptr, idx, tc, bb)
 #define GEP_R32(idx)   GEP(cpu->ptr_regs, idx)

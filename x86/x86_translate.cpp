@@ -226,7 +226,60 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_ENTER:       BAD;
 		case X86_OPC_HLT:         BAD;
 		case X86_OPC_IDIV:        BAD;
-		case X86_OPC_IMUL:        BAD;
+		case X86_OPC_IMUL: {
+			switch (instr.opcode_byte)
+			{
+			case 0xF6:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xF7: {
+				assert(instr.reg_opc == 5);
+
+				Value *val, *reg, *rm, *out;
+				switch (size_mode)
+				{
+				case SIZE8:
+					reg = LD_R8L(EAX_idx);
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					out = MUL(SEXT16(reg), SEXT16(val));
+					ST_REG_val(out, GEP_R16(EAX_idx));
+					ST_FLG_RES(CONST32(0));
+					ST_FLG_AUX(SHL(ZEXT32(NOT_ZERO(16, XOR(out, LD_R8L(EAX_idx)))), CONST32(31)));
+					break;
+
+				case SIZE16:
+					reg = LD_R16(EAX_idx);
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					out = MUL(SEXT32(reg), SEXT32(val));
+					ST_REG_val(TRUNC16(SHR(out, CONST32(16))), GEP_R16(EDX_idx));
+					ST_REG_val(TRUNC16(out), GEP_R16(EAX_idx));
+					ST_FLG_RES(CONST32(0));
+					ST_FLG_AUX(SHL(NOT_ZERO(32, XOR(SEXT32(LD_R16(EAX_idx)), out)), CONST32(31)));
+					break;
+
+				case SIZE32:
+					reg = LD_REG(EAX_idx);
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					out = MUL(SEXT64(reg), SEXT64(val));
+					ST_REG_val(TRUNC32(SHR(out, CONST64(32))), GEP_R32(EDX_idx));
+					ST_REG_val(TRUNC32(out), GEP_R32(EAX_idx));
+					ST_FLG_RES(CONST32(0));
+					ST_FLG_AUX(SHL(TRUNC32(NOT_ZERO(64, XOR(ZEXT64(LD_REG(EAX_idx)), out))), CONST32(31)));
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+			}
+			break;
+
+			default:
+				BAD;
+			}
+		}
+		break;
+
 		case X86_OPC_IN:          BAD;
 		case X86_OPC_INC: {
 			switch (instr.opcode_byte)
