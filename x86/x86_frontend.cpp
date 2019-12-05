@@ -294,7 +294,7 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 				assert(0 && "Unknown reg index in OPTYPE_MEM\n");
 				return nullptr;
 			}
-			return ADD(LD_REG(reg_idx), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
+			return ADD(LD_R32(reg_idx), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
 		}
 		else {
 			Value *reg;
@@ -375,7 +375,7 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 					assert(0 && "Unknown rm index in OPTYPE_MEM_DISP\n");
 					return nullptr;
 				}
-				reg = ADD(LD_REG(reg_idx), SEXT32(CONST8(operand->disp)));
+				reg = ADD(LD_R32(reg_idx), SEXT32(CONST8(operand->disp)));
 				break;
 			case 2:
 				switch (instr->rm) {
@@ -407,7 +407,7 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 					assert(0 && "Unknown rm index in OPTYPE_MEM_DISP\n");
 					return nullptr;
 				}
-				reg = ADD(LD_REG(reg_idx), CONST32(operand->disp));
+				reg = ADD(LD_R32(reg_idx), CONST32(operand->disp));
 				break;
 			case 3:
 				assert(0 && "instr->rm specifies OPTYPE_REG with OPTYPE_MEM_DISP!\n");
@@ -615,7 +615,7 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 		case 5:
 		case 6:
 		case 7:
-			idx = LD_REG(instr->idx);
+			idx = LD_R32(instr->idx);
 			break;
 		case 4:
 			idx = CONST32(0);
@@ -632,16 +632,16 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 		case 4:
 		case 6:
 		case 7:
-			base = LD_REG(instr->base);
+			base = LD_R32(instr->base);
 			break;
 		case 5:
 			switch (instr->mod) {
 			case 0:
 				return ADD(ADD(MUL(idx, scale), CONST32(instr->disp)), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
 			case 1:
-				return ADD(ADD(ADD(MUL(idx, scale), SEXT32(CONST8(operand->disp))), LD_REG(EBP_idx)), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
+				return ADD(ADD(ADD(MUL(idx, scale), SEXT32(CONST8(operand->disp))), LD_R32(EBP_idx)), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
 			case 2:
-				return ADD(ADD(ADD(MUL(idx, scale), CONST32(operand->disp)), LD_REG(EBP_idx)), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
+				return ADD(ADD(ADD(MUL(idx, scale), CONST32(operand->disp)), LD_R32(EBP_idx)), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
 			case 3:
 				assert(0 && "instr->mod specifies OPTYPE_REG with sib addressing mode!\n");
 				return nullptr;

@@ -116,9 +116,9 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				BAD_MODE;
 			}
 			else {
-				Value *eflags = LD_REG(EFLAGS_idx);
+				Value *eflags = LD_R32(EFLAGS_idx);
 				eflags = AND(eflags, CONST32(~(1 << IF_shift)));
-				ST_REG(eflags, EFLAGS_idx);
+				ST_R32(eflags, EFLAGS_idx);
 			}
 			break;
 
@@ -157,7 +157,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					cmp = CONST16(instr.operand[OPNUM_SRC].imm);
 				}
 				else {
-					val = LD_REG(EAX_idx);
+					val = LD_R32(EAX_idx);
 					cmp = CONST32(instr.operand[OPNUM_SRC].imm);
 				}
 				break;
@@ -259,13 +259,13 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					break;
 
 				case SIZE32:
-					reg = LD_REG(EAX_idx);
+					reg = LD_R32(EAX_idx);
 					GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
 					out = MUL(SEXT64(reg), SEXT64(val));
 					ST_REG_val(TRUNC32(SHR(out, CONST64(32))), GEP_R32(EDX_idx));
 					ST_REG_val(TRUNC32(out), GEP_R32(EAX_idx));
 					ST_FLG_RES(CONST32(0));
-					ST_FLG_AUX(SHL(TRUNC32(NOT_ZERO(64, XOR(ZEXT64(LD_REG(EAX_idx)), out))), CONST32(31)));
+					ST_FLG_AUX(SHL(TRUNC32(NOT_ZERO(64, XOR(ZEXT64(LD_R32(EAX_idx)), out))), CONST32(31)));
 					break;
 
 				default:
@@ -296,10 +296,10 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				switch (size_mode)
 				{
 				case SIZE16:
-					val = LD_R16_val(reg);
+					val = LD_REG_val(reg);
 					sum = ADD(val, CONST16(1));
 					cf_old = LD_CF();
-					ST_R16_val(sum, reg);
+					ST_REG_val(sum, reg);
 					ST_FLG_RES_ext(sum);
 					ST_FLG_SUM_AUX16(val, CONST16(1), sum);
 					break;
@@ -435,7 +435,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				break;
 
 			case 0xE3:
-				val = addr_mode == ADDR16 ? ICMP_EQ(LD_R16(ECX_idx), CONST16(0)) : ICMP_EQ(LD_REG(ECX_idx), CONST32(0)); // ECX == 0
+				val = addr_mode == ADDR16 ? ICMP_EQ(LD_R16(ECX_idx), CONST16(0)) : ICMP_EQ(LD_R32(ECX_idx), CONST32(0)); // ECX == 0
 				break;
 
 			default:
@@ -492,7 +492,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				if (size_mode == SIZE16) {
 					new_eip &= 0x0000FFFF;
 				}
-				ST_REG(CONST32(new_eip), EIP_idx);
+				ST_R32(CONST32(new_eip), EIP_idx);
 				disas_ctx->next_pc = CONST32(cpu->regs.cs_hidden.base + new_eip);
 			}
 			break;
@@ -506,7 +506,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				if (size_mode == SIZE16) {
 					new_eip &= 0x0000FFFF;
 				}
-				ST_REG(CONST32(new_eip), EIP_idx);
+				ST_R32(CONST32(new_eip), EIP_idx);
 				ST_SEG(CONST16(new_sel), CS_idx);
 				ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
 				disas_ctx->next_pc = CONST32((static_cast<uint32_t>(new_sel) << 4) + new_eip);
@@ -534,7 +534,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					}
 					new_sel = LD_MEM(MEM_LD16_idx, sel_addr);
 
-					ST_REG(new_eip, EIP_idx);
+					ST_R32(new_eip, EIP_idx);
 					ST_SEG(new_sel, CS_idx);
 					ST_SEG_HIDDEN(SHL(ZEXT32(new_sel), CONST32(4)), CS_idx, SEG_BASE_idx);
 					disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), new_eip);
@@ -590,8 +590,8 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				break;
 
 			case ADDR32:
-				val = SUB(LD_REG(ECX_idx), CONST32(1));
-				ST_REG(val, ECX_idx);
+				val = SUB(LD_R32(ECX_idx), CONST32(1));
+				ST_R32(val, ECX_idx);
 				zero = CONST32(0);
 				break;
 
@@ -648,7 +648,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					break;
 
 				case SIZE32:
-					reg = LD_REG(instr.operand[OPNUM_SRC].reg);
+					reg = LD_R32(instr.operand[OPNUM_SRC].reg);
 					break;
 
 				default:
@@ -871,7 +871,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					break;
 
 				case SIZE32:
-					eax = LD_REG(EAX_idx);
+					eax = LD_R32(EAX_idx);
 					val = CONST32(instr.operand[OPNUM_SRC].imm);
 					break;
 
