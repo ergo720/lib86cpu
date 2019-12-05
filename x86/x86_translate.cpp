@@ -631,6 +631,34 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_MOV:
 			switch (instr.opcode_byte)
 			{
+			case 0x88:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x89: {
+				Value *reg, *rm;
+				switch (size_mode)
+				{
+				case SIZE8:
+					reg = LD_R8L(instr.operand[OPNUM_SRC].reg);
+					break;
+
+				case SIZE16:
+					reg = LD_R16(instr.operand[OPNUM_SRC].reg);
+					break;
+
+				case SIZE32:
+					reg = LD_REG(instr.operand[OPNUM_SRC].reg);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+
+				GET_RM(OPNUM_DST, ST_REG_val(reg, rm);, ST_MEM(fn_idx[size_mode], rm, reg););
+			}
+			break;
+
 			case 0x8E: {
 				if (disas_ctx->pe_mode) {
 					BAD_MODE;
