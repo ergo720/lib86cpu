@@ -144,6 +144,27 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			Value *val, *cmp, *sub, *rm;
 			switch (instr.opcode_byte)
 			{
+			case 0x38:
+				size_mode = SIZE8;
+				if (instr.operand[OPNUM_SRC].reg < 4) {
+					val = LD_R8L(instr.operand[OPNUM_SRC].reg);
+				}
+				else {
+					val = LD_R8H(instr.operand[OPNUM_SRC].reg);
+				}
+				GET_RM(OPNUM_DST, cmp = LD_REG_val(rm);, cmp = LD_MEM(fn_idx[size_mode], rm););
+				break;
+
+			case 0x39:
+				if (size_mode == SIZE16) {
+					val = LD_R16(instr.operand[OPNUM_SRC].reg);
+				}
+				else {
+					val = LD_R32(instr.operand[OPNUM_SRC].reg);
+				}
+				GET_RM(OPNUM_DST, cmp = LD_REG_val(rm);, cmp = LD_MEM(fn_idx[size_mode], rm););
+				break;
+
 			case 0x3C:
 				size_mode = SIZE8;
 				val = LD_R8L(EAX_idx);
@@ -165,7 +186,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			case 0x82:
 				assert(instr.reg_opc == 7);
 				size_mode = SIZE8;
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm); , val = LD_MEM(fn_idx[size_mode], rm););
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
 				cmp = CONST8(instr.operand[OPNUM_SRC].imm);
 				break;
 
@@ -682,7 +703,12 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				switch (size_mode)
 				{
 				case SIZE8:
-					reg = LD_R8L(instr.operand[OPNUM_SRC].reg);
+					if (instr.operand[OPNUM_SRC].reg < 4) {
+						reg = LD_R8L(instr.operand[OPNUM_SRC].reg);
+					}
+					else {
+						reg = LD_R8H(instr.operand[OPNUM_SRC].reg);
+					}
 					break;
 
 				case SIZE16:
