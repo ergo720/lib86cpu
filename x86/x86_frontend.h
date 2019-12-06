@@ -89,6 +89,8 @@ default: \
 #define ADD(a,b) BinaryOperator::Create(Instruction::Add, a, b, "", bb)
 #define SUB(a,b) BinaryOperator::Create(Instruction::Sub, a, b, "", bb)
 #define MUL(a,b) BinaryOperator::Create(Instruction::Mul, a, b, "", bb)
+#define UDIV(a,b) BinaryOperator::Create(Instruction::UDiv, a, b, "", bb)
+#define UREM(a,b) BinaryOperator::Create(Instruction::URem, a, b, "", bb)
 #define AND(a,b) BinaryOperator::Create(Instruction::And, a, b, "", bb)
 #define XOR(a,b) BinaryOperator::Create(Instruction::Xor, a, b, "", bb)
 #define OR(a,b) BinaryOperator::Create(Instruction::Or, a, b, "", bb)

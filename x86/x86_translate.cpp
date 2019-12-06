@@ -221,7 +221,53 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_DAA:         BAD;
 		case X86_OPC_DAS:         BAD;
 		case X86_OPC_DEC:         BAD;
-		case X86_OPC_DIV:         BAD;
+		case X86_OPC_DIV: {
+			switch (instr.opcode_byte)
+			{
+			case 0xF6:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xF7: {
+				assert(instr.reg_opc == 6);
+
+				// TODO: division exceptions. This will happily try to divide by zero and doesn't care about overflows
+				Value *val, *reg, *rm;
+				switch (size_mode)
+				{
+				case SIZE8:
+					reg = LD_R16(EAX_idx);
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					ST_REG_val(TRUNC8(UDIV(reg, ZEXT16(val))), GEP_R8L(EAX_idx));
+					ST_REG_val(TRUNC8(UREM(reg, ZEXT16(val))), GEP_R8H(EAX_idx));
+					break;
+
+				case SIZE16:
+					reg = OR(SHL(ZEXT32(LD_R16(EDX_idx)), CONST32(16)), ZEXT32(LD_R16(EAX_idx)));
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					ST_REG_val(TRUNC16(UDIV(reg, ZEXT32(val))), GEP_R16(EAX_idx));
+					ST_REG_val(TRUNC16(UREM(reg, ZEXT32(val))), GEP_R16(EDX_idx));
+					break;
+
+				case SIZE32:
+					reg = OR(SHL(ZEXT64(LD_R32(EDX_idx)), CONST64(32)), ZEXT64(LD_R32(EAX_idx)));
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					ST_REG_val(TRUNC32(UDIV(reg, ZEXT64(val))), GEP_R32(EAX_idx));
+					ST_REG_val(TRUNC32(UREM(reg, ZEXT64(val))), GEP_R32(EDX_idx));
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+			}
+			break;
+
+			default:
+				UNREACHABLE;
+			}
+		}
+		break;
+
 		case X86_OPC_ENTER:       BAD;
 		case X86_OPC_HLT:         BAD;
 		case X86_OPC_IDIV:        BAD;
