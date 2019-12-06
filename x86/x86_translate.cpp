@@ -727,6 +727,16 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			}
 			break;
 
+			case 0x8C: {
+				if (disas_ctx->pe_mode) {
+					BAD_MODE;
+				}
+				Value *val, *rm;
+				val = LD_SEG(instr.operand[OPNUM_SRC].reg + SEG_offset);
+				GET_RM(OPNUM_DST, ST_REG_val(ZEXT32(val), IBITCAST32(rm));, ST_MEM(MEM_LD16_idx, rm, val););
+			}
+			break;
+
 			case 0x8E: {
 				if (disas_ctx->pe_mode) {
 					BAD_MODE;
