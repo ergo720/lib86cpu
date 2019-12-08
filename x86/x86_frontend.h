@@ -158,6 +158,8 @@ default: \
 
 #define LD_PARITY(idx) new LoadInst(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST8(0), idx }, "", bb), "", false, bb)
 
+#define RAISE(expno, eip) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu, CONST8(expno), CONST32(eip) }, "", bb)
+
 // the lazy eflags idea comes from reading these two papers:
 // How Bochs Works Under the Hood (2nd edition) http://bochs.sourceforge.net/How%20the%20Bochs%20works%20under%20the%20hood%202nd%20edition.pdf
 // A Proposal for Hardware-Assisted Arithmetic Overflow Detection for Array and Bitfield Operations http://www.emulators.com/docs/LazyOverflowDetect_Final.pdf

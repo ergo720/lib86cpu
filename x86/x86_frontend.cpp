@@ -43,6 +43,7 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 	std::vector<Type *>type_struct_reg_t_fields;
 	std::vector<Type *>type_struct_seg_t_fields;
 	std::vector<Type *>type_struct_hiddenseg_t_fields;
+	std::vector<Type *>type_struct_reg48_t_fields;
 
 	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
 	StructType *type_struct_hiddenseg_t = StructType::create(_CTX(), type_struct_hiddenseg_t_fields, "struct.hiddenseg_t", false);
@@ -50,6 +51,10 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 	type_struct_seg_t_fields.push_back(getIntegerType(16));
 	type_struct_seg_t_fields.push_back(type_struct_hiddenseg_t);
 	StructType *type_struct_seg_t = StructType::create(_CTX(), type_struct_seg_t_fields, "struct.seg_t", false);
+
+	type_struct_reg48_t_fields.push_back(getIntegerType(32));
+	type_struct_reg48_t_fields.push_back(getIntegerType(16));
+	StructType *type_struct_reg48_t = StructType::create(_CTX(), type_struct_reg48_t_fields, "struct.reg48_t", false);
 
 	for (uint8_t n = 0; n < CPU_NUM_REGS; n++) {
 		switch (n)
@@ -61,6 +66,11 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 		case FS_idx:
 		case GS_idx: {
 			type_struct_reg_t_fields.push_back(type_struct_seg_t);
+		}
+		break;
+
+		case IDTR_idx: {
+			type_struct_reg48_t_fields.push_back(type_struct_reg48_t);
 		}
 		break;
 
@@ -123,6 +133,8 @@ get_mem_fn(cpu_t *cpu, translated_code_t *tc)
 	for (uint8_t i = 0; i < 6; i++) {
 		cpu->ptr_mem_stfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_st[i], getVoidType(), PointerType::get(getIntegerType(8), 0), getIntegerType(arg_size[i]), getIntegerType(bit_size[i])));
 	}
+
+	cpu->exp_fn = cast<Function>(tc->mod->getOrInsertFunction("cpu_raise_exception", getVoidType(), PointerType::get(getIntegerType(8), 0), getIntegerType(8), getIntegerType(32)));
 }
 
 FunctionType *

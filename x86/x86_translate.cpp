@@ -26,8 +26,46 @@ get_instr_name(unsigned num)
 	return mnemo[num];
 }
 
+[[noreturn]] void
+cpu_raise_exception(uint8_t *cpu2, uint8_t expno, uint32_t eip)
+{
+	cpu_t *cpu = reinterpret_cast<cpu_t *>(cpu2);
+
+	if (CPU_PE_MODE) {
+		printf("Exceptions are unsupported in protected mode (for now)\n");
+		exit(1);
+	}
+
+	// write to the stack eflags, cs and eip
+	addr_t stack_base = cpu->regs.ss_hidden.base + (cpu->regs.esp & 0x0000FFFF);
+	ram_write<uint16_t>(cpu, &stack_base, cpu->regs.eflags |
+		((cpu->lazy_eflags.auxbits & 0x80000000) >> 31) |
+		((cpu->lazy_eflags.parity[(cpu->lazy_eflags.result & 0xFF) ^ ((cpu->lazy_eflags.auxbits & 0xFF00) >> 8)] ^ 1) << 2) |
+		((cpu->lazy_eflags.auxbits & 8) << 1) |
+		((cpu->lazy_eflags.result == 0) << 6) |
+		(((cpu->lazy_eflags.result & 0x80000000) >> 31) ^ (cpu->lazy_eflags.auxbits & 1) << 7) |
+		(((cpu->lazy_eflags.auxbits & 0x80000000) ^ ((cpu->lazy_eflags.auxbits & 0x40000000) << 1)) >> 20)
+		);
+	ram_write<uint16_t>(cpu, &stack_base, cpu->regs.cs);
+	ram_write<uint16_t>(cpu, &stack_base, eip);
+	cpu->regs.esp -= 6;
+
+	// clear IF, TF, RF and AC flags
+	cpu->regs.eflags &= ~(TF_MASK | IF_MASK | RF_MASK | AC_MASK);
+
+	// transfer program control to the exception handler specified in the idt
+	addr_t vec_addr = cpu->regs.idtr_base + expno * 4;
+	uint32_t vec_entry = ram_read<uint32_t>(cpu, &vec_addr);
+	cpu->regs.cs = (vec_entry & 0xFFFF0000) >> 16;
+	cpu->regs.cs_hidden.base = cpu->regs.cs << 4;
+	cpu->regs.eip = vec_entry & 0x0000FFFF;
+
+	// throw an exception to forcefully exit from the current code block
+	throw cpu;
+}
+
 static lib86cpu_status
-cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *tc)
+cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *tc, bool *exp_active)
 {
 	bool translate_next = true;
 	size_t instr_size = 0;
@@ -741,8 +779,9 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				if (disas_ctx->pe_mode) {
 					BAD_MODE;
 				}
-				// assert that we are not loading the CS or a reserved register. TODO: this should raise an exception
-				assert(instr.operand[OPNUM_DST].reg != 1 && instr.operand[OPNUM_DST].reg < 6);
+				if (instr.operand[OPNUM_DST].reg == 1 || instr.operand[OPNUM_DST].reg > 5) {
+					RAISE(EXP_UD, pc - cpu->regs.cs_hidden.base);
+				}
 				Value *val, *rm;
 				GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(MEM_LD16_idx, rm););
 				ST_SEG(val, instr.operand[OPNUM_DST].reg + SEG_offset);
@@ -1069,14 +1108,15 @@ get_pc(cpu_t *cpu)
 }
 
 lib86cpu_status
-cpu_exec_tc(cpu_t *cpu)
+cpu_exec_tc(cpu_t *cpu, bool exp)
 {
 	lib86cpu_status status = LIB86CPU_SUCCESS;
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
 	entry_t entry = nullptr;
 	static uint64_t func_idx = 0ULL;
+	bool exp_block = exp;
 
-	// this will exit only in the case of errors
+	// this will exit only in the case of errors or exceptions
 	while (true) {
 
 		addr_t pc = get_ram_addr(cpu, get_pc(cpu));
@@ -1098,6 +1138,8 @@ cpu_exec_tc(cpu_t *cpu)
 				return status;
 			}
 
+			tc->exp_block = exp_block;
+
 			// add to the module the memory functions that will be called when the guest needs to access the memory
 			get_mem_fn(cpu, tc.get());
 
@@ -1111,7 +1153,7 @@ cpu_exec_tc(cpu_t *cpu)
 			disas_ctx.bb = BasicBlock::Create(_CTX(), "", func, 0);
 
 			// start guest code translation
-			status = cpu_translate(cpu, pc, &disas_ctx, tc.get());
+			status = cpu_translate(cpu, pc, &disas_ctx, tc.get(), &exp_block);
 			if (!LIB86CPU_CHECK_SUCCESS(status)) {
 				delete tc->mod;
 				delete tc->ctx;
@@ -1160,7 +1202,10 @@ cpu_exec_tc(cpu_t *cpu)
 		}
 
 		// see if we can link the previous tc with the current one
-		if (prev_tc != nullptr) {
+		if (prev_tc != nullptr &&
+			((ptr_tc->exp_block == false && prev_tc->exp_block == false) ||
+			(ptr_tc->exp_block == true && prev_tc->exp_block == true))
+			) {
 
 		// llvm marks the generated code memory as read/execute (it's done by Memory::protectMappedMemory), which triggers an access violation when
 		// we try to write to it during the tc linking phase. So, we temporarily mark it as writable and then restore the write protection.
@@ -1202,8 +1247,14 @@ cpu_exec_tc(cpu_t *cpu)
 
 		prev_tc = ptr_tc;
 
-		// run the translated code
-		entry = static_cast<entry_t>(ptr_tc->ptr_code);
-		entry(0, reinterpret_cast<uint8_t *>(cpu), &cpu->regs, &cpu->lazy_eflags);
+		try {
+			// run the translated code
+			entry = static_cast<entry_t>(ptr_tc->ptr_code);
+			entry(0, reinterpret_cast<uint8_t *>(cpu), &cpu->regs, &cpu->lazy_eflags);
+		}
+		catch (cpu_t *cpu) {
+			// don't link the exception code with the other code blocks
+			return LIB86CPU_EXCEPTION;
+		}
 	}
 }

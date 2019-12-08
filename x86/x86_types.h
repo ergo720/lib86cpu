@@ -11,6 +11,12 @@
 		uint32_t		_reg;	\
 	}
 
+#define DEFINE_REG48(_reg)			\
+	struct {				\
+		uint32_t		_reg ## _base;	\
+		uint16_t		_reg ## _limit;	\
+	}
+
 #define DEFINE_SEG_REG(_reg)			\
 	struct {				\
 		uint16_t		_reg;	\
@@ -60,4 +66,6 @@ struct regs_t {
 
 	DEFINE_REG32(eflags);
 	DEFINE_REG32(eip);
+
+	DEFINE_REG48(idtr);
 };

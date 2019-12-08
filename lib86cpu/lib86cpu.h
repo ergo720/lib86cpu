@@ -33,12 +33,13 @@ using namespace llvm;
 
 // lib86cpu error flags
 enum lib86cpu_status {
-	LIB86CPU_NO_MEMORY = -6,
+	LIB86CPU_NO_MEMORY = -7,
 	LIB86CPU_INVALID_PARAMETER,
 	LIB86CPU_LLVM_ERROR,
 	LIB86CPU_UNKNOWN_INSTR,
 	LIB86CPU_OP_NOT_IMPLEMENTED,
 	LIB86CPU_UNREACHABLE,
+	LIB86CPU_EXCEPTION,
 	LIB86CPU_SUCCESS,
 };
 
@@ -53,7 +54,7 @@ enum lib86cpu_status {
 
 #define CPU_INTEL_SYNTAX_SHIFT  1
 
-#define CPU_NUM_REGS 29
+#define CPU_NUM_REGS 30
 
 #ifdef DEBUG_LOG
 #define LOG(...) do { printf(__VA_ARGS__); } while(0)
@@ -109,6 +110,7 @@ struct translated_code_t {
 	void *ptr_code;
 	void *jmp_offset[3];
 	size_t jmp_code_size;
+	bool exp_block;
 };
 
 struct disas_ctx_t {
@@ -153,6 +155,7 @@ struct cpu_t {
 	Value *ptr_eflags;
 	Function *ptr_mem_ldfn[3];
 	Function *ptr_mem_stfn[6];
+	Function *exp_fn;
 };
 
 // cpu api

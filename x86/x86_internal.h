@@ -9,10 +9,11 @@
 #include "x86_decode.h"
 
 void cpu_x86_init(cpu_t *cpu);
-lib86cpu_status cpu_exec_tc(cpu_t *cpu);
+lib86cpu_status cpu_exec_tc(cpu_t *cpu, bool exp);
 void tc_protect(void* addr, size_t size, bool ro);
 int disasm_instr(cpu_t *cpu, addr_t pc, x86_instr *instr, char *line, unsigned int max_line);
 int decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc);
+JIT_EXTERNAL_CALL_C void cpu_raise_exception(uint8_t *cpu2, uint8_t expno, uint32_t eip);
 
 extern const char *mnemo[];
 
@@ -46,6 +47,7 @@ extern const char *mnemo[];
 #define DR7_idx     26
 #define EFLAGS_idx  27
 #define EIP_idx     28
+#define IDTR_idx    29
 
 #define CF_shift    0
 #define PF_shift    2
@@ -64,6 +66,30 @@ extern const char *mnemo[];
 #define VIF_shift   19
 #define VIP_shift   20
 #define ID_shift    21
+#define TF_MASK     (1 << TF_shift)
+#define IF_MASK     (1 << IF_shift)
+#define RF_MASK     (1 << RF_shift)
+#define AC_MASK     (1 << AC_shift)
+
+// exception numbers
+#define EXP_DE  0   // divide error
+#define EXP_DB  1   // debug
+#define EXP_NMI 2   // non-maskable interrupt
+#define EXP_BP  3   // breakpoint
+#define EXP_OF  4   // overflow
+#define EXP_BR  5   // bound range exceeded
+#define EXP_UD  6   // invalid opcode
+#define EXP_NM  7   // no math coprocessor
+#define EXP_DF  8   // double fault
+#define EXP_TS  10  // invalid TSS
+#define EXP_NP  11  // segment not present
+#define EXP_SS  12  // stack segment fault
+#define EXP_GP  13  // general protection
+#define EXP_PF  14  // page fault
+#define EXP_MF  16  // math fault
+#define EXP_AC  17  // alignment check
+#define EXP_MC  18  // machine check
+#define EXP_XF  19  // SIMD floating point exception
 
 #define SEG_offset  8
 
