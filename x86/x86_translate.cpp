@@ -1184,9 +1184,9 @@ cpu_exec_tc(cpu_t *cpu, bool exp)
 
 			tc->ptr_code = (void *)(cpu->jit->lookup("start_" + std::to_string(func_idx))->getAddress());
 			assert(tc->ptr_code);
-			tc->jmp_offset[0] = (void *)(cpu->jit->lookupLinkerMangled("_tail_" + std::to_string(func_idx))->getAddress()); // TODO: how to retrieve the mangled name?
+			tc->jmp_offset[0] = (void *)(cpu->jit->lookup("tail_" + std::to_string(func_idx))->getAddress());
 			tc->jmp_offset[1] = nullptr;
-			tc->jmp_offset[2] = (void *)(cpu->jit->lookupLinkerMangled("_main_" + std::to_string(func_idx))->getAddress());
+			tc->jmp_offset[2] = (void *)(cpu->jit->lookup("main_" + std::to_string(func_idx))->getAddress());
 			assert(tc->jmp_offset[0] && tc->jmp_offset[2]);
 
 			// llvm will delete the context and the module by itself, so we just null both the pointers now to prevent accidental usage
