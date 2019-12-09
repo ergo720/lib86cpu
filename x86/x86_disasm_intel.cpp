@@ -153,10 +153,10 @@ static const char *prefix_names[] = {
 	"rep ",
 };
 
-static const char *sign_to_str(int n)
+static const char *sign_to_str(int n, const char *ret)
 {
 	if (n >= 0)
-		return "+";
+		return ret;
 
 	return "-";
 }
@@ -308,7 +308,7 @@ print_operand(addr_t pc, char *operands, size_t size, struct x86_instr *instr, s
 		ret = snprintf(operands, size, "%s", to_dbg_reg_name(instr, operand->reg));
 		break;
 	case OPTYPE_MOFFSET:
-		ret = snprintf(operands, size, "%s0x%x", instr->seg_override ? seg_override_names[instr->seg_override] : "ds:", abs(operand->disp));
+		ret = snprintf(operands, size, "%s%s0x%x", instr->seg_override ? seg_override_names[instr->seg_override] : "ds:", sign_to_str(operand->disp, ""), abs(operand->disp));
 		break;
 	case OPTYPE_MEM:
 		ret = snprintf(operands, size, "%s%s[%s]", add_operand_prefix(instr), seg_override_names[instr->seg_override], to_mem_reg_name(instr, operand->reg, pe));
@@ -317,17 +317,17 @@ print_operand(addr_t pc, char *operands, size_t size, struct x86_instr *instr, s
 		switch (((instr->addr_size_override ^ pe) << 16) | (instr->mod << 8) | instr->rm) {
 		case 65541: // 1, 0, 5
 		case 6:     // 0, 0, 6
-			ret = snprintf(operands, size, "%s%s0x%x", add_operand_prefix(instr), instr->seg_override ? seg_override_names[instr->seg_override] : "ds:", abs(operand->disp));
+			ret = snprintf(operands, size, "%s%s%s0x%x", add_operand_prefix(instr), instr->seg_override ? seg_override_names[instr->seg_override] : "ds:", sign_to_str(operand->disp, ""), abs(operand->disp));
 			break;
 		default:
-			ret = snprintf(operands, size, "%s%s[%s%s0x%x]", add_operand_prefix(instr), seg_override_names[instr->seg_override], to_mem_reg_name(instr, operand->reg, pe), sign_to_str(operand->disp), abs(operand->disp));
+			ret = snprintf(operands, size, "%s%s[%s%s0x%x]", add_operand_prefix(instr), seg_override_names[instr->seg_override], to_mem_reg_name(instr, operand->reg, pe), sign_to_str(operand->disp, "+"), abs(operand->disp));
 		}
 		break;
 	case OPTYPE_SIB_MEM:
 		ret = snprintf(operands, size, "%s%s[%s%s%s]", add_operand_prefix(instr), seg_override_names[instr->seg_override], sib_reg_base_names[instr->base], sib_reg_idx_names[instr->idx], sib_scale_names[instr->scale]);
 		break;
 	case OPTYPE_SIB_DISP:
-		ret = snprintf(operands, size, "%s%s[%s%s%s%s0x%x]", add_operand_prefix(instr), seg_override_names[instr->seg_override], to_sib_base_name(instr), sib_reg_idx_names[instr->idx], sib_scale_names[instr->scale], sign_to_str(operand->disp), abs(operand->disp));
+		ret = snprintf(operands, size, "%s%s[%s%s%s%s0x%x]", add_operand_prefix(instr), seg_override_names[instr->seg_override], to_sib_base_name(instr), sib_reg_idx_names[instr->idx], sib_scale_names[instr->scale], sign_to_str(operand->disp, "+"), abs(operand->disp));
 		break;
 	default:
 		break;
