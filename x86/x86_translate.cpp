@@ -36,9 +36,9 @@ cpu_raise_exception(uint8_t *cpu2, uint8_t expno, uint32_t eip)
 		exit(1);
 	}
 
-	// write to the stack eflags, cs and eip
-	addr_t stack_base = cpu->regs.ss_hidden.base + (cpu->regs.esp & 0x0000FFFF);
-	ram_write<uint16_t>(cpu, &stack_base, cpu->regs.eflags |
+	// push to the stack eflags, cs and eip
+	addr_t stack_base = cpu->regs.ss_hidden.base + (cpu->regs.esp & 0x0000FFFF) - 2;
+	mem_write<uint16_t>(cpu, stack_base, cpu->regs.eflags |
 		((cpu->lazy_eflags.auxbits & 0x80000000) >> 31) |
 		((cpu->lazy_eflags.parity[(cpu->lazy_eflags.result & 0xFF) ^ ((cpu->lazy_eflags.auxbits & 0xFF00) >> 8)] ^ 1) << 2) |
 		((cpu->lazy_eflags.auxbits & 8) << 1) |
@@ -46,9 +46,11 @@ cpu_raise_exception(uint8_t *cpu2, uint8_t expno, uint32_t eip)
 		(((cpu->lazy_eflags.result & 0x80000000) >> 31) ^ (cpu->lazy_eflags.auxbits & 1) << 7) |
 		(((cpu->lazy_eflags.auxbits & 0x80000000) ^ ((cpu->lazy_eflags.auxbits & 0x40000000) << 1)) >> 20)
 		);
-	ram_write<uint16_t>(cpu, &stack_base, cpu->regs.cs);
-	ram_write<uint16_t>(cpu, &stack_base, eip);
-	cpu->regs.esp -= 6;
+	stack_base -= 2;
+	mem_write<uint16_t>(cpu, stack_base, cpu->regs.cs);
+	stack_base -= 2;
+	mem_write<uint16_t>(cpu, stack_base, eip);
+	cpu->regs.esp = stack_base;
 
 	// clear IF, TF, RF and AC flags
 	cpu->regs.eflags &= ~(TF_MASK | IF_MASK | RF_MASK | AC_MASK);
