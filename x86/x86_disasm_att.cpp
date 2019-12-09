@@ -172,9 +172,9 @@ static const char *to_reg_name(struct x86_instr *instr, unsigned int reg_num)
 	return full_reg_names[reg_num];
 }
 
-static const char *to_mem_reg_name(struct x86_instr *instr, unsigned int reg_num, uint8_t prot)
+static const char *to_mem_reg_name(struct x86_instr *instr, unsigned int reg_num, uint8_t pe)
 {
-	if (instr->addr_size_override ^ prot)
+	if (instr->addr_size_override ^ pe)
 		return mem_reg_names_32[reg_num];
 
 	return mem_reg_names_16[reg_num];
@@ -296,7 +296,7 @@ static const char *add_instr_suffix(struct x86_instr *instr)
 }
 
 static int
-print_operand(addr_t pc, char *operands, size_t size, struct x86_instr *instr, struct x86_operand *operand, uint8_t prot)
+print_operand(addr_t pc, char *operands, size_t size, struct x86_instr *instr, struct x86_operand *operand, uint8_t pe)
 {
 	int ret = 0;
 
@@ -329,16 +329,16 @@ print_operand(addr_t pc, char *operands, size_t size, struct x86_instr *instr, s
 		ret = snprintf(operands, size, "%s0x%x", sign_to_str(operand->disp), abs(operand->disp));
 		break;
 	case OPTYPE_MEM:
-		ret = snprintf(operands, size, "%s(%s)", seg_override_names[instr->seg_override], to_mem_reg_name(instr, operand->reg, prot));
+		ret = snprintf(operands, size, "%s(%s)", seg_override_names[instr->seg_override], to_mem_reg_name(instr, operand->reg, pe));
 		break;
 	case OPTYPE_MEM_DISP:
 		ret = snprintf(operands, size, "%s%s0x%x", seg_override_names[instr->seg_override], sign_to_str(operand->disp), abs(operand->disp));
-		switch ((instr->addr_size_override << 16) | (instr->mod << 8) | instr->rm) {
-		case 5:     // 0, 0, 5
-		case 65542: // 1, 0, 6
+		switch (((instr->addr_size_override ^ pe) << 16) | (instr->mod << 8) | instr->rm) {
+		case 65541:     // 1, 0, 5
+		case 6:         // 0, 0, 6
 			break;
 		default:
-			ret += snprintf(operands+ret, size-ret, "(%s)", to_mem_reg_name(instr, operand->reg, prot));
+			ret += snprintf(operands+ret, size-ret, "(%s)", to_mem_reg_name(instr, operand->reg, pe));
 		}
 		break;
 	case OPTYPE_SIB_MEM:
