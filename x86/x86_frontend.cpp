@@ -70,7 +70,7 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 		break;
 
 		case IDTR_idx: {
-			type_struct_reg48_t_fields.push_back(type_struct_reg48_t);
+			type_struct_reg_t_fields.push_back(type_struct_reg48_t);
 		}
 		break;
 
