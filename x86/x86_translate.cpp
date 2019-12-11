@@ -618,6 +618,8 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0xFF: {
 				if (instr.reg_opc == 5) {
+					BAD;
+#if 0
 					if (disas_ctx->pe_mode) {
 						BAD_MODE;
 					}
@@ -641,6 +643,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					ST_SEG(new_sel, CS_idx);
 					ST_SEG_HIDDEN(SHL(ZEXT32(new_sel), CONST32(4)), CS_idx, SEG_BASE_idx);
 					disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), new_eip);
+#endif
 				}
 				else if(instr.reg_opc == 4) {
 					BAD;
