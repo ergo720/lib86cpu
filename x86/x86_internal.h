@@ -68,6 +68,7 @@ extern const char *mnemo[];
 #define ID_shift    21
 #define TF_MASK     (1 << TF_shift)
 #define IF_MASK     (1 << IF_shift)
+#define DF_MASK     (1 << DF_shift)
 #define RF_MASK     (1 << RF_shift)
 #define AC_MASK     (1 << AC_shift)
 

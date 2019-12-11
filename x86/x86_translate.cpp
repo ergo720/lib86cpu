@@ -149,17 +149,24 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_CBTV:        BAD;
 		case X86_OPC_CDQ:         BAD;
 		case X86_OPC_CLC:         BAD;
-		case X86_OPC_CLD:         BAD;
-		case X86_OPC_CLI:
+		case X86_OPC_CLD: {
+			Value *eflags = LD_R32(EFLAGS_idx);
+			eflags = AND(eflags, CONST32(~DF_MASK));
+			ST_R32(eflags, EFLAGS_idx);
+		}
+		break;
+
+		case X86_OPC_CLI: {
 			if (disas_ctx->pe_mode) {
 				BAD_MODE;
 			}
 			else {
 				Value *eflags = LD_R32(EFLAGS_idx);
-				eflags = AND(eflags, CONST32(~(1 << IF_shift)));
+				eflags = AND(eflags, CONST32(~IF_MASK));
 				ST_R32(eflags, EFLAGS_idx);
 			}
-			break;
+		}
+		break;
 
 		case X86_OPC_CLTD:        BAD;
 		case X86_OPC_CLTS:        BAD;
