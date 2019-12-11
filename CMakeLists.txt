@@ -13,7 +13,7 @@ SET(CMAKE_BUILD_TYPE "Debug")
 
 # Add compiler flags.
 IF(MSVC)
-SET(CMAKE_CXX_FLAGS "/std:c++17 /EHsc")
+SET(CMAKE_CXX_FLAGS "/std:c++17 /EHs")
 ELSE(MSVC)
 SET(CMAKE_CXX_FLAGS "-std=c++17")
 ENDIF(MSVC)
