@@ -67,7 +67,7 @@ cpu_raise_exception(uint8_t *cpu2, uint8_t expno, uint32_t eip)
 }
 
 static lib86cpu_status
-cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *tc, bool *exp_active)
+cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *tc)
 {
 	bool translate_next = true;
 	size_t instr_size = 0;
@@ -1113,15 +1113,14 @@ get_pc(cpu_t *cpu)
 }
 
 lib86cpu_status
-cpu_exec_tc(cpu_t *cpu, bool exp)
+cpu_exec_tc(cpu_t *cpu)
 {
 	lib86cpu_status status = LIB86CPU_SUCCESS;
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
 	entry_t entry = nullptr;
 	static uint64_t func_idx = 0ULL;
-	bool exp_block = exp;
 
-	// this will exit only in the case of errors or exceptions
+	// this will exit only in the case of errors
 	while (true) {
 
 		addr_t pc = get_ram_addr(cpu, get_pc(cpu));
@@ -1143,8 +1142,6 @@ cpu_exec_tc(cpu_t *cpu, bool exp)
 				return status;
 			}
 
-			tc->exp_block = exp_block;
-
 			// add to the module the memory functions that will be called when the guest needs to access the memory
 			get_mem_fn(cpu, tc.get());
 
@@ -1158,7 +1155,7 @@ cpu_exec_tc(cpu_t *cpu, bool exp)
 			disas_ctx.bb = BasicBlock::Create(_CTX(), "", func, 0);
 
 			// start guest code translation
-			status = cpu_translate(cpu, pc, &disas_ctx, tc.get(), &exp_block);
+			status = cpu_translate(cpu, pc, &disas_ctx, tc.get());
 			if (!LIB86CPU_CHECK_SUCCESS(status)) {
 				delete tc->mod;
 				delete tc->ctx;
@@ -1207,10 +1204,7 @@ cpu_exec_tc(cpu_t *cpu, bool exp)
 		}
 
 		// see if we can link the previous tc with the current one
-		if (prev_tc != nullptr &&
-			((ptr_tc->exp_block == false && prev_tc->exp_block == false) ||
-			(ptr_tc->exp_block == true && prev_tc->exp_block == true))
-			) {
+		if (prev_tc != nullptr) {
 
 		// llvm marks the generated code memory as read/execute (it's done by Memory::protectMappedMemory), which triggers an access violation when
 		// we try to write to it during the tc linking phase. So, we temporarily mark it as writable and then restore the write protection.
@@ -1259,7 +1253,7 @@ cpu_exec_tc(cpu_t *cpu, bool exp)
 		}
 		catch (cpu_t *cpu) {
 			// don't link the exception code with the other code blocks
-			return LIB86CPU_EXCEPTION;
+			prev_tc = nullptr;
 		}
 	}
 }

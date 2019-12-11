@@ -129,11 +129,9 @@ cpu_free(cpu_t *cpu)
 lib86cpu_status
 cpu_run(cpu_t *cpu)
 {
-	bool exp = false;
-
 	// main cpu loop
 	while (true) {
-		lib86cpu_status status = cpu_exec_tc(cpu, exp);
+		lib86cpu_status status = cpu_exec_tc(cpu);
 		switch (status)
 		{
 		case LIB86CPU_LLVM_ERROR:
@@ -143,10 +141,6 @@ cpu_run(cpu_t *cpu)
 		case LIB86CPU_UNREACHABLE:
 			// these are fatal errors, simply exit the cpu loop
 			return status;
-
-		case LIB86CPU_EXCEPTION:
-			exp = true;
-			break;
 		}
 	}
 }
