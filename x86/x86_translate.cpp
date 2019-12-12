@@ -278,7 +278,98 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		}
 		break;
 
-		case X86_OPC_CMPS:        BAD;
+		case X86_OPC_CMPS: {
+			switch (instr.opcode_byte)
+			{
+			case 0xA6:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xA7: {
+				Value *val, *df, *sub, *addr1, *addr2, *src1, *src2, *esi, *edi;
+				switch (addr_mode)
+				{
+				case ADDR16:
+					esi = ZEXT32(LD_R16(ESI_idx));
+					addr1 = ADD(LD_SEG_HIDDEN(SEG_offset + instr.seg, SEG_BASE_idx), esi);
+					edi = ZEXT32(LD_R16(EDI_idx));
+					addr2 = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi);
+					break;
+
+				case ADDR32:
+					esi = LD_R32(ESI_idx);
+					addr1 = ADD(LD_SEG_HIDDEN(SEG_offset + instr.seg, SEG_BASE_idx), esi);
+					edi = LD_R32(EDI_idx);
+					addr2 = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+
+				switch (size_mode)
+				{
+				case SIZE8:
+					val = CONST32(1);
+					src1 = LD_MEM(fn_idx[size_mode], addr1);
+					src2 = LD_MEM(fn_idx[size_mode], addr2);
+					sub = SUB(src1, src2);
+					ST_FLG_RES_ext(sub);
+					ST_FLG_SUB_AUX8(src1, src2, sub);
+					break;
+
+				case SIZE16:
+					val = CONST32(2);
+					src1 = LD_MEM(fn_idx[size_mode], addr1);
+					src2 = LD_MEM(fn_idx[size_mode], addr2);
+					sub = SUB(src1, src2);
+					ST_FLG_RES_ext(sub);
+					ST_FLG_SUB_AUX16(src1, src2, sub);
+					break;
+
+				case SIZE32:
+					val = CONST32(4);
+					src1 = LD_MEM(fn_idx[size_mode], addr1);
+					src2 = LD_MEM(fn_idx[size_mode], addr2);
+					sub = SUB(src1, src2);
+					ST_FLG_RES(sub);
+					ST_FLG_SUB_AUX32(src1, src2, sub);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+
+				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
+				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BasicBlock *bb_sub = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
+				disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+
+				bb = bb_sum;
+				esi = ADD(esi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi), ESI_idx) : ST_R32(esi, ESI_idx);
+				edi = ADD(edi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi), EDI_idx) : ST_R32(edi, EDI_idx);
+				BR_UNCOND(disas_ctx->bb, bb);
+
+				bb = bb_sub;
+				esi = SUB(esi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi), ESI_idx) : ST_R32(esi, ESI_idx);
+				edi = SUB(edi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi), EDI_idx) : ST_R32(edi, EDI_idx);
+				BR_UNCOND(disas_ctx->bb, bb);
+
+				bb = disas_ctx->bb;
+			}
+			break;
+
+			default:
+				UNREACHABLE;
+			}
+		}
+		break;
+
 		case X86_OPC_CMPXCHG8B:   BAD;
 		case X86_OPC_CMPXCHG:     BAD;
 		case X86_OPC_CPUID:       BAD;
