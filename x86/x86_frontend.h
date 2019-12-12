@@ -10,7 +10,7 @@
 Value *get_struct_member_pointer(Value *gep_start, const unsigned gep_index, translated_code_t *tc, BasicBlock *bb);
 Value * get_r8h_pointer(Value *gep_start, translated_code_t *tc, BasicBlock *bb);
 
-void get_mem_fn(cpu_t *cpu, translated_code_t *tc);
+void get_ext_fn(cpu_t *cpu, translated_code_t *tc);
 FunctionType * create_tc_fntype(cpu_t *cpu, translated_code_t *tc);
 Function *create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, uint64_t func_idx);
 Function *create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disas_ctx_t *disas_ctx, uint64_t func_idx);

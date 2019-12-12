@@ -1311,8 +1311,8 @@ cpu_exec_tc(cpu_t *cpu)
 				return status;
 			}
 
-			// add to the module the memory functions that will be called when the guest needs to access the memory
-			get_mem_fn(cpu, tc.get());
+			// add to the module the external host functions that will be called by the translated guest code
+			get_ext_fn(cpu, tc.get());
 
 			FunctionType *fntype = create_tc_fntype(cpu, tc.get());
 			Function *func = create_tc_prologue(cpu, tc.get(), fntype, func_idx);

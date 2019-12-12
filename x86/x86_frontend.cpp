@@ -116,7 +116,7 @@ optimize(translated_code_t *tc, Function *func)
 }
 
 void
-get_mem_fn(cpu_t *cpu, translated_code_t *tc)
+get_ext_fn(cpu_t *cpu, translated_code_t *tc)
 {
 	// NOTE: trying to pass a void* results in an assertion failure in getOrInsertFunction ("Invalid type for pointer element!"). Reading online resources,
 	// this seems to be because llvm doesn't support the void* type. Instead, this is usually handled by passing a i8* instead so we do that way
