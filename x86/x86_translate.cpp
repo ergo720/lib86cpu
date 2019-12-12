@@ -286,21 +286,21 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				[[fallthrough]];
 
 			case 0xA7: {
-				Value *val, *df, *sub, *addr1, *addr2, *src1, *src2, *esi, *edi;
+				Value *val1, *val2, *df, *sub, *addr1, *addr2, *src1, *src2, *esi1, *esi2, *edi1, *edi2;
 				switch (addr_mode)
 				{
 				case ADDR16:
-					esi = ZEXT32(LD_R16(ESI_idx));
-					addr1 = ADD(LD_SEG_HIDDEN(SEG_offset + instr.seg, SEG_BASE_idx), esi);
-					edi = ZEXT32(LD_R16(EDI_idx));
-					addr2 = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi);
+					esi1 = esi2 = ZEXT32(LD_R16(ESI_idx));
+					addr1 = ADD(LD_SEG_HIDDEN(SEG_offset + instr.seg, SEG_BASE_idx), esi1);
+					edi1 = edi2 = ZEXT32(LD_R16(EDI_idx));
+					addr2 = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi1);
 					break;
 
 				case ADDR32:
-					esi = LD_R32(ESI_idx);
-					addr1 = ADD(LD_SEG_HIDDEN(SEG_offset + instr.seg, SEG_BASE_idx), esi);
-					edi = LD_R32(EDI_idx);
-					addr2 = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi);
+					esi1 = esi2 = LD_R32(ESI_idx);
+					addr1 = ADD(LD_SEG_HIDDEN(SEG_offset + instr.seg, SEG_BASE_idx), esi1);
+					edi1 = edi2 = LD_R32(EDI_idx);
+					addr2 = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi1);
 					break;
 
 				default:
@@ -310,7 +310,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				switch (size_mode)
 				{
 				case SIZE8:
-					val = CONST32(1);
+					val1 = val2 = CONST32(1);
 					src1 = LD_MEM(fn_idx[size_mode], addr1);
 					src2 = LD_MEM(fn_idx[size_mode], addr2);
 					sub = SUB(src1, src2);
@@ -319,7 +319,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					break;
 
 				case SIZE16:
-					val = CONST32(2);
+					val1 = val2 = CONST32(2);
 					src1 = LD_MEM(fn_idx[size_mode], addr1);
 					src2 = LD_MEM(fn_idx[size_mode], addr2);
 					sub = SUB(src1, src2);
@@ -328,7 +328,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					break;
 
 				case SIZE32:
-					val = CONST32(4);
+					val1 = val2 = CONST32(4);
 					src1 = LD_MEM(fn_idx[size_mode], addr1);
 					src2 = LD_MEM(fn_idx[size_mode], addr2);
 					sub = SUB(src1, src2);
@@ -347,17 +347,17 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
 				bb = bb_sum;
-				esi = ADD(esi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi), ESI_idx) : ST_R32(esi, ESI_idx);
-				edi = ADD(edi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi), EDI_idx) : ST_R32(edi, EDI_idx);
+				esi1 = ADD(esi1, val1);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi1), ESI_idx) : ST_R32(esi1, ESI_idx);
+				edi1 = ADD(edi1, val1);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi1), EDI_idx) : ST_R32(edi1, EDI_idx);
 				BR_UNCOND(disas_ctx->bb, bb);
 
 				bb = bb_sub;
-				esi = SUB(esi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi), ESI_idx) : ST_R32(esi, ESI_idx);
-				edi = SUB(edi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi), EDI_idx) : ST_R32(edi, EDI_idx);
+				esi2 = SUB(esi2, val2);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi2), ESI_idx) : ST_R32(esi2, ESI_idx);
+				edi2 = SUB(edi2, val2);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi2), EDI_idx) : ST_R32(edi2, EDI_idx);
 				BR_UNCOND(disas_ctx->bb, bb);
 
 				bb = disas_ctx->bb;
@@ -770,7 +770,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				[[fallthrough]];
 
 			case 0xAD: {
-				Value *val, *df, *addr, *src, *esi;
+				Value *val1, *val2, *df, *addr, *src, *esi;
 				switch (addr_mode)
 				{
 				case ADDR16:
@@ -790,19 +790,19 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				switch (size_mode)
 				{
 				case SIZE8:
-					val = CONST32(1);
+					val1 = val2 = CONST32(1);
 					src = LD_MEM(fn_idx[size_mode], addr);
 					ST_R8L(src, EAX_idx);
 					break;
 
 				case SIZE16:
-					val = CONST32(2);
+					val1 = val2 = CONST32(2);
 					src = LD_MEM(fn_idx[size_mode], addr);
 					ST_R16(src, EAX_idx);
 					break;
 
 				case SIZE32:
-					val = CONST32(4);
+					val1 = val2 = CONST32(4);
 					src = LD_MEM(fn_idx[size_mode], addr);
 					ST_R32(src, EAX_idx);
 					break;
@@ -818,13 +818,13 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
 				bb = bb_sum;
-				esi = ADD(esi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi), ESI_idx) : ST_R32(esi, ESI_idx);
+				val1 = ADD(esi, val1);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(val1), ESI_idx) : ST_R32(val1, ESI_idx);
 				BR_UNCOND(disas_ctx->bb, bb);
 
 				bb = bb_sub;
-				esi = SUB(esi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi), ESI_idx) : ST_R32(esi, ESI_idx);
+				val2 = SUB(esi, val2);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(val2), ESI_idx) : ST_R32(val2, ESI_idx);
 				BR_UNCOND(disas_ctx->bb, bb);
 
 				bb = disas_ctx->bb;
@@ -1033,21 +1033,21 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				[[fallthrough]];
 
 			case 0xA5: {
-				Value *val, *df, *addr1, *addr2, *src, *esi, *edi;
+				Value *val1, *val2, *df, *addr1, *addr2, *src, *esi1, *esi2, *edi1, *edi2;
 				switch (addr_mode)
 				{
 				case ADDR16:
-					esi = ZEXT32(LD_R16(ESI_idx));
-					addr1 = ADD(LD_SEG_HIDDEN(SEG_offset + instr.seg, SEG_BASE_idx), esi);
-					edi = ZEXT32(LD_R16(EDI_idx));
-					addr2 = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi);
+					esi1 = esi2 = ZEXT32(LD_R16(ESI_idx));
+					addr1 = ADD(LD_SEG_HIDDEN(SEG_offset + instr.seg, SEG_BASE_idx), esi1);
+					edi1 = edi2 = ZEXT32(LD_R16(EDI_idx));
+					addr2 = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi1);
 					break;
 
 				case ADDR32:
-					esi = LD_R32(ESI_idx);
-					addr1 = ADD(LD_SEG_HIDDEN(SEG_offset + instr.seg, SEG_BASE_idx), esi);
-					edi = LD_R32(EDI_idx);
-					addr2 = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi);
+					esi1 = esi2 = LD_R32(ESI_idx);
+					addr1 = ADD(LD_SEG_HIDDEN(SEG_offset + instr.seg, SEG_BASE_idx), esi1);
+					edi1 = edi2 = LD_R32(EDI_idx);
+					addr2 = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi1);
 					break;
 
 				default:
@@ -1057,19 +1057,19 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				switch (size_mode)
 				{
 				case SIZE8:
-					val = CONST32(1);
+					val1 = val2 = CONST32(1);
 					src = LD_MEM(fn_idx[size_mode], addr1);
 					ST_MEM(fn_idx[size_mode], addr2, src);
 					break;
 
 				case SIZE16:
-					val = CONST32(2);
+					val1 = val2 = CONST32(2);
 					src = LD_MEM(fn_idx[size_mode], addr1);
 					ST_MEM(fn_idx[size_mode], addr2, src);
 					break;
 
 				case SIZE32:
-					val = CONST32(4);
+					val1 = val2 = CONST32(4);
 					src = LD_MEM(fn_idx[size_mode], addr1);
 					ST_MEM(fn_idx[size_mode], addr2, src);
 					break;
@@ -1085,17 +1085,17 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
 				bb = bb_sum;
-				esi = ADD(esi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi), ESI_idx) : ST_R32(esi, ESI_idx);
-				edi = ADD(edi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi), EDI_idx) : ST_R32(edi, EDI_idx);
+				esi1 = ADD(esi1, val1);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi1), ESI_idx) : ST_R32(esi1, ESI_idx);
+				edi1 = ADD(edi1, val1);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi1), EDI_idx) : ST_R32(edi1, EDI_idx);
 				BR_UNCOND(disas_ctx->bb, bb);
 
 				bb = bb_sub;
-				esi = SUB(esi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi), ESI_idx) : ST_R32(esi, ESI_idx);
-				edi = SUB(edi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi), EDI_idx) : ST_R32(edi, EDI_idx);
+				esi2 = SUB(esi2, val2);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi2), ESI_idx) : ST_R32(esi2, ESI_idx);
+				edi2 = SUB(edi2, val2);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi2), EDI_idx) : ST_R32(edi2, EDI_idx);
 				BR_UNCOND(disas_ctx->bb, bb);
 
 				bb = disas_ctx->bb;
@@ -1227,7 +1227,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				[[fallthrough]];
 
 			case 0xAF: {
-				Value *val, *df, *sub, *addr, *src, *edi, *eax;
+				Value *val1, *val2, *df, *sub, *addr, *src, *edi, *eax;
 				switch (addr_mode)
 				{
 				case ADDR16:
@@ -1247,7 +1247,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				switch (size_mode)
 				{
 				case SIZE8:
-					val = CONST32(1);
+					val1 = val2 = CONST32(1);
 					src = LD_MEM(fn_idx[size_mode], addr);
 					eax = LD_R8L(EAX_idx);
 					sub = SUB(eax, src);
@@ -1256,7 +1256,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					break;
 
 				case SIZE16:
-					val = CONST32(2);
+					val1 = val2 = CONST32(2);
 					src = LD_MEM(fn_idx[size_mode], addr);
 					eax = LD_R16(EAX_idx);
 					sub = SUB(eax, src);
@@ -1265,7 +1265,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					break;
 
 				case SIZE32:
-					val = CONST32(4);
+					val1 = val2 = CONST32(4);
 					src = LD_MEM(fn_idx[size_mode], addr);
 					eax = LD_R32(EAX_idx);
 					sub = SUB(eax, src);
@@ -1284,13 +1284,13 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
 				bb = bb_sum;
-				edi = ADD(edi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi), EDI_idx) : ST_R32(edi, EDI_idx);
+				val1 = ADD(edi, val1);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(val1), EDI_idx) : ST_R32(val1, EDI_idx);
 				BR_UNCOND(disas_ctx->bb, bb);
 
 				bb = bb_sub;
-				edi = SUB(edi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi), EDI_idx) : ST_R32(edi, EDI_idx);
+				val2 = SUB(edi, val2);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(val2), EDI_idx) : ST_R32(val2, EDI_idx);
 				BR_UNCOND(disas_ctx->bb, bb);
 
 				bb = disas_ctx->bb;
@@ -1367,7 +1367,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				[[fallthrough]];
 
 			case 0xAB: {
-				Value *val, *df, *addr, *edi;
+				Value *val1, *val2, *df, *addr, *edi;
 				switch (addr_mode)
 				{
 				case ADDR16:
@@ -1387,17 +1387,17 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				switch (size_mode)
 				{
 				case SIZE8:
-					val = CONST32(1);
+					val1 = val2 = CONST32(1);
 					ST_MEM(fn_idx[size_mode], addr, LD_R8L(EAX_idx));
 					break;
 
 				case SIZE16:
-					val = CONST32(2);
+					val1 = val2 = CONST32(2);
 					ST_MEM(fn_idx[size_mode], addr, LD_R16(EAX_idx));
 					break;
 
 				case SIZE32:
-					val = CONST32(4);
+					val1 = val2 = CONST32(4);
 					ST_MEM(fn_idx[size_mode], addr, LD_R32(EAX_idx));
 					break;
 
@@ -1412,13 +1412,13 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
 				bb = bb_sum;
-				edi = ADD(edi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi), EDI_idx) : ST_R32(edi, EDI_idx);
+				val1 = ADD(edi, val1);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(val1), EDI_idx) : ST_R32(val1, EDI_idx);
 				BR_UNCOND(disas_ctx->bb, bb);
 
 				bb = bb_sub;
-				edi = SUB(edi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi), EDI_idx) : ST_R32(edi, EDI_idx);
+				val2 = SUB(edi, val2);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(val2), EDI_idx) : ST_R32(val2, EDI_idx);
 				BR_UNCOND(disas_ctx->bb, bb);
 
 				bb = disas_ctx->bb;
