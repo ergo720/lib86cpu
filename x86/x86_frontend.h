@@ -142,6 +142,7 @@ default: \
 
 #define ST_R32(val, idx) new StoreInst(val, GEP(cpu->ptr_regs, idx), bb)
 #define ST_R16(val, idx) new StoreInst(val, GEP_R16(idx), bb)
+#define ST_R8L(val, idx) new StoreInst(val, GEP_R8L(idx), bb)
 #define ST_REG_val(val, reg) new StoreInst(val, reg, bb)
 #define ST_SEG(val, seg) new StoreInst(val, GEP_SEL(seg), bb)
 #define ST_SEG_HIDDEN(val, seg, idx) new StoreInst(val, GEP(GEP(GEP(cpu->ptr_regs, seg), SEG_HIDDEN_idx), idx), bb)

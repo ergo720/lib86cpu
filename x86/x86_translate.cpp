@@ -762,7 +762,81 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 		case X86_OPC_LLDT:        BAD;
 		case X86_OPC_LMSW:        BAD;
-		case X86_OPC_LODS:        BAD;
+		case X86_OPC_LODS: {
+			switch (instr.opcode_byte)
+			{
+			case 0xAC:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xAD: {
+				Value *val, *df, *addr, *src, *esi;
+				switch (addr_mode)
+				{
+				case ADDR16:
+					esi = ZEXT32(LD_R16(ESI_idx));
+					addr = ADD(LD_SEG_HIDDEN(SEG_offset + instr.seg, SEG_BASE_idx), esi);
+					break;
+
+				case ADDR32:
+					esi = LD_R32(ESI_idx);
+					addr = ADD(LD_SEG_HIDDEN(SEG_offset + instr.seg, SEG_BASE_idx), esi);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+
+				switch (size_mode)
+				{
+				case SIZE8:
+					val = CONST32(1);
+					src = LD_MEM(fn_idx[size_mode], addr);
+					ST_R8L(src, EAX_idx);
+					break;
+
+				case SIZE16:
+					val = CONST32(2);
+					src = LD_MEM(fn_idx[size_mode], addr);
+					ST_R16(src, EAX_idx);
+					break;
+
+				case SIZE32:
+					val = CONST32(4);
+					src = LD_MEM(fn_idx[size_mode], addr);
+					ST_R32(src, EAX_idx);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+
+				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
+				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BasicBlock *bb_sub = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
+				disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+
+				bb = bb_sum;
+				esi = ADD(esi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi), ESI_idx) : ST_R32(esi, ESI_idx);
+				BR_UNCOND(disas_ctx->bb, bb);
+
+				bb = bb_sub;
+				esi = SUB(esi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi), ESI_idx) : ST_R32(esi, ESI_idx);
+				BR_UNCOND(disas_ctx->bb, bb);
+
+				bb = disas_ctx->bb;
+			}
+			break;
+
+			default:
+				UNREACHABLE;
+			}
+		}
+		break;
+
 		case X86_OPC_LOOP:
 		case X86_OPC_LOOPE:
 		case X86_OPC_LOOPNE: {
