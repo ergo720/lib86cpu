@@ -1351,7 +1351,13 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_SLDT:        BAD;
 		case X86_OPC_SMSW:        BAD;
 		case X86_OPC_STC:         BAD;
-		case X86_OPC_STD:         BAD;
+		case X86_OPC_STD: {
+			Value *eflags = LD_R32(EFLAGS_idx);
+			eflags = OR(eflags, CONST32(DF_MASK));
+			ST_R32(eflags, EFLAGS_idx);
+		}
+		break;
+
 		case X86_OPC_STI:         BAD;
 		case X86_OPC_STOS: {
 			switch (instr.opcode_byte)
