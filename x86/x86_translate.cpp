@@ -1063,7 +1063,90 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_SAL:         BAD;
 		case X86_OPC_SAR:         BAD;
 		case X86_OPC_SBB:         BAD;
-		case X86_OPC_SCAS:        BAD;
+		case X86_OPC_SCAS: {
+			switch (instr.opcode_byte)
+			{
+			case 0xAE:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xAF: {
+				Value *val, *df, *sub, *addr, *src, *edi, *eax;
+				switch (addr_mode)
+				{
+				case ADDR16:
+					edi = ZEXT32(LD_R16(EDI_idx));
+					addr = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi);
+					break;
+
+				case ADDR32:
+					edi = LD_R32(EDI_idx);
+					addr = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+
+				switch (size_mode)
+				{
+				case SIZE8:
+					val = CONST32(1);
+					src = LD_MEM(fn_idx[size_mode], addr);
+					eax = LD_R8L(EAX_idx);
+					sub = SUB(eax, src);
+					ST_FLG_RES_ext(sub);
+					ST_FLG_SUB_AUX8(eax, src, sub);
+					break;
+
+				case SIZE16:
+					val = CONST32(2);
+					src = LD_MEM(fn_idx[size_mode], addr);
+					eax = LD_R16(EAX_idx);
+					sub = SUB(eax, src);
+					ST_FLG_RES_ext(sub);
+					ST_FLG_SUB_AUX16(eax, src, sub);
+					break;
+
+				case SIZE32:
+					val = CONST32(4);
+					src = LD_MEM(fn_idx[size_mode], addr);
+					eax = LD_R32(EAX_idx);
+					sub = SUB(eax, src);
+					ST_FLG_RES(sub);
+					ST_FLG_SUB_AUX32(eax, src, sub);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+
+				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
+				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BasicBlock *bb_sub = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
+				disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+
+				bb = bb_sum;
+				edi = ADD(edi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi), EDI_idx) : ST_R32(edi, EDI_idx);
+				BR_UNCOND(disas_ctx->bb, bb);
+
+				bb = bb_sub;
+				edi = SUB(edi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi), EDI_idx) : ST_R32(edi, EDI_idx);
+				BR_UNCOND(disas_ctx->bb, bb);
+
+				bb = disas_ctx->bb;
+			}
+			break;
+
+			default:
+				UNREACHABLE;
+			}
+		}
+		break;
+
 		case X86_OPC_SETA:        BAD;
 		case X86_OPC_SETB:        BAD;
 		case X86_OPC_SETBE:       BAD;
@@ -1167,13 +1250,13 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
 				bb = bb_sum;
-				val = ADD(edi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(val), EDI_idx) : ST_R32(val, EDI_idx);
+				edi = ADD(edi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi), EDI_idx) : ST_R32(edi, EDI_idx);
 				BR_UNCOND(disas_ctx->bb, bb);
 
 				bb = bb_sub;
-				val = SUB(edi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(val), EDI_idx) : ST_R32(val, EDI_idx);
+				edi = SUB(edi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi), EDI_idx) : ST_R32(edi, EDI_idx);
 				BR_UNCOND(disas_ctx->bb, bb);
 
 				bb = disas_ctx->bb;
