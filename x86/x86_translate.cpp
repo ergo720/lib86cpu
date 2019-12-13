@@ -287,6 +287,12 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0xA7: {
 				Value *val, *df, *sub, *addr1, *addr2, *src1, *src2, *esi, *edi;
+				BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+
+				if (instr.rep_prefix) {
+					REP_start();
+				}
+
 				switch (addr_mode)
 				{
 				case ADDR16:
@@ -344,23 +350,50 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 				BasicBlock *bb_sub = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
-				disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
 				bb = bb_sum;
 				Value *esi_sum = ADD(esi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sum), ESI_idx) : ST_R32(esi_sum, ESI_idx);
 				Value *edi_sum = ADD(edi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi_sum), EDI_idx) : ST_R32(edi_sum, EDI_idx);
-				BR_UNCOND(disas_ctx->bb, bb);
+				switch (instr.rep_prefix)
+				{
+				case 1: {
+					REPNZ();
+				}
+				break;
+
+				case 2: {
+					REPZ();
+				}
+				break;
+
+				default:
+					BR_UNCOND(bb_next, bb);
+				}
 
 				bb = bb_sub;
 				Value *esi_sub = SUB(esi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sub), ESI_idx) : ST_R32(esi_sub, ESI_idx);
 				Value *edi_sub = SUB(edi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi_sub), EDI_idx) : ST_R32(edi_sub, EDI_idx);
-				BR_UNCOND(disas_ctx->bb, bb);
+				switch (instr.rep_prefix)
+				{
+				case 1: {
+					REPNZ();
+				}
+				break;
 
-				bb = disas_ctx->bb;
+				case 2: {
+					REPZ();
+				}
+				break;
+
+				default:
+					BR_UNCOND(bb_next, bb);
+				}
+
+				bb = bb_next;
 			}
 			break;
 
@@ -771,6 +804,12 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0xAD: {
 				Value *val, *df, *addr, *src, *esi;
+				BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+
+				if (instr.rep_prefix) {
+					REP_start();
+				}
+
 				switch (addr_mode)
 				{
 				case ADDR16:
@@ -815,19 +854,36 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 				BasicBlock *bb_sub = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
-				disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
 				bb = bb_sum;
 				Value *esi_sum = ADD(esi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sum), ESI_idx) : ST_R32(esi_sum, ESI_idx);
-				BR_UNCOND(disas_ctx->bb, bb);
+				switch (instr.rep_prefix)
+				{
+				case 2: {
+					REP();
+				}
+				break;
+
+				default:
+					BR_UNCOND(bb_next, bb);
+				}
 
 				bb = bb_sub;
 				Value *esi_sub = SUB(esi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sub), ESI_idx) : ST_R32(esi_sub, ESI_idx);
-				BR_UNCOND(disas_ctx->bb, bb);
+				switch (instr.rep_prefix)
+				{
+				case 2: {
+					REP();
+				}
+				break;
 
-				bb = disas_ctx->bb;
+				default:
+					BR_UNCOND(bb_next, bb);
+				}
+
+				bb = bb_next;
 			}
 			break;
 
@@ -1034,6 +1090,12 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0xA5: {
 				Value *val, *df, *addr1, *addr2, *src, *esi, *edi;
+				BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+
+				if (instr.rep_prefix) {
+					REP_start();
+				}
+
 				switch (addr_mode)
 				{
 				case ADDR16:
@@ -1082,23 +1144,40 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 				BasicBlock *bb_sub = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
-				disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
 				bb = bb_sum;
 				Value *esi_sum = ADD(esi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sum), ESI_idx) : ST_R32(esi_sum, ESI_idx);
 				Value *edi_sum = ADD(edi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi_sum), EDI_idx) : ST_R32(edi_sum, EDI_idx);
-				BR_UNCOND(disas_ctx->bb, bb);
+				switch (instr.rep_prefix)
+				{
+				case 2: {
+					REP();
+				}
+				break;
+
+				default:
+					BR_UNCOND(bb_next, bb);
+				}
 
 				bb = bb_sub;
 				Value *esi_sub = SUB(esi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sub), ESI_idx) : ST_R32(esi_sub, ESI_idx);
 				Value *edi_sub = SUB(edi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi_sub), EDI_idx) : ST_R32(edi_sub, EDI_idx);
-				BR_UNCOND(disas_ctx->bb, bb);
+				switch (instr.rep_prefix)
+				{
+				case 2: {
+					REP();
+				}
+				break;
 
-				bb = disas_ctx->bb;
+				default:
+					BR_UNCOND(bb_next, bb);
+				}
+
+				bb = bb_next;
 			}
 			break;
 
@@ -1228,6 +1307,12 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0xAF: {
 				Value *val, *df, *sub, *addr, *src, *edi, *eax;
+				BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+
+				if (instr.rep_prefix) {
+					REP_start();
+				}
+
 				switch (addr_mode)
 				{
 				case ADDR16:
@@ -1281,19 +1366,46 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 				BasicBlock *bb_sub = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
-				disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
 				bb = bb_sum;
 				Value *esi_sum = ADD(edi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sum), EDI_idx) : ST_R32(esi_sum, EDI_idx);
-				BR_UNCOND(disas_ctx->bb, bb);
+				switch (instr.rep_prefix)
+				{
+				case 1: {
+					REPNZ();
+				}
+				break;
+
+				case 2: {
+					REPZ();
+				}
+				break;
+
+				default:
+					BR_UNCOND(bb_next, bb);
+				}
 
 				bb = bb_sub;
 				Value *esi_sub = SUB(edi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sub), EDI_idx) : ST_R32(esi_sub, EDI_idx);
-				BR_UNCOND(disas_ctx->bb, bb);
+				switch (instr.rep_prefix)
+				{
+				case 1: {
+					REPNZ();
+				}
+				break;
 
-				bb = disas_ctx->bb;
+				case 2: {
+					REPZ();
+				}
+				break;
+
+				default:
+					BR_UNCOND(bb_next, bb);
+				}
+
+				bb = bb_next;
 			}
 			break;
 
@@ -1368,6 +1480,12 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0xAB: {
 				Value *val, *df, *addr, *edi;
+				BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+
+				if (instr.rep_prefix) {
+					REP_start();
+				}
+
 				switch (addr_mode)
 				{
 				case ADDR16:
@@ -1409,19 +1527,36 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 				BasicBlock *bb_sub = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
-				disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
 				bb = bb_sum;
 				Value *esi_sum = ADD(edi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sum), EDI_idx) : ST_R32(esi_sum, EDI_idx);
-				BR_UNCOND(disas_ctx->bb, bb);
+				switch (instr.rep_prefix)
+				{
+				case 2: {
+					REP();
+				}
+				break;
+
+				default:
+					BR_UNCOND(bb_next, bb);
+				}
 
 				bb = bb_sub;
 				Value *esi_sub = SUB(edi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sub), EDI_idx) : ST_R32(esi_sub, EDI_idx);
-				BR_UNCOND(disas_ctx->bb, bb);
+				switch (instr.rep_prefix)
+				{
+				case 2: {
+					REP();
+				}
+				break;
 
-				bb = disas_ctx->bb;
+				default:
+					BR_UNCOND(bb_next, bb);
+				}
+
+				bb = bb_next;
 			}
 			break;
 

@@ -161,6 +161,70 @@ default: \
 
 #define RAISE(expno, eip) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu, CONST8(expno), CONST32(eip) }, "", bb)
 
+#define REP_start() disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0); \
+Value *ecx, *zero; \
+if (addr_mode == ADDR16) { \
+	ecx = LD_R16(ECX_idx); \
+	zero = CONST16(0); \
+} \
+else { \
+	ecx = LD_R32(ECX_idx); \
+	zero = CONST32(0); \
+} \
+BR_COND(disas_ctx->bb, bb_next, ICMP_NE(ecx, zero), bb); \
+bb = disas_ctx->bb
+
+#define REP() 	Value *ecx, *zero, *one; \
+if (addr_mode == ADDR16) { \
+	ecx = LD_R16(ECX_idx); \
+	zero = CONST16(0); \
+	one = CONST16(1); \
+	ecx = SUB(ecx, one); \
+	ST_R16(ecx, ECX_idx); \
+} \
+else { \
+	ecx = LD_R32(ECX_idx); \
+	zero = CONST32(0); \
+	one = CONST32(1); \
+	ecx = SUB(ecx, one); \
+	ST_R32(ecx, ECX_idx); \
+} \
+BR_COND(disas_ctx->bb, bb_next, ICMP_NE(ecx, zero), bb)
+
+#define REPNZ() Value *ecx, *zero, *one; \
+if (addr_mode == ADDR16) { \
+	ecx = LD_R16(ECX_idx); \
+	zero = CONST16(0); \
+	one = CONST16(1); \
+	ecx = SUB(ecx, one); \
+	ST_R16(ecx, ECX_idx); \
+} \
+else { \
+	ecx = LD_R32(ECX_idx); \
+	zero = CONST32(0); \
+	one = CONST32(1); \
+	ecx = SUB(ecx, one); \
+	ST_R32(ecx, ECX_idx); \
+} \
+BR_COND(disas_ctx->bb, bb_next, AND(ICMP_NE(ecx, zero), ICMP_NE(LD_ZF(), CONST32(0))), bb)
+
+#define REPZ() Value *ecx, *zero, *one; \
+if (addr_mode == ADDR16) { \
+	ecx = LD_R16(ECX_idx); \
+	zero = CONST16(0); \
+	one = CONST16(1); \
+	ecx = SUB(ecx, one); \
+	ST_R16(ecx, ECX_idx); \
+} \
+else { \
+	ecx = LD_R32(ECX_idx); \
+	zero = CONST32(0); \
+	one = CONST32(1); \
+	ecx = SUB(ecx, one); \
+	ST_R32(ecx, ECX_idx); \
+} \
+BR_COND(disas_ctx->bb, bb_next, AND(ICMP_NE(ecx, zero), ICMP_EQ(LD_ZF(), CONST32(0))), bb)
+
 // the lazy eflags idea comes from reading these two papers:
 // How Bochs Works Under the Hood (2nd edition) http://bochs.sourceforge.net/How%20the%20Bochs%20works%20under%20the%20hood%202nd%20edition.pdf
 // A Proposal for Hardware-Assisted Arithmetic Overflow Detection for Array and Bitfield Operations http://www.emulators.com/docs/LazyOverflowDetect_Final.pdf
