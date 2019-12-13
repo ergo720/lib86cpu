@@ -174,7 +174,7 @@ else { \
 BR_COND(disas_ctx->bb, bb_next, ICMP_NE(ecx, zero), bb); \
 bb = disas_ctx->bb
 
-#define REP() 	Value *ecx, *zero, *one; \
+#define REP() Value *ecx, *zero, *one; \
 if (addr_mode == ADDR16) { \
 	ecx = LD_R16(ECX_idx); \
 	zero = CONST16(0); \

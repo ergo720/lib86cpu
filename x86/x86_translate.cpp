@@ -193,22 +193,12 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			{
 			case 0x38:
 				size_mode = SIZE8;
-				if (instr.operand[OPNUM_SRC].reg < 4) {
-					val = LD_R8L(instr.operand[OPNUM_SRC].reg);
-				}
-				else {
-					val = LD_R8H(instr.operand[OPNUM_SRC].reg);
-				}
+				GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, assert(0););
 				GET_RM(OPNUM_DST, cmp = LD_REG_val(rm);, cmp = LD_MEM(fn_idx[size_mode], rm););
 				break;
 
 			case 0x39:
-				if (size_mode == SIZE16) {
-					val = LD_R16(instr.operand[OPNUM_SRC].reg);
-				}
-				else {
-					val = LD_R32(instr.operand[OPNUM_SRC].reg);
-				}
+				GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, assert(0););
 				GET_RM(OPNUM_DST, cmp = LD_REG_val(rm);, cmp = LD_MEM(fn_idx[size_mode], rm););
 				break;
 
@@ -971,29 +961,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0x89: {
 				Value *reg, *rm;
-				switch (size_mode)
-				{
-				case SIZE8:
-					if (instr.operand[OPNUM_SRC].reg < 4) {
-						reg = LD_R8L(instr.operand[OPNUM_SRC].reg);
-					}
-					else {
-						reg = LD_R8H(instr.operand[OPNUM_SRC].reg);
-					}
-					break;
-
-				case SIZE16:
-					reg = LD_R16(instr.operand[OPNUM_SRC].reg);
-					break;
-
-				case SIZE32:
-					reg = LD_R32(instr.operand[OPNUM_SRC].reg);
-					break;
-
-				default:
-					UNREACHABLE;
-				}
-
+				GET_RM(OPNUM_SRC, reg = LD_REG_val(rm);, assert(0););
 				GET_RM(OPNUM_DST, ST_REG_val(reg, rm);, ST_MEM(fn_idx[size_mode], rm, reg););
 			}
 			break;
