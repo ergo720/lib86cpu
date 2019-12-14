@@ -144,7 +144,32 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_BTC:         BAD;
 		case X86_OPC_BTR:         BAD;
 		case X86_OPC_BTS:         BAD;
-		case X86_OPC_CALL:        BAD;
+		case X86_OPC_CALL: {
+			switch (instr.opcode_byte)
+			{
+			case 0xE8: {
+				addr_t ret_eip = (pc - cpu->regs.cs_hidden.base) + bytes;
+				addr_t call_eip = ret_eip + instr.operand[OPNUM_SRC].rel;
+				if (size_mode == SIZE16) {
+					call_eip &= 0x0000FFFF;
+				}
+				// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
+				Value *sp = SUB(LD_R16(ESP_idx), size_mode == SIZE16 ? CONST16(2) : CONST16(4));
+				ST_MEM(fn_idx[size_mode], ZEXT32(sp), size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
+				ST_R16(sp, ESP_idx);
+				ST_R32(CONST32(call_eip), EIP_idx);
+				disas_ctx->next_pc = CONST32(cpu->regs.cs_hidden.base + call_eip);
+			}
+			break;
+
+			default:
+				BAD;
+			}
+
+			translate_next = false;
+		}
+		break;
+
 		case X86_OPC_CBW:         BAD;
 		case X86_OPC_CBTV:        BAD;
 		case X86_OPC_CDQ:         BAD;
