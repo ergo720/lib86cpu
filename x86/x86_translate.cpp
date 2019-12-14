@@ -1588,7 +1588,28 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_WBINVD:      BAD;
 		case X86_OPC_WRMSR:       BAD;
 		case X86_OPC_XADD:        BAD;
-		case X86_OPC_XCHG:        BAD;
+		case X86_OPC_XCHG: {
+			switch (instr.opcode_byte)
+			{
+			case 0x86:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x87: {
+				Value *reg, *val, *rm, *rm_src;
+				GET_RM(OPNUM_SRC, reg = LD_REG_val(rm);, assert(0););
+				rm_src = rm;
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); ST_REG_val(reg, rm); ST_REG_val(val, rm_src);,
+					val = LD_MEM(fn_idx[size_mode], rm); ST_MEM(fn_idx[size_mode], rm, reg); ST_REG_val(val, rm_src););
+			}
+			break;
+
+			default:
+				BAD;
+			}
+		}
+		break;
+
 		case X86_OPC_XLATB:       BAD;
 		case X86_OPC_XOR:
 			switch (instr.opcode_byte)
