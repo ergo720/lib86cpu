@@ -217,12 +217,16 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_CBTV:        BAD;
 		case X86_OPC_CDQ:         BAD;
 		case X86_OPC_CLC: {
+			assert(instr.opcode_byte == 0xF8);
+
 			Value *of_new = SHR(XOR(CONST32(0), LD_OF()), CONST32(1));
 			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF)), of_new));
 		}
 		break;
 
 		case X86_OPC_CLD: {
+			assert(instr.opcode_byte == 0xFC);
+
 			Value *eflags = LD_R32(EFLAGS_idx);
 			eflags = AND(eflags, CONST32(~DF_MASK));
 			ST_R32(eflags, EFLAGS_idx);
@@ -230,6 +234,8 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		break;
 
 		case X86_OPC_CLI: {
+			assert(instr.opcode_byte == 0xFA);
+
 			if (disas_ctx->pe_mode) {
 				BAD_MODE;
 			}
@@ -1314,11 +1320,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_RDMSR:       BAD;
 		case X86_OPC_RDPMC:       BAD;
 		case X86_OPC_RDTSC:       BAD;
-		case X86_OPC_REP:         BAD;
-		case X86_OPC_REPE:        BAD;
-		case X86_OPC_REPNE:       BAD;
-		case X86_OPC_REPNZ:       BAD;
-		case X86_OPC_REPZ:        BAD;
 		case X86_OPC_RET:         BAD;
 		case X86_OPC_RETF:        BAD;
 		case X86_OPC_ROL:         BAD;
@@ -1504,12 +1505,16 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_SLDT:        BAD;
 		case X86_OPC_SMSW:        BAD;
 		case X86_OPC_STC: {
+			assert(instr.opcode_byte == 0xF9);
+
 			Value *of_new = SHR(XOR(CONST32(0x80000000), LD_OF()), CONST32(1));
 			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF)), OR(of_new, CONST32(0x80000000))));
 		}
 		break;
 
 		case X86_OPC_STD: {
+			assert(instr.opcode_byte == 0xFD);
+
 			Value *eflags = LD_R32(EFLAGS_idx);
 			eflags = OR(eflags, CONST32(DF_MASK));
 			ST_R32(eflags, EFLAGS_idx);
