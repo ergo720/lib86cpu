@@ -1565,7 +1565,50 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		break;
 
 		case X86_OPC_STR:         BAD;
-		case X86_OPC_SUB:         BAD;
+		case X86_OPC_SUB: {
+			switch (instr.opcode_byte)
+			{
+			case 0x80:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x83: {
+				assert(instr.reg_opc == 5);
+
+				Value *rm, *dst, *sub, *val = CONST8(instr.operand[OPNUM_SRC].imm);
+				val = size_mode == SIZE16 ? SEXT16(val) : size_mode == SIZE32 ? SEXT32(val) : val;
+				GET_RM(OPNUM_DST, dst = LD_REG_val(rm); sub = SUB(dst, val); ST_REG_val(sub, rm);,
+					dst = LD_MEM(fn_idx[size_mode], rm); sub = SUB(dst, val); ST_MEM(fn_idx[size_mode], rm, sub););
+
+				switch (size_mode)
+				{
+				case SIZE8:
+					ST_FLG_RES_ext(sub);
+					ST_FLG_SUB_AUX8(dst, val, sub);
+					break;
+
+				case SIZE16:
+					ST_FLG_RES_ext(sub);
+					ST_FLG_SUB_AUX16(dst, val, sub);
+					break;
+
+				case SIZE32:
+					ST_FLG_RES(sub);
+					ST_FLG_SUB_AUX32(dst, val, sub);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+			}
+			break;
+
+			default:
+				BAD;
+			}
+		}
+		break;
+
 		case X86_OPC_SYSENTER:    BAD;
 		case X86_OPC_SYSEXIT:     BAD;
 		case X86_OPC_TEST: {
