@@ -1320,7 +1320,30 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_RDMSR:       BAD;
 		case X86_OPC_RDPMC:       BAD;
 		case X86_OPC_RDTSC:       BAD;
-		case X86_OPC_RET:         BAD;
+		case X86_OPC_RET: {
+			switch (instr.opcode_byte)
+			{
+			case 0xC3: {
+				// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
+				Value *sp = ZEXT32(LD_R16(ESP_idx));
+				Value *ret_eip = LD_MEM(fn_idx[size_mode], sp);
+				if (size_mode == SIZE16) {
+					ret_eip = ZEXT32(ret_eip);
+				}
+				ST_R16(TRUNC16(ADD(sp, size_mode == SIZE16 ? CONST32(2) : CONST32(4))), ESP_idx);
+				ST_R32(ret_eip, EIP_idx);
+				disas_ctx->next_pc = ADD(CONST32(cpu->regs.cs_hidden.base), ret_eip);
+
+				translate_next = false;
+			}
+			break;
+
+			default:
+				BAD;
+			}
+		}
+		break;
+
 		case X86_OPC_RETF:        BAD;
 		case X86_OPC_ROL:         BAD;
 		case X86_OPC_ROR:         BAD;
