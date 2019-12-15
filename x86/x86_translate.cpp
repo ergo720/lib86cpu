@@ -1366,8 +1366,8 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
 
 				bb = bb_sum;
-				Value *esi_sum = ADD(edi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sum), EDI_idx) : ST_R32(esi_sum, EDI_idx);
+				Value *edi_sum = ADD(edi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi_sum), EDI_idx) : ST_R32(edi_sum, EDI_idx);
 				switch (instr.rep_prefix)
 				{
 				case 1: {
@@ -1385,8 +1385,8 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				}
 
 				bb = bb_sub;
-				Value *esi_sub = SUB(edi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sub), EDI_idx) : ST_R32(esi_sub, EDI_idx);
+				Value *edi_sub = SUB(edi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi_sub), EDI_idx) : ST_R32(edi_sub, EDI_idx);
 				switch (instr.rep_prefix)
 				{
 				case 1: {
@@ -1527,8 +1527,8 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
 
 				bb = bb_sum;
-				Value *esi_sum = ADD(edi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sum), EDI_idx) : ST_R32(esi_sum, EDI_idx);
+				Value *edi_sum = ADD(edi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi_sum), EDI_idx) : ST_R32(edi_sum, EDI_idx);
 				switch (instr.rep_prefix)
 				{
 				case 2: {
@@ -1541,8 +1541,8 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				}
 
 				bb = bb_sub;
-				Value *esi_sub = SUB(edi, val);
-				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sub), EDI_idx) : ST_R32(esi_sub, EDI_idx);
+				Value *edi_sub = SUB(edi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi_sub), EDI_idx) : ST_R32(edi_sub, EDI_idx);
 				switch (instr.rep_prefix)
 				{
 				case 2: {
