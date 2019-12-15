@@ -1503,7 +1503,12 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_SIDTW:       BAD;
 		case X86_OPC_SLDT:        BAD;
 		case X86_OPC_SMSW:        BAD;
-		case X86_OPC_STC:         BAD;
+		case X86_OPC_STC: {
+			Value *of_new = SHR(XOR(CONST32(0x80000000), LD_OF()), CONST32(1));
+			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF)), OR(of_new, CONST32(0x80000000))));
+		}
+		break;
+
 		case X86_OPC_STD: {
 			Value *eflags = LD_R32(EFLAGS_idx);
 			eflags = OR(eflags, CONST32(DF_MASK));
