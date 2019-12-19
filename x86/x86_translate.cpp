@@ -205,6 +205,31 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			}
 			break;
 
+			case 0xFF: {
+				if (instr.reg_opc == 2) {
+					Value *call_eip, *rm, *sp;
+					addr_t ret_eip = (pc - cpu->regs.cs_hidden.base) + bytes;
+					GET_RM(OPNUM_SRC, call_eip = LD_REG_val(rm);, call_eip = LD_MEM(fn_idx[size_mode], rm););
+					// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
+					sp = SUB(LD_R16(ESP_idx), size_mode == SIZE16 ? CONST16(2) : CONST16(4));
+					ST_MEM(fn_idx[size_mode], ZEXT32(sp), size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
+					if (size_mode == SIZE16) {
+						call_eip = ZEXT32(call_eip);
+					}
+					ST_R16(sp, ESP_idx);
+					ST_R32(call_eip, EIP_idx);
+					disas_ctx->next_pc = ADD(CONST32(cpu->regs.cs_hidden.base), call_eip);
+					disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
+				}
+				else if (instr.reg_opc == 3) {
+					BAD;
+				}
+				else {
+					UNREACHABLE;
+				}
+			}
+			break;
+
 			default:
 				BAD;
 			}
