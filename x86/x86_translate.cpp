@@ -50,7 +50,7 @@ cpu_raise_exception(uint8_t *cpu2, uint8_t expno, uint32_t eip)
 	mem_write<uint16_t>(cpu, stack_base, cpu->regs.cs);
 	stack_base -= 2;
 	mem_write<uint16_t>(cpu, stack_base, eip);
-	cpu->regs.esp = stack_base;
+	cpu->regs.esp = stack_base - cpu->regs.ss_hidden.base;
 
 	// clear IF, TF, RF and AC flags
 	cpu->regs.eflags &= ~(TF_MASK | IF_MASK | RF_MASK | AC_MASK);
@@ -198,7 +198,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				}
 				// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
 				Value *sp = SUB(LD_R16(ESP_idx), size_mode == SIZE16 ? CONST16(2) : CONST16(4));
-				ST_MEM(fn_idx[size_mode], ZEXT32(sp), size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
+				ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
 				ST_R16(sp, ESP_idx);
 				ST_R32(CONST32(call_eip), EIP_idx);
 				disas_ctx->next_pc = CONST32(cpu->regs.cs_hidden.base + call_eip);
@@ -212,7 +212,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					GET_RM(OPNUM_SRC, call_eip = LD_REG_val(rm);, call_eip = LD_MEM(fn_idx[size_mode], rm););
 					// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
 					sp = SUB(LD_R16(ESP_idx), size_mode == SIZE16 ? CONST16(2) : CONST16(4));
-					ST_MEM(fn_idx[size_mode], ZEXT32(sp), size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
+					ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
 					if (size_mode == SIZE16) {
 						call_eip = ZEXT32(call_eip);
 					}
@@ -1353,7 +1353,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			case 0xC3: {
 				// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
 				Value *sp = ZEXT32(LD_R16(ESP_idx));
-				Value *ret_eip = LD_MEM(fn_idx[size_mode], sp);
+				Value *ret_eip = LD_MEM(fn_idx[size_mode], ADD(sp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
 				if (size_mode == SIZE16) {
 					ret_eip = ZEXT32(ret_eip);
 				}
