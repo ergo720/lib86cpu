@@ -14,7 +14,7 @@
 #include "x86_memory.h"
 
 #define BAD       printf("%s: encountered unimplemented instruction %s\n", __func__, get_instr_name(instr.opcode)); return LIB86CPU_OP_NOT_IMPLEMENTED
-#define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), disas_ctx->pe_mode ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
+#define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), disas_ctx->flags & DISAS_FLG_PE_MODE ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
 #define UNREACHABLE printf("%s: unreachable line %d reached!\n", __func__, __LINE__); return LIB86CPU_UNREACHABLE
 
 typedef void (*entry_t)(uint32_t dummy, uint8_t *cpu, regs_t *regs, lazy_eflags_t *lazy_eflags);
@@ -113,14 +113,14 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 		instr_size += bytes;
 
-		if (disas_ctx->pe_mode ^ instr.op_size_override) {
+		if ((disas_ctx->flags & DISAS_FLG_PE_MODE) ^ instr.op_size_override) {
 			size_mode = SIZE32;
 		}
 		else {
 			size_mode = SIZE16;
 		}
 
-		if (disas_ctx->pe_mode ^ instr.addr_size_override) {
+		if ((disas_ctx->flags & DISAS_FLG_PE_MODE) ^ instr.addr_size_override) {
 			addr_mode = ADDR32;
 		}
 		else {
@@ -236,7 +236,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_CLI: {
 			assert(instr.opcode_byte == 0xFA);
 
-			if (disas_ctx->pe_mode) {
+			if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
 				BAD_MODE;
 			}
 			else {
@@ -801,7 +801,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			break;
 
 			case 0xEA: {
-				if (disas_ctx->pe_mode) {
+				if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
 					BAD_MODE;
 				}
 				addr_t new_eip = instr.operand[OPNUM_SRC].imm;
@@ -820,7 +820,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				if (instr.reg_opc == 5) {
 					BAD;
 #if 0
-					if (disas_ctx->pe_mode) {
+					if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
 						BAD_MODE;
 					}
 					assert(instr.operand[OPNUM_SRC].type == OPTYPE_MEM ||
@@ -1046,7 +1046,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			break;
 
 			case 0x8C: {
-				if (disas_ctx->pe_mode) {
+				if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
 					BAD_MODE;
 				}
 				Value *val, *rm;
@@ -1056,7 +1056,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			break;
 
 			case 0x8E: {
-				if (disas_ctx->pe_mode) {
+				if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
 					BAD_MODE;
 				}
 				if (instr.operand[OPNUM_DST].reg == 1 || instr.operand[OPNUM_DST].reg > 5) {
@@ -1334,6 +1334,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				ST_R32(ret_eip, EIP_idx);
 				disas_ctx->next_pc = ADD(CONST32(cpu->regs.cs_hidden.base), ret_eip);
 
+				disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
 				translate_next = false;
 			}
 			break;
@@ -1793,7 +1794,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 	return LIB86CPU_SUCCESS;
 }
 
-static addr_t
+static inline addr_t
 get_pc(cpu_t *cpu)
 {
 	return cpu->regs.cs_hidden.base + cpu->regs.eip;
@@ -1806,14 +1807,15 @@ cpu_exec_tc(cpu_t *cpu)
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
 	entry_t entry = nullptr;
 	static uint64_t func_idx = 0ULL;
+	static uint16_t num_tc = 0;
 
 	// this will exit only in the case of errors
 	while (true) {
 
 		addr_t pc = get_ram_addr(cpu, get_pc(cpu));
-		auto it = cpu->code_cache.find(pc);
+		ptr_tc = tc_cache_search(cpu, pc);
 
-		if (it == cpu->code_cache.end()) {
+		if (ptr_tc == nullptr) {
 
 			// code block for this pc not present, we need to translate new code
 			std::unique_ptr<translated_code_t> tc(new translated_code_t);
@@ -1837,7 +1839,7 @@ cpu_exec_tc(cpu_t *cpu)
 
 			// prepare the disas ctx
 			disas_ctx_t disas_ctx;
-			disas_ctx.pe_mode = CPU_PE_MODE;
+			disas_ctx.flags = CPU_PE_MODE;
 			disas_ctx.func = func;
 			disas_ctx.bb = BasicBlock::Create(_CTX(), "", func, 0);
 
@@ -1871,6 +1873,9 @@ cpu_exec_tc(cpu_t *cpu)
 				return status;
 			}
 
+			tc->pc = pc;
+			tc->cs_base = cpu->regs.cs_hidden.base;
+
 			tc->ptr_code = (void *)(cpu->jit->lookup("start_" + std::to_string(func_idx))->getAddress());
 			assert(tc->ptr_code);
 			tc->jmp_offset[0] = (void *)(cpu->jit->lookup("tail_" + std::to_string(func_idx))->getAddress());
@@ -1883,52 +1888,24 @@ cpu_exec_tc(cpu_t *cpu)
 			tc->mod = nullptr;
 
 			ptr_tc = tc.get();
-			cpu->code_cache.insert(std::make_pair(pc, std::move(tc)));
+			if (num_tc == CODE_CACHE_MAX_SIZE) {
+				tc_cache_clear(cpu);
+				prev_tc = nullptr;
+				num_tc = 0;
+			}
+			tc_cache_insert(cpu, pc, std::move(tc));
+			num_tc++;
 			func_idx++;
-		}
-		else {
-			ptr_tc = it->second.get();
 		}
 
 		// see if we can link the previous tc with the current one
-		if (prev_tc != nullptr) {
-
-		// llvm marks the generated code memory as read/execute (it's done by Memory::protectMappedMemory), which triggers an access violation when
-		// we try to write to it during the tc linking phase. So, we temporarily mark it as writable and then restore the write protection.
-		// NOTE: perhaps we can use the llvm SectionMemoryManager to do this somehow...
-
-		tc_protect(prev_tc->jmp_offset[0], prev_tc->jmp_code_size, false);
-
+		if (prev_tc != nullptr &&
 #if defined __i386 || defined _M_IX86
-
-			static uint16_t cmp_instr = 0xf981;
-			static uint16_t je_instr = 0x840f;
-			static uint8_t jmp_instr = 0xe9;
-			static uint8_t nop_instr = 0x90;
-			if (prev_tc->jmp_offset[1] == nullptr) {
-				int32_t tc_offset = reinterpret_cast<uintptr_t>(prev_tc->jmp_offset[2]) -
-					reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(ptr_tc->jmp_offset[0]) + 6 /*sizeof(cmp)*/ + 6 /*sizeof(je)*/);
-				memcpy(prev_tc->jmp_offset[0], &cmp_instr, 2);
-				memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 2, &pc, 4);                  // cmp ecx, pc
-				memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 6, &je_instr, 2);
-				memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 8, &tc_offset, 4);           // je tc_offset
-				for (uint8_t i = 0; i < 3; i++) {														 
-					memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 12 + i, &nop_instr, 1);  // nop
-				}
-				prev_tc->jmp_offset[1] = static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 15;
-			}
-			else {
-				int32_t tc_offset = reinterpret_cast<uintptr_t>(prev_tc->jmp_offset[2]) -
-					reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(ptr_tc->jmp_offset[1]) + 5 /*sizeof(jmp)*/);
-				memcpy(prev_tc->jmp_offset[1], &jmp_instr, 1);
-				memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[1]) + 1, &tc_offset, 4);  // jmp tc_offset
-			}
-
+			(prev_tc->jmp_code_size == 20)) {
 #else
-#error don't know how to patch tc on this platform
+#error don't know the size of the direct jump code of the tc on this platform
 #endif
-
-		tc_protect(prev_tc->jmp_offset[0], prev_tc->jmp_code_size, true);
+			tc_link_direct(prev_tc, ptr_tc, pc);
 		}
 
 		prev_tc = ptr_tc;

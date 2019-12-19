@@ -14,10 +14,16 @@ void get_ext_fn(cpu_t *cpu, translated_code_t *tc);
 FunctionType * create_tc_fntype(cpu_t *cpu, translated_code_t *tc);
 Function *create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, uint64_t func_idx);
 Function *create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disas_ctx_t *disas_ctx, uint64_t func_idx);
+void tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc, addr_t pc);
+translated_code_t *tc_cache_search(cpu_t *cpu, addr_t pc);
+void tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc);
+void tc_cache_clear(cpu_t *cpu);
 void optimize(translated_code_t *tc, Function *func);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlock *bb, unsigned opnum, uint8_t addr_mode);
 Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size_t instr_size);
 
+#define DISAS_FLG_PE_MODE      (1 << 0)
+#define DISAS_FLG_TC_INDIRECT  (1 << 1)
 
 #define _CTX() (*tc->ctx)
 #define getIntegerType(x) (IntegerType::get(_CTX(), x))
@@ -57,7 +63,9 @@ default: \
 	UNREACHABLE; \
 }
 
+#define INTPTR(v) ConstantInt::get(cpu->dl->getIntPtrType(_CTX()), reinterpret_cast<uintptr_t>(v))
 #define CONSTs(s, v) ConstantInt::get(getIntegerType(s), v)
+#define CONST_ptr(s, v) ConstantExpr::getIntToPtr(INTPTR(v), PointerType::getUnqual(getIntegerType(s)))
 #define CONST1(v) CONSTs(1, v)
 #define CONST8(v) CONSTs(8, v)
 #define CONST16(v) CONSTs(16, v)

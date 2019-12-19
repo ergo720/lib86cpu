@@ -19,6 +19,7 @@
 #include "x86_frontend.h"
 #include "x86_memory.h"
 
+#define PROFILE_NUM_TIMES 30
 
 Value *
 get_struct_member_pointer(Value *gep_start, const unsigned gep_index, translated_code_t *tc, BasicBlock *bb)
@@ -137,6 +138,157 @@ get_ext_fn(cpu_t *cpu, translated_code_t *tc)
 	cpu->exp_fn = cast<Function>(tc->mod->getOrInsertFunction("cpu_raise_exception", getVoidType(), PointerType::get(getIntegerType(8), 0), getIntegerType(8), getIntegerType(32)));
 }
 
+static inline uint32_t
+tc_hash(addr_t pc)
+{
+	return pc & (CODE_CACHE_MAX_SIZE - 1);
+}
+
+translated_code_t *
+tc_cache_search(cpu_t *cpu, addr_t pc)
+{
+	uint32_t idx = tc_hash(pc);
+	auto it = cpu->code_cache[idx].begin();
+	while (it != cpu->code_cache[idx].end()) {
+		translated_code_t *tc = it->get();
+		if (tc->cs_base == cpu->regs.cs_hidden.base && tc->pc == pc) {
+			return tc;
+		}
+		it++;
+	}
+
+	return nullptr;
+}
+
+void
+tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc)
+{
+	cpu->code_cache[tc_hash(pc)].push_front(std::move(tc));
+}
+
+void
+tc_cache_clear(cpu_t *cpu)
+{
+	for (auto &bucket : cpu->code_cache) {
+		bucket.clear();
+	}
+}
+
+void
+tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc, addr_t pc)
+{
+	// llvm marks the generated code memory as read/execute (it's done by Memory::protectMappedMemory), which triggers an access violation when
+	// we try to write to it during the tc linking phase. So, we temporarily mark it as writable and then restore the write protection.
+	// NOTE: perhaps we can use the llvm SectionMemoryManager to do this somehow...
+
+	tc_protect(prev_tc->jmp_offset[0], prev_tc->jmp_code_size, false);
+
+#if defined __i386 || defined _M_IX86
+
+	static uint16_t cmp_instr = 0xf981;
+	static uint16_t je_instr = 0x840f;
+	static uint8_t jmp_instr = 0xe9;
+	static uint8_t nop_instr = 0x90;
+	if (prev_tc->jmp_offset[1] == nullptr) {
+		int32_t tc_offset = reinterpret_cast<uintptr_t>(prev_tc->jmp_offset[2]) -
+			reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(ptr_tc->jmp_offset[0]) + 6 /*sizeof(cmp)*/ + 6 /*sizeof(je)*/);
+		memcpy(prev_tc->jmp_offset[0], &cmp_instr, 2);
+		memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 2, &pc, 4);                  // cmp ecx, pc
+		memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 6, &je_instr, 2);
+		memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 8, &tc_offset, 4);           // je tc_offset
+		for (uint8_t i = 0; i < 3; i++) {
+			memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 12 + i, &nop_instr, 1);  // nop
+		}
+		prev_tc->jmp_offset[1] = static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 15;
+	}
+	else {
+		int32_t tc_offset = reinterpret_cast<uintptr_t>(prev_tc->jmp_offset[2]) -
+			reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(ptr_tc->jmp_offset[1]) + 5 /*sizeof(jmp)*/);
+		memcpy(prev_tc->jmp_offset[1], &jmp_instr, 1);
+		memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[1]) + 1, &tc_offset, 4);  // jmp tc_offset
+	}
+
+#else
+#error don't know how to patch tc on this platform
+#endif
+
+	tc_protect(prev_tc->jmp_offset[0], prev_tc->jmp_code_size, true);
+}
+
+static void
+tc_link_indirect(translated_code_t *tc, translated_code_t *tc1, translated_code_t *tc2)
+{
+	// llvm marks the generated code memory as read/execute (it's done by Memory::protectMappedMemory), which triggers an access violation when
+	// we try to write to it during the tc linking phase. So, we temporarily mark it as writable and then restore the write protection.
+	// NOTE: perhaps we can use the llvm SectionMemoryManager to do this somehow...
+
+	tc_protect(tc->jmp_offset[0], tc->jmp_code_size, false);
+
+#if defined __i386 || defined _M_IX86
+
+	static uint16_t cmp_instr = 0xf981;
+	static uint16_t je_instr = 0x840f;
+	static uint8_t nop_instr = 0x90;
+	int32_t tc_offset1 = reinterpret_cast<uintptr_t>(tc1->jmp_offset[2]) -
+		reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(tc->jmp_offset[0]) + 6 /*sizeof(cmp)*/ + 6 /*sizeof(je)*/);
+	int32_t tc_offset2 = reinterpret_cast<uintptr_t>(tc2->jmp_offset[2]) -
+		reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(tc->jmp_offset[0]) + (6 /*sizeof(cmp)*/ + 6 /*sizeof(je)*/) * 2);
+	memcpy(tc->jmp_offset[0], &cmp_instr, 2);
+	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 2, &tc1->pc, 4);              // cmp ecx, pc1
+	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 6, &je_instr, 2);
+	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 8, &tc_offset1, 4);           // je tc_offset1
+	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 12, &cmp_instr, 2);
+	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 14, &tc2->pc, 4);             // cmp ecx, pc2
+	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 18, &je_instr, 2);
+	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 20, &tc_offset2, 4);          // je tc_offset2
+	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 24, &nop_instr, 1);           // nop
+
+#else
+#error don't know how to patch tc on this platform
+#endif
+
+	tc_protect(tc->jmp_offset[0], tc->jmp_code_size, true);
+}
+
+JIT_EXTERNAL_CALL_C uint8_t *
+tc_profile_indirect(uint8_t *cpu2, uint8_t *tc2, addr_t pc)
+{
+	cpu_t *cpu = reinterpret_cast<cpu_t *>(cpu2);
+	translated_code_t *tc = reinterpret_cast<translated_code_t *>(tc2);
+
+	if (tc->jmp_offset[1] == 0) {
+		if (tc->profiling_vec.size() == PROFILE_NUM_TIMES) {
+
+			std::map<addr_t, size_t> pc_count_hit;
+			for (auto it = tc->profiling_vec.begin(); it != tc->profiling_vec.end(); it++) {
+				++pc_count_hit[*it];
+			}
+
+			auto pc1 = std::max_element(pc_count_hit.begin(), pc_count_hit.end(), [](const auto &a, const auto &b)
+				{
+					return a.second < b.second;
+				})->first;
+
+			pc_count_hit.erase(pc_count_hit.find(pc1));
+
+			auto pc2 = std::max_element(pc_count_hit.begin(), pc_count_hit.end(), [](const auto &a, const auto &b)
+				{
+					return a.second < b.second;
+				})->first;
+
+			tc_link_indirect(tc, tc_cache_search(cpu, pc1), tc_cache_search(cpu, pc2));
+			tc->profiling_vec.clear();
+			tc->jmp_offset[1] = reinterpret_cast<void *>(1);
+		}
+		else {
+			tc->profiling_vec.push_back(pc);
+		}
+	}
+
+	tc = tc_cache_search(cpu, pc);
+	return reinterpret_cast<uint8_t *>(tc == nullptr ? 0 : tc->jmp_offset[2]);
+}
+
 FunctionType *
 create_tc_fntype(cpu_t *cpu, translated_code_t *tc)
 {
@@ -227,15 +379,47 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disa
 		// no args
 		false);
 
+	if (disas_ctx->flags & DISAS_FLG_TC_INDIRECT) {
+
+
+
 #if defined __i386 || defined _M_IX86
 
-	InlineAsm *ia = InlineAsm::get(type_func_asm, "mov ecx, $$-1\n\tmov ecx, $$-2\n\tmov ecx, $$-3\n\tmov ecx, $$-4", "~{ecx}", true, false, InlineAsm::AsmDialect::AD_Intel);
-	CallInst::Create(ia, "", bb);
-	tc->jmp_code_size = 20;
+		cpu->profiling_fn = cast<Function>(tc->mod->getOrInsertFunction("tc_profile_indirect", PointerType::get(getIntegerType(8), 0),
+			PointerType::get(getIntegerType(8), 0), PointerType::get(getIntegerType(8), 0), getIntegerType(32)));
+
+		InlineAsm *ia1 = InlineAsm::get(type_func_asm, "mov ecx, $$-1\n\tmov ecx, $$-2\n\tmov ecx, $$-3\n\tmov ecx, $$-4\n\tmov ecx, $$-5",
+			"~{ecx}", true, false, InlineAsm::AsmDialect::AD_Intel);
+		CallInst::Create(ia1, "", bb);
+		tc->jmp_code_size = 25;
+
+		Function::arg_iterator args_start = tail->arg_begin();
+		Value *pc = args_start++;
+		Value *ptr_cpu = args_start++;
+
+		CallInst *ci = CallInst::Create(cpu->profiling_fn, std::vector<Value *> { ptr_cpu, CONST_ptr(8, tc), pc }, "", bb);
+		ci->setCallingConv(CallingConv::C);
+
+		InlineAsm *ia2 = InlineAsm::get(type_func_asm, "cmp eax, $$0\n\tje skip_next\n\tjmp eax\n\tskip_next:", "~{eax}", true, false, InlineAsm::AsmDialect::AD_Intel);
+		CallInst::Create(ia2, "", bb);
 
 #else
 #error don't know how to construct the tc epilogue on this platform
 #endif
+	}
+	else {
+
+#if defined __i386 || defined _M_IX86
+
+		InlineAsm *ia = InlineAsm::get(type_func_asm, "mov ecx, $$-1\n\tmov ecx, $$-2\n\tmov ecx, $$-3\n\tmov ecx, $$-4",
+			"~{ecx}", true, false, InlineAsm::AsmDialect::AD_Intel);
+		CallInst::Create(ia, "", bb);
+		tc->jmp_code_size = 20;
+
+#else
+#error don't know how to construct the tc epilogue on this platform
+#endif
+	}
 
 	ReturnInst::Create(_CTX(), bb);
 

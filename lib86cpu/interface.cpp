@@ -119,7 +119,9 @@ cpu_free(cpu_t *cpu)
 		delete[] cpu->ram;
 	}
 
-	cpu->code_cache.clear();
+	for (auto &bucket : cpu->code_cache) {
+		bucket.clear();
+	}
 
 	llvm_shutdown();
 

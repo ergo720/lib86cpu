@@ -10,7 +10,7 @@
 #include "config.h"
 #include "platform.h"
 #include <stdint.h>
-#include <unordered_map>
+#include <forward_list>
 #include "types.h"
 #include "interval_tree.h"
 
@@ -55,6 +55,8 @@ enum lib86cpu_status {
 
 #define CPU_NUM_REGS 30
 
+#define CODE_CACHE_MAX_SIZE (1 << 15)
+
 #ifdef DEBUG_LOG
 #define LOG(...) do { printf(__VA_ARGS__); } while(0)
 #else
@@ -97,7 +99,7 @@ struct memory_region_t {
 template<typename T>
 struct sort_by_priority
 {
-	bool operator() (const std::tuple<T, T, const std::unique_ptr<memory_region_t<T>> &> &lhs, const std::tuple<T, T, const std::unique_ptr<memory_region_t<T>> &> &rhs)
+	bool operator() (const std::tuple<T, T, const std::unique_ptr<memory_region_t<T>> &> &lhs, const std::tuple<T, T, const std::unique_ptr<memory_region_t<T>> &> &rhs) const
 	{
 		return std::get<2>(lhs)->priority > std::get<2>(rhs)->priority;
 	}
@@ -106,16 +108,19 @@ struct sort_by_priority
 struct translated_code_t {
 	LLVMContext *ctx;
 	Module *mod;
+	addr_t cs_base;
+	addr_t pc;
 	void *ptr_code;
 	void *jmp_offset[3];
 	size_t jmp_code_size;
+	std::vector<addr_t> profiling_vec;
 };
 
 struct disas_ctx_t {
 	Function *func;
 	BasicBlock *bb;
 	Value *next_pc;
-	uint8_t pe_mode;
+	uint8_t flags;
 };
 
 struct regs_layout_t {
@@ -142,8 +147,7 @@ struct cpu_t {
 	std::unique_ptr<interval_tree<io_port_t, std::unique_ptr<memory_region_t<io_port_t>>>> io_space_tree;
 	std::set<std::tuple<addr_t, addr_t, const std::unique_ptr<memory_region_t<addr_t>> &>, sort_by_priority<addr_t>> memory_out;
 	std::set<std::tuple<io_port_t, io_port_t, const std::unique_ptr<memory_region_t<io_port_t>> &>, sort_by_priority<io_port_t>> io_out;
-	// TODO: how large should the code cache be? At the moment, this can grow without bounds...
-	std::unordered_map<addr_t, std::unique_ptr<translated_code_t>> code_cache;
+	std::forward_list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
 
 	/* llvm specific variables */
 	std::unique_ptr<orc::LLJIT> jit;
@@ -154,6 +158,7 @@ struct cpu_t {
 	Function *ptr_mem_ldfn[3];
 	Function *ptr_mem_stfn[6];
 	Function *exp_fn;
+	Function *profiling_fn;
 };
 
 // cpu api
