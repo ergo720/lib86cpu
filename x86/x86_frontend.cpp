@@ -381,12 +381,10 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disa
 
 	if (disas_ctx->flags & DISAS_FLG_TC_INDIRECT) {
 
-
-
-#if defined __i386 || defined _M_IX86
-
 		cpu->profiling_fn = cast<Function>(tc->mod->getOrInsertFunction("tc_profile_indirect", PointerType::get(getIntegerType(8), 0),
 			PointerType::get(getIntegerType(8), 0), PointerType::get(getIntegerType(8), 0), getIntegerType(32)));
+
+#if defined __i386 || defined _M_IX86
 
 		InlineAsm *ia1 = InlineAsm::get(type_func_asm, "mov ecx, $$-1\n\tmov ecx, $$-2\n\tmov ecx, $$-3\n\tmov ecx, $$-4\n\tmov ecx, $$-5",
 			"~{ecx}", true, false, InlineAsm::AsmDialect::AD_Intel);

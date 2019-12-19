@@ -209,6 +209,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				BAD;
 			}
 
+			disas_ctx->bb = bb;
 			translate_next = false;
 		}
 		break;
@@ -858,6 +859,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				UNREACHABLE;
 			}
 
+			disas_ctx->bb = bb;
 			translate_next = false;
 		}
 		break;
@@ -1332,9 +1334,10 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				}
 				ST_R16(TRUNC16(ADD(sp, size_mode == SIZE16 ? CONST32(2) : CONST32(4))), ESP_idx);
 				ST_R32(ret_eip, EIP_idx);
-				disas_ctx->next_pc = ADD(CONST32(cpu->regs.cs_hidden.base), ret_eip);
 
+				disas_ctx->next_pc = ADD(CONST32(cpu->regs.cs_hidden.base), ret_eip);
 				disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
+				disas_ctx->bb = bb;
 				translate_next = false;
 			}
 			break;
