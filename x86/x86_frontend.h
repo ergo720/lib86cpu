@@ -27,6 +27,7 @@ Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size
 
 #define _CTX() (*tc->ctx)
 #define getIntegerType(x) (IntegerType::get(_CTX(), x))
+#define getIntegerPtrType() (cpu->dl->getIntPtrType(_CTX()))
 #define getVoidType() (Type::getVoidTy(_CTX()))
 #define getIntegerArrayType(x, n) (ArrayType::get(getIntegerType(x), n))
 
@@ -63,7 +64,7 @@ default: \
 	UNREACHABLE; \
 }
 
-#define INTPTR(v) ConstantInt::get(cpu->dl->getIntPtrType(_CTX()), reinterpret_cast<uintptr_t>(v))
+#define INTPTR(v) ConstantInt::get(getIntegerPtrType(), reinterpret_cast<uintptr_t>(v))
 #define CONSTs(s, v) ConstantInt::get(getIntegerType(s), v)
 #define CONST_ptr(s, v) ConstantExpr::getIntToPtr(INTPTR(v), PointerType::getUnqual(getIntegerType(s)))
 #define CONST1(v) CONSTs(1, v)

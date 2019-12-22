@@ -158,7 +158,6 @@ struct cpu_t {
 	Function *ptr_mem_ldfn[3];
 	Function *ptr_mem_stfn[6];
 	Function *exp_fn;
-	Function *profiling_fn;
 };
 
 // cpu api

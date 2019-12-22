@@ -14,6 +14,7 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/IR/LegacyPassManager.h"
 #include "llvm/LinkAllPasses.h"
+#include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "lib86cpu.h"
 #include "x86_internal.h"
 #include "x86_frontend.h"
@@ -84,7 +85,7 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 }
 
 static StructType *
-get_struct_eflags(cpu_t *cpu, translated_code_t *tc)
+get_struct_eflags(translated_code_t *tc)
 {
 	std::vector<Type *>type_struct_eflags_t_fields;
 
@@ -190,8 +191,8 @@ tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc, addr_t pc)
 	static uint8_t jmp_instr = 0xe9;
 	static uint8_t nop_instr = 0x90;
 	if (prev_tc->jmp_offset[1] == nullptr) {
-		int32_t tc_offset = reinterpret_cast<uintptr_t>(prev_tc->jmp_offset[2]) -
-			reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(ptr_tc->jmp_offset[0]) + 6 /*sizeof(cmp)*/ + 6 /*sizeof(je)*/);
+		int32_t tc_offset = reinterpret_cast<uintptr_t>(ptr_tc->jmp_offset[2]) -
+			reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 6 /*sizeof(cmp)*/ + 6 /*sizeof(je)*/);
 		memcpy(prev_tc->jmp_offset[0], &cmp_instr, 2);
 		memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 2, &pc, 4);                  // cmp ecx, pc
 		memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 6, &je_instr, 2);
@@ -202,8 +203,8 @@ tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc, addr_t pc)
 		prev_tc->jmp_offset[1] = static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 15;
 	}
 	else {
-		int32_t tc_offset = reinterpret_cast<uintptr_t>(prev_tc->jmp_offset[2]) -
-			reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(ptr_tc->jmp_offset[1]) + 5 /*sizeof(jmp)*/);
+		int32_t tc_offset = reinterpret_cast<uintptr_t>(ptr_tc->jmp_offset[2]) -
+			reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(prev_tc->jmp_offset[1]) + 5 /*sizeof(jmp)*/);
 		memcpy(prev_tc->jmp_offset[1], &jmp_instr, 1);
 		memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[1]) + 1, &tc_offset, 4);  // jmp tc_offset
 	}
@@ -296,7 +297,7 @@ create_tc_fntype(cpu_t *cpu, translated_code_t *tc)
 	PointerType *type_pi8 = PointerType::get(getIntegerType(8), 0);                  // cpu ptr
 	StructType *type_struct_reg_t = get_struct_reg(cpu, tc);
 	PointerType *type_pstruct_reg_t = PointerType::get(type_struct_reg_t, 0);        // regs_t ptr
-	StructType *type_struct_eflags_t = get_struct_eflags(cpu, tc);
+	StructType *type_struct_eflags_t = get_struct_eflags(tc);
 	PointerType *type_pstruct_eflags_t = PointerType::get(type_struct_eflags_t, 0);  // lazy_eflags_t ptr
 
 	std::vector<Type *> type_func_args;
@@ -373,39 +374,34 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disa
 	// create the bb of the tail function
 	BasicBlock *bb = BasicBlock::Create(_CTX(), "", tail, 0);
 
-	// emit some dummy instructions, these will be replaced by jumps when we link this tc to another
 	FunctionType *type_func_asm = FunctionType::get(
 		getVoidType(),  // void ret
 		// no args
 		false);
 
 	if (disas_ctx->flags & DISAS_FLG_TC_INDIRECT) {
+		// emit some dummy instructions, a call to tc_profile_indirect and a conditional jump. We do this ourselves to avoid llvm messing with the stack,
+		// which would lead to a crash when a jump is taken
 
-		cpu->profiling_fn = cast<Function>(tc->mod->getOrInsertFunction("tc_profile_indirect", PointerType::get(getIntegerType(8), 0),
-			PointerType::get(getIntegerType(8), 0), PointerType::get(getIntegerType(8), 0), getIntegerType(32)));
+		tc->mod->getOrInsertFunction("tc_profile_indirect", PointerType::get(getIntegerType(8), 0), PointerType::get(getIntegerType(8), 0),
+			PointerType::get(getIntegerType(8), 0), getIntegerType(32));
+		uintptr_t addr = cpu->jit->lookup("tc_profile_indirect")->getAddress();
 
 #if defined __i386 || defined _M_IX86
 
-		InlineAsm *ia1 = InlineAsm::get(type_func_asm, "mov ecx, $$-1\n\tmov ecx, $$-2\n\tmov ecx, $$-3\n\tmov ecx, $$-4\n\tmov ecx, $$-5",
-			"~{ecx}", true, false, InlineAsm::AsmDialect::AD_Intel);
+		std::string asm_str = std::string("mov eax, $$-1\n\tmov eax, $$-2\n\tmov eax, $$-3\n\tmov eax, $$-4\n\tmov eax, $$-5\n\tsub esp, $$12\n\tmov [esp], edx\n\tmov dword ptr [esp+$$4], $$")
+		+ std::to_string(reinterpret_cast<uintptr_t>(tc)) + std::string("\n\tmov [esp+$$8], ecx\n\tmov eax, $$") + std::to_string(addr) + std::string("\n\tcall eax\n\tadd esp, $$12\n\tmov edx, $$")
+		+ std::to_string(reinterpret_cast<uintptr_t>(cpu)) + std::string("\n\tcmp eax, $$0\n\tje skip_next\n\tjmp eax\n\tskip_next:");
+		InlineAsm *ia1 = InlineAsm::get(type_func_asm, asm_str, "~{eax},~{ecx},~{edx}", true, false, InlineAsm::AsmDialect::AD_Intel);
 		CallInst::Create(ia1, "", bb);
 		tc->jmp_code_size = 25;
-
-		Function::arg_iterator args_start = tail->arg_begin();
-		Value *pc = args_start++;
-		Value *ptr_cpu = args_start++;
-
-		CallInst *ci = CallInst::Create(cpu->profiling_fn, std::vector<Value *> { ptr_cpu, CONST_ptr(8, tc), pc }, "", bb);
-		ci->setCallingConv(CallingConv::C);
-
-		InlineAsm *ia2 = InlineAsm::get(type_func_asm, "cmp eax, $$0\n\tje skip_next\n\tjmp eax\n\tskip_next:", "~{eax}", true, false, InlineAsm::AsmDialect::AD_Intel);
-		CallInst::Create(ia2, "", bb);
 
 #else
 #error don't know how to construct the tc epilogue on this platform
 #endif
 	}
 	else {
+		// emit some dummy instructions, these will be replaced by jumps when we link this tc to another
 
 #if defined __i386 || defined _M_IX86
 
