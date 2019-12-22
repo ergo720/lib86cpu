@@ -392,8 +392,8 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disa
 		std::string asm_str = std::string("mov eax, $$-1\n\tmov eax, $$-2\n\tmov eax, $$-3\n\tmov eax, $$-4\n\tmov eax, $$-5\n\tsub esp, $$12\n\tmov [esp], edx\n\tmov dword ptr [esp+$$4], $$")
 		+ std::to_string(reinterpret_cast<uintptr_t>(tc)) + std::string("\n\tmov [esp+$$8], ecx\n\tmov eax, $$") + std::to_string(addr) + std::string("\n\tcall eax\n\tadd esp, $$12\n\tmov edx, $$")
 		+ std::to_string(reinterpret_cast<uintptr_t>(cpu)) + std::string("\n\tcmp eax, $$0\n\tje skip_next\n\tjmp eax\n\tskip_next:");
-		InlineAsm *ia1 = InlineAsm::get(type_func_asm, asm_str, "~{eax},~{ecx},~{edx}", true, false, InlineAsm::AsmDialect::AD_Intel);
-		CallInst::Create(ia1, "", bb);
+		InlineAsm *ia = InlineAsm::get(type_func_asm, asm_str, "~{eax},~{ecx},~{edx}", true, false, InlineAsm::AsmDialect::AD_Intel);
+		CallInst::Create(ia, "", bb);
 		tc->jmp_code_size = 25;
 
 #else
@@ -405,8 +405,7 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disa
 
 #if defined __i386 || defined _M_IX86
 
-		InlineAsm *ia = InlineAsm::get(type_func_asm, "mov ecx, $$-1\n\tmov ecx, $$-2\n\tmov ecx, $$-3\n\tmov ecx, $$-4",
-			"~{ecx}", true, false, InlineAsm::AsmDialect::AD_Intel);
+		InlineAsm *ia = InlineAsm::get(type_func_asm, "mov ecx, $$-1\n\tmov ecx, $$-2\n\tmov ecx, $$-3\n\tmov ecx, $$-4", "~{ecx}", true, false, InlineAsm::AsmDialect::AD_Intel);
 		CallInst::Create(ia, "", bb);
 		tc->jmp_code_size = 20;
 
