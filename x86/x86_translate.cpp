@@ -1077,7 +1077,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		}
 		break;
 
-		case X86_OPC_LRET:        BAD;
 		case X86_OPC_LSL:         BAD;
 		case X86_OPC_LSS:         BAD;
 		case X86_OPC_LTR:         BAD;
@@ -1384,19 +1383,52 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				ST_R32(ret_eip, EIP_idx);
 
 				disas_ctx->next_pc = ADD(CONST32(cpu->regs.cs_hidden.base), ret_eip);
-				disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
-				disas_ctx->bb = bb;
-				translate_next = false;
 			}
 			break;
 
 			default:
 				BAD;
 			}
+
+			disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
+			disas_ctx->bb = bb;
+			translate_next = false;
 		}
 		break;
 
-		case X86_OPC_RETF:        BAD;
+		case X86_OPC_LRET: // AT&T
+		case X86_OPC_RETF: {
+			switch (instr.opcode_byte)
+			{
+			case 0xCB: {
+				// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
+				Value *sp = ZEXT32(LD_R16(ESP_idx));
+				Value *ret_eip = LD_MEM(fn_idx[size_mode], ADD(sp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
+				if (size_mode == SIZE16) {
+					ret_eip = ZEXT32(ret_eip);
+				}
+				sp = ADD(sp, size_mode == SIZE16 ? CONST32(2) : CONST32(4));
+				Value *ret_cs = LD_MEM(fn_idx[size_mode], ADD(sp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
+				ST_R16(TRUNC16(ADD(sp, size_mode == SIZE16 ? CONST32(2) : CONST32(4))), ESP_idx);
+				ST_R32(ret_eip, EIP_idx);
+				ST_R16(size_mode == SIZE16 ? ret_cs : TRUNC16(ret_cs), CS_idx);
+				Value *ret_cs_base = SHL(size_mode == SIZE16 ? ZEXT32(ret_cs) : ret_cs, CONST32(4));
+				ST_SEG_HIDDEN(ret_cs_base, CS_idx, SEG_BASE_idx);
+
+				disas_ctx->next_pc = ADD(ret_cs_base, ret_eip);
+			}
+			break;
+
+			default:
+				BAD;
+			}
+
+			disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
+			disas_ctx->bb = bb;
+			translate_next = false;
+		}
+		break;
+
 		case X86_OPC_ROL:         BAD;
 		case X86_OPC_ROR:         BAD;
 		case X86_OPC_RSM:         BAD;
