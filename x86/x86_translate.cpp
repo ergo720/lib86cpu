@@ -246,7 +246,38 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
 				}
 				else if (instr.reg_opc == 3) {
-					BAD;
+					if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
+						BAD_MODE;
+					}
+					assert(instr.operand[OPNUM_SRC].type == OPTYPE_MEM ||
+						instr.operand[OPNUM_SRC].type == OPTYPE_MEM_DISP ||
+						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_MEM ||
+						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_DISP);
+
+					addr_t ret_eip = (pc - cpu->regs.cs_hidden.base) + bytes;
+					// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
+					Value *sp = SUB(LD_R16(ESP_idx), size_mode == SIZE16 ? CONST16(2) : CONST16(4));
+					ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(cpu->regs.cs) : CONST32(cpu->regs.cs));
+					sp = SUB(sp, size_mode == SIZE16 ? CONST16(2) : CONST16(4));
+					ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
+					Value *call_eip, *call_cs, *cs_addr, *offset_addr = GET_OP(OPNUM_SRC);
+					if (size_mode == SIZE16) {
+						call_eip = ZEXT32(LD_MEM(MEM_LD16_idx, offset_addr));
+						cs_addr = ADD(offset_addr, CONST32(2));
+					}
+					else {
+						call_eip = LD_MEM(MEM_LD32_idx, offset_addr);
+						cs_addr = ADD(offset_addr, CONST32(4));
+					}
+					call_cs = LD_MEM(MEM_LD16_idx, cs_addr);
+
+					ST_R16(sp, ESP_idx);
+					ST_SEG(call_cs, CS_idx);
+					ST_R32(call_eip, EIP_idx);
+					Value *call_cs_base = SHL(ZEXT32(call_cs), CONST32(4));
+					ST_SEG_HIDDEN(call_cs_base, CS_idx, SEG_BASE_idx);
+					disas_ctx->next_pc = ADD(call_cs_base, call_eip);
+					disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
 				}
 				else {
 					UNREACHABLE;
@@ -255,7 +286,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			break;
 
 			default:
-				BAD;
+				UNREACHABLE;
 			}
 
 			disas_ctx->bb = bb;
