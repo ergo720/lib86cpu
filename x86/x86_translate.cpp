@@ -136,6 +136,39 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_ADD: {
 			switch (instr.opcode_byte)
 			{
+			case 0x00:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x01: {
+				Value *rm, *dst, *sum, *val;
+				GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, assert(0););
+				GET_RM(OPNUM_DST, dst = LD_REG_val(rm); sum = ADD(dst, val); ST_REG_val(sum, rm);,
+					dst = LD_MEM(fn_idx[size_mode], rm); sum = ADD(dst, val); ST_MEM(fn_idx[size_mode], rm, sum););
+
+				switch (size_mode)
+				{
+				case SIZE8:
+					ST_FLG_RES_ext(sum);
+					ST_FLG_SUM_AUX8(dst, val, sum);
+					break;
+
+				case SIZE16:
+					ST_FLG_RES_ext(sum);
+					ST_FLG_SUM_AUX16(dst, val, sum);
+					break;
+
+				case SIZE32:
+					ST_FLG_RES(sum);
+					ST_FLG_SUM_AUX32(dst, val, sum);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+			}
+			break;
+
 			case 0x80:
 				size_mode = SIZE8;
 				[[fallthrough]];
