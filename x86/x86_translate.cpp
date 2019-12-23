@@ -853,15 +853,11 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 		case X86_OPC_LAHF:        BAD;
 		case X86_OPC_LAR:         BAD;
-		case X86_OPC_LDS:         BAD;
 		case X86_OPC_LEA:         BAD;
 		case X86_OPC_LEAVE:       BAD;
-		case X86_OPC_LES:         BAD;
-		case X86_OPC_LFS:         BAD;
 		case X86_OPC_LGDTD:       BAD;
 		case X86_OPC_LGDTL:       BAD;
 		case X86_OPC_LGDTW:       BAD;
-		case X86_OPC_LGS:         BAD;
 		case X86_OPC_LIDTD:       BAD;
 		case X86_OPC_LIDTL:       BAD;
 		case X86_OPC_LIDTW:       BAD;
@@ -1109,7 +1105,60 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		break;
 
 		case X86_OPC_LSL:         BAD;
-		case X86_OPC_LSS:         BAD;
+		case X86_OPC_LDS:
+		case X86_OPC_LES:
+		case X86_OPC_LFS:
+		case X86_OPC_LGS:
+		case X86_OPC_LSS: {
+			if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
+				BAD_MODE;
+			}
+			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
+				RAISE(EXP_UD, pc - cpu->regs.cs_hidden.base);
+				disas_ctx->next_pc = CONST32(0); // unreachable
+				disas_ctx->bb = bb;
+				translate_next = false;
+			}
+			else {
+				Value *offset, *sel, *rm;
+				GET_RM(OPNUM_SRC, assert(0);, offset = LD_MEM(fn_idx[size_mode], rm);
+				rm = size_mode == SIZE16 ? ADD(rm, CONST32(2)) : ADD(rm, CONST32(4));
+				sel = LD_MEM(MEM_LD16_idx, rm););
+				GET_RM(OPNUM_DST, ST_REG_val(offset, rm);, assert(0););
+				switch (instr.opcode_byte)
+				{
+				case 0xB2:
+					ST_SEG(sel, SS_idx);
+					ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), SS_idx, SEG_BASE_idx);
+					break;
+
+				case 0xB4:
+					ST_SEG(sel, FS_idx);
+					ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), FS_idx, SEG_BASE_idx);
+					break;
+
+				case 0xB5:
+					ST_SEG(sel, GS_idx);
+					ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), GS_idx, SEG_BASE_idx);
+					break;
+
+				case 0xC4:
+					ST_SEG(sel, ES_idx);
+					ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), ES_idx, SEG_BASE_idx);
+					break;
+
+				case 0xC5:
+					ST_SEG(sel, DS_idx);
+					ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), DS_idx, SEG_BASE_idx);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+			}
+		}
+		break;
+
 		case X86_OPC_LTR:         BAD;
 		case X86_OPC_MOV:
 			switch (instr.opcode_byte)
@@ -1141,11 +1190,16 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				}
 				if (instr.operand[OPNUM_DST].reg == 1 || instr.operand[OPNUM_DST].reg > 5) {
 					RAISE(EXP_UD, pc - cpu->regs.cs_hidden.base);
+					disas_ctx->next_pc = CONST32(0); // unreachable
+					disas_ctx->bb = bb;
+					translate_next = false;
 				}
-				Value *val, *rm;
-				GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(MEM_LD16_idx, rm););
-				ST_SEG(val, instr.operand[OPNUM_DST].reg + SEG_offset);
-				ST_SEG_HIDDEN(SHL(ZEXT32(val), CONST32(4)), instr.operand[OPNUM_DST].reg + SEG_offset, SEG_BASE_idx);
+				else {
+					Value *val, *rm;
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm); , val = LD_MEM(MEM_LD16_idx, rm););
+					ST_SEG(val, instr.operand[OPNUM_DST].reg + SEG_offset);
+					ST_SEG_HIDDEN(SHL(ZEXT32(val), CONST32(4)), instr.operand[OPNUM_DST].reg + SEG_offset, SEG_BASE_idx);
+				}
 			}
 			break;
 
