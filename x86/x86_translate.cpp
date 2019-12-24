@@ -1599,7 +1599,24 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_POPA:        BAD;
 		case X86_OPC_POPF:        BAD;
 		case X86_OPC_PUSH:        BAD;
-		case X86_OPC_PUSHA:       BAD;
+		case X86_OPC_PUSHA: {
+			// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
+			Value *sp = LD_R16(ESP_idx);
+			Value *sp_sub = size_mode == SIZE16 ? CONST16(2) : CONST16(4);
+			Value *esp_ori = size_mode == SIZE16 ? LD_R16(ESP_idx) : LD_R32(ESP_idx);
+			for (uint8_t reg_idx = 0; reg_idx < ES_idx; reg_idx++) {
+				sp = SUB(sp, sp_sub);
+				if (reg_idx == ESP_idx) {
+					ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), esp_ori);
+				}
+				else {
+					ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? LD_R16(reg_idx) : LD_R32(reg_idx));
+				}
+			}
+			ST_R16(sp, ESP_idx);
+		}
+		break;
+
 		case X86_OPC_PUSHF:       BAD;
 		case X86_OPC_RCL:         BAD;
 		case X86_OPC_RCR:         BAD;
