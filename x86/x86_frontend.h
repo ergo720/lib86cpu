@@ -264,3 +264,4 @@ BR_COND(disas_ctx->bb, bb_next, AND(ICMP_NE(ecx, zero), ICMP_EQ(LD_ZF(), CONST32
 #define LD_ZF() LD_FLG_RES()
 #define LD_SF() XOR(SHR(LD_FLG_RES(), CONST32(31)), AND(LD_FLG_AUX(), CONST32(1)))
 #define LD_PF() LD_PARITY(TRUNC8(XOR(LD_FLG_RES(), SHR(LD_FLG_AUX(), CONST32(8)))))
+#define LD_AF() AND(LD_FLG_AUX(), CONST32(8))

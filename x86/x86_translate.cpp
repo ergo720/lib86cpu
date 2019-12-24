@@ -1745,11 +1745,11 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_SGDTL:       BAD;
 		case X86_OPC_SGDTW:       BAD;
 		case X86_OPC_SHL: {
+			assert(instr.reg_opc == 4);
+
 			switch (instr.opcode_byte)
 			{
 			case 0xD0: {
-				assert(instr.reg_opc == 4);
-
 				Value *val, *rm, *cf;
 				GET_RM(OPNUM_SRC, val = LD_REG_val(rm); cf = AND(val, CONST8(0xC0)); val = SHL(val, CONST8(1)); ST_REG_val(val, rm);,
 					val = LD_MEM(MEM_LD8_idx, rm); cf = AND(val, CONST8(0xC0)); val = SHL(val, CONST8(1)); ST_MEM(MEM_ST8_idx, rm, val););
@@ -1765,7 +1765,47 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		break;
 
 		case X86_OPC_SHLD:        BAD;
-		case X86_OPC_SHR:         BAD;
+		case X86_OPC_SHR: {
+			assert(instr.reg_opc == 5);
+
+			switch (instr.opcode_byte)
+			{
+			case 0xC1: {
+				Value *val, *rm, *cf, *of, *cf_mask, *of_mask;
+				uint8_t count = instr.operand[OPNUM_SRC].imm & 0x1F;
+				cf_mask = size_mode == SIZE16 ? CONST32(1 << count - 1) : CONST32(1 << count - 1);
+				of_mask = size_mode == SIZE16 ? CONST32(1 << 15) : CONST32(1 << 31);
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = size_mode == SIZE16 ? ZEXT32(val) : val; cf = AND(val, cf_mask); of = AND(val, of_mask);
+				val = SHR(val, CONST32(count)); val = size_mode == SIZE16 ? TRUNC16(val) : val; ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
+				val = size_mode == SIZE16 ? ZEXT32(val) : val; cf = AND(val, cf_mask); of = AND(val, of_mask); val = SHR(val, CONST32(count));
+				val = size_mode == SIZE16 ? TRUNC16(val) : val; ST_MEM(fn_idx[size_mode], rm, val););
+
+				switch (size_mode)
+				{
+				case SIZE16:
+					ST_FLG_RES_ext(val);
+					of = count == 1 ? SHL(XOR(cf, SHR(of, CONST32(15))), CONST32(30)) : of;
+					count == 0 ? ST_FLG_AUX(OR(OR(SHL(cf, CONST32(31 - (count - 1))), of), LD_AF())) : ST_FLG_AUX(OR(SHL(cf, CONST32(31 - (count - 1))), of));
+					break;
+
+				case SIZE32:
+					ST_FLG_RES(val);
+					of = count == 1 ? SHL(XOR(cf, SHR(of, CONST32(31))), CONST32(30)) : of;
+					count == 0 ? ST_FLG_AUX(OR(OR(SHL(cf, CONST32(31 - (count - 1))), of), LD_AF())) : ST_FLG_AUX(OR(SHL(cf, CONST32(31 - (count - 1))), of));
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+			}
+			break;
+
+			default:
+				BAD;
+			}
+		}
+		break;
+
 		case X86_OPC_SHRD:        BAD;
 		case X86_OPC_SIDTD:       BAD;
 		case X86_OPC_SIDTL:       BAD;
