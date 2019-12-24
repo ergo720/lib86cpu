@@ -1842,6 +1842,38 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			switch (instr.opcode_byte)
 			{
+			case 0xC1: {
+				uint8_t count = instr.operand[OPNUM_SRC].imm & 0x1F;
+				if (count != 0) {
+					Value *val, *rm, *cf, *of, *cf_mask, *of_mask;
+					cf_mask = CONST32(1 << 32 - count);
+					of_mask = size_mode == SIZE16 ? CONST32(1 << 15) : CONST32(1 << 31);
+					GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = size_mode == SIZE16 ? ZEXT32(val) : val; cf = AND(val, cf_mask); val = SHL(val, CONST32(count));
+					of = AND(val, of_mask); val = size_mode == SIZE16 ? TRUNC16(val) : val; ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
+					val = size_mode == SIZE16 ? ZEXT32(val) : val; cf = AND(val, cf_mask); val = SHL(val, CONST32(count)); of = AND(val, of_mask);
+					val = size_mode == SIZE16 ? TRUNC16(val) : val; ST_MEM(fn_idx[size_mode], rm, val););
+
+					switch (size_mode)
+					{
+					case SIZE16:
+						ST_FLG_RES_ext(val);
+						of = count == 1 ? SHL(of, CONST32(15)) : of;
+						ST_FLG_AUX(OR(SHL(cf, CONST32(count - 1)), of));
+						break;
+
+					case SIZE32:
+						ST_FLG_RES(val);
+						of = count == 1 ? SHR(of, CONST32(1)) : of;
+						ST_FLG_AUX(OR(SHL(cf, CONST32(count - 1)), of));
+						break;
+
+					default:
+						UNREACHABLE;
+					}
+				}
+			}
+			break;
+
 			case 0xD0: {
 				Value *val, *rm, *cf;
 				GET_RM(OPNUM_SRC, val = LD_REG_val(rm); cf = AND(val, CONST8(0xC0)); val = SHL(val, CONST8(1)); ST_REG_val(val, rm);,
@@ -1864,31 +1896,33 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			switch (instr.opcode_byte)
 			{
 			case 0xC1: {
-				Value *val, *rm, *cf, *of, *cf_mask, *of_mask;
 				uint8_t count = instr.operand[OPNUM_SRC].imm & 0x1F;
-				cf_mask = size_mode == SIZE16 ? CONST32(1 << count - 1) : CONST32(1 << count - 1);
-				of_mask = size_mode == SIZE16 ? CONST32(1 << 15) : CONST32(1 << 31);
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = size_mode == SIZE16 ? ZEXT32(val) : val; cf = AND(val, cf_mask); of = AND(val, of_mask);
-				val = SHR(val, CONST32(count)); val = size_mode == SIZE16 ? TRUNC16(val) : val; ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
-				val = size_mode == SIZE16 ? ZEXT32(val) : val; cf = AND(val, cf_mask); of = AND(val, of_mask); val = SHR(val, CONST32(count));
-				val = size_mode == SIZE16 ? TRUNC16(val) : val; ST_MEM(fn_idx[size_mode], rm, val););
+				if (count != 0) {
+					Value *val, *rm, *cf, *of, *cf_mask, *of_mask;
+					cf_mask = CONST32(1 << count - 1);
+					of_mask = size_mode == SIZE16 ? CONST32(1 << 15) : CONST32(1 << 31);
+					GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = size_mode == SIZE16 ? ZEXT32(val) : val; cf = AND(val, cf_mask); of = AND(val, of_mask);
+					val = SHR(val, CONST32(count)); val = size_mode == SIZE16 ? TRUNC16(val) : val; ST_REG_val(val, rm); , val = LD_MEM(fn_idx[size_mode], rm);
+					val = size_mode == SIZE16 ? ZEXT32(val) : val; cf = AND(val, cf_mask); of = AND(val, of_mask); val = SHR(val, CONST32(count));
+					val = size_mode == SIZE16 ? TRUNC16(val) : val; ST_MEM(fn_idx[size_mode], rm, val););
 
-				switch (size_mode)
-				{
-				case SIZE16:
-					ST_FLG_RES_ext(val);
-					of = count == 1 ? SHL(XOR(cf, SHR(of, CONST32(15))), CONST32(30)) : of;
-					count == 0 ? ST_FLG_AUX(OR(OR(SHL(cf, CONST32(31 - (count - 1))), of), LD_AF())) : ST_FLG_AUX(OR(SHL(cf, CONST32(31 - (count - 1))), of));
-					break;
+					switch (size_mode)
+					{
+					case SIZE16:
+						ST_FLG_RES_ext(val);
+						of = count == 1 ? SHL(XOR(cf, SHR(of, CONST32(15))), CONST32(30)) : of;
+						ST_FLG_AUX(OR(SHL(cf, CONST32(31 - (count - 1))), of));
+						break;
 
-				case SIZE32:
-					ST_FLG_RES(val);
-					of = count == 1 ? SHL(XOR(cf, SHR(of, CONST32(31))), CONST32(30)) : of;
-					count == 0 ? ST_FLG_AUX(OR(OR(SHL(cf, CONST32(31 - (count - 1))), of), LD_AF())) : ST_FLG_AUX(OR(SHL(cf, CONST32(31 - (count - 1))), of));
-					break;
+					case SIZE32:
+						ST_FLG_RES(val);
+						of = count == 1 ? SHL(XOR(cf, SHR(of, CONST32(31))), CONST32(30)) : of;
+						ST_FLG_AUX(OR(SHL(cf, CONST32(31 - (count - 1))), of));
+						break;
 
-				default:
-					UNREACHABLE;
+					default:
+						UNREACHABLE;
+					}
 				}
 			}
 			break;
