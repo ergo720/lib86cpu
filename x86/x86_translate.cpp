@@ -1548,7 +1548,42 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0x09: {
 				Value *val, *rm, *src;
-				GET_RM(OPNUM_SRC, src = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				GET_RM(OPNUM_SRC, src = LD_REG_val(rm);, assert(0););
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = OR(val, src); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
+				val = OR(val, src); ST_MEM(fn_idx[size_mode], rm, val););
+
+				switch (size_mode)
+				{
+				case SIZE8:
+					ST_FLG_RES_ext(val);
+					ST_FLG_AUX(CONST32(0));
+					break;
+
+				case SIZE16:
+					ST_FLG_RES_ext(val);
+					ST_FLG_AUX(CONST32(0));
+					break;
+
+				case SIZE32:
+					ST_FLG_RES(val);
+					ST_FLG_AUX(CONST32(0));
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+			}
+			break;
+
+			case 0x80:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x81: {
+				assert(instr.reg_opc == 1);
+
+				Value *val, *rm, *src = size_mode == SIZE16 ? CONST16(instr.operand[OPNUM_SRC].imm) : size_mode == SIZE32 ?
+					CONST32(instr.operand[OPNUM_SRC].imm) : CONST8(instr.operand[OPNUM_SRC].imm);
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = OR(val, src); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
 				val = OR(val, src); ST_MEM(fn_idx[size_mode], rm, val););
 
