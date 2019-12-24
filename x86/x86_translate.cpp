@@ -1539,7 +1539,48 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_NEG:         BAD;
 		case X86_OPC_NOP:         BAD;
 		case X86_OPC_NOT:         BAD;
-		case X86_OPC_OR:          BAD;
+		case X86_OPC_OR: {
+			switch (instr.opcode_byte)
+			{
+			case 0x08:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x09: {
+				Value *val, *rm, *src;
+				GET_RM(OPNUM_SRC, src = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = OR(val, src); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
+				val = OR(val, src); ST_MEM(fn_idx[size_mode], rm, val););
+
+				switch (size_mode)
+				{
+				case SIZE8:
+					ST_FLG_RES_ext(val);
+					ST_FLG_AUX(CONST32(0));
+					break;
+
+				case SIZE16:
+					ST_FLG_RES_ext(val);
+					ST_FLG_AUX(CONST32(0));
+					break;
+
+				case SIZE32:
+					ST_FLG_RES(val);
+					ST_FLG_AUX(CONST32(0));
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+			}
+			break;
+
+			default:
+				BAD;
+			}
+		}
+		break;
+
 		case X86_OPC_OUT:
 			switch (instr.opcode_byte)
 			{
