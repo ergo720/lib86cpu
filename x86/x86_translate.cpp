@@ -1691,6 +1691,47 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			}
 			break;
 
+			case 0x0C:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x0D: {
+				Value *val, *eax;
+				switch (size_mode)
+				{
+				case SIZE8:
+					val = CONST8(instr.operand[OPNUM_SRC].imm);
+					eax = LD_R8L(EAX_idx);
+					val = OR(eax, val);
+					ST_R8L(val, EAX_idx);
+					ST_FLG_RES_ext(val);
+					ST_FLG_AUX(CONST32(0));
+					break;
+
+				case SIZE16:
+					val = CONST16(instr.operand[OPNUM_SRC].imm);
+					eax = LD_R16(EAX_idx);
+					val = OR(eax, val);
+					ST_R16(val, EAX_idx);
+					ST_FLG_RES_ext(val);
+					ST_FLG_AUX(CONST32(0));
+					break;
+
+				case SIZE32:
+					val = CONST32(instr.operand[OPNUM_SRC].imm);
+					eax = LD_R32(EAX_idx);
+					val = OR(eax, val);
+					ST_R32(val, EAX_idx);
+					ST_FLG_RES(val);
+					ST_FLG_AUX(CONST32(0));
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+			}
+			break;
+
 			case 0x80:
 				size_mode = SIZE8;
 				[[fallthrough]];
