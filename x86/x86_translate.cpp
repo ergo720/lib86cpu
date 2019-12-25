@@ -1631,7 +1631,21 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 		case X86_OPC_OUTS:        BAD;
 		case X86_OPC_POP:         BAD;
-		case X86_OPC_POPA:        BAD;
+		case X86_OPC_POPA: {
+			// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
+			Value *sp = LD_R16(ESP_idx);
+			Value *sp_add = size_mode == SIZE16 ? CONST16(2) : CONST16(4);
+			for (int8_t reg_idx = EDI_idx; reg_idx >= EAX_idx; reg_idx--) {
+				if (reg_idx != ESP_idx) {
+					Value *reg = LD_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
+					size_mode == SIZE16 ? ST_R16(reg, reg_idx) : ST_R32(reg, reg_idx);
+				}
+				sp = ADD(sp, sp_add);
+			}
+			ST_R16(sp, ESP_idx);
+		}
+		break;
+
 		case X86_OPC_POPF:        BAD;
 		case X86_OPC_PUSH:        BAD;
 		case X86_OPC_PUSHA: {
@@ -1639,7 +1653,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			Value *sp = LD_R16(ESP_idx);
 			Value *sp_sub = size_mode == SIZE16 ? CONST16(2) : CONST16(4);
 			Value *esp_ori = size_mode == SIZE16 ? LD_R16(ESP_idx) : LD_R32(ESP_idx);
-			for (uint8_t reg_idx = 0; reg_idx < ES_idx; reg_idx++) {
+			for (uint8_t reg_idx = EAX_idx; reg_idx < ES_idx; reg_idx++) {
 				sp = SUB(sp, sp_sub);
 				if (reg_idx == ESP_idx) {
 					ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), esp_ori);
