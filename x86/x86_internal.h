@@ -102,7 +102,36 @@ extern const char *mnemo[];
 #define R48_BASE  0
 #define R48_LIMIT 1
 
-#define CRO_PE_SHIFT 0
-#define CR0_PE_MASK (1 << CRO_PE_SHIFT)
+// control register flags
+#define CR0_PG_SHIFT 31
+#define CR0_CD_SHIFT 30
+#define CR0_NW_SHIFT 29
+#define CR0_AM_SHIFT 18
+#define CR0_WP_SHIFT 16
+#define CR0_NE_SHIFT 5
+#define CR0_ET_SHIFT 4
+#define CR0_TS_SHIFT 3
+#define CR0_EM_SHIFT 2
+#define CR0_MP_SHIFT 1
+#define CR0_PE_SHIFT 0
+#define CR0_PG_MASK (1 << CR0_PG_SHIFT)
+#define CR0_CD_MASK (1 << CR0_CD_SHIFT)
+#define CR0_NW_MASK (1 << CR0_NW_SHIFT)
+#define CR0_AM_MASK (1 << CR0_AM_SHIFT)
+#define CR0_WP_MASK (1 << CR0_WP_SHIFT)
+#define CR0_NE_MASK (1 << CR0_NE_SHIFT)
+#define CR0_ET_MASK (1 << CR0_ET_SHIFT)
+#define CR0_TS_MASK (1 << CR0_TS_SHIFT)
+#define CR0_EM_MASK (1 << CR0_EM_SHIFT)
+#define CR0_MP_MASK (1 << CR0_MP_SHIFT)
+#define CR0_PE_MASK (1 << CR0_PE_SHIFT)
+#define CR0_FLG_MASK (CR0_PG_MASK | CR0_CD_MASK | CR0_NW_MASK | CR0_AM_MASK | CR0_WP_MASK | CR0_NE_MASK | CR0_ET_MASK |\
+CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
+#define CR3_PCD_SHIFT 4
+#define CR3_PWT_SHIFT 3
+#define CR3_PD_MASK 0xFFFFFF00
+#define CR3_PCD_MASK (1 << CR3_PCD_SHIFT)
+#define CR3_PWT_MASK (1 << CR3_PWT_SHIFT)
+#define CR3_FLG_MASK (CR3_PD_MASK | CR3_PCD_MASK | CR3_PCD_MASK)
 
 #define CPU_PE_MODE (cpu->regs.cr0 & CR0_PE_MASK)

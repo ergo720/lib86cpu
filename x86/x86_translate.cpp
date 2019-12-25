@@ -74,14 +74,14 @@ cpu_update_crN(uint8_t *cpu2, uint32_t new_cr, uint8_t idx)
 	switch (idx)
 	{
 	case 0:
-		cpu->regs.cr0 = new_cr & 0xE005003F;
 		if ((cpu->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
 			tc_cache_clear(cpu);
 		}
+		cpu->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
 		break;
 
 	case 3:
-		cpu->regs.cr3 = new_cr & 0xFFFFFF18;
+		cpu->regs.cr3 = (new_cr & CR3_FLG_MASK);
 		break;
 
 	case 2:
