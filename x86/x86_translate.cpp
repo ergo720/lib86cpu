@@ -1004,9 +1004,9 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_LAR:         BAD;
 		case X86_OPC_LEA:         BAD;
 		case X86_OPC_LEAVE:       BAD;
-		case X86_OPC_LGDTD:       BAD;
-		case X86_OPC_LGDTL:       BAD;
-		case X86_OPC_LGDTW:       BAD;
+		case X86_OPC_LGDTD:
+		case X86_OPC_LGDTL:
+		case X86_OPC_LGDTW:
 		case X86_OPC_LIDTD:
 		case X86_OPC_LIDTL:
 		case X86_OPC_LIDTW: {
@@ -1017,15 +1017,22 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				translate_next = false;
 			}
 			else {
-				assert(instr.reg_opc == 3);
-
 				Value *rm, *limit, *base;
+				uint8_t reg_idx;
+				if (instr.opcode == X86_OPC_LGDTD || instr.opcode == X86_OPC_LGDTL || instr.opcode == X86_OPC_LGDTW) {
+					assert(instr.reg_opc == 2);
+					reg_idx = GDTR_idx;
+				}
+				else {
+					assert(instr.reg_opc == 3);
+					reg_idx = IDTR_idx;
+				}
 				GET_RM(OPNUM_SRC, assert(0);, limit = LD_MEM(MEM_LD16_idx, rm); rm = ADD(rm, CONST32(2)); base = LD_MEM(MEM_LD32_idx, rm););
 				if (size_mode == SIZE16) {
 					base = AND(base, CONST32(0x00FFFFFF));
 				}
-				ST_R48(base, IDTR_idx, R48_BASE);
-				ST_R48(limit, IDTR_idx, R48_LIMIT);
+				ST_R48(base, reg_idx, R48_BASE);
+				ST_R48(limit, reg_idx, R48_LIMIT);
 			}
 		}
 		break;

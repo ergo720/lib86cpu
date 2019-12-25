@@ -68,4 +68,5 @@ struct regs_t {
 	DEFINE_REG32(eip);
 
 	DEFINE_REG48(idtr);
+	DEFINE_REG48(gdtr);
 };

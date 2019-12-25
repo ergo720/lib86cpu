@@ -53,7 +53,7 @@ enum lib86cpu_status {
 
 #define CPU_INTEL_SYNTAX_SHIFT  1
 
-#define CPU_NUM_REGS 30
+#define CPU_NUM_REGS 31
 
 #define CODE_CACHE_MAX_SIZE (1 << 15)
 

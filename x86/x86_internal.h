@@ -48,6 +48,7 @@ extern const char *mnemo[];
 #define EFLAGS_idx  27
 #define EIP_idx     28
 #define IDTR_idx    29
+#define GDTR_idx    30
 
 #define CF_shift    0
 #define PF_shift    2

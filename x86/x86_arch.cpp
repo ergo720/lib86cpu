@@ -40,6 +40,7 @@ static constexpr regs_layout_t regs_layout[CPU_NUM_REGS] = {
 	{ 32, EFLAGS_idx, "eflags" },
 	{ 32, EIP_idx,	  "eip" },
 	{ 48, IDTR_idx,	  "idtr" },
+	{ 48, GDTR_idx,	  "gdtr" },
 };
 
 static constexpr bool
@@ -84,6 +85,7 @@ static_assert(check_regs_layout_idx(26), "wrong index in regs_layout array!");
 static_assert(check_regs_layout_idx(27), "wrong index in regs_layout array!");
 static_assert(check_regs_layout_idx(28), "wrong index in regs_layout array!");
 static_assert(check_regs_layout_idx(29), "wrong index in regs_layout array!");
+static_assert(check_regs_layout_idx(30), "wrong index in regs_layout array!");
 
 
 void
@@ -99,5 +101,5 @@ cpu_x86_init(cpu_t *cpu)
 	cpu->regs.cs_hidden.base = 0xFFFF0000;
 	cpu->regs.eflags = 0x2;
 	cpu->regs.cr0 = 0x60000010;
-	cpu->regs.idtr_limit = 0xFFFF;
+	cpu->regs.idtr_limit = cpu->regs.gdtr_limit = 0xFFFF;
 }
