@@ -149,6 +149,7 @@ default: \
 #define GEP_EIP()      GEP_R32(EIP_idx)
 #define GEP_PARITY()   GEP(cpu->ptr_eflags, 2)
 
+#define ST_R48(val, reg, idx) new StoreInst(val, GEP(GEP(cpu->ptr_regs, reg), idx), bb)
 #define ST_R32(val, idx) new StoreInst(val, GEP(cpu->ptr_regs, idx), bb)
 #define ST_R16(val, idx) new StoreInst(val, GEP_R16(idx), bb)
 #define ST_R8L(val, idx) new StoreInst(val, GEP_R8L(idx), bb)

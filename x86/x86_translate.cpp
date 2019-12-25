@@ -1007,9 +1007,29 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_LGDTD:       BAD;
 		case X86_OPC_LGDTL:       BAD;
 		case X86_OPC_LGDTW:       BAD;
-		case X86_OPC_LIDTD:       BAD;
-		case X86_OPC_LIDTL:       BAD;
-		case X86_OPC_LIDTW:       BAD;
+		case X86_OPC_LIDTD:
+		case X86_OPC_LIDTL:
+		case X86_OPC_LIDTW: {
+			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
+				RAISE(EXP_UD, pc - cpu->regs.cs_hidden.base);
+				disas_ctx->next_pc = CONST32(0); // unreachable
+				disas_ctx->bb = bb;
+				translate_next = false;
+			}
+			else {
+				assert(instr.reg_opc == 3);
+
+				Value *rm, *limit, *base;
+				GET_RM(OPNUM_SRC, assert(0);, limit = LD_MEM(MEM_LD16_idx, rm); rm = ADD(rm, CONST32(2)); base = LD_MEM(MEM_LD32_idx, rm););
+				if (size_mode == SIZE16) {
+					base = AND(base, CONST32(0x00FFFFFF));
+				}
+				ST_R48(base, IDTR_idx, R48_BASE);
+				ST_R48(limit, IDTR_idx, R48_LIMIT);
+			}
+		}
+		break;
+
 		case X86_OPC_LJMP: // AT&T
 		case X86_OPC_JMP: {
 			switch (instr.opcode_byte)

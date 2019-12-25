@@ -97,6 +97,8 @@ extern const char *mnemo[];
 #define SEG_SEL_idx     0
 #define SEG_HIDDEN_idx  1
 #define SEG_BASE_idx    0
+#define R48_BASE  0
+#define R48_LIMIT 1
 
 #define CRO_PE_SHIFT 0
 #define CR0_PE_MASK (1 << CRO_PE_SHIFT)
