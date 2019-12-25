@@ -169,6 +169,44 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			}
 			break;
 
+			case 0x04:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x05: {
+				Value *rm, *val, *sum, *eax;
+				switch (size_mode)
+				{
+				case SIZE8:
+					val = CONST8(instr.operand[OPNUM_SRC].imm);
+					eax = LD_R8L(EAX_idx);
+					sum = ADD(eax, val);
+					ST_FLG_RES_ext(sum);
+					ST_FLG_SUM_AUX8(eax, val, sum);
+					break;
+
+				case SIZE16:
+					val = CONST16(instr.operand[OPNUM_SRC].imm);
+					eax = LD_R16(EAX_idx);
+					sum = ADD(eax, val);
+					ST_FLG_RES_ext(sum);
+					ST_FLG_SUM_AUX16(eax, val, sum);
+					break;
+
+				case SIZE32:
+					val = CONST32(instr.operand[OPNUM_SRC].imm);
+					eax = LD_R32(EAX_idx);
+					sum = ADD(eax, val);
+					ST_FLG_RES(sum);
+					ST_FLG_SUM_AUX32(eax, val, sum);
+					break;
+
+				default:
+					UNREACHABLE;
+				}
+			}
+			break;
+
 			case 0x80:
 				size_mode = SIZE8;
 				[[fallthrough]];
