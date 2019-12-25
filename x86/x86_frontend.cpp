@@ -138,6 +138,7 @@ get_ext_fn(cpu_t *cpu, translated_code_t *tc)
 	}
 
 	cpu->exp_fn = cast<Function>(tc->mod->getOrInsertFunction("cpu_raise_exception", getVoidType(), PointerType::get(getIntegerType(8), 0), getIntegerType(8), getIntegerType(32)));
+	cpu->crN_fn = cast<Function>(tc->mod->getOrInsertFunction("cpu_update_crN", getVoidType(), PointerType::get(getIntegerType(8), 0), getIntegerType(32), getIntegerType(8)));
 }
 
 static inline uint32_t

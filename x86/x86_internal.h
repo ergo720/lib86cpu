@@ -93,7 +93,8 @@ extern const char *mnemo[];
 #define EXP_MC  18  // machine check
 #define EXP_XF  19  // SIMD floating point exception
 
-#define SEG_offset  8
+#define SEG_offset  ES_idx
+#define CR_offset   CR0_idx
 
 #define SEG_SEL_idx     0
 #define SEG_HIDDEN_idx  1
@@ -104,6 +105,4 @@ extern const char *mnemo[];
 #define CRO_PE_SHIFT 0
 #define CR0_PE_MASK (1 << CRO_PE_SHIFT)
 
-#define R_CR0 cpu->regs.cr0
-
-#define CPU_PE_MODE (R_CR0 & CR0_PE_MASK)
+#define CPU_PE_MODE (cpu->regs.cr0 & CR0_PE_MASK)

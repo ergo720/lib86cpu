@@ -66,6 +66,30 @@ cpu_raise_exception(uint8_t *cpu2, uint8_t expno, uint32_t eip)
 	throw cpu;
 }
 
+JIT_EXTERNAL_CALL_C void
+cpu_update_crN(uint8_t *cpu2, uint32_t new_cr, uint8_t idx)
+{
+	cpu_t *cpu = reinterpret_cast<cpu_t *>(cpu2);
+
+	switch (idx)
+	{
+	case 0:
+		cpu->regs.cr0 = new_cr & 0xE005003F;
+		if ((cpu->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
+			tc_cache_clear(cpu);
+		}
+		break;
+
+	case 3:
+		cpu->regs.cr3 = new_cr & 0xFFFFFF18;
+		break;
+
+	case 2:
+	case 4:
+		break;
+	}
+}
+
 static lib86cpu_status
 cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *tc)
 {
@@ -1339,6 +1363,33 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_MOV:
 			switch (instr.opcode_byte)
 			{
+			case 0x20: {
+				ST_R32(LD_R32(instr.operand[OPNUM_SRC].reg + CR_offset), instr.operand[OPNUM_DST].reg);
+			}
+			break;
+
+			case 0x22: {
+				Value *val = LD_R32(instr.operand[OPNUM_SRC].reg);
+				switch (instr.operand[OPNUM_DST].reg)
+				{
+				case 0:
+				case 3:
+					CallInst::Create(cpu->crN_fn, std::vector<Value *>{ cpu->ptr_cpu, val, CONST8(instr.operand[OPNUM_DST].reg) }, "", bb);
+					break;
+				case 2:
+				case 4:
+					BAD;
+
+				default:
+					UNREACHABLE;
+				}
+
+				disas_ctx->next_pc = calc_next_pc_emit(cpu, tc, bb, instr_size);
+				disas_ctx->bb = bb;
+				translate_next = false;
+			}
+			break;
+
 			case 0x88:
 				size_mode = SIZE8;
 				[[fallthrough]];
