@@ -125,6 +125,13 @@ get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t s
 	}
 }
 
+Value *
+get_register_op(cpu_t *cpu, translated_code_t *tc, x86_instr *instr, BasicBlock *bb, uint8_t idx)
+{
+	assert(instr->operand[idx].type == OPTYPE_REG);
+	return get_operand(cpu, instr, tc, bb, idx);
+}
+
 void
 set_flags_sum(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *sum, Value *a, Value *b, uint8_t size_mode)
 {

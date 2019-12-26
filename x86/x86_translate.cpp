@@ -166,7 +166,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0x01: {
 				Value *rm, *dst, *sum, *val;
-				GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, assert(0););
+				val = LD_REG_val(GET_REG(OPNUM_SRC));
 				GET_RM(OPNUM_DST, dst = LD_REG_val(rm); sum = ADD(dst, val); ST_REG_val(sum, rm);,
 					dst = LD_MEM(fn_idx[size_mode], rm); sum = ADD(dst, val); ST_MEM(fn_idx[size_mode], rm, sum););
 				SET_FLG_SUM(sum, dst, val);
@@ -179,29 +179,9 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0x05: {
 				Value *rm, *val, *sum, *eax;
-				switch (size_mode)
-				{
-				case SIZE8:
-					val = GET_IMM(OPNUM_SRC, size_mode);
-					eax = LD_R8L(EAX_idx);
-					sum = ADD(eax, val);
-					break;
-
-				case SIZE16:
-					val = GET_IMM(OPNUM_SRC, size_mode);
-					eax = LD_R16(EAX_idx);
-					sum = ADD(eax, val);
-					break;
-
-				case SIZE32:
-					val = GET_IMM(OPNUM_SRC, size_mode);
-					eax = LD_R32(EAX_idx);
-					sum = ADD(eax, val);
-					break;
-
-				default:
-					UNREACHABLE;
-				}
+				val = GET_IMM(OPNUM_SRC, size_mode);
+				eax = LD_REG_val(GET_REG(OPNUM_DST));
+				sum = ADD(eax, val);
 				SET_FLG_SUM(sum, eax, val);
 			}
 			break;
@@ -235,27 +215,10 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				[[fallthrough]];
 
 			case 0x25: {
-				Value *val;
-				switch (size_mode)
-				{
-				case SIZE8:
-					val = AND(LD_R8L(EAX_idx), GET_IMM(OPNUM_SRC, size_mode));
-					ST_R8L(val, EAX_idx);
-					break;
-
-				case SIZE16:
-					val = AND(LD_R16(EAX_idx), GET_IMM(OPNUM_SRC, size_mode));
-					ST_R16(val, EAX_idx);
-					break;
-
-				case SIZE32:
-					val = AND(LD_R32(EAX_idx), GET_IMM(OPNUM_SRC, size_mode));
-					ST_R32(val, EAX_idx);
-					break;
-
-				default:
-					UNREACHABLE;
-				}
+				Value *val, *eax;
+				eax = GET_REG(OPNUM_DST);
+				val = AND(LD_REG_val(eax), GET_IMM(OPNUM_SRC, size_mode));
+				ST_REG_val(val, eax);
 				SET_FLG(val, CONST32(0));
 			}
 			break;
@@ -455,28 +418,23 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			{
 			case 0x38:
 				size_mode = SIZE8;
-				GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, assert(0););
+				val = LD_REG_val(GET_REG(OPNUM_SRC));
 				GET_RM(OPNUM_DST, cmp = LD_REG_val(rm);, cmp = LD_MEM(fn_idx[size_mode], rm););
 				break;
 
 			case 0x39:
-				GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, assert(0););
+				val = LD_REG_val(GET_REG(OPNUM_SRC));
 				GET_RM(OPNUM_DST, cmp = LD_REG_val(rm);, cmp = LD_MEM(fn_idx[size_mode], rm););
 				break;
 
 			case 0x3C:
 				size_mode = SIZE8;
-				val = LD_R8L(EAX_idx);
+				val = LD_REG_val(GET_REG(OPNUM_DST));
 				cmp = GET_IMM(OPNUM_SRC, SIZE8);
 				break;
 
 			case 0x3D:
-				if (size_mode == SIZE16) {
-					val = LD_R16(EAX_idx);
-				}
-				else {
-					val = LD_R32(EAX_idx);
-				}
+				val = LD_REG_val(GET_REG(OPNUM_DST));
 				cmp = GET_IMM(OPNUM_SRC, size_mode);
 				break;
 
@@ -1226,7 +1184,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				GET_RM(OPNUM_SRC, assert(0);, offset = LD_MEM(fn_idx[size_mode], rm);
 				rm = size_mode == SIZE16 ? ADD(rm, CONST32(2)) : ADD(rm, CONST32(4));
 				sel = LD_MEM(MEM_LD16_idx, rm););
-				GET_RM(OPNUM_DST, ST_REG_val(offset, rm);, assert(0););
+				ST_REG_val(offset, GET_REG(OPNUM_DST));
 				switch (instr.opcode_byte)
 				{
 				case 0xB2:
@@ -1298,7 +1256,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0x89: {
 				Value *reg, *rm;
-				GET_RM(OPNUM_SRC, reg = LD_REG_val(rm);, assert(0););
+				reg = LD_REG_val(GET_REG(OPNUM_SRC));
 				GET_RM(OPNUM_DST, ST_REG_val(reg, rm);, ST_MEM(fn_idx[size_mode], rm, reg););
 			}
 			break;
@@ -1548,7 +1506,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0x09: {
 				Value *val, *rm, *src;
-				GET_RM(OPNUM_SRC, src = LD_REG_val(rm);, assert(0););
+				src = LD_REG_val(GET_REG(OPNUM_SRC));
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = OR(val, src); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
 				val = OR(val, src); ST_MEM(fn_idx[size_mode], rm, val););
 				SET_FLG(val, CONST32(0));
@@ -1561,32 +1519,10 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0x0D: {
 				Value *val, *eax;
-				switch (size_mode)
-				{
-				case SIZE8:
-					val = GET_IMM(OPNUM_SRC, size_mode);
-					eax = LD_R8L(EAX_idx);
-					val = OR(eax, val);
-					ST_R8L(val, EAX_idx);
-					break;
-
-				case SIZE16:
-					val = GET_IMM(OPNUM_SRC, size_mode);
-					eax = LD_R16(EAX_idx);
-					val = OR(eax, val);
-					ST_R16(val, EAX_idx);
-					break;
-
-				case SIZE32:
-					val = GET_IMM(OPNUM_SRC, size_mode);
-					eax = LD_R32(EAX_idx);
-					val = OR(eax, val);
-					ST_R32(val, EAX_idx);
-					break;
-
-				default:
-					UNREACHABLE;
-				}
+				val = GET_IMM(OPNUM_SRC, size_mode);
+				eax = GET_REG(OPNUM_DST);
+				val = OR(LD_REG_val(eax), val);
+				ST_REG_val(val, eax);
 				SET_FLG(val, CONST32(0));
 			}
 			break;
@@ -2095,26 +2031,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				[[fallthrough]];
 
 			case 0xA9: {
-				Value *val, *eax;
-				switch (size_mode)
-				{
-				case SIZE8:
-					eax = LD_R8L(EAX_idx);
-					break;
-
-				case SIZE16:
-					eax = LD_R16(EAX_idx);
-					break;
-
-				case SIZE32:
-					eax = LD_R32(EAX_idx);
-					break;
-
-				default:
-					UNREACHABLE;
-				}
-
-				val = AND(eax, GET_IMM(OPNUM_SRC, size_mode));
+				Value *val = AND(LD_REG_val(GET_REG(OPNUM_DST)), GET_IMM(OPNUM_SRC, size_mode));
 				SET_FLG(val, CONST32(0));
 			}
 			break;
@@ -2141,8 +2058,8 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			case 0x87: {
 				Value *reg, *val, *rm, *rm_src;
-				GET_RM(OPNUM_SRC, reg = LD_REG_val(rm);, assert(0););
-				rm_src = rm;
+				rm_src = rm = GET_REG(OPNUM_SRC);
+				reg = LD_REG_val(rm);
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm); ST_REG_val(reg, rm); ST_REG_val(val, rm_src);,
 					val = LD_MEM(fn_idx[size_mode], rm); ST_MEM(fn_idx[size_mode], rm, reg); ST_REG_val(val, rm_src););
 			}

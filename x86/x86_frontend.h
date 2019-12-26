@@ -21,6 +21,7 @@ void get_ext_fn(cpu_t *cpu, translated_code_t *tc);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlock *bb, unsigned opnum);
 Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size_t instr_size);
 Value *get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t size_mode);
+Value *get_register_op(cpu_t *cpu, translated_code_t *tc, x86_instr *instr, BasicBlock *bb, uint8_t idx);
 void set_flags_sum(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *sum, Value *a, Value *b, uint8_t size_mode);
 void set_flags_sub(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *sub, Value *a, Value *b, uint8_t size_mode);
 void set_flags(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *res, Value *aux, uint8_t size_mode);
@@ -48,6 +49,7 @@ void set_flags(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *res, Va
 #define IO_ST32_idx  5
 
 #define GET_IMM(idx, size_mode) get_immediate_op(tc, &instr, idx, size_mode)
+#define GET_REG(idx) get_register_op(cpu, tc, &instr, bb, idx)
 #define GET_OP(op) get_operand(cpu, &instr, tc, bb, op)
 #define GET_RM(idx, r, m) 	rm = GET_OP(idx); \
 switch (instr.operand[idx].type) \
