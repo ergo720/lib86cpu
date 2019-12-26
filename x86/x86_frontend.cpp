@@ -505,7 +505,7 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disa
 }
 
 Value *
-get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb, unsigned opnum, uint8_t addr_mode)
+get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb, unsigned opnum)
 {
 	assert(opnum < OPNUM_COUNT && "Invalid operand number specified\n");
 
@@ -531,7 +531,7 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 			return nullptr;
 		}
 	case OPTYPE_MEM:
-		if (addr_mode == ADDR32) {
+		if (instr->addr_size_override ^ CPU_PE_MODE) {
 			uint8_t reg_idx;
 			switch (operand->reg) {
 			case 0:
