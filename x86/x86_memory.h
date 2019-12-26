@@ -45,8 +45,7 @@ T ram_read(cpu_t *cpu, addr_t *pc)
 		break;
 
 		default:
-			printf("%s: invalid size %u specified\n", __func__, sizeof(T));
-			exit(1);
+			LIB86CPU_ABORT();
 		}
 	}
 
@@ -69,8 +68,7 @@ void ram_write(cpu_t *cpu, addr_t *pc, T value)
 		break;
 
 		default:
-			printf("%s: invalid size %u specified\n", __func__, sizeof(T));
-			exit(1);
+			LIB86CPU_ABORT();
 		}
 	}
 
@@ -98,15 +96,8 @@ T mem_read(cpu_t *cpu, addr_t addr)
 		break;
 
 		case MEM_MMIO: {
-			T value = 0;
 			memory_region_t<addr_t> *region = std::get<2>(*cpu->memory_out.begin()).get();
-			if (region->read_handler) {
-				value = region->read_handler(addr, sizeof(T), region->opaque);
-			}
-			else {
-				printf("%s: unhandled MMIO read at address %#02x with size %d\n", __func__, addr, sizeof(T));
-			}
-			return value;
+			return region->read_handler(addr, sizeof(T), region->opaque);;
 		}
 		break;
 
@@ -122,22 +113,18 @@ T mem_read(cpu_t *cpu, addr_t addr)
 		break;
 
 		case MEM_UNMAPPED: {
-			// TODO: handle this properly instead of just aborting
-			printf("%s: memory access to unmapped memory at address %#02x with size %d\n", __func__, addr, sizeof(T));
-			exit(1);
+			LOG("Memory read to unmapped memory at address %#010x with size %d\n", addr, sizeof(T));
+			return 0xFFFFFFFF;
 		}
 		break;
 
 		default:
-			// TODO: handle this properly instead of just aborting
-			printf("%s: unknown region type\n", __func__);
-			exit(1);
+			LIB86CPU_ABORT();
 		}
 	}
 	else {
-		// TODO: handle this properly instead of just aborting
-		printf("%s: memory access at address %#02x with size %d is not completely inside a memory region\n", __func__, addr, sizeof(T));
-		exit(1);
+		LOG("Memory read at address %#010x with size %d is not completely inside a memory region\n", addr, sizeof(T));
+		return 0xFFFFFFFF;
 	}
 }
 
@@ -159,12 +146,7 @@ void mem_write(cpu_t *cpu, addr_t addr, T value)
 
 		case MEM_MMIO: {
 			memory_region_t<addr_t> *region = std::get<2>(*cpu->memory_out.begin()).get();
-			if (region->write_handler) {
-				region->write_handler(addr, sizeof(T), value, region->opaque);
-			}
-			else {
-				printf("%s: unhandled MMIO write at address %#02x with size %d\n", __func__, addr, sizeof(T));
-			}
+			region->write_handler(addr, sizeof(T), value, region->opaque);
 		}
 		break;
 
@@ -180,22 +162,18 @@ void mem_write(cpu_t *cpu, addr_t addr, T value)
 		break;
 
 		case MEM_UNMAPPED: {
-			// TODO: handle this properly instead of just aborting
-			printf("%s: memory access to unmapped memory at address %#02x with size %d\n", __func__, addr, sizeof(T));
-			exit(1);
+			LOG("Memory write to unmapped memory at address %#010x with size %d\n", addr, sizeof(T));
+			return;
 		}
 		break;
 
 		default:
-			// TODO: handle this properly instead of just aborting
-			printf("%s: unknown region type\n", __func__);
-			exit(1);
+			LIB86CPU_ABORT();
 		}
 	}
 	else {
-		// TODO: handle this properly instead of just aborting
-		printf("%s: memory access at address %#02x with size %d is not completely inside a memory region\n", __func__, addr, sizeof(T));
-		exit(1);
+		LOG("Memory write at address %#010x with size %d is not completely inside a memory region\n", addr, sizeof(T));
+		return;
 	}
 }
 
@@ -214,35 +192,24 @@ T io_read(cpu_t *cpu, io_port_t port)
 		switch (std::get<2>(*cpu->io_out.begin())->type)
 		{
 		case MEM_PMIO: {
-			T value = 0;
 			memory_region_t<io_port_t> *region = std::get<2>(*cpu->io_out.begin()).get();
-			if (region->read_handler) {
-				value = region->read_handler(port, sizeof(T), region->opaque);
-			}
-			else {
-				printf("%s: unhandled PMIO read at port %#02hx with size %d\n", __func__, port, sizeof(T));
-			}
-			return value;
+			return region->read_handler(port, sizeof(T), region->opaque);;
 		}
 		break;
 
 		case MEM_UNMAPPED: {
-			// TODO: handle this properly instead of just aborting
-			printf("%s: memory access to unmapped memory at port %#02hx with size %d\n", __func__, port, sizeof(T));
-			exit(1);
+			LOG("Memory read to unmapped memory at port %#06hx with size %d\n", port, sizeof(T));
+			return 0xFFFFFFFF;
 		}
 		break;
 
 		default:
-			// TODO: handle this properly instead of just aborting
-			printf("%s: unknown region type\n", __func__);
-			exit(1);
+			LIB86CPU_ABORT();
 		}
 	}
 	else {
-		// TODO: handle this properly instead of just aborting
-		printf("%s: io access at address %#02hx with size %d is not completely inside a memory region\n", __func__, port, sizeof(T));
-		exit(1);
+		LOG("Memory read at address %#06hx with size %d is not completely inside a memory region\n", port, sizeof(T));
+		return 0xFFFFFFFF;
 	}
 }
 
@@ -259,30 +226,22 @@ void io_write(cpu_t *cpu, io_port_t port, T value)
 		{
 		case MEM_PMIO: {
 			memory_region_t<io_port_t> *region = std::get<2>(*cpu->io_out.begin()).get();
-			if (region->write_handler) {
-				region->write_handler(port, sizeof(T), value, region->opaque);
-			}
-			else {
-				printf("%s: unhandled PMIO write at port %#02hx with size %d\n", __func__, port, sizeof(T));
-			}
+			region->write_handler(port, sizeof(T), value, region->opaque);
 		}
 		break;
 
 		case MEM_UNMAPPED: {
-			// TODO: handle this properly instead of just aborting
-			printf("%s: memory access to unmapped memory at port %#02hx with size %d\n", __func__, port, sizeof(T));
-			exit(1);
+			LOG("Memory write to unmapped memory at port %#06hx with size %d\n", port, sizeof(T));
+			return;
 		}
 		break;
 
 		default:
-			printf("%s: unknown region type\n", __func__);
-			exit(1);
+			LIB86CPU_ABORT();
 		}
 	}
 	else {
-		// TODO: handle this properly instead of just aborting
-		printf("%s: io access at port %#02hx with size %d is not completely inside a memory region\n", __func__, port, sizeof(T));
-		exit(1);
+		LOG("Memory write at port %#06hx with size %d is not completely inside a memory region\n", port, sizeof(T));
+		return;
 	}
 }

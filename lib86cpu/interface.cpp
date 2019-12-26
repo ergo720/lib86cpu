@@ -147,6 +147,32 @@ cpu_run(cpu_t *cpu)
 	}
 }
 
+static void
+default_mmio_write_handler(addr_t addr, size_t size, uint32_t value, void *opaque)
+{
+	LOG("Unhandled MMIO write at address %#010x with size %d\n", addr, size);
+}
+
+static uint32_t
+default_mmio_read_handler(addr_t addr, size_t size, void *opaque)
+{
+	LOG("Unhandled MMIO read at address %#010x with size %d\n", addr, size);
+	return 0xFFFFFFFF;
+}
+
+static void
+default_pmio_write_handler(addr_t addr, size_t size, uint32_t value, void *opaque)
+{
+	LOG("Unhandled PMIO write at port %#06x with size %d\n", addr, size);
+}
+
+static uint32_t
+default_pmio_read_handler(addr_t addr, size_t size, void *opaque)
+{
+	LOG("Unhandled PMIO read at port %#06x with size %d\n", addr, size);
+	return 0xFFFFFFFF;
+}
+
 lib86cpu_status
 memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 {
@@ -214,8 +240,14 @@ memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_r
 		if (read_func) {
 			io->read_handler = read_func;
 		}
+		else {
+			io->read_handler = default_pmio_read_handler;
+		}
 		if (write_func) {
 			io->write_handler = write_func;
+		}
+		else {
+			io->write_handler = default_pmio_write_handler;
 		}
 		if (opaque) {
 			io->opaque = opaque;
@@ -243,8 +275,14 @@ memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_r
 		if (read_func) {
 			io->read_handler = read_func;
 		}
+		else {
+			io->read_handler = default_mmio_read_handler;
+		}
 		if (write_func) {
 			io->write_handler = write_func;
+		}
+		else {
+			io->write_handler = default_mmio_write_handler;
 		}
 		if (opaque) {
 			io->opaque = opaque;
