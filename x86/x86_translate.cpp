@@ -178,7 +178,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				[[fallthrough]];
 
 			case 0x05: {
-				Value *rm, *val, *sum, *eax;
+				Value *val, *sum, *eax;
 				val = GET_IMM();
 				eax = LD_REG_val(GET_REG(OPNUM_DST));
 				sum = ADD(eax, val);
