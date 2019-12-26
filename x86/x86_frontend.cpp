@@ -120,7 +120,7 @@ get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t s
 		return CONST32(instr->operand[idx].imm);
 
 	default:
-		assert(0);
+		LIB86CPU_ABORT();
 		return nullptr;
 	}
 }

@@ -63,6 +63,12 @@ enum lib86cpu_status {
 #define LOG(...)
 #endif
 
+#define LIB86CPU_ABORT() \
+do {\
+    printf("%s:%d: lib86cpu fatal error in function %s\n", __FILE__, __LINE__, __func__);\
+    exit(1);\
+} while (0)
+
 // used to generate the parity table
 #define P2(n) n, n ^ 1, n ^ 1, n
 #define P4(n) P2(n), P2(n ^ 1), P2(n ^ 1), P2(n)
