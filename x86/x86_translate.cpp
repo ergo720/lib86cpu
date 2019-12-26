@@ -1224,12 +1224,12 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			switch (instr.opcode_byte)
 			{
 			case 0x20: {
-				ST_R32(LD_R32(instr.operand[OPNUM_SRC].reg + CR_offset), instr.operand[OPNUM_DST].reg);
+				ST_R32(LD_REG_val(GET_REG(OPNUM_SRC)), instr.operand[OPNUM_DST].reg);
 			}
 			break;
 
 			case 0x22: {
-				Value *val = LD_R32(instr.operand[OPNUM_SRC].reg);
+				Value *val = LD_REG_val(GET_REG(OPNUM_SRC));
 				switch (instr.operand[OPNUM_DST].reg)
 				{
 				case 0:
