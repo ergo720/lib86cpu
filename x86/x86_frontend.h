@@ -48,7 +48,8 @@ void set_flags(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *res, Va
 #define IO_ST16_idx  4
 #define IO_ST32_idx  5
 
-#define GET_IMM(idx, size_mode) get_immediate_op(tc, &instr, idx, size_mode)
+#define GET_IMM() get_immediate_op(tc, &instr, OPNUM_SRC, size_mode)
+#define GET_IMM8() get_immediate_op(tc, &instr, OPNUM_SRC, SIZE8)
 #define GET_REG(idx) get_register_op(cpu, tc, &instr, bb, idx)
 #define GET_OP(op) get_operand(cpu, &instr, tc, bb, op)
 #define GET_RM(idx, r, m) 	rm = GET_OP(idx); \
