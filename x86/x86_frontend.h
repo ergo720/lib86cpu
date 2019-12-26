@@ -21,6 +21,7 @@ void tc_cache_clear(cpu_t *cpu);
 void optimize(translated_code_t *tc, Function *func);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlock *bb, unsigned opnum, uint8_t addr_mode);
 Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size_t instr_size);
+Value *get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t size_mode);
 
 #define DISAS_FLG_PE_MODE      (1 << 0)
 #define DISAS_FLG_TC_INDIRECT  (1 << 1)
@@ -44,6 +45,7 @@ Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size
 #define IO_ST16_idx  4
 #define IO_ST32_idx  5
 
+#define GET_IMM(idx, size_mode) get_immediate_op(tc, &instr, idx, size_mode)
 #define GET_OP(op) get_operand(cpu, &instr, tc, bb, op, addr_mode)
 
 #define GET_RM(idx, r, m) 	rm = GET_OP(idx); \

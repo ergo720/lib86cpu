@@ -105,6 +105,26 @@ calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size_t inst
 	return BinaryOperator::Create(Instruction::Add, CONST32(cpu->regs.cs_hidden.base), next_eip, "", bb);
 }
 
+Value *
+get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t size_mode)
+{
+	switch (size_mode)
+	{
+	case SIZE8:
+		return CONST8(instr->operand[idx].imm);
+
+	case SIZE16:
+		return CONST16(instr->operand[idx].imm);
+
+	case SIZE32:
+		return CONST32(instr->operand[idx].imm);
+
+	default:
+		assert(0);
+		return nullptr;
+	}
+}
+
 void
 optimize(translated_code_t *tc, Function *func)
 {
