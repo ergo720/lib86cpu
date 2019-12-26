@@ -512,24 +512,6 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 	x86_operand *operand = &instr->operand[opnum];
 
 	switch (operand->type) {
-	case OPTYPE_IMM:
-		if (instr->flags & (SRC_IMM8 | OP3_IMM8)) {
-			return CONST8(operand->imm);
-		}
-		else if (instr->flags & DST_IMM16) {
-			return CONST16(operand->imm);
-		}
-		switch (instr->flags & WIDTH_MASK) {
-		case WIDTH_BYTE:
-			return CONST8(operand->imm);
-		case WIDTH_WORD:
-			return CONST16(operand->imm);
-		case WIDTH_DWORD:
-			return CONST32(operand->imm);
-		default:
-			assert(0 && "Missing operand size in OPTYPE_IMM (calling %s on an instruction without operands?)\n");
-			return nullptr;
-		}
 	case OPTYPE_MEM:
 		if (instr->addr_size_override ^ CPU_PE_MODE) {
 			uint8_t reg_idx;
