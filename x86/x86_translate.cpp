@@ -169,27 +169,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, assert(0););
 				GET_RM(OPNUM_DST, dst = LD_REG_val(rm); sum = ADD(dst, val); ST_REG_val(sum, rm);,
 					dst = LD_MEM(fn_idx[size_mode], rm); sum = ADD(dst, val); ST_MEM(fn_idx[size_mode], rm, sum););
-
-				switch (size_mode)
-				{
-				case SIZE8:
-					ST_FLG_RES_ext(sum);
-					ST_FLG_SUM_AUX8(dst, val, sum);
-					break;
-
-				case SIZE16:
-					ST_FLG_RES_ext(sum);
-					ST_FLG_SUM_AUX16(dst, val, sum);
-					break;
-
-				case SIZE32:
-					ST_FLG_RES(sum);
-					ST_FLG_SUM_AUX32(dst, val, sum);
-					break;
-
-				default:
-					UNREACHABLE;
-				}
+				SET_FLG_SUM(sum, dst, val);
 			}
 			break;
 
@@ -205,29 +185,24 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					val = GET_IMM(OPNUM_SRC, size_mode);
 					eax = LD_R8L(EAX_idx);
 					sum = ADD(eax, val);
-					ST_FLG_RES_ext(sum);
-					ST_FLG_SUM_AUX8(eax, val, sum);
 					break;
 
 				case SIZE16:
 					val = GET_IMM(OPNUM_SRC, size_mode);
 					eax = LD_R16(EAX_idx);
 					sum = ADD(eax, val);
-					ST_FLG_RES_ext(sum);
-					ST_FLG_SUM_AUX16(eax, val, sum);
 					break;
 
 				case SIZE32:
 					val = GET_IMM(OPNUM_SRC, size_mode);
 					eax = LD_R32(EAX_idx);
 					sum = ADD(eax, val);
-					ST_FLG_RES(sum);
-					ST_FLG_SUM_AUX32(eax, val, sum);
 					break;
 
 				default:
 					UNREACHABLE;
 				}
+				SET_FLG_SUM(sum, eax, val);
 			}
 			break;
 
@@ -242,27 +217,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				val = size_mode == SIZE16 ? SEXT16(val) : size_mode == SIZE32 ? SEXT32(val) : val;
 				GET_RM(OPNUM_DST, dst = LD_REG_val(rm); sum = ADD(dst, val); ST_REG_val(sum, rm);,
 					dst = LD_MEM(fn_idx[size_mode], rm); sum = ADD(dst, val); ST_MEM(fn_idx[size_mode], rm, sum););
-
-				switch (size_mode)
-				{
-				case SIZE8:
-					ST_FLG_RES_ext(sum);
-					ST_FLG_SUM_AUX8(dst, val, sum);
-					break;
-
-				case SIZE16:
-					ST_FLG_RES_ext(sum);
-					ST_FLG_SUM_AUX16(dst, val, sum);
-					break;
-
-				case SIZE32:
-					ST_FLG_RES(sum);
-					ST_FLG_SUM_AUX32(dst, val, sum);
-					break;
-
-				default:
-					UNREACHABLE;
-				}
+				SET_FLG_SUM(sum, dst, val);
 			}
 			break;
 
@@ -286,27 +241,22 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				case SIZE8:
 					val = AND(LD_R8L(EAX_idx), GET_IMM(OPNUM_SRC, size_mode));
 					ST_R8L(val, EAX_idx);
-					ST_FLG_RES_ext(val);
-					ST_FLG_AUX(CONST32(0));
 					break;
 
 				case SIZE16:
 					val = AND(LD_R16(EAX_idx), GET_IMM(OPNUM_SRC, size_mode));
 					ST_R16(val, EAX_idx);
-					ST_FLG_RES_ext(val);
-					ST_FLG_AUX(CONST32(0));
 					break;
 
 				case SIZE32:
 					val = AND(LD_R32(EAX_idx), GET_IMM(OPNUM_SRC, size_mode));
 					ST_R32(val, EAX_idx);
-					ST_FLG_RES(val);
-					ST_FLG_AUX(CONST32(0));
 					break;
 
 				default:
 					UNREACHABLE;
 				}
+				SET_FLG(val, CONST32(0));
 			}
 			break;
 
@@ -320,27 +270,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				Value *val, *rm, *src = GET_IMM(OPNUM_SRC, size_mode);
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = AND(val, src); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
 				val = AND(val, src); ST_MEM(fn_idx[size_mode], rm, val););
-
-				switch (size_mode)
-				{
-				case SIZE8:
-					ST_FLG_RES_ext(val);
-					ST_FLG_AUX(CONST32(0));
-					break;
-
-				case SIZE16:
-					ST_FLG_RES_ext(val);
-					ST_FLG_AUX(CONST32(0));
-					break;
-
-				case SIZE32:
-					ST_FLG_RES(val);
-					ST_FLG_AUX(CONST32(0));
-					break;
-
-				default:
-					UNREACHABLE;
-				}
+				SET_FLG(val, CONST32(0));
 			}
 			break;
 
@@ -575,27 +505,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			}
 
 			sub = SUB(val, cmp);
-
-			switch (size_mode)
-			{
-			case SIZE8:
-				ST_FLG_RES_ext(sub);
-				ST_FLG_SUB_AUX8(val, cmp, sub);
-				break;
-
-			case SIZE16:
-				ST_FLG_RES_ext(sub);
-				ST_FLG_SUB_AUX16(val, cmp, sub);
-				break;
-
-			case SIZE32:
-				ST_FLG_RES(sub);
-				ST_FLG_SUB_AUX32(val, cmp, sub);
-				break;
-
-			default:
-				UNREACHABLE;
-			}
+			SET_FLG_SUB(sub, val, cmp);
 		}
 		break;
 
@@ -641,8 +551,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					src1 = LD_MEM(fn_idx[size_mode], addr1);
 					src2 = LD_MEM(fn_idx[size_mode], addr2);
 					sub = SUB(src1, src2);
-					ST_FLG_RES_ext(sub);
-					ST_FLG_SUB_AUX8(src1, src2, sub);
 					break;
 
 				case SIZE16:
@@ -650,8 +558,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					src1 = LD_MEM(fn_idx[size_mode], addr1);
 					src2 = LD_MEM(fn_idx[size_mode], addr2);
 					sub = SUB(src1, src2);
-					ST_FLG_RES_ext(sub);
-					ST_FLG_SUB_AUX16(src1, src2, sub);
 					break;
 
 				case SIZE32:
@@ -659,13 +565,13 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					src1 = LD_MEM(fn_idx[size_mode], addr1);
 					src2 = LD_MEM(fn_idx[size_mode], addr2);
 					sub = SUB(src1, src2);
-					ST_FLG_RES(sub);
-					ST_FLG_SUB_AUX32(src1, src2, sub);
 					break;
 
 				default:
 					UNREACHABLE;
 				}
+
+				SET_FLG_SUB(sub, src1, src2);
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
 				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
@@ -847,31 +753,29 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			case 0x45:
 			case 0x46:
 			case 0x47: {
-				Value *sum, *val, *cf_old, *reg = GET_OP(OPNUM_SRC);
+				Value *sum, *val, *one, *cf_old, *reg = GET_OP(OPNUM_SRC);
 				switch (size_mode)
 				{
 				case SIZE16:
 					val = LD_REG_val(reg);
-					sum = ADD(val, CONST16(1));
+					one = CONST16(1);
+					sum = ADD(val, one);
 					cf_old = LD_CF();
 					ST_REG_val(sum, reg);
-					ST_FLG_RES_ext(sum);
-					ST_FLG_SUM_AUX16(val, CONST16(1), sum);
 					break;
 
 				case SIZE32:
 					val = LD_REG_val(reg);
-					sum = ADD(val, CONST32(1));
+					one = CONST32(1);
+					sum = ADD(val, one);
 					cf_old = LD_CF();
 					ST_REG_val(sum, reg);
-					ST_FLG_RES(sum);
-					ST_FLG_SUM_AUX32(val, CONST32(1), sum);
 					break;
 
 				default:
 					UNREACHABLE;
 				}
-
+				SET_FLG_SUM(sum, val, one);
 				ST_FLG_AUX(OR(OR(cf_old, SHR(XOR(cf_old, LD_OF()), CONST32(1))), AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF))));
 			}
 			break;
@@ -1647,27 +1551,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				GET_RM(OPNUM_SRC, src = LD_REG_val(rm);, assert(0););
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = OR(val, src); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
 				val = OR(val, src); ST_MEM(fn_idx[size_mode], rm, val););
-
-				switch (size_mode)
-				{
-				case SIZE8:
-					ST_FLG_RES_ext(val);
-					ST_FLG_AUX(CONST32(0));
-					break;
-
-				case SIZE16:
-					ST_FLG_RES_ext(val);
-					ST_FLG_AUX(CONST32(0));
-					break;
-
-				case SIZE32:
-					ST_FLG_RES(val);
-					ST_FLG_AUX(CONST32(0));
-					break;
-
-				default:
-					UNREACHABLE;
-				}
+				SET_FLG(val, CONST32(0));
 			}
 			break;
 
@@ -1684,8 +1568,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					eax = LD_R8L(EAX_idx);
 					val = OR(eax, val);
 					ST_R8L(val, EAX_idx);
-					ST_FLG_RES_ext(val);
-					ST_FLG_AUX(CONST32(0));
 					break;
 
 				case SIZE16:
@@ -1693,8 +1575,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					eax = LD_R16(EAX_idx);
 					val = OR(eax, val);
 					ST_R16(val, EAX_idx);
-					ST_FLG_RES_ext(val);
-					ST_FLG_AUX(CONST32(0));
 					break;
 
 				case SIZE32:
@@ -1702,13 +1582,12 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					eax = LD_R32(EAX_idx);
 					val = OR(eax, val);
 					ST_R32(val, EAX_idx);
-					ST_FLG_RES(val);
-					ST_FLG_AUX(CONST32(0));
 					break;
 
 				default:
 					UNREACHABLE;
 				}
+				SET_FLG(val, CONST32(0));
 			}
 			break;
 
@@ -1722,27 +1601,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				Value *val, *rm, *src = GET_IMM(OPNUM_SRC, size_mode);
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = OR(val, src); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
 				val = OR(val, src); ST_MEM(fn_idx[size_mode], rm, val););
-
-				switch (size_mode)
-				{
-				case SIZE8:
-					ST_FLG_RES_ext(val);
-					ST_FLG_AUX(CONST32(0));
-					break;
-
-				case SIZE16:
-					ST_FLG_RES_ext(val);
-					ST_FLG_AUX(CONST32(0));
-					break;
-
-				case SIZE32:
-					ST_FLG_RES(val);
-					ST_FLG_AUX(CONST32(0));
-					break;
-
-				default:
-					UNREACHABLE;
-				}
+				SET_FLG(val, CONST32(0));
 			}
 			break;
 
@@ -1924,8 +1783,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					src = LD_MEM(fn_idx[size_mode], addr);
 					eax = LD_R8L(EAX_idx);
 					sub = SUB(eax, src);
-					ST_FLG_RES_ext(sub);
-					ST_FLG_SUB_AUX8(eax, src, sub);
 					break;
 
 				case SIZE16:
@@ -1933,8 +1790,6 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					src = LD_MEM(fn_idx[size_mode], addr);
 					eax = LD_R16(EAX_idx);
 					sub = SUB(eax, src);
-					ST_FLG_RES_ext(sub);
-					ST_FLG_SUB_AUX16(eax, src, sub);
 					break;
 
 				case SIZE32:
@@ -1942,13 +1797,13 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					src = LD_MEM(fn_idx[size_mode], addr);
 					eax = LD_R32(EAX_idx);
 					sub = SUB(eax, src);
-					ST_FLG_RES(sub);
-					ST_FLG_SUB_AUX32(eax, src, sub);
 					break;
 
 				default:
 					UNREACHABLE;
 				}
+
+				SET_FLG_SUB(sub, eax, src);
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
 				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
@@ -2037,34 +1892,18 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					of = AND(val, of_mask); val = size_mode == SIZE16 ? TRUNC16(val) : val; ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
 					val = size_mode == SIZE16 ? ZEXT32(val) : val; cf = AND(val, cf_mask); val = SHL(val, CONST32(count)); of = AND(val, of_mask);
 					val = size_mode == SIZE16 ? TRUNC16(val) : val; ST_MEM(fn_idx[size_mode], rm, val););
-
-					switch (size_mode)
-					{
-					case SIZE16:
-						ST_FLG_RES_ext(val);
-						of = count == 1 ? SHL(of, CONST32(15)) : of;
-						ST_FLG_AUX(OR(SHL(cf, CONST32(count - 1)), of));
-						break;
-
-					case SIZE32:
-						ST_FLG_RES(val);
-						of = count == 1 ? SHR(of, CONST32(1)) : of;
-						ST_FLG_AUX(OR(SHL(cf, CONST32(count - 1)), of));
-						break;
-
-					default:
-						UNREACHABLE;
-					}
+					of = count == 1 ? (size_mode == SIZE16 ? SHL(of, CONST32(15)) : SHR(of, CONST32(1))) : of;
+					SET_FLG(val, OR(SHL(cf, CONST32(count - 1)), of));
 				}
 			}
 			break;
 
 			case 0xD0: {
 				Value *val, *rm, *cf;
+				size_mode = SIZE8;
 				GET_RM(OPNUM_SRC, val = LD_REG_val(rm); cf = AND(val, CONST8(0xC0)); val = SHL(val, CONST8(1)); ST_REG_val(val, rm);,
-					val = LD_MEM(MEM_LD8_idx, rm); cf = AND(val, CONST8(0xC0)); val = SHL(val, CONST8(1)); ST_MEM(MEM_ST8_idx, rm, val););
-				ST_FLG_RES_ext(val);
-				ST_FLG_AUX(SHL(ZEXT32(cf), CONST32(24)));
+					val = LD_MEM(fn_idx[size_mode], rm); cf = AND(val, CONST8(0xC0)); val = SHL(val, CONST8(1)); ST_MEM(fn_idx[size_mode], rm, val););
+				SET_FLG(val, SHL(ZEXT32(cf), CONST32(24)));
 			}
 			break;
 
@@ -2090,24 +1929,8 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					val = SHR(val, CONST32(count)); val = size_mode == SIZE16 ? TRUNC16(val) : val; ST_REG_val(val, rm); , val = LD_MEM(fn_idx[size_mode], rm);
 					val = size_mode == SIZE16 ? ZEXT32(val) : val; cf = AND(val, cf_mask); of = AND(val, of_mask); val = SHR(val, CONST32(count));
 					val = size_mode == SIZE16 ? TRUNC16(val) : val; ST_MEM(fn_idx[size_mode], rm, val););
-
-					switch (size_mode)
-					{
-					case SIZE16:
-						ST_FLG_RES_ext(val);
-						of = count == 1 ? SHL(XOR(cf, SHR(of, CONST32(15))), CONST32(30)) : of;
-						ST_FLG_AUX(OR(SHL(cf, CONST32(31 - (count - 1))), of));
-						break;
-
-					case SIZE32:
-						ST_FLG_RES(val);
-						of = count == 1 ? SHL(XOR(cf, SHR(of, CONST32(31))), CONST32(30)) : of;
-						ST_FLG_AUX(OR(SHL(cf, CONST32(31 - (count - 1))), of));
-						break;
-
-					default:
-						UNREACHABLE;
-					}
+					of = count == 1 ? SHL(XOR(cf, SHR(of, CONST32(size_mode == SIZE16 ? 15 : 31))), CONST32(30)) : of;
+					SET_FLG(val, OR(SHL(cf, CONST32(31 - (count - 1))), of));
 				}
 			}
 			break;
@@ -2252,27 +2075,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				val = size_mode == SIZE16 ? SEXT16(val) : size_mode == SIZE32 ? SEXT32(val) : val;
 				GET_RM(OPNUM_DST, dst = LD_REG_val(rm); sub = SUB(dst, val); ST_REG_val(sub, rm);,
 					dst = LD_MEM(fn_idx[size_mode], rm); sub = SUB(dst, val); ST_MEM(fn_idx[size_mode], rm, sub););
-
-				switch (size_mode)
-				{
-				case SIZE8:
-					ST_FLG_RES_ext(sub);
-					ST_FLG_SUB_AUX8(dst, val, sub);
-					break;
-
-				case SIZE16:
-					ST_FLG_RES_ext(sub);
-					ST_FLG_SUB_AUX16(dst, val, sub);
-					break;
-
-				case SIZE32:
-					ST_FLG_RES(sub);
-					ST_FLG_SUB_AUX32(dst, val, sub);
-					break;
-
-				default:
-					UNREACHABLE;
-				}
+				SET_FLG_SUB(sub, dst, val);
 			}
 			break;
 
@@ -2311,11 +2114,8 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					UNREACHABLE;
 				}
 
-
 				val = AND(eax, GET_IMM(OPNUM_SRC, size_mode));
-
-				size_mode == SIZE32 ? ST_FLG_RES(val) : ST_FLG_RES_ext(val);
-				ST_FLG_AUX(CONST32(0));
+				SET_FLG(val, CONST32(0));
 			}
 			break;
 
@@ -2367,8 +2167,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				Value *val, *rm;
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = XOR(val, LD_REG_val(reg)); ST_REG_val(val, rm);,
 					val = LD_MEM(fn_idx[size_mode], rm); val = XOR(val, LD_REG_val(reg)); ST_MEM(fn_idx[size_mode], rm, val););
-				size_mode == SIZE32 ? ST_FLG_RES(val) : ST_FLG_RES_ext(val);
-				ST_FLG_AUX(CONST32(0));
+				SET_FLG(val, CONST32(0));
 			}
 			break;
 

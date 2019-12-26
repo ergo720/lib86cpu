@@ -126,6 +126,63 @@ get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t s
 }
 
 void
+set_flags_sum(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *sum, Value *a, Value *b, uint8_t size_mode)
+{
+	switch (size_mode)
+	{
+	case SIZE8:
+		ST_FLG_RES_ext(sum);
+		ST_FLG_SUM_AUX8(a, b, sum);
+		break;
+
+	case SIZE16:
+		ST_FLG_RES_ext(sum);
+		ST_FLG_SUM_AUX16(a, b, sum);
+		break;
+
+	case SIZE32:
+		ST_FLG_RES(sum);
+		ST_FLG_SUM_AUX32(a, b, sum);
+		break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+void
+set_flags_sub(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *sub, Value *a, Value *b, uint8_t size_mode)
+{
+	switch (size_mode)
+	{
+	case SIZE8:
+		ST_FLG_RES_ext(sub);
+		ST_FLG_SUB_AUX8(a, b, sub);
+		break;
+
+	case SIZE16:
+		ST_FLG_RES_ext(sub);
+		ST_FLG_SUB_AUX16(a, b, sub);
+		break;
+
+	case SIZE32:
+		ST_FLG_RES(sub);
+		ST_FLG_SUB_AUX32(a, b, sub);
+		break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+void
+set_flags(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *res, Value *aux, uint8_t size_mode)
+{
+	size_mode == SIZE32 ? ST_FLG_RES(res) : ST_FLG_RES_ext(res);
+	ST_FLG_AUX(aux);
+}
+
+void
 optimize(translated_code_t *tc, Function *func)
 {
 	legacy::FunctionPassManager pm = legacy::FunctionPassManager(tc->mod);

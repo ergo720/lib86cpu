@@ -7,10 +7,6 @@
 #pragma once
 
 
-Value *get_struct_member_pointer(Value *gep_start, const unsigned gep_index, translated_code_t *tc, BasicBlock *bb);
-Value * get_r8h_pointer(Value *gep_start, translated_code_t *tc, BasicBlock *bb);
-
-void get_ext_fn(cpu_t *cpu, translated_code_t *tc);
 FunctionType * create_tc_fntype(cpu_t *cpu, translated_code_t *tc);
 Function *create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, uint64_t func_idx);
 Function *create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disas_ctx_t *disas_ctx, uint64_t func_idx);
@@ -19,9 +15,15 @@ translated_code_t *tc_cache_search(cpu_t *cpu, addr_t pc);
 void tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc);
 void tc_cache_clear(cpu_t *cpu);
 void optimize(translated_code_t *tc, Function *func);
+Value *get_struct_member_pointer(Value *gep_start, const unsigned gep_index, translated_code_t *tc, BasicBlock *bb);
+Value *get_r8h_pointer(Value *gep_start, translated_code_t *tc, BasicBlock *bb);
+void get_ext_fn(cpu_t *cpu, translated_code_t *tc);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlock *bb, unsigned opnum, uint8_t addr_mode);
 Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size_t instr_size);
 Value *get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t size_mode);
+void set_flags_sum(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *sum, Value *a, Value *b, uint8_t size_mode);
+void set_flags_sub(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *sub, Value *a, Value *b, uint8_t size_mode);
+void set_flags(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *res, Value *aux, uint8_t size_mode);
 
 #define DISAS_FLG_PE_MODE      (1 << 0)
 #define DISAS_FLG_TC_INDIRECT  (1 << 1)
@@ -47,7 +49,6 @@ Value *get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, ui
 
 #define GET_IMM(idx, size_mode) get_immediate_op(tc, &instr, idx, size_mode)
 #define GET_OP(op) get_operand(cpu, &instr, tc, bb, op, addr_mode)
-
 #define GET_RM(idx, r, m) 	rm = GET_OP(idx); \
 switch (instr.operand[idx].type) \
 { \
@@ -170,8 +171,10 @@ default: \
 #define ST_MEM(idx, addr, val) CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu, addr, val }, "", bb)
 
 #define LD_PARITY(idx) new LoadInst(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST8(0), idx }, "", bb), "", false, bb)
-
 #define RAISE(expno, eip) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu, CONST8(expno), CONST32(eip) }, "", bb)
+#define SET_FLG_SUM(sum, a , b) set_flags_sum(cpu, tc, bb, sum, a, b, size_mode)
+#define SET_FLG_SUB(sub, a , b) set_flags_sub(cpu, tc, bb, sub, a, b, size_mode)
+#define SET_FLG(res, aux) set_flags(cpu, tc, bb, res, aux, size_mode)
 
 #define REP_start() disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0); \
 Value *ecx, *zero; \
