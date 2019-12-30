@@ -17,7 +17,7 @@
 #define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), disas_ctx->flags & DISAS_FLG_PE_MODE ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
 #define UNREACHABLE printf("%s: unreachable line %d reached!\n", __func__, __LINE__); return LIB86CPU_UNREACHABLE
 
-typedef void (*entry_t)(uint32_t dummy, uint8_t *cpu, regs_t *regs, lazy_eflags_t *lazy_eflags);
+typedef uint8_t *(*entry_t)(uint32_t dummy, uint8_t *cpu, regs_t *regs, lazy_eflags_t *lazy_eflags);
 
 
 const char *
@@ -2161,7 +2161,7 @@ cpu_exec_tc(cpu_t *cpu)
 				return status;
 			}
 
-			Function *tail = create_tc_epilogue(cpu, tc.get(), fntype, &disas_ctx, func_idx);
+			create_tc_epilogue(cpu, tc.get(), fntype, &disas_ctx, func_idx);
 
 			if (cpu->cpu_flags & CPU_PRINT_IR) {
 				tc->mod->print(errs(), nullptr);
@@ -2218,12 +2218,10 @@ cpu_exec_tc(cpu_t *cpu)
 			tc_link_direct(prev_tc, ptr_tc, pc);
 		}
 
-		prev_tc = ptr_tc;
-
 		try {
 			// run the translated code
 			entry = static_cast<entry_t>(ptr_tc->ptr_code);
-			entry(0, reinterpret_cast<uint8_t *>(cpu), &cpu->regs, &cpu->lazy_eflags);
+			prev_tc = reinterpret_cast<translated_code_t *>(entry(0, reinterpret_cast<uint8_t *>(cpu), &cpu->regs, &cpu->lazy_eflags));
 		}
 		catch (cpu_t *cpu) {
 			// don't link the exception code with the other code blocks

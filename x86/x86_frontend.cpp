@@ -48,15 +48,15 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 	std::vector<Type *>type_struct_reg48_t_fields;
 
 	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
-	StructType *type_struct_hiddenseg_t = StructType::create(_CTX(), type_struct_hiddenseg_t_fields, "struct.hiddenseg_t", false);
+	StructType *type_struct_hiddenseg_t = StructType::get(_CTX(), type_struct_hiddenseg_t_fields, false);
 
 	type_struct_seg_t_fields.push_back(getIntegerType(16));
 	type_struct_seg_t_fields.push_back(type_struct_hiddenseg_t);
-	StructType *type_struct_seg_t = StructType::create(_CTX(), type_struct_seg_t_fields, "struct.seg_t", false);
+	StructType *type_struct_seg_t = StructType::get(_CTX(), type_struct_seg_t_fields, false);
 
 	type_struct_reg48_t_fields.push_back(getIntegerType(32));
 	type_struct_reg48_t_fields.push_back(getIntegerType(16));
-	StructType *type_struct_reg48_t = StructType::create(_CTX(), type_struct_reg48_t_fields, "struct.reg48_t", false);
+	StructType *type_struct_reg48_t = StructType::get(_CTX(), type_struct_reg48_t_fields, false);
 
 	for (uint8_t n = 0; n < CPU_NUM_REGS; n++) {
 		switch (n)
@@ -82,7 +82,7 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 		}
 	}
 
-	return StructType::create(_CTX(), type_struct_reg_t_fields, "struct.regs_t", false);
+	return StructType::get(_CTX(), type_struct_reg_t_fields, false);
 }
 
 static StructType *
@@ -94,7 +94,7 @@ get_struct_eflags(translated_code_t *tc)
 	type_struct_eflags_t_fields.push_back(getIntegerType(32));
 	type_struct_eflags_t_fields.push_back(getIntegerArrayType(8, 256));
 
-	return StructType::create(_CTX(), type_struct_eflags_t_fields, "struct.eflags_t", false);
+	return StructType::get(_CTX(), type_struct_eflags_t_fields, false);
 }
 
 Value *
@@ -393,8 +393,8 @@ create_tc_fntype(cpu_t *cpu, translated_code_t *tc)
 	type_func_args.push_back(type_pstruct_eflags_t);
 
 	FunctionType *type_func = FunctionType::get(
-		getVoidType(),    // void ret
-		type_func_args,   // args
+		PointerType::getUnqual(getIntegerType(8)),  // ret
+		type_func_args,                             // args
 		false);
 
 	return type_func;
@@ -441,12 +441,12 @@ create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, uint
 	// insert a call to the translation function and a ret for the start function
 	CallInst *ci = CallInst::Create(func, std::vector<Value *> { dummy, ptr_cpu, ptr_regs, ptr_eflags }, "", bb);
 	ci->setCallingConv(CallingConv::Fast);
-	ReturnInst::Create(_CTX(), bb);
+	ReturnInst::Create(_CTX(), ci, bb);
 
 	return func;
 }
 
-Function *
+void
 create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disas_ctx_t *disas_ctx, uint64_t func_idx)
 {
 	// create the tail function
@@ -500,15 +500,13 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disa
 #endif
 	}
 
-	ReturnInst::Create(_CTX(), bb);
+	ReturnInst::Create(_CTX(), CONSTptr(8, tc), bb);
 
 	// insert a call to the tail function and a ret for the main function
 	CallInst *ci = CallInst::Create(tail, std::vector<Value *> { disas_ctx->next_pc, cpu->ptr_cpu, cpu->ptr_regs, cpu->ptr_eflags }, "", disas_ctx->bb);
 	ci->setCallingConv(CallingConv::Fast);
 	ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
-	ReturnInst::Create(_CTX(), disas_ctx->bb);
-
-	return tail;
+	ReturnInst::Create(_CTX(), ci, disas_ctx->bb);
 }
 
 Value *
