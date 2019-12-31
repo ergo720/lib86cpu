@@ -17,7 +17,7 @@
 #define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), disas_ctx->flags & DISAS_FLG_PE_MODE ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
 #define UNREACHABLE printf("%s: unreachable line %d reached!\n", __func__, __LINE__); return LIB86CPU_UNREACHABLE
 
-typedef uint8_t *(*entry_t)(uint32_t dummy, uint8_t *cpu, regs_t *regs, lazy_eflags_t *lazy_eflags);
+typedef translated_code_t *(*entry_t)(uint32_t dummy, cpu_ctx_t *cpu_ctx);
 
 
 const char *
@@ -27,9 +27,9 @@ get_instr_name(unsigned num)
 }
 
 [[noreturn]] void
-cpu_raise_exception(uint8_t *cpu2, uint8_t expno, uint32_t eip)
+cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip)
 {
-	cpu_t *cpu = reinterpret_cast<cpu_t *>(cpu2);
+	cpu_t *cpu = cpu_ctx->cpu;
 
 	if (CPU_PE_MODE) {
 		printf("Exceptions are unsupported in protected mode (for now)\n");
@@ -37,51 +37,49 @@ cpu_raise_exception(uint8_t *cpu2, uint8_t expno, uint32_t eip)
 	}
 
 	// push to the stack eflags, cs and eip
-	addr_t stack_base = cpu->regs.ss_hidden.base + (cpu->regs.esp & 0x0000FFFF) - 2;
-	mem_write<uint16_t>(cpu, stack_base, cpu->regs.eflags |
-		((cpu->lazy_eflags.auxbits & 0x80000000) >> 31) |
-		((cpu->lazy_eflags.parity[(cpu->lazy_eflags.result & 0xFF) ^ ((cpu->lazy_eflags.auxbits & 0xFF00) >> 8)] ^ 1) << 2) |
-		((cpu->lazy_eflags.auxbits & 8) << 1) |
-		((cpu->lazy_eflags.result == 0) << 6) |
-		(((cpu->lazy_eflags.result & 0x80000000) >> 31) ^ (cpu->lazy_eflags.auxbits & 1) << 7) |
-		(((cpu->lazy_eflags.auxbits & 0x80000000) ^ ((cpu->lazy_eflags.auxbits & 0x40000000) << 1)) >> 20)
+	addr_t stack_base = cpu_ctx->regs.ss_hidden.base + (cpu_ctx->regs.esp & 0x0000FFFF) - 2;
+	mem_write<uint16_t>(cpu, stack_base, cpu_ctx->regs.eflags |
+		((cpu_ctx->lazy_eflags.auxbits & 0x80000000) >> 31) |
+		((cpu_ctx->lazy_eflags.parity[(cpu_ctx->lazy_eflags.result & 0xFF) ^ ((cpu_ctx->lazy_eflags.auxbits & 0xFF00) >> 8)] ^ 1) << 2) |
+		((cpu_ctx->lazy_eflags.auxbits & 8) << 1) |
+		((cpu_ctx->lazy_eflags.result == 0) << 6) |
+		(((cpu_ctx->lazy_eflags.result & 0x80000000) >> 31) ^ (cpu_ctx->lazy_eflags.auxbits & 1) << 7) |
+		(((cpu_ctx->lazy_eflags.auxbits & 0x80000000) ^ ((cpu_ctx->lazy_eflags.auxbits & 0x40000000) << 1)) >> 20)
 		);
 	stack_base -= 2;
-	mem_write<uint16_t>(cpu, stack_base, cpu->regs.cs);
+	mem_write<uint16_t>(cpu, stack_base, cpu_ctx->regs.cs);
 	stack_base -= 2;
 	mem_write<uint16_t>(cpu, stack_base, eip);
-	cpu->regs.esp = stack_base - cpu->regs.ss_hidden.base;
+	cpu_ctx->regs.esp = stack_base - cpu_ctx->regs.ss_hidden.base;
 
 	// clear IF, TF, RF and AC flags
-	cpu->regs.eflags &= ~(TF_MASK | IF_MASK | RF_MASK | AC_MASK);
+	cpu_ctx->regs.eflags &= ~(TF_MASK | IF_MASK | RF_MASK | AC_MASK);
 
 	// transfer program control to the exception handler specified in the idt
-	addr_t vec_addr = cpu->regs.idtr_base + expno * 4;
+	addr_t vec_addr = cpu_ctx->regs.idtr_base + expno * 4;
 	uint32_t vec_entry = ram_read<uint32_t>(cpu, &vec_addr);
-	cpu->regs.cs = (vec_entry & 0xFFFF0000) >> 16;
-	cpu->regs.cs_hidden.base = cpu->regs.cs << 4;
-	cpu->regs.eip = vec_entry & 0x0000FFFF;
+	cpu_ctx->regs.cs = (vec_entry & 0xFFFF0000) >> 16;
+	cpu_ctx->regs.cs_hidden.base = cpu_ctx->regs.cs << 4;
+	cpu_ctx->regs.eip = vec_entry & 0x0000FFFF;
 
 	// throw an exception to forcefully exit from the current code block
 	throw cpu;
 }
 
 JIT_EXTERNAL_CALL_C void
-cpu_update_crN(uint8_t *cpu2, uint32_t new_cr, uint8_t idx)
+cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 {
-	cpu_t *cpu = reinterpret_cast<cpu_t *>(cpu2);
-
 	switch (idx)
 	{
 	case 0:
-		if ((cpu->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
-			tc_cache_clear(cpu);
+		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
+			tc_cache_clear(cpu_ctx->cpu);
 		}
-		cpu->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
+		cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
 		break;
 
 	case 3:
-		cpu->regs.cr3 = (new_cr & CR3_FLG_MASK);
+		cpu_ctx->regs.cr3 = (new_cr & CR3_FLG_MASK);
 		break;
 
 	case 2:
@@ -98,8 +96,18 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 	uint8_t size_mode;
 	uint8_t addr_mode;
 	BasicBlock *bb = disas_ctx->bb;
+	cpu_ctx_t *cpu_ctx = &cpu->cpu_ctx;
 	// we can use the same indexes for both loads and stores because they have the same order in cpu->ptr_mem_xxfn
 	static const uint8_t fn_idx[3] = { MEM_LD32_idx, MEM_LD16_idx, MEM_LD8_idx };
+
+	Function::arg_iterator args_func = disas_ctx->func->arg_begin();
+	args_func++;
+	cpu->ptr_cpu_ctx = args_func++;
+	cpu->ptr_cpu_ctx->setName("cpu_ctx");
+	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, 1);
+	cpu->ptr_regs->setName("regs");
+	cpu->ptr_eflags = GEP(cpu->ptr_cpu_ctx, 2);
+	cpu->ptr_eflags->setName("eflags");
 
 	do {
 
@@ -260,7 +268,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
 					BAD_MODE;
 				}
-				addr_t ret_eip = (pc - cpu->regs.cs_hidden.base) + bytes;
+				addr_t ret_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes;
 				addr_t call_eip = instr.operand[OPNUM_SRC].imm;
 				uint16_t new_sel = instr.operand[OPNUM_SRC].seg_sel;
 				if (size_mode == SIZE16) {
@@ -268,7 +276,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				}
 				// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
 				Value *sp = SUB(LD_R16(ESP_idx), size_mode == SIZE16 ? CONST16(2) : CONST16(4));
-				ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(cpu->regs.cs) : CONST32(cpu->regs.cs));
+				ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(cpu_ctx->regs.cs) : CONST32(cpu_ctx->regs.cs));
 				sp = SUB(sp, size_mode == SIZE16 ? CONST16(2) : CONST16(4));
 				ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
 				ST_R16(sp, ESP_idx);
@@ -280,7 +288,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			break;
 
 			case 0xE8: {
-				addr_t ret_eip = (pc - cpu->regs.cs_hidden.base) + bytes;
+				addr_t ret_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes;
 				addr_t call_eip = ret_eip + instr.operand[OPNUM_SRC].rel;
 				if (size_mode == SIZE16) {
 					call_eip &= 0x0000FFFF;
@@ -290,14 +298,14 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
 				ST_R16(sp, ESP_idx);
 				ST_R32(CONST32(call_eip), EIP_idx);
-				disas_ctx->next_pc = CONST32(cpu->regs.cs_hidden.base + call_eip);
+				disas_ctx->next_pc = CONST32(cpu_ctx->regs.cs_hidden.base + call_eip);
 			}
 			break;
 
 			case 0xFF: {
 				if (instr.reg_opc == 2) {
 					Value *call_eip, *rm, *sp;
-					addr_t ret_eip = (pc - cpu->regs.cs_hidden.base) + bytes;
+					addr_t ret_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes;
 					GET_RM(OPNUM_SRC, call_eip = LD_REG_val(rm);, call_eip = LD_MEM(fn_idx[size_mode], rm););
 					// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
 					sp = SUB(LD_R16(ESP_idx), size_mode == SIZE16 ? CONST16(2) : CONST16(4));
@@ -307,7 +315,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					}
 					ST_R16(sp, ESP_idx);
 					ST_R32(call_eip, EIP_idx);
-					disas_ctx->next_pc = ADD(CONST32(cpu->regs.cs_hidden.base), call_eip);
+					disas_ctx->next_pc = ADD(CONST32(cpu_ctx->regs.cs_hidden.base), call_eip);
 					disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
 				}
 				else if (instr.reg_opc == 3) {
@@ -319,10 +327,10 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_MEM ||
 						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_DISP);
 
-					addr_t ret_eip = (pc - cpu->regs.cs_hidden.base) + bytes;
+					addr_t ret_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes;
 					// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
 					Value *sp = SUB(LD_R16(ESP_idx), size_mode == SIZE16 ? CONST16(2) : CONST16(4));
-					ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(cpu->regs.cs) : CONST32(cpu->regs.cs));
+					ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(cpu_ctx->regs.cs) : CONST32(cpu_ctx->regs.cs));
 					sp = SUB(sp, size_mode == SIZE16 ? CONST16(2) : CONST16(4));
 					ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
 					Value *call_eip, *call_cs, *cs_addr, *offset_addr = GET_OP(OPNUM_SRC);
@@ -869,13 +877,13 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			new StoreInst(next_pc, dst_pc, bb_next);
 			BR_UNCOND(disas_ctx->bb, bb_next);
 
-			addr_t jump_eip = (pc - cpu->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
+			addr_t jump_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
 			if (size_mode == SIZE16) {
 				jump_eip &= 0x0000FFFF;
 			}
 			bb = bb_jmp;
 			new StoreInst(CONST32(jump_eip), GEP_EIP(), bb_jmp);
-			new StoreInst(CONST32(jump_eip + cpu->regs.cs_hidden.base), dst_pc, bb_jmp);
+			new StoreInst(CONST32(jump_eip + cpu_ctx->regs.cs_hidden.base), dst_pc, bb_jmp);
 			BR_UNCOND(disas_ctx->bb, bb_jmp);
 
 			disas_ctx->next_pc = new LoadInst(dst_pc, "", false, disas_ctx->bb);
@@ -895,7 +903,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 		case X86_OPC_LIDTL:
 		case X86_OPC_LIDTW: {
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
-				RAISE(EXP_UD, pc - cpu->regs.cs_hidden.base);
+				RAISE(EXP_UD, pc - cpu_ctx->regs.cs_hidden.base);
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				disas_ctx->bb = bb;
 				translate_next = false;
@@ -927,12 +935,12 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			{
 			case 0xE9:
 			case 0xEB: {
-				addr_t new_eip = (pc - cpu->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
+				addr_t new_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
 				if (size_mode == SIZE16) {
 					new_eip &= 0x0000FFFF;
 				}
 				ST_R32(CONST32(new_eip), EIP_idx);
-				disas_ctx->next_pc = CONST32(cpu->regs.cs_hidden.base + new_eip);
+				disas_ctx->next_pc = CONST32(cpu_ctx->regs.cs_hidden.base + new_eip);
 			}
 			break;
 
@@ -1149,13 +1157,13 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			new StoreInst(exit_pc, dst_pc, bb_exit);
 			BR_UNCOND(disas_ctx->bb, bb_exit);
 
-			addr_t loop_eip = (pc - cpu->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
+			addr_t loop_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
 			if (size_mode == SIZE16) {
 				loop_eip &= 0x0000FFFF;
 			}
 			bb = bb_loop;
 			new StoreInst(CONST32(loop_eip), GEP_EIP(), bb_loop);
-			new StoreInst(CONST32(loop_eip + cpu->regs.cs_hidden.base), dst_pc, bb_loop);
+			new StoreInst(CONST32(loop_eip + cpu_ctx->regs.cs_hidden.base), dst_pc, bb_loop);
 			BR_UNCOND(disas_ctx->bb, bb_loop);
 
 			disas_ctx->next_pc = new LoadInst(dst_pc, "", false, disas_ctx->bb);
@@ -1174,7 +1182,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				BAD_MODE;
 			}
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
-				RAISE(EXP_UD, pc - cpu->regs.cs_hidden.base);
+				RAISE(EXP_UD, pc - cpu_ctx->regs.cs_hidden.base);
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				disas_ctx->bb = bb;
 				translate_next = false;
@@ -1234,7 +1242,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				{
 				case 0:
 				case 3:
-					CallInst::Create(cpu->crN_fn, std::vector<Value *>{ cpu->ptr_cpu, val, CONST8(instr.operand[OPNUM_DST].reg) }, "", bb);
+					CallInst::Create(cpu->crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(instr.operand[OPNUM_DST].reg) }, "", bb);
 					break;
 				case 2:
 				case 4:
@@ -1276,7 +1284,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					BAD_MODE;
 				}
 				if (instr.operand[OPNUM_DST].reg == 1 || instr.operand[OPNUM_DST].reg > 5) {
-					RAISE(EXP_UD, pc - cpu->regs.cs_hidden.base);
+					RAISE(EXP_UD, pc - cpu_ctx->regs.cs_hidden.base);
 					disas_ctx->next_pc = CONST32(0); // unreachable
 					disas_ctx->bb = bb;
 					translate_next = false;
@@ -1616,7 +1624,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				ST_R16(TRUNC16(ADD(sp, size_mode == SIZE16 ? CONST32(2) : CONST32(4))), ESP_idx);
 				ST_R32(ret_eip, EIP_idx);
 
-				disas_ctx->next_pc = ADD(CONST32(cpu->regs.cs_hidden.base), ret_eip);
+				disas_ctx->next_pc = ADD(CONST32(cpu_ctx->regs.cs_hidden.base), ret_eip);
 			}
 			break;
 
@@ -2105,9 +2113,9 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 }
 
 static inline addr_t
-get_pc(cpu_t *cpu)
+get_pc(cpu_ctx_t *cpu_ctx)
 {
-	return cpu->regs.cs_hidden.base + cpu->regs.eip;
+	return cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
 }
 
 lib86cpu_status
@@ -2121,7 +2129,7 @@ cpu_exec_tc(cpu_t *cpu)
 	// this will exit only in the case of errors
 	while (true) {
 
-		addr_t pc = get_ram_addr(cpu, get_pc(cpu));
+		addr_t pc = get_ram_addr(cpu, get_pc(&cpu->cpu_ctx));
 		ptr_tc = tc_cache_search(cpu, pc);
 
 		if (ptr_tc == nullptr) {
@@ -2140,11 +2148,11 @@ cpu_exec_tc(cpu_t *cpu)
 				return status;
 			}
 
-			// add to the module the external host functions that will be called by the translated guest code
-			get_ext_fn(cpu, tc.get());
-
 			FunctionType *fntype = create_tc_fntype(cpu, tc.get());
 			Function *func = create_tc_prologue(cpu, tc.get(), fntype);
+
+			// add to the module the external host functions that will be called by the translated guest code
+			get_ext_fn(cpu, tc.get(), func);
 
 			// prepare the disas ctx
 			disas_ctx_t disas_ctx;
@@ -2183,7 +2191,7 @@ cpu_exec_tc(cpu_t *cpu)
 			}
 
 			tc->pc = pc;
-			tc->cs_base = cpu->regs.cs_hidden.base;
+			tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
 
 			tc->ptr_code = (void *)(cpu->jit->lookup("start")->getAddress());
 			assert(tc->ptr_code);
@@ -2224,7 +2232,7 @@ cpu_exec_tc(cpu_t *cpu)
 		try {
 			// run the translated code
 			entry = static_cast<entry_t>(ptr_tc->ptr_code);
-			prev_tc = reinterpret_cast<translated_code_t *>(entry(0, reinterpret_cast<uint8_t *>(cpu), &cpu->regs, &cpu->lazy_eflags));
+			prev_tc = entry(0, &cpu->cpu_ctx);
 		}
 		catch (cpu_t *cpu) {
 			// don't link the exception code with the other code blocks

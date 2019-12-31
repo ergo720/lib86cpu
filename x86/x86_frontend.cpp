@@ -100,9 +100,9 @@ get_struct_eflags(translated_code_t *tc)
 Value *
 calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size_t instr_size)
 {
-	Value * next_eip = BinaryOperator::Create(Instruction::Add, CONST32(cpu->regs.eip), CONST32(instr_size), "", bb);
+	Value * next_eip = BinaryOperator::Create(Instruction::Add, CONST32(cpu->cpu_ctx.regs.eip), CONST32(instr_size), "", bb);
 	new StoreInst(next_eip, get_struct_member_pointer(cpu->ptr_regs, EIP_idx, tc, bb), bb);
-	return BinaryOperator::Create(Instruction::Add, CONST32(cpu->regs.cs_hidden.base), next_eip, "", bb);
+	return BinaryOperator::Create(Instruction::Add, CONST32(cpu->cpu_ctx.regs.cs_hidden.base), next_eip, "", bb);
 }
 
 Value *
@@ -203,26 +203,25 @@ optimize(translated_code_t *tc, Function *func)
 }
 
 void
-get_ext_fn(cpu_t *cpu, translated_code_t *tc)
+get_ext_fn(cpu_t *cpu, translated_code_t *tc, Function *func)
 {
-	// NOTE: trying to pass a void* results in an assertion failure in getOrInsertFunction ("Invalid type for pointer element!"). Reading online resources,
-	// this seems to be because llvm doesn't support the void* type. Instead, this is usually handled by passing a i8* instead so we do that way
-
 	static size_t bit_size[6] = { 8, 16, 32, 8, 16, 32 };
 	static size_t arg_size[6] = { 32, 32, 32, 16, 16, 16 };
 	static const char *func_name_ld[3] = { "mem_read8", "mem_read16", "mem_read32" };
 	static const char *func_name_st[6] = { "mem_write8", "mem_write16", "mem_write32", "io_write8", "io_write16", "io_write32" };
+	Function::arg_iterator args_start = func->arg_begin();
+	args_start++;
 
 	for (uint8_t i = 0; i < 3; i++) {
-		cpu->ptr_mem_ldfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), PointerType::get(getIntegerType(8), 0), getIntegerType(32)));
+		cpu->ptr_mem_ldfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), args_start->getType(), getIntegerType(32)));
 	}
 
 	for (uint8_t i = 0; i < 6; i++) {
-		cpu->ptr_mem_stfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_st[i], getVoidType(), PointerType::get(getIntegerType(8), 0), getIntegerType(arg_size[i]), getIntegerType(bit_size[i])));
+		cpu->ptr_mem_stfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_st[i], getVoidType(), args_start->getType(), getIntegerType(arg_size[i]), getIntegerType(bit_size[i])));
 	}
 
-	cpu->exp_fn = cast<Function>(tc->mod->getOrInsertFunction("cpu_raise_exception", getVoidType(), PointerType::get(getIntegerType(8), 0), getIntegerType(8), getIntegerType(32)));
-	cpu->crN_fn = cast<Function>(tc->mod->getOrInsertFunction("cpu_update_crN", getVoidType(), PointerType::get(getIntegerType(8), 0), getIntegerType(32), getIntegerType(8)));
+	cpu->exp_fn = cast<Function>(tc->mod->getOrInsertFunction("cpu_raise_exception", getVoidType(), args_start->getType(), getIntegerType(8), getIntegerType(32)));
+	cpu->crN_fn = cast<Function>(tc->mod->getOrInsertFunction("cpu_update_crN", getVoidType(), args_start->getType(), getIntegerType(32), getIntegerType(8)));
 }
 
 static inline uint32_t
@@ -238,7 +237,7 @@ tc_cache_search(cpu_t *cpu, addr_t pc)
 	auto it = cpu->code_cache[idx].begin();
 	while (it != cpu->code_cache[idx].end()) {
 		translated_code_t *tc = it->get();
-		if (tc->cs_base == cpu->regs.cs_hidden.base && tc->pc == pc) {
+		if (tc->cs_base == cpu->cpu_ctx.regs.cs_hidden.base && tc->pc == pc) {
 			return tc;
 		}
 		it++;
@@ -338,10 +337,9 @@ tc_link_indirect(translated_code_t *tc, translated_code_t *tc1, translated_code_
 }
 
 JIT_EXTERNAL_CALL_C uint8_t *
-tc_profile_indirect(uint8_t *cpu2, uint8_t *tc2, addr_t pc)
+tc_profile_indirect(cpu_ctx_t *cpu_ctx, translated_code_t *tc, addr_t pc)
 {
-	cpu_t *cpu = reinterpret_cast<cpu_t *>(cpu2);
-	translated_code_t *tc = reinterpret_cast<translated_code_t *>(tc2);
+	cpu_t *cpu = cpu_ctx->cpu;
 
 	if (tc->jmp_offset[1] == 0) {
 		if (tc->profiling_vec.size() == PROFILE_NUM_TIMES) {
@@ -379,22 +377,22 @@ tc_profile_indirect(uint8_t *cpu2, uint8_t *tc2, addr_t pc)
 FunctionType *
 create_tc_fntype(cpu_t *cpu, translated_code_t *tc)
 {
+	std::vector<Type *>type_struct_cpu_ctx_t_fields;
+	type_struct_cpu_ctx_t_fields.push_back(PointerType::getUnqual(StructType::create(_CTX(), "struct.cpu_t")));  // NOTE: opaque struct
+	type_struct_cpu_ctx_t_fields.push_back(get_struct_reg(cpu, tc));
+	type_struct_cpu_ctx_t_fields.push_back(get_struct_eflags(tc));
+
 	IntegerType *type_i32 = getIntegerType(32);                                      // pc ptr
-	PointerType *type_pi8 = PointerType::get(getIntegerType(8), 0);                  // cpu ptr
-	StructType *type_struct_reg_t = get_struct_reg(cpu, tc);
-	PointerType *type_pstruct_reg_t = PointerType::get(type_struct_reg_t, 0);        // regs_t ptr
-	StructType *type_struct_eflags_t = get_struct_eflags(tc);
-	PointerType *type_pstruct_eflags_t = PointerType::get(type_struct_eflags_t, 0);  // lazy_eflags_t ptr
+	PointerType *type_pstruct = PointerType::getUnqual(StructType::create(_CTX(),
+		type_struct_cpu_ctx_t_fields, "struct.cpu_ctx_t", false));                   // cpu_ctx ptr
 
 	std::vector<Type *> type_func_args;
 	type_func_args.push_back(type_i32);
-	type_func_args.push_back(type_pi8);
-	type_func_args.push_back(type_pstruct_reg_t);
-	type_func_args.push_back(type_pstruct_eflags_t);
+	type_func_args.push_back(type_pstruct);
 
 	FunctionType *type_func = FunctionType::get(
-		PointerType::getUnqual(getIntegerType(8)),  // ret
-		type_func_args,                             // args
+		PointerType::getUnqual(StructType::create(_CTX(), "struct.tc_t")),  // ret, as opaque tc struct
+		type_func_args,                                                     // args
 		false);
 
 	return type_func;
@@ -417,9 +415,7 @@ create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype)
 
 	Function::arg_iterator args_start = start->arg_begin();
 	Value *dummy = args_start++;
-	Value *ptr_cpu = args_start++;
-	Value *ptr_regs = args_start++;
-	Value *ptr_eflags = args_start++;
+	Value *ptr_cpu_ctx = args_start++;
 
 	// create the translation function, it will hold all the translated code
 	Function *func = Function::Create(
@@ -429,17 +425,8 @@ create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype)
 		tc->mod);
 	func->setCallingConv(CallingConv::Fast);
 
-	Function::arg_iterator args_func = func->arg_begin();
-	args_func++;
-	cpu->ptr_cpu = args_func++;
-	cpu->ptr_cpu->setName("cpu");
-	cpu->ptr_regs = args_func++;
-	cpu->ptr_regs->setName("regs");
-	cpu->ptr_eflags = args_func++;
-	cpu->ptr_eflags->setName("eflags");
-
 	// insert a call to the translation function and a ret for the start function
-	CallInst *ci = CallInst::Create(func, std::vector<Value *> { dummy, ptr_cpu, ptr_regs, ptr_eflags }, "", bb);
+	CallInst *ci = CallInst::Create(func, std::vector<Value *> { dummy, ptr_cpu_ctx }, "", bb);
 	ci->setCallingConv(CallingConv::Fast);
 	ReturnInst::Create(_CTX(), ci, bb);
 
@@ -469,15 +456,18 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disa
 		// emit some dummy instructions, a call to tc_profile_indirect and a conditional jump. We do this ourselves to avoid llvm messing with the stack,
 		// which would lead to a crash when a jump is taken
 
-		tc->mod->getOrInsertFunction("tc_profile_indirect", PointerType::get(getIntegerType(8), 0), PointerType::get(getIntegerType(8), 0),
-			PointerType::get(getIntegerType(8), 0), getIntegerType(32));
+		Function::arg_iterator args_start = disas_ctx->func->arg_begin();
+		args_start++;
+
+		tc->mod->getOrInsertFunction("tc_profile_indirect", PointerType::get(getIntegerType(8), 0), args_start->getType(),
+			PointerType::get(StructType::create(_CTX(), "struct.tc_t"), 0), getIntegerType(32));
 		uintptr_t addr = cpu->jit->lookup("tc_profile_indirect")->getAddress();
 
 #if defined __i386 || defined _M_IX86
 
 		std::string asm_str = std::string("mov eax, $$-1\n\tmov eax, $$-2\n\tmov eax, $$-3\n\tmov eax, $$-4\n\tmov eax, $$-5\n\tsub esp, $$12\n\tmov [esp], edx\n\tmov dword ptr [esp+$$4], $$")
 		+ std::to_string(reinterpret_cast<uintptr_t>(tc)) + std::string("\n\tmov [esp+$$8], ecx\n\tmov eax, $$") + std::to_string(addr) + std::string("\n\tcall eax\n\tadd esp, $$12\n\tmov edx, $$")
-		+ std::to_string(reinterpret_cast<uintptr_t>(cpu)) + std::string("\n\tcmp eax, $$0\n\tje skip_next\n\tjmp eax\n\tskip_next:");
+		+ std::to_string(reinterpret_cast<uintptr_t>(&cpu->cpu_ctx)) + std::string("\n\tcmp eax, $$0\n\tje skip_next\n\tjmp eax\n\tskip_next:");
 		InlineAsm *ia = InlineAsm::get(type_func_asm, asm_str, "~{eax},~{ecx},~{edx}", true, false, InlineAsm::AsmDialect::AD_Intel);
 		CallInst::Create(ia, "", bb);
 		tc->jmp_code_size = 25;
@@ -503,7 +493,7 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disa
 	ReturnInst::Create(_CTX(), CONSTptr(8, tc), bb);
 
 	// insert a call to the tail function and a ret for the main function
-	CallInst *ci = CallInst::Create(tail, std::vector<Value *> { disas_ctx->next_pc, cpu->ptr_cpu, cpu->ptr_regs, cpu->ptr_eflags }, "", disas_ctx->bb);
+	CallInst *ci = CallInst::Create(tail, std::vector<Value *> { disas_ctx->next_pc, cpu->ptr_cpu_ctx }, "", disas_ctx->bb);
 	ci->setCallingConv(CallingConv::Fast);
 	ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 	ReturnInst::Create(_CTX(), ci, disas_ctx->bb);

@@ -142,12 +142,20 @@ struct lazy_eflags_t {
 	uint8_t parity[256] = { GEN_TABLE };
 };
 
+// forward declare
+struct cpu_t;
+
+struct cpu_ctx_t {
+	cpu_t *cpu;
+	regs_t regs;
+	lazy_eflags_t lazy_eflags;
+};
+
 struct cpu_t {
 	uint32_t cpu_flags;
 	const char *cpu_name;
 	const regs_layout_t *regs_layout;
-	regs_t regs;
-	lazy_eflags_t lazy_eflags;
+	cpu_ctx_t cpu_ctx;
 	uint8_t *ram;
 	std::unique_ptr<interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>> memory_space_tree;
 	std::unique_ptr<interval_tree<io_port_t, std::unique_ptr<memory_region_t<io_port_t>>>> io_space_tree;
@@ -158,7 +166,7 @@ struct cpu_t {
 	/* llvm specific variables */
 	std::unique_ptr<orc::LLJIT> jit;
 	DataLayout *dl;
-	Value *ptr_cpu;
+	Value *ptr_cpu_ctx;
 	Value *ptr_regs;
 	Value *ptr_eflags;
 	Function *ptr_mem_ldfn[3];

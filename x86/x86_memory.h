@@ -11,15 +11,15 @@
 
 
 addr_t get_ram_addr(cpu_t *cpu, addr_t pc);
-JIT_EXTERNAL_CALL_C uint8_t mem_read8(uint8_t *cpu, addr_t addr);
-JIT_EXTERNAL_CALL_C uint16_t mem_read16(uint8_t *cpu, addr_t addr);
-JIT_EXTERNAL_CALL_C uint32_t mem_read32(uint8_t *cpu, addr_t addr);
-JIT_EXTERNAL_CALL_C void mem_write8(uint8_t *cpu, addr_t addr, uint8_t value);
-JIT_EXTERNAL_CALL_C void mem_write16(uint8_t *cpu, addr_t addr, uint16_t value);
-JIT_EXTERNAL_CALL_C void mem_write32(uint8_t *cpu, addr_t addr, uint32_t value);
-JIT_EXTERNAL_CALL_C void io_write8(uint8_t *cpu, io_port_t port, uint8_t value);
-JIT_EXTERNAL_CALL_C void io_write16(uint8_t *cpu, io_port_t port, uint16_t value);
-JIT_EXTERNAL_CALL_C void io_write32(uint8_t *cpu, io_port_t port, uint32_t value);
+JIT_EXTERNAL_CALL_C uint8_t mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr);
+JIT_EXTERNAL_CALL_C uint16_t mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr);
+JIT_EXTERNAL_CALL_C uint32_t mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr);
+JIT_EXTERNAL_CALL_C void mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value);
+JIT_EXTERNAL_CALL_C void mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value);
+JIT_EXTERNAL_CALL_C void mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value);
+JIT_EXTERNAL_CALL_C void io_write8(cpu_ctx_t *cpu_ctx, io_port_t port, uint8_t value);
+JIT_EXTERNAL_CALL_C void io_write16(cpu_ctx_t *cpu_ctx, io_port_t port, uint16_t value);
+JIT_EXTERNAL_CALL_C void io_write32(cpu_ctx_t *cpu_ctx, io_port_t port, uint32_t value);
 
 /*
  * ram specific accessors

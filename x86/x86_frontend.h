@@ -17,7 +17,7 @@ void tc_cache_clear(cpu_t *cpu);
 void optimize(translated_code_t *tc, Function *func);
 Value *get_struct_member_pointer(Value *gep_start, const unsigned gep_index, translated_code_t *tc, BasicBlock *bb);
 Value *get_r8h_pointer(Value *gep_start, translated_code_t *tc, BasicBlock *bb);
-void get_ext_fn(cpu_t *cpu, translated_code_t *tc);
+void get_ext_fn(cpu_t *cpu, translated_code_t *tc, Function *func);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlock *bb, unsigned opnum);
 Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size_t instr_size);
 Value *get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t size_mode);
@@ -170,11 +170,11 @@ default: \
 #define LD_SEG(seg) new LoadInst(GEP_SEL(seg), "", false, bb)
 #define LD_SEG_HIDDEN(seg, idx) new LoadInst(GEP(GEP(GEP(cpu->ptr_regs, seg), SEG_HIDDEN_idx), idx), "", false, bb)
 
-#define LD_MEM(idx, addr) CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu, addr }, "", bb)
-#define ST_MEM(idx, addr, val) CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu, addr, val }, "", bb)
+#define LD_MEM(idx, addr) CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr }, "", bb)
+#define ST_MEM(idx, addr, val) CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, val }, "", bb)
 
 #define LD_PARITY(idx) new LoadInst(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST8(0), idx }, "", bb), "", false, bb)
-#define RAISE(expno, eip) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu, CONST8(expno), CONST32(eip) }, "", bb)
+#define RAISE(expno, eip) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, CONST8(expno), CONST32(eip) }, "", bb)
 #define SET_FLG_SUM(sum, a , b) set_flags_sum(cpu, tc, bb, sum, a, b, size_mode)
 #define SET_FLG_SUB(sub, a , b) set_flags_sub(cpu, tc, bb, sub, a, b, size_mode)
 #define SET_FLG(res, aux) set_flags(cpu, tc, bb, res, aux, size_mode)

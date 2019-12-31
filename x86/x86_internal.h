@@ -13,7 +13,7 @@ lib86cpu_status cpu_exec_tc(cpu_t *cpu);
 void tc_protect(void* addr, size_t size, bool ro);
 int disasm_instr(cpu_t *cpu, addr_t pc, x86_instr *instr, char *line, unsigned int max_line);
 int decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc);
-JIT_EXTERNAL_CALL_C void cpu_raise_exception(uint8_t *cpu2, uint8_t expno, uint32_t eip);
+JIT_EXTERNAL_CALL_C void cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip);
 
 extern const char *mnemo[];
 
@@ -134,4 +134,4 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define CR3_PWT_MASK (1 << CR3_PWT_SHIFT)
 #define CR3_FLG_MASK (CR3_PD_MASK | CR3_PCD_MASK | CR3_PCD_MASK)
 
-#define CPU_PE_MODE (cpu->regs.cr0 & CR0_PE_MASK)
+#define CPU_PE_MODE (cpu->cpu_ctx.regs.cr0 & CR0_PE_MASK)

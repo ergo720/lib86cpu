@@ -95,11 +95,11 @@ cpu_x86_init(cpu_t *cpu)
 	cpu->regs_layout = regs_layout;
 
 	// init regs to their reset state
-	cpu->regs.eip = 0x0000FFF0;
-	cpu->regs.edx = 0x00000680; // TODO: stepping id
-	cpu->regs.cs = 0xF000;
-	cpu->regs.cs_hidden.base = 0xFFFF0000;
-	cpu->regs.eflags = 0x2;
-	cpu->regs.cr0 = 0x60000010;
-	cpu->regs.idtr_limit = cpu->regs.gdtr_limit = 0xFFFF;
+	cpu->cpu_ctx.regs.eip = 0x0000FFF0;
+	cpu->cpu_ctx.regs.edx = 0x00000680; // TODO: stepping id
+	cpu->cpu_ctx.regs.cs = 0xF000;
+	cpu->cpu_ctx.regs.cs_hidden.base = 0xFFFF0000;
+	cpu->cpu_ctx.regs.eflags = 0x2;
+	cpu->cpu_ctx.regs.cr0 = 0x60000010;
+	cpu->cpu_ctx.regs.idtr_limit = cpu->cpu_ctx.regs.gdtr_limit = 0xFFFF;
 }

@@ -36,56 +36,56 @@ get_ram_addr(cpu_t *cpu, addr_t pc)
 }
 
 uint8_t
-mem_read8(uint8_t *cpu, addr_t addr)
+mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr)
 {
-	return mem_read<uint8_t>(reinterpret_cast<cpu_t *>(cpu), addr);
+	return mem_read<uint8_t>(cpu_ctx->cpu, addr);
 }
 
 uint16_t
-mem_read16(uint8_t *cpu, addr_t addr)
+mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr)
 {
-	return mem_read<uint16_t>(reinterpret_cast<cpu_t *>(cpu), addr);
+	return mem_read<uint16_t>(cpu_ctx->cpu, addr);
 }
 
 uint32_t
-mem_read32(uint8_t *cpu, addr_t addr)
+mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr)
 {
-	return mem_read<uint32_t>(reinterpret_cast<cpu_t *>(cpu), addr);
+	return mem_read<uint32_t>(cpu_ctx->cpu, addr);
 }
 
 void
-mem_write8(uint8_t *cpu, addr_t addr, uint8_t value)
+mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value)
 {
-	mem_write<uint8_t>(reinterpret_cast<cpu_t *>(cpu), addr, value);
+	mem_write<uint8_t>(cpu_ctx->cpu, addr, value);
 }
 
 void
-mem_write16(uint8_t *cpu, addr_t addr, uint16_t value)
+mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value)
 {
-	mem_write<uint16_t>(reinterpret_cast<cpu_t *>(cpu), addr, value);
+	mem_write<uint16_t>(cpu_ctx->cpu, addr, value);
 }
 
 void
-mem_write32(uint8_t *cpu, addr_t addr, uint32_t value)
+mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value)
 {
-	mem_write<uint32_t>(reinterpret_cast<cpu_t *>(cpu), addr, value);
+	mem_write<uint32_t>(cpu_ctx->cpu, addr, value);
 }
 
 
 void
-io_write8(uint8_t *cpu, io_port_t port, uint8_t value)
+io_write8(cpu_ctx_t *cpu_ctx, io_port_t port, uint8_t value)
 {
-	io_write<uint8_t>(reinterpret_cast<cpu_t *>(cpu), port, value);
+	io_write<uint8_t>(cpu_ctx->cpu, port, value);
 }
 
 void
-io_write16(uint8_t *cpu, io_port_t port, uint16_t value)
+io_write16(cpu_ctx_t *cpu_ctx, io_port_t port, uint16_t value)
 {
-	io_write<uint16_t>(reinterpret_cast<cpu_t *>(cpu), port, value);
+	io_write<uint16_t>(cpu_ctx->cpu, port, value);
 }
 
 void
-io_write32(uint8_t *cpu, io_port_t port, uint32_t value)
+io_write32(cpu_ctx_t *cpu_ctx, io_port_t port, uint32_t value)
 {
-	io_write<uint32_t>(reinterpret_cast<cpu_t *>(cpu), port, value);
+	io_write<uint32_t>(cpu_ctx->cpu, port, value);
 }
