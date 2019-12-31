@@ -8,8 +8,8 @@
 
 
 FunctionType * create_tc_fntype(cpu_t *cpu, translated_code_t *tc);
-Function *create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, uint64_t func_idx);
-void create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disas_ctx_t *disas_ctx, uint64_t func_idx);
+Function *create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype);
+void create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disas_ctx_t *disas_ctx);
 void tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc, addr_t pc);
 translated_code_t *tc_cache_search(cpu_t *cpu, addr_t pc);
 void tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc);

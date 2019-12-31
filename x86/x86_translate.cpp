@@ -2116,8 +2116,7 @@ cpu_exec_tc(cpu_t *cpu)
 	lib86cpu_status status = LIB86CPU_SUCCESS;
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
 	entry_t entry = nullptr;
-	static uint64_t func_idx = 0ULL;
-	static uint16_t num_tc = 0;
+	uint16_t num_tc = 0;
 
 	// this will exit only in the case of errors
 	while (true) {
@@ -2145,7 +2144,7 @@ cpu_exec_tc(cpu_t *cpu)
 			get_ext_fn(cpu, tc.get());
 
 			FunctionType *fntype = create_tc_fntype(cpu, tc.get());
-			Function *func = create_tc_prologue(cpu, tc.get(), fntype, func_idx);
+			Function *func = create_tc_prologue(cpu, tc.get(), fntype);
 
 			// prepare the disas ctx
 			disas_ctx_t disas_ctx;
@@ -2161,7 +2160,7 @@ cpu_exec_tc(cpu_t *cpu)
 				return status;
 			}
 
-			create_tc_epilogue(cpu, tc.get(), fntype, &disas_ctx, func_idx);
+			create_tc_epilogue(cpu, tc.get(), fntype, &disas_ctx);
 
 			if (cpu->cpu_flags & CPU_PRINT_IR) {
 				tc->mod->print(errs(), nullptr);
@@ -2186,12 +2185,17 @@ cpu_exec_tc(cpu_t *cpu)
 			tc->pc = pc;
 			tc->cs_base = cpu->regs.cs_hidden.base;
 
-			tc->ptr_code = (void *)(cpu->jit->lookup("start_" + std::to_string(func_idx))->getAddress());
+			tc->ptr_code = (void *)(cpu->jit->lookup("start")->getAddress());
 			assert(tc->ptr_code);
-			tc->jmp_offset[0] = (void *)(cpu->jit->lookup("tail_" + std::to_string(func_idx))->getAddress());
+			tc->jmp_offset[0] = (void *)(cpu->jit->lookup("tail")->getAddress());
 			tc->jmp_offset[1] = nullptr;
-			tc->jmp_offset[2] = (void *)(cpu->jit->lookup("main_" + std::to_string(func_idx))->getAddress());
+			tc->jmp_offset[2] = (void *)(cpu->jit->lookup("main")->getAddress());
 			assert(tc->jmp_offset[0] && tc->jmp_offset[2]);
+
+			// now remove the function symbol names so we can reuse them for other modules
+			orc::MangleAndInterner mangle(cpu->jit->getExecutionSession(), *cpu->dl);
+			orc::SymbolNameSet module_symbol_names({ mangle("start"), mangle("tail"), mangle("main") });
+			assert(!cpu->jit->getMainJITDylib().remove(module_symbol_names));
 
 			// llvm will delete the context and the module by itself, so we just null both the pointers now to prevent accidental usage
 			tc->ctx = nullptr;
@@ -2205,7 +2209,6 @@ cpu_exec_tc(cpu_t *cpu)
 			}
 			tc_cache_insert(cpu, pc, std::move(tc));
 			num_tc++;
-			func_idx++;
 		}
 
 		// see if we can link the previous tc with the current one

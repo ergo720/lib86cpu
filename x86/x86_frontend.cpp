@@ -401,13 +401,13 @@ create_tc_fntype(cpu_t *cpu, translated_code_t *tc)
 }
 
 Function *
-create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, uint64_t func_idx)
+create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype)
 {
 	// create the function which calls the translation function
 	Function *start = Function::Create(
 		fntype,                               // func type
 		GlobalValue::ExternalLinkage,         // linkage
-		"start_" + std::to_string(func_idx),  // name
+		"start",                              // name
 		tc->mod);
 	start->setCallingConv(CallingConv::C);
 	start->addAttribute(1U, Attribute::NoCapture);
@@ -425,7 +425,7 @@ create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, uint
 	Function *func = Function::Create(
 		fntype,                              // func type
 		GlobalValue::ExternalLinkage,        // linkage
-		"main_" + std::to_string(func_idx),  // name
+		"main",                              // name
 		tc->mod);
 	func->setCallingConv(CallingConv::Fast);
 
@@ -447,13 +447,13 @@ create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, uint
 }
 
 void
-create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disas_ctx_t *disas_ctx, uint64_t func_idx)
+create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disas_ctx_t *disas_ctx)
 {
 	// create the tail function
 	Function *tail = Function::Create(
 		fntype,                              // func type
 		GlobalValue::ExternalLinkage,        // linkage
-		"tail_" + std::to_string(func_idx),  // name
+		"tail",                              // name
 		tc->mod);
 	tail->setCallingConv(CallingConv::Fast);
 
