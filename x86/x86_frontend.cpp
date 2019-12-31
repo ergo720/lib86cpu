@@ -48,15 +48,15 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 	std::vector<Type *>type_struct_reg48_t_fields;
 
 	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
-	StructType *type_struct_hiddenseg_t = StructType::get(_CTX(), type_struct_hiddenseg_t_fields, false);
+	StructType *type_struct_hiddenseg_t = StructType::create(_CTX(), type_struct_hiddenseg_t_fields, "struct.hiddenseg_t", false);
 
 	type_struct_seg_t_fields.push_back(getIntegerType(16));
 	type_struct_seg_t_fields.push_back(type_struct_hiddenseg_t);
-	StructType *type_struct_seg_t = StructType::get(_CTX(), type_struct_seg_t_fields, false);
+	StructType *type_struct_seg_t = StructType::create(_CTX(), type_struct_seg_t_fields, "struct.seg_t", false);
 
 	type_struct_reg48_t_fields.push_back(getIntegerType(32));
 	type_struct_reg48_t_fields.push_back(getIntegerType(16));
-	StructType *type_struct_reg48_t = StructType::get(_CTX(), type_struct_reg48_t_fields, false);
+	StructType *type_struct_reg48_t = StructType::create(_CTX(), type_struct_reg48_t_fields, "struct.reg48_t", false);
 
 	for (uint8_t n = 0; n < CPU_NUM_REGS; n++) {
 		switch (n)
@@ -82,7 +82,7 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 		}
 	}
 
-	return StructType::get(_CTX(), type_struct_reg_t_fields, false);
+	return StructType::create(_CTX(), type_struct_reg_t_fields, "struct.regs_t", false);
 }
 
 static StructType *
@@ -94,7 +94,7 @@ get_struct_eflags(translated_code_t *tc)
 	type_struct_eflags_t_fields.push_back(getIntegerType(32));
 	type_struct_eflags_t_fields.push_back(getIntegerArrayType(8, 256));
 
-	return StructType::get(_CTX(), type_struct_eflags_t_fields, false);
+	return StructType::create(_CTX(), type_struct_eflags_t_fields, "struct.eflags_t", false);
 }
 
 Value *
