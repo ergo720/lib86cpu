@@ -15,7 +15,8 @@
 void tc_protect(void *addr, size_t size, bool ro)
 {
 	DWORD dummy, perms = ro ? PAGE_EXECUTE_READ : PAGE_EXECUTE_READWRITE;
-	assert(VirtualProtect(addr, size, perms, &dummy));
+	BOOL err = VirtualProtect(addr, size, perms, &dummy);
+	assert(err);
 }
 
 #else

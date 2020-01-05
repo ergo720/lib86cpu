@@ -2203,7 +2203,8 @@ cpu_exec_tc(cpu_t *cpu)
 			// now remove the function symbol names so we can reuse them for other modules
 			orc::MangleAndInterner mangle(cpu->jit->getExecutionSession(), *cpu->dl);
 			orc::SymbolNameSet module_symbol_names({ mangle("start"), mangle("tail"), mangle("main") });
-			assert(!cpu->jit->getMainJITDylib().remove(module_symbol_names));
+			auto err = cpu->jit->getMainJITDylib().remove(module_symbol_names);
+			assert(!err);
 
 			// llvm will delete the context and the module by itself, so we just null both the pointers now to prevent accidental usage
 			tc->ctx = nullptr;
