@@ -8,8 +8,8 @@
 
 #include "lib86cpu.h"
 #include "x86_isa.h"
-#include "x86_decode.h"
 #include "x86_internal.h"
+#include "x86_decode.h"
 #include "x86_memory.h"
 
 
@@ -942,34 +942,34 @@ decode_src_operand(struct x86_instr *instr)
 }
 
 static void
-decode_imm(cpu_t *cpu, struct x86_instr *instr, addr_t *pc)
+decode_imm(cpu_t *cpu, struct x86_instr *instr, disas_ctx_t *disas_ctx, uint8_t page_cross)
 {
 	switch (instr->flags & (SRC_IMM8 | SRC_IMM48 | OP3_IMM_MASK | DST_IMM16)) {
 	case SRC_IMM8:
-		instr->imm_data[0] = ram_read<uint8_t>(cpu, pc);
+		instr->imm_data[0] = ram_fetch<uint8_t>(cpu, disas_ctx, page_cross);
 		return;
 	case SRC_IMM48: // far JMP and far CALL instr
 		if (instr->flags & WIDTH_DWORD) {
-			instr->imm_data[0] = ram_read<uint32_t>(cpu, pc);
+			instr->imm_data[0] = ram_fetch<uint32_t>(cpu, disas_ctx, page_cross);
 		}
 		else {
-			instr->imm_data[0] = ram_read<uint16_t>(cpu, pc);
+			instr->imm_data[0] = ram_fetch<uint16_t>(cpu, disas_ctx, page_cross);
 		}
-		instr->imm_data[1] = ram_read<uint16_t>(cpu, pc);
+		instr->imm_data[1] = ram_fetch<uint16_t>(cpu, disas_ctx, page_cross);
 		return;
 	case SRC_IMM8|DST_IMM16: // ENTER instr
-		instr->imm_data[1] = ram_read<uint16_t>(cpu, pc);
-		instr->imm_data[0] = ram_read<uint8_t>(cpu, pc);
+		instr->imm_data[1] = ram_fetch<uint16_t>(cpu, disas_ctx, page_cross);
+		instr->imm_data[0] = ram_fetch<uint8_t>(cpu, disas_ctx, page_cross);
 		return;
 	case OP3_IMM8:
-		instr->imm_data[0] = ram_read<uint8_t>(cpu, pc);
+		instr->imm_data[0] = ram_fetch<uint8_t>(cpu, disas_ctx, page_cross);
 		return;
 	case OP3_IMM:
 		if (instr->flags & WIDTH_DWORD) {
-			instr->imm_data[0] = ram_read<uint32_t>(cpu, pc);
+			instr->imm_data[0] = ram_fetch<uint32_t>(cpu, disas_ctx, page_cross);
 		}
 		else {
-			instr->imm_data[0] = ram_read<uint16_t>(cpu, pc);
+			instr->imm_data[0] = ram_fetch<uint16_t>(cpu, disas_ctx, page_cross);
 		}
 		return;
 	default:
@@ -979,13 +979,13 @@ decode_imm(cpu_t *cpu, struct x86_instr *instr, addr_t *pc)
 	switch (instr->flags & WIDTH_MASK) {
 	// TODO case WIDTH_QWORD:
 	case WIDTH_DWORD:
-		instr->imm_data[0] = ram_read<uint32_t>(cpu, pc);
+		instr->imm_data[0] = ram_fetch<uint32_t>(cpu, disas_ctx, page_cross);
 		break;
 	case WIDTH_WORD:
-		instr->imm_data[0] = ram_read<uint16_t>(cpu, pc);
+		instr->imm_data[0] = ram_fetch<uint16_t>(cpu, disas_ctx, page_cross);
 		break;
 	case WIDTH_BYTE:
-		instr->imm_data[0] = ram_read<uint8_t>(cpu, pc);
+		instr->imm_data[0] = ram_fetch<uint8_t>(cpu, disas_ctx, page_cross);
 		break;
 	default:
 		break;
@@ -993,18 +993,18 @@ decode_imm(cpu_t *cpu, struct x86_instr *instr, addr_t *pc)
 }
 
 static void
-decode_rel(cpu_t *cpu, struct x86_instr *instr, addr_t *pc)
+decode_rel(cpu_t *cpu, struct x86_instr *instr, disas_ctx_t *disas_ctx, uint8_t page_cross)
 {
 	switch (instr->flags & WIDTH_MASK) {
 	// TODO case WIDTH_QWORD:
 	case WIDTH_DWORD:
-		instr->rel_data[0] = ram_read<int32_t>(cpu, pc);
+		instr->rel_data[0] = static_cast<int32_t>(ram_fetch<uint32_t>(cpu, disas_ctx, page_cross));
 		break;
 	case WIDTH_WORD:
-		instr->rel_data[0] = ram_read<int16_t>(cpu, pc);
+		instr->rel_data[0] = static_cast<int16_t>(ram_fetch<uint16_t>(cpu, disas_ctx, page_cross));
 		break;
 	case WIDTH_BYTE:
-		instr->rel_data[0] = ram_read<int8_t>(cpu, pc);
+		instr->rel_data[0] = static_cast<int8_t>(ram_fetch<uint8_t>(cpu, disas_ctx, page_cross));
 		break;
 	default:
 		break;
@@ -1012,31 +1012,31 @@ decode_rel(cpu_t *cpu, struct x86_instr *instr, addr_t *pc)
 }
 
 static void
-decode_moffset(cpu_t *cpu, struct x86_instr *instr, addr_t *pc)
+decode_moffset(cpu_t *cpu, struct x86_instr *instr, disas_ctx_t *disas_ctx, uint8_t page_cross)
 {
 	if (instr->addr_size_override ^ CPU_PE_MODE) {
-		instr->disp = ram_read<uint32_t>(cpu, pc);
+		instr->disp = ram_fetch<uint32_t>(cpu, disas_ctx, page_cross);
 	}
 	else {
-		instr->disp = ram_read<uint16_t>(cpu, pc);
+		instr->disp = ram_fetch<uint16_t>(cpu, disas_ctx, page_cross);
 	}
 }
 
 static void
-decode_disp(cpu_t *cpu, struct x86_instr *instr, addr_t *pc)
+decode_disp(cpu_t *cpu, struct x86_instr *instr, disas_ctx_t *disas_ctx, uint8_t page_cross)
 {
 	switch (instr->flags & MEM_DISP_MASK) {
 	case SRC_MEM_DISP_DWORD:
 	case DST_MEM_DISP_DWORD:
-		instr->disp = (int32_t)ram_read<int32_t>(cpu, pc);
+		instr->disp = static_cast<int32_t>(ram_fetch<uint32_t>(cpu, disas_ctx, page_cross));
 		break;
 	case SRC_MEM_DISP_WORD:
 	case DST_MEM_DISP_WORD:
-		instr->disp	= (int16_t)ram_read<int16_t>(cpu, pc);
+		instr->disp	= static_cast<int16_t>(ram_fetch<uint16_t>(cpu, disas_ctx, page_cross));
 		break;
 	case SRC_MEM_DISP_BYTE:
 	case DST_MEM_DISP_BYTE:
-		instr->disp	= (int8_t)ram_read<int8_t>(cpu, pc);
+		instr->disp	= static_cast<int8_t>(ram_fetch<uint8_t>(cpu, disas_ctx, page_cross));
 		break;
 	}
 }
@@ -1245,24 +1245,27 @@ set_instr_seg(x86_instr *instr, uint8_t pe)
 	instr->seg = seg;
 }
 
-int
-decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc)
+void
+decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx)
 {
-	addr_t start_pc;
 	unsigned decode_group;
 	uint8_t instr_byte, no_fixed_size;
 	uint64_t decode;
 	arch_x86_opcode opcode;
-	uint8_t bits;
+	uint8_t bits, page_cross;
 	char use_intel;
 
 	// Start decoding here, initially using decode_table_one :
-	start_pc = pc;
+	disas_ctx->start_pc = disas_ctx->virt_pc;
+	page_cross = (disas_ctx->virt_pc & ~PAGE_MASK) != ((disas_ctx->virt_pc + X86_MAX_INSTR_LENGTH - 1) & ~PAGE_MASK);
+#if DEBUG_LOG
+	disas_ctx->byte_idx = 0;
+#endif
 	decode_group = 0;
 	no_fixed_size = 1;
 	use_intel = (cpu->cpu_flags & CPU_INTEL_SYNTAX) >> CPU_INTEL_SYNTAX_SHIFT;
 	instr->seg_override = DEFAULT;
-	instr_byte = ram_read<uint8_t>(cpu, &pc);
+	instr_byte = ram_fetch<uint8_t>(cpu, disas_ctx, page_cross);
 	while(true) {
 		decode = decode_tables[decode_group][instr_byte];
 		opcode = (arch_x86_opcode)GET_FIELD(decode, X86_OPCODE);
@@ -1270,7 +1273,7 @@ decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc)
 			switch (GET_FIELD(decode, X86_DECODE_CLASS)) {
 			case X86_DECODE_CLASS_INVALID:
 				// This handles all occurences of X86_OPC_UNDEFINED :
-				return -1;
+				throw static_cast<uint8_t>(0xFF);
 			case X86_DECODE_CLASS_PREFIX: // TODO : Honor maximum number of prefix bytes per prefix group
 				// All prefix bytes set an instruction variable to some value and will fetch and decode another byte :
 				bits = GET_FIELD(decode, X86_PREFIX_INDEX);
@@ -1278,13 +1281,13 @@ decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc)
 				// Recognize prefix byte 0x0F; Run the next byte through decode_table_two :
 				if (instr_byte == 0x0F) // Equivalent to: if (bits == IS_TWO_BYTE_INSTR)
 					decode_group = 1; // Use decode_table_two (instr->is_two_byte_instr is already set above via prefix_values[])
-				instr_byte = ram_read<uint8_t>(cpu, &pc);
+				instr_byte = ram_fetch<uint8_t>(cpu, disas_ctx, page_cross);
 				continue; // repeat loop
 			case X86_DECODE_CLASS_GROUP:
 				// Do an extension group side-step, by repeating the decodeing using the indicated group and index :
 				instr->opcode_byte = instr_byte;
 				instr->flags = decode; // Initially, use the flags mentioned together with the group reference (group entries may have deviations)
-				decode_modrm_fields(instr, ram_read<uint8_t>(cpu, &pc));
+				decode_modrm_fields(instr, ram_fetch<uint8_t>(cpu, disas_ctx, page_cross));
 				decode_group = GET_FIELD(decode, X86_DECODE_GROUP);
 				instr_byte = instr->reg_opc;
 				continue; // repeat loop
@@ -1312,7 +1315,7 @@ decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc)
 		instr->opcode_byte = instr_byte;
 		instr->flags |= decode & ~GET_MASK(X86_OPCODE);
 		if (instr->flags & MOD_RM) {
-			decode_modrm_fields(instr, ram_read<uint8_t>(cpu, &pc));
+			decode_modrm_fields(instr, ram_fetch<uint8_t>(cpu, disas_ctx, page_cross));
 			decode_modrm_addr_modes(instr, CPU_PE_MODE);
 		}
 	} else { // Read from grp*_decode_table
@@ -1334,19 +1337,19 @@ decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc)
 	}
 
 	if (instr->flags & SIB)
-		decode_sib_byte(instr, ram_read<uint8_t>(cpu, &pc));
+		decode_sib_byte(instr, ram_fetch<uint8_t>(cpu, disas_ctx, page_cross));
 
 	if (instr->flags & MEM_DISP_MASK)
-		decode_disp(cpu, instr, &pc);
+		decode_disp(cpu, instr, disas_ctx, page_cross);
 
 	if (instr->flags & MOFFSET_MASK)
-		decode_moffset(cpu, instr, &pc);
+		decode_moffset(cpu, instr, disas_ctx, page_cross);
 
 	if (instr->flags & IMM_MASK)
-		decode_imm(cpu, instr, &pc);
+		decode_imm(cpu, instr, disas_ctx, page_cross);
 
 	if (instr->flags & REL_MASK)
-		decode_rel(cpu, instr, &pc);
+		decode_rel(cpu, instr, disas_ctx, page_cross);
 
 	set_instr_seg(instr, CPU_PE_MODE);
 
@@ -1356,9 +1359,9 @@ decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc)
 
 	decode_third_operand(instr);
 
-	instr->nr_bytes = (unsigned long)(pc - start_pc);
-
-	return 0;
+	instr->nr_bytes = static_cast<unsigned long>(disas_ctx->virt_pc - disas_ctx->start_pc);
+	disas_ctx->flags |= (disas_ctx->instr_page_addr != ((disas_ctx->start_pc + instr->nr_bytes - 1) & ~PAGE_MASK)) << 2;
+	disas_ctx->instr_page_addr = disas_ctx->start_pc & ~PAGE_MASK;
 }
 
 int

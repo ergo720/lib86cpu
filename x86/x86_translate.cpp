@@ -17,8 +17,6 @@
 #define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), disas_ctx->flags & DISAS_FLG_PE_MODE ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
 #define UNREACHABLE printf("%s: unreachable line %d reached!\n", __func__, __LINE__); return LIB86CPU_UNREACHABLE
 
-typedef translated_code_t *(*entry_t)(uint32_t dummy, cpu_ctx_t *cpu_ctx);
-
 
 const char *
 get_instr_name(unsigned num)
@@ -44,12 +42,12 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip)
 		((cpu_ctx->lazy_eflags.auxbits & 8) << 1) |
 		((cpu_ctx->lazy_eflags.result == 0) << 6) |
 		(((cpu_ctx->lazy_eflags.result & 0x80000000) >> 31) ^ (cpu_ctx->lazy_eflags.auxbits & 1) << 7) |
-		(((cpu_ctx->lazy_eflags.auxbits & 0x80000000) ^ ((cpu_ctx->lazy_eflags.auxbits & 0x40000000) << 1)) >> 20)
-		);
+		(((cpu_ctx->lazy_eflags.auxbits & 0x80000000) ^ ((cpu_ctx->lazy_eflags.auxbits & 0x40000000) << 1)) >> 20),
+		eip);
 	stack_base -= 2;
-	mem_write<uint16_t>(cpu, stack_base, cpu_ctx->regs.cs);
+	mem_write<uint16_t>(cpu, stack_base, cpu_ctx->regs.cs, eip);
 	stack_base -= 2;
-	mem_write<uint16_t>(cpu, stack_base, eip);
+	mem_write<uint16_t>(cpu, stack_base, eip, eip);
 	cpu_ctx->regs.esp = stack_base - cpu_ctx->regs.ss_hidden.base;
 
 	// clear IF, TF, RF and AC flags
@@ -57,21 +55,25 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip)
 
 	// transfer program control to the exception handler specified in the idt
 	addr_t vec_addr = cpu_ctx->regs.idtr_base + expno * 4;
-	uint32_t vec_entry = ram_read<uint32_t>(cpu, &vec_addr);
+	uint32_t vec_entry = mem_read<uint32_t>(cpu, vec_addr, eip);
 	cpu_ctx->regs.cs = (vec_entry & 0xFFFF0000) >> 16;
 	cpu_ctx->regs.cs_hidden.base = cpu_ctx->regs.cs << 4;
 	cpu_ctx->regs.eip = vec_entry & 0x0000FFFF;
 
-	// throw an exception to forcefully exit from the current code block
-	throw cpu;
+	// throw an exception to forcefully transfer control to the exception handler
+	throw expno;
 }
 
 JIT_EXTERNAL_CALL_C void
-cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
+cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip)
 {
 	switch (idx)
 	{
 	case 0:
+		if (((new_cr & CR0_PE_MASK) == 0 && (new_cr & CR0_PG_MASK) >> 31 == 1) ||
+			((new_cr & CR0_CD_MASK) == 0 && (new_cr & CR0_NW_MASK) >> 29 == 1)) {
+			cpu_raise_exception(cpu_ctx, EXP_GP, eip);
+		}
 		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
 			tc_cache_clear(cpu_ctx->cpu);
 		}
@@ -80,6 +82,8 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 
 	case 3:
 		cpu_ctx->regs.cr3 = (new_cr & CR3_FLG_MASK);
+		cpu_ctx->cpu->pt_mr = as_memory_search_addr<uint8_t>(cpu_ctx->cpu, cpu_ctx->regs.cr3 & CR3_PD_MASK);
+		assert(cpu_ctx->cpu->pt_mr->type == MEM_RAM);
 		break;
 
 	case 2:
@@ -89,19 +93,21 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 }
 
 static lib86cpu_status
-cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *tc)
+cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 {
-	bool translate_next = true;
-	size_t instr_size = 0;
+	uint8_t translate_next = 1;
 	uint8_t size_mode;
 	uint8_t addr_mode;
 	BasicBlock *bb = disas_ctx->bb;
 	cpu_ctx_t *cpu_ctx = &cpu->cpu_ctx;
+	addr_t pc = disas_ctx->virt_pc;
+	size_t bytes = 0;
 	// we can use the same indexes for both loads and stores because they have the same order in cpu->ptr_mem_xxfn
 	static const uint8_t fn_idx[3] = { MEM_LD32_idx, MEM_LD16_idx, MEM_LD8_idx };
 
 	Function::arg_iterator args_func = disas_ctx->func->arg_begin();
-	args_func++;
+	Value *ptr_eip = args_func++;
+	ptr_eip = CONST32(pc - cpu_ctx->regs.cs_hidden.base);
 	cpu->ptr_cpu_ctx = args_func++;
 	cpu->ptr_cpu_ctx->setName("cpu_ctx");
 	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, 1);
@@ -112,38 +118,54 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 	do {
 
 		x86_instr instr = { 0 };
-		int bytes;
+		ptr_eip = ADD(ptr_eip, CONST32(bytes));
+
+		try {
 
 #ifdef DEBUG_LOG
 
-		// print the disassembled instructions only in debug builds
-		char disassembly_line[80];
-		int i;
+			// print the disassembled instructions only in debug builds
+			char disassembly_line[80];
+			bytes = disasm_instr(cpu, &instr, disassembly_line, sizeof(disassembly_line), disas_ctx);
 
-		bytes = disasm_instr(cpu, pc, &instr, disassembly_line, sizeof(disassembly_line));
-		if (bytes < 0) {
-			printf("error: unable to decode opcode %x\n", instr.opcode_byte);
-			return LIB86CPU_UNKNOWN_INSTR;
-		}
-
-		printf(".,%08lx ", static_cast<unsigned long>(pc));
-		for (i = 0; i < bytes; i++) {
-			printf("%02X ", cpu->ram[pc + i]);
-		}
-		printf("%*s", (24 - 3 * bytes) + 1, "");
-		printf("%-23s\n", disassembly_line);
+			printf(".,%08lx ", static_cast<unsigned long>(pc));
+			for (uint8_t i = 0; i < bytes; i++) {
+				printf("%02X ", disas_ctx->instr_bytes[i]);
+			}
+			printf("%*s", (24 - 3 * bytes) + 1, "");
+			printf("%-23s\n", disassembly_line);
 
 #else
 
-		bytes = decode_instr(cpu, &instr, pc);
-		if (bytes < 0) {
-			printf("error: unable to decode opcode %x\n", instr.opcode_byte);
-			return LIB86CPU_UNKNOWN_INSTR;
-		}
+			decode_instr(cpu, &instr, disas_ctx);
+			bytes = get_instr_length(&instr);
 
 #endif
+		}
+		catch (uint8_t expno) {
+			switch (expno)
+			{
+			case EXP_PF:
+				// page fault during instruction fetch
+				disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
+				[[fallthrough]];
 
-		instr_size += bytes;
+			case EXP_GP:
+				// the instruction exceeded the maximum allowed length
+				RAISE(expno, pc - cpu->cpu_ctx.regs.cs_hidden.base);
+				disas_ctx->next_pc = CONST32(0); // unreachable
+				disas_ctx->bb = bb;
+				return LIB86CPU_SUCCESS;
+
+			case 0xFF:
+				// TODO: actually this should raise an UD exception for illegal opcodes
+				printf("error: unable to decode opcode %x\n", instr.opcode_byte);
+				return LIB86CPU_UNKNOWN_INSTR;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+		}
 
 		if ((disas_ctx->flags & DISAS_FLG_PE_MODE) ^ instr.op_size_override) {
 			size_mode = SIZE32;
@@ -363,7 +385,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			}
 
 			disas_ctx->bb = bb;
-			translate_next = false;
+			translate_next = 0;
 		}
 		break;
 
@@ -873,7 +895,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			BR_COND(bb_jmp, bb_next, val, bb);
 			disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
-			Value *next_pc = calc_next_pc_emit(cpu, tc, bb_next, instr_size);
+			Value *next_pc = calc_next_pc_emit(cpu, tc, bb_next, ptr_eip, bytes);
 			new StoreInst(next_pc, dst_pc, bb_next);
 			BR_UNCOND(disas_ctx->bb, bb_next);
 
@@ -888,7 +910,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			disas_ctx->next_pc = new LoadInst(dst_pc, "", false, disas_ctx->bb);
 
-			translate_next = false;
+			translate_next = 0;
 		}
 		break;
 
@@ -906,7 +928,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				RAISE(EXP_UD, pc - cpu_ctx->regs.cs_hidden.base);
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				disas_ctx->bb = bb;
-				translate_next = false;
+				translate_next = 0;
 			}
 			else {
 				Value *rm, *limit, *base;
@@ -1003,7 +1025,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			}
 
 			disas_ctx->bb = bb;
-			translate_next = false;
+			translate_next = 0;
 		}
 		break;
 
@@ -1153,7 +1175,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 			BR_COND(bb_loop, bb_exit, AND(ICMP_NE(val, zero), zf), bb);
 			disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
-			Value *exit_pc = calc_next_pc_emit(cpu, tc, bb_exit, instr_size);
+			Value *exit_pc = calc_next_pc_emit(cpu, tc, bb_exit, ptr_eip, bytes);
 			new StoreInst(exit_pc, dst_pc, bb_exit);
 			BR_UNCOND(disas_ctx->bb, bb_exit);
 
@@ -1168,7 +1190,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			disas_ctx->next_pc = new LoadInst(dst_pc, "", false, disas_ctx->bb);
 
-			translate_next = false;
+			translate_next = 0;
 		}
 		break;
 
@@ -1185,7 +1207,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				RAISE(EXP_UD, pc - cpu_ctx->regs.cs_hidden.base);
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				disas_ctx->bb = bb;
-				translate_next = false;
+				translate_next = 0;
 			}
 			else {
 				Value *offset, *sel, *rm;
@@ -1242,7 +1264,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 				{
 				case 0:
 				case 3:
-					CallInst::Create(cpu->crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(instr.operand[OPNUM_DST].reg) }, "", bb);
+					CallInst::Create(cpu->crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(instr.operand[OPNUM_DST].reg), ptr_eip }, "", bb);
 					break;
 				case 2:
 				case 4:
@@ -1252,9 +1274,9 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					UNREACHABLE;
 				}
 
-				disas_ctx->next_pc = calc_next_pc_emit(cpu, tc, bb, instr_size);
+				disas_ctx->next_pc = calc_next_pc_emit(cpu, tc, bb, ptr_eip, bytes);
 				disas_ctx->bb = bb;
-				translate_next = false;
+				translate_next = 0;
 			}
 			break;
 
@@ -1287,7 +1309,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 					RAISE(EXP_UD, pc - cpu_ctx->regs.cs_hidden.base);
 					disas_ctx->next_pc = CONST32(0); // unreachable
 					disas_ctx->bb = bb;
-					translate_next = false;
+					translate_next = 0;
 				}
 				else {
 					Value *val, *rm;
@@ -1634,7 +1656,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
 			disas_ctx->bb = bb;
-			translate_next = false;
+			translate_next = 0;
 		}
 		break;
 
@@ -1667,7 +1689,7 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 			disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
 			disas_ctx->bb = bb;
-			translate_next = false;
+			translate_next = 0;
 		}
 		break;
 
@@ -2107,29 +2129,37 @@ cpu_translate(cpu_t *cpu, addr_t pc, disas_ctx_t *disas_ctx, translated_code_t *
 
 		pc += bytes;
 
-	} while (translate_next);
+	} while ((translate_next | (disas_ctx->flags & DISAS_FLG_PAGE_CROSS)) == 1);
+
+	if (disas_ctx->next_pc == nullptr) {
+		// this can happen when the last instruction crosses a page boundary and it's not a control flow change instruction
+
+		disas_ctx->next_pc = calc_next_pc_emit(cpu, tc, bb, ptr_eip, bytes);
+	}
 
 	return LIB86CPU_SUCCESS;
-}
-
-static inline addr_t
-get_pc(cpu_ctx_t *cpu_ctx)
-{
-	return cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
 }
 
 lib86cpu_status
 cpu_exec_tc(cpu_t *cpu)
 {
-	lib86cpu_status status = LIB86CPU_SUCCESS;
+	orc::MangleAndInterner mangle(cpu->jit->getExecutionSession(), *cpu->dl);
+	orc::SymbolNameSet module_symbol_names({ mangle("start"), mangle("tail"), mangle("main") });
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
-	entry_t entry = nullptr;
 	uint16_t num_tc = 0;
+	addr_t pc;
 
 	// this will exit only in the case of errors
 	while (true) {
 
-		addr_t pc = get_ram_addr(cpu, get_pc(&cpu->cpu_ctx));
+		try {
+			pc = mmu_translate_addr(cpu, get_pc(&cpu->cpu_ctx), 0, cpu->cpu_ctx.regs.eip, cpu_raise_exception);
+		}
+		catch (uint8_t expno) {
+			// page fault during instruction fetching
+			prev_tc = nullptr;
+		}
+
 		ptr_tc = tc_cache_search(cpu, pc);
 
 		if (ptr_tc == nullptr) {
@@ -2138,14 +2168,12 @@ cpu_exec_tc(cpu_t *cpu)
 			std::unique_ptr<translated_code_t> tc(new translated_code_t);
 			tc->ctx = new LLVMContext();
 			if (tc->ctx == nullptr) {
-				status = LIB86CPU_NO_MEMORY;
-				return status;
+				return LIB86CPU_NO_MEMORY;
 			}
 			tc->mod = new Module(cpu->cpu_name, _CTX());
 			if (tc->mod == nullptr) {
 				delete tc->ctx;
-				status = LIB86CPU_NO_MEMORY;
-				return status;
+				return LIB86CPU_NO_MEMORY;
 			}
 
 			FunctionType *fntype = create_tc_fntype(cpu, tc.get());
@@ -2159,9 +2187,13 @@ cpu_exec_tc(cpu_t *cpu)
 			disas_ctx.flags = CPU_PE_MODE;
 			disas_ctx.func = func;
 			disas_ctx.bb = BasicBlock::Create(_CTX(), "", func, 0);
+			disas_ctx.next_pc = nullptr;
+			disas_ctx.virt_pc = get_pc(&cpu->cpu_ctx);
+			disas_ctx.pc = pc;
+			disas_ctx.instr_page_addr = disas_ctx.virt_pc & ~PAGE_MASK;
 
 			// start guest code translation
-			status = cpu_translate(cpu, pc, &disas_ctx, tc.get());
+			lib86cpu_status status = cpu_translate(cpu, &disas_ctx, tc.get());
 			if (!LIB86CPU_CHECK_SUCCESS(status)) {
 				delete tc->mod;
 				delete tc->ctx;
@@ -2184,25 +2216,22 @@ cpu_exec_tc(cpu_t *cpu)
 			orc::ThreadSafeContext tsc(std::unique_ptr<LLVMContext>(tc->ctx));
 			orc::ThreadSafeModule tsm(std::unique_ptr<Module>(tc->mod), tsc);
 			if (cpu->jit->addIRModule(std::move(tsm))) {
-				status = LIB86CPU_LLVM_ERROR;
 				delete tc->mod;
 				delete tc->ctx;
-				return status;
+				return LIB86CPU_LLVM_ERROR;
 			}
 
 			tc->pc = pc;
 			tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
 
-			tc->ptr_code = (void *)(cpu->jit->lookup("start")->getAddress());
+			tc->ptr_code = reinterpret_cast<void *>(cpu->jit->lookup("start")->getAddress());
 			assert(tc->ptr_code);
-			tc->jmp_offset[0] = (void *)(cpu->jit->lookup("tail")->getAddress());
+			tc->jmp_offset[0] = reinterpret_cast<void *>(cpu->jit->lookup("tail")->getAddress());
 			tc->jmp_offset[1] = nullptr;
-			tc->jmp_offset[2] = (void *)(cpu->jit->lookup("main")->getAddress());
+			tc->jmp_offset[2] = reinterpret_cast<void *>(cpu->jit->lookup("main")->getAddress());
 			assert(tc->jmp_offset[0] && tc->jmp_offset[2]);
 
-			// now remove the function symbol names so we can reuse them for other modules
-			orc::MangleAndInterner mangle(cpu->jit->getExecutionSession(), *cpu->dl);
-			orc::SymbolNameSet module_symbol_names({ mangle("start"), mangle("tail"), mangle("main") });
+			// now remove the function symbol names so that we can reuse them for other modules
 			auto err = cpu->jit->getMainJITDylib().remove(module_symbol_names);
 			assert(!err);
 
@@ -2211,17 +2240,26 @@ cpu_exec_tc(cpu_t *cpu)
 			tc->mod = nullptr;
 
 			ptr_tc = tc.get();
-			if (num_tc == CODE_CACHE_MAX_SIZE) {
-				tc_cache_clear(cpu);
+
+			if (disas_ctx.flags & DISAS_FLG_PAGE_CROSS) {
+				tc_run_code(&cpu->cpu_ctx, ptr_tc);
 				prev_tc = nullptr;
-				num_tc = 0;
+				continue;
 			}
-			tc_cache_insert(cpu, pc, std::move(tc));
-			num_tc++;
+			else {
+				if (num_tc == CODE_CACHE_MAX_SIZE) {
+					tc_cache_clear(cpu);
+					prev_tc = nullptr;
+					num_tc = 0;
+				}
+				tc_cache_insert(cpu, pc, std::move(tc));
+				num_tc++;
+			}
 		}
 
 		// see if we can link the previous tc with the current one
 		if (prev_tc != nullptr &&
+			prev_tc->cs_base == cpu->cpu_ctx.regs.cs_hidden.base &&
 #if defined __i386 || defined _M_IX86
 			(prev_tc->jmp_code_size == 20)) {
 #else
@@ -2230,14 +2268,6 @@ cpu_exec_tc(cpu_t *cpu)
 			tc_link_direct(prev_tc, ptr_tc, pc);
 		}
 
-		try {
-			// run the translated code
-			entry = static_cast<entry_t>(ptr_tc->ptr_code);
-			prev_tc = entry(0, &cpu->cpu_ctx);
-		}
-		catch (cpu_t *cpu) {
-			// don't link the exception code with the other code blocks
-			prev_tc = nullptr;
-		}
+		prev_tc = tc_run_code(&cpu->cpu_ctx, ptr_tc);
 	}
 }

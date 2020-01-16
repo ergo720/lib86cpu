@@ -9,112 +9,95 @@
 #include "llvm/support/SwapByteOrder.h"
 #include "lib86cpu.h"
 
-
-addr_t get_ram_addr(cpu_t *cpu, addr_t pc);
-JIT_EXTERNAL_CALL_C uint8_t mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr);
-JIT_EXTERNAL_CALL_C uint16_t mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr);
-JIT_EXTERNAL_CALL_C uint32_t mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr);
-JIT_EXTERNAL_CALL_C void mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value);
-JIT_EXTERNAL_CALL_C void mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value);
-JIT_EXTERNAL_CALL_C void mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value);
-JIT_EXTERNAL_CALL_C void io_write8(cpu_ctx_t *cpu_ctx, io_port_t port, uint8_t value);
-JIT_EXTERNAL_CALL_C void io_write16(cpu_ctx_t *cpu_ctx, io_port_t port, uint16_t value);
-JIT_EXTERNAL_CALL_C void io_write32(cpu_ctx_t *cpu_ctx, io_port_t port, uint32_t value);
-
-/*
- * ram specific accessors
- */
-template<typename T>
-T ram_read(cpu_t *cpu, addr_t *pc)
-{
-	T value;
-
-	memcpy(&value, &cpu->ram[*pc], sizeof(T));
-	*pc = *pc + sizeof(T);
-
-	if (cpu->cpu_flags & CPU_FLAG_SWAPMEM && sizeof(T) != 1) {
-		switch (sizeof(T)) {
-		case 4: {
-			value = sys::SwapByteOrder_32(value);
-		}
-		break;
-
-		case 2: {
-			value = sys::SwapByteOrder_16(value);
-		}
-		break;
-
-		default:
-			LIB86CPU_ABORT();
-		}
-	}
-
-	return value;
+#define AS_RESOLVE_ALIAS() 	addr_t alias_offset = region->alias_offset; \
+while (region->aliased_region) { \
+	region = region->aliased_region; \
+	alias_offset += region->alias_offset; \
 }
 
-template<typename T>
-void ram_write(cpu_t *cpu, addr_t *pc, T value)
-{
-	if (cpu->cpu_flags & CPU_FLAG_SWAPMEM && sizeof(T) != 1) {
-		switch (sizeof(T)) {
-		case 4: {
-			value = sys::SwapByteOrder_32(value);
-		}
-		break;
+inline void *get_ram_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *ram, addr_t pc);
+void check_instr_length(cpu_t *cpu, addr_t start_pc, addr_t pc, size_t size);
+JIT_EXTERNAL_CALL_C uint8_t mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip);
+JIT_EXTERNAL_CALL_C uint16_t mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip);
+JIT_EXTERNAL_CALL_C uint32_t mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip);
+JIT_EXTERNAL_CALL_C void mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip);
+JIT_EXTERNAL_CALL_C void mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip);
+JIT_EXTERNAL_CALL_C void mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip);
+JIT_EXTERNAL_CALL_C uint8_t io_read8(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip);
+JIT_EXTERNAL_CALL_C uint16_t io_read16(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip);
+JIT_EXTERNAL_CALL_C uint32_t io_read32(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip);
+JIT_EXTERNAL_CALL_C void io_write8(cpu_ctx_t *cpu_ctx, port_t port, uint8_t value, uint32_t eip);
+JIT_EXTERNAL_CALL_C void io_write16(cpu_ctx_t *cpu_ctx, port_t port, uint16_t value, uint32_t eip);
+JIT_EXTERNAL_CALL_C void io_write32(cpu_ctx_t *cpu_ctx, port_t port, uint32_t value, uint32_t eip);
+template<typename T> T ram_read(cpu_t *cpu, void *ram_ptr);
+template<typename T> void ram_write(cpu_t *cpu, void *ram_ptr, T value);
 
-		case 2: {
-			value = sys::SwapByteOrder_16(value);
-		}
-		break;
-
-		default:
-			LIB86CPU_ABORT();
-		}
-	}
-
-	memcpy(&cpu->ram[*pc], &value, sizeof(T));
-	*pc = *pc + sizeof(T);
-}
 
 /*
- * generic memory accessors
+ * address space helpers
  */
 template<typename T>
-T mem_read(cpu_t *cpu, addr_t addr)
+memory_region_t<addr_t> *as_memory_search_addr(cpu_t *cpu, addr_t addr)
 {
-	addr_t end;
-
-	end = addr + sizeof(T) - 1;
+	addr_t end = addr + sizeof(T) - 1;
 	cpu->memory_space_tree->search(addr, end, cpu->memory_out);
+	return cpu->memory_out.begin()->get().get();
+}
 
-	if ((addr >= std::get<0>(*cpu->memory_out.begin())) && (end <= std::get<1>(*cpu->memory_out.begin()))) {
-		switch (std::get<2>(*cpu->memory_out.begin())->type)
+template<typename T>
+memory_region_t<port_t> *as_io_search_port(cpu_t *cpu, port_t port)
+{
+	port_t end = port + sizeof(T) - 1;
+	cpu->io_space_tree->search(port, end, cpu->io_out);
+	return cpu->io_out.begin()->get().get();
+}
+
+template<typename T>
+T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *region)
+{
+	if ((addr >= region->start) && ((addr + sizeof(T) - 1) <= region->end)) {
+		switch (region->type)
 		{
-		case MEM_RAM: {
-			return ram_read<T>(cpu, &addr);
-		}
-		break;
+		case MEM_RAM:
+			return ram_read<T>(cpu, get_ram_host_ptr(cpu, region, addr));
 
-		case MEM_MMIO: {
-			memory_region_t<addr_t> *region = std::get<2>(*cpu->memory_out.begin()).get();
-			return region->read_handler(addr, sizeof(T), region->opaque);;
-		}
-		break;
+		case MEM_MMIO:
+			return region->read_handler(addr, sizeof(T), region->opaque);
 
 		case MEM_ALIAS: {
-			memory_region_t<addr_t> *region = std::get<2>(*cpu->memory_out.begin()).get();
-			addr_t alias_offset = region->alias_offset;
-			while (region->aliased_region) {
-				region = region->aliased_region;
-				alias_offset += region->alias_offset;
-			}
-			return mem_read<T>(cpu, region->start + alias_offset + (addr - std::get<0>(*cpu->memory_out.begin())));
+			memory_region_t<addr_t> *alias = region;
+			AS_RESOLVE_ALIAS();
+			return as_memory_dispatch_read<T>(cpu, region->start + alias_offset + (addr - alias->start), region);
 		}
 		break;
 
-		case MEM_UNMAPPED: {
+		case MEM_UNMAPPED:
 			LOG("Memory read to unmapped memory at address %#010x with size %d\n", addr, sizeof(T));
 			return 0xFFFFFFFF;
+
+		default:
+			LIB86CPU_ABORT();
+		}
+	}
+	else {
+		LOG("Memory read at address %#010x with size %d is not completely inside a memory region\n", addr, sizeof(T));
+		return 0xFFFFFFFF;
+	}
+}
+
+template<typename T>
+T as_ram_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *region)
+{
+	if ((addr >= region->start) && ((addr + sizeof(T) - 1) <= region->end)) {
+		switch (region->type)
+		{
+		case MEM_RAM:
+			return ram_read<T>(cpu, get_ram_host_ptr(cpu, region, addr));
+
+		case MEM_ALIAS: {
+			memory_region_t<addr_t> *alias = region;
+			AS_RESOLVE_ALIAS();
+			return as_ram_dispatch_read<T>(cpu, region->start + alias_offset + (addr - alias->start), region);
 		}
 		break;
 
@@ -129,43 +112,29 @@ T mem_read(cpu_t *cpu, addr_t addr)
 }
 
 template<typename T>
-void mem_write(cpu_t *cpu, addr_t addr, T value)
+void as_memory_dispatch_write(cpu_t *cpu, addr_t addr, T value, memory_region_t<addr_t> *region)
 {
-	addr_t end;
-
-	end = addr + sizeof(T) - 1;
-	cpu->memory_space_tree->search(addr, end, cpu->memory_out);
-
-	if ((addr >= std::get<0>(*cpu->memory_out.begin())) && (end <= std::get<1>(*cpu->memory_out.begin()))) {
-		switch (std::get<2>(*cpu->memory_out.begin())->type)
+	if ((addr >= region->start) && ((addr + sizeof(T) - 1) <= region->end)) {
+		switch (region->type)
 		{
-		case MEM_RAM: {
-			ram_write<T>(cpu, &addr, value);
-		}
-		break;
+		case MEM_RAM:
+			ram_write<T>(cpu, get_ram_host_ptr(cpu, region, addr), value);
+			break;
 
-		case MEM_MMIO: {
-			memory_region_t<addr_t> *region = std::get<2>(*cpu->memory_out.begin()).get();
+		case MEM_MMIO:
 			region->write_handler(addr, sizeof(T), value, region->opaque);
-		}
-		break;
+			break;
 
 		case MEM_ALIAS: {
-			memory_region_t<addr_t> *region = std::get<2>(*cpu->memory_out.begin()).get();
-			addr_t alias_offset = region->alias_offset;
-			while (region->aliased_region) {
-				region = region->aliased_region;
-				alias_offset += region->alias_offset;
-			}
-			mem_write<T>(cpu, region->start + alias_offset + (addr - std::get<0>(*cpu->memory_out.begin())), value);
+			memory_region_t<addr_t> *alias = region;
+			AS_RESOLVE_ALIAS();
+			as_memory_dispatch_write<T>(cpu, region->start + alias_offset + (addr - alias->start), value, region);
 		}
 		break;
 
-		case MEM_UNMAPPED: {
+		case MEM_UNMAPPED:
 			LOG("Memory write to unmapped memory at address %#010x with size %d\n", addr, sizeof(T));
-			return;
-		}
-		break;
+			break;
 
 		default:
 			LIB86CPU_ABORT();
@@ -173,68 +142,45 @@ void mem_write(cpu_t *cpu, addr_t addr, T value)
 	}
 	else {
 		LOG("Memory write at address %#010x with size %d is not completely inside a memory region\n", addr, sizeof(T));
-		return;
 	}
 }
 
-/*
- * pmio specific accessors
- */
 template<typename T>
-T io_read(cpu_t *cpu, io_port_t port)
+T as_io_dispatch_read(cpu_t *cpu, port_t port, memory_region_t<port_t> *region)
 {
-	io_port_t end;
-
-	end = port + sizeof(T) - 1;
-	cpu->io_space_tree->search(port, end, cpu->io_out);
-
-	if ((port >= std::get<0>(*cpu->io_out.begin())) && (end <= std::get<1>(*cpu->io_out.begin()))) {
-		switch (std::get<2>(*cpu->io_out.begin())->type)
+	if ((port >= region->start) && ((port + sizeof(T) - 1) <= region->end)) {
+		switch (region->type)
 		{
-		case MEM_PMIO: {
-			memory_region_t<io_port_t> *region = std::get<2>(*cpu->io_out.begin()).get();
-			return region->read_handler(port, sizeof(T), region->opaque);;
-		}
-		break;
+		case MEM_PMIO:
+			return region->read_handler(port, sizeof(T), region->opaque);
 
-		case MEM_UNMAPPED: {
+		case MEM_UNMAPPED:
 			LOG("Memory read to unmapped memory at port %#06hx with size %d\n", port, sizeof(T));
 			return 0xFFFFFFFF;
-		}
-		break;
 
 		default:
 			LIB86CPU_ABORT();
 		}
 	}
 	else {
-		LOG("Memory read at address %#06hx with size %d is not completely inside a memory region\n", port, sizeof(T));
+		LOG("Memory read at port %#06hx with size %d is not completely inside a memory region\n", port, sizeof(T));
 		return 0xFFFFFFFF;
 	}
 }
 
 template<typename T>
-void io_write(cpu_t *cpu, io_port_t port, T value)
+void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, memory_region_t<port_t> *region)
 {
-	io_port_t end;
-
-	end = port + sizeof(T) - 1;
-	cpu->io_space_tree->search(port, end, cpu->io_out);
-
-	if ((port >= std::get<0>(*cpu->io_out.begin())) && (end <= std::get<1>(*cpu->io_out.begin()))) {
-		switch (std::get<2>(*cpu->io_out.begin())->type)
+	if ((port >= region->start) && ((port + sizeof(T) - 1) <= region->end)) {
+		switch (region->type)
 		{
-		case MEM_PMIO: {
-			memory_region_t<io_port_t> *region = std::get<2>(*cpu->io_out.begin()).get();
+		case MEM_PMIO:
 			region->write_handler(port, sizeof(T), value, region->opaque);
-		}
-		break;
+			break;
 
-		case MEM_UNMAPPED: {
+		case MEM_UNMAPPED:
 			LOG("Memory write to unmapped memory at port %#06hx with size %d\n", port, sizeof(T));
-			return;
-		}
-		break;
+			break;
 
 		default:
 			LIB86CPU_ABORT();
@@ -242,6 +188,173 @@ void io_write(cpu_t *cpu, io_port_t port, T value)
 	}
 	else {
 		LOG("Memory write at port %#06hx with size %d is not completely inside a memory region\n", port, sizeof(T));
-		return;
 	}
+}
+
+/*
+ * ram specific accessors
+ */
+void *
+get_ram_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *ram, addr_t pc)
+{
+	return &cpu->ram[pc - ram->start];
+}
+
+template<typename T>
+T ram_read_le(cpu_t *cpu, void *ram_ptr)
+{
+	T value;
+	memcpy(&value, ram_ptr, sizeof(T));
+	return value;
+}
+
+template<typename T>
+T ram_read_be(cpu_t *cpu, void *ram_ptr)
+{
+	T value;
+	memcpy(&value, ram_ptr, sizeof(T));
+	sys::swapByteOrder<T>(value);
+	return value;
+}
+
+template<typename T>
+void ram_write_le(cpu_t *cpu, void *ram_ptr, T value)
+{
+	memcpy(ram_ptr, &value, sizeof(T));
+}
+
+template<typename T>
+void ram_write_be(cpu_t *cpu, void *ram_ptr, T value)
+{
+	sys::swapByteOrder<T>(value);
+	memcpy(ram_ptr, &value, sizeof(T));
+}
+
+template<typename T>
+using fp_ram_read = T(*)(cpu_t *, void *);
+template<typename T>
+using fp_ram_write = void(*)(cpu_t *, void *, T);
+
+inline constexpr std::tuple<fp_ram_read<uint8_t>, fp_ram_read<uint16_t>, fp_ram_read<uint32_t>, fp_ram_read<uint32_t>,
+	fp_ram_write<uint8_t>, fp_ram_write<uint16_t>, fp_ram_write<uint32_t>, fp_ram_write<uint32_t>> ram_func[2] = {
+		{ ram_read_le<uint8_t>, ram_read_le<uint16_t>, nullptr, ram_read_le<uint32_t>,
+		ram_write_le<uint8_t>, ram_write_le<uint16_t>, nullptr, ram_write_le<uint32_t> },
+		{ ram_read_be<uint8_t>, ram_read_be<uint16_t>, nullptr, ram_read_be<uint32_t>,
+		ram_write_be<uint8_t>, ram_write_be<uint16_t>, nullptr, ram_write_be<uint32_t> },
+};
+
+template<typename T>
+T ram_read(cpu_t *cpu, void *ram_ptr)
+{
+	return (*std::get<sizeof(T) - 1>(ram_func[cpu->cpu_flags & CPU_FLAG_SWAPMEM]))(cpu, ram_ptr);
+}
+
+template<typename T>
+void ram_write(cpu_t *cpu, void *ram_ptr, T value)
+{
+	(*std::get<sizeof(T) + 4 - 1>(ram_func[cpu->cpu_flags & CPU_FLAG_SWAPMEM]))(cpu, ram_ptr, value);
+}
+
+template<typename T>
+T ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t page_cross)
+{
+	T value = 0;
+
+	if (page_cross) {
+		uint8_t i = 0;
+		memory_region_t<addr_t> *region;
+		check_instr_length(cpu, disas_ctx->start_pc, disas_ctx->virt_pc, sizeof(T));
+		while (i < sizeof(T)) {
+			disas_ctx->pc = mmu_translate_addr(cpu, disas_ctx->virt_pc, 0, disas_ctx->start_pc - cpu->cpu_ctx.regs.cs_hidden.base,
+				[](cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip) { throw expno; });
+			region = as_memory_search_addr<T>(cpu, disas_ctx->pc);
+			value |= (static_cast<T>(as_ram_dispatch_read<uint8_t>(cpu, disas_ctx->pc, region)) << (i * 8));
+			disas_ctx->virt_pc++;
+			i++;
+		}
+		if (cpu->cpu_flags & CPU_FLAG_SWAPMEM) {
+			sys::swapByteOrder<T>(value);
+		}
+	}
+	else {
+		check_instr_length(cpu, disas_ctx->start_pc, disas_ctx->virt_pc, sizeof(T));
+		value = as_ram_dispatch_read<T>(cpu, disas_ctx->pc, as_memory_search_addr<T>(cpu, disas_ctx->pc));
+		disas_ctx->pc += sizeof(T);
+		disas_ctx->virt_pc += sizeof(T);
+	}
+
+#if DEBUG_LOG
+	memcpy(&disas_ctx->instr_bytes[disas_ctx->byte_idx], &value, sizeof(T));
+	disas_ctx->byte_idx += sizeof(T);
+#endif
+
+	return value;
+}
+
+/*
+ * generic memory accessors
+ */
+template<typename T>
+T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip)
+{
+	addr_t phys_addr;
+	if ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK)) {
+		T buffer = 0;
+		uint8_t i = 0;
+		memory_region_t<addr_t> *region;
+		while (i < sizeof(T)) {
+			phys_addr = mmu_translate_addr(cpu, addr, 0, eip, cpu_raise_exception);
+			region = as_memory_search_addr<T>(cpu, phys_addr);
+			buffer |= (static_cast<T>(as_memory_dispatch_read<uint8_t>(cpu, phys_addr, region)) << (i * 8));
+			addr++;
+			i++;
+		}
+		if (cpu->cpu_flags & CPU_FLAG_SWAPMEM) {
+			sys::swapByteOrder<T>(buffer);
+		}
+		return buffer;
+	}
+	else {
+		phys_addr = mmu_translate_addr(cpu, addr, 0, eip, cpu_raise_exception);
+		return as_memory_dispatch_read<T>(cpu, phys_addr, as_memory_search_addr<T>(cpu, phys_addr));
+	}
+}
+
+template<typename T>
+void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip)
+{
+	addr_t phys_addr;
+	if ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK)) {
+		int8_t i = sizeof(T) - 1;
+		memory_region_t<addr_t> *region;
+		if (cpu->cpu_flags & CPU_FLAG_SWAPMEM) {
+			sys::swapByteOrder<T>(value);
+		}
+		while (i >= 0) {
+			phys_addr = mmu_translate_addr(cpu, addr, 1, eip, cpu_raise_exception);
+			region = as_memory_search_addr<T>(cpu, phys_addr);
+			as_memory_dispatch_write<uint8_t>(cpu, phys_addr, value >> (i * 8), region);
+			addr++;
+			i--;
+		}
+	}
+	else {
+		phys_addr = mmu_translate_addr(cpu, addr, 1, eip, cpu_raise_exception);
+		as_memory_dispatch_write<T>(cpu, phys_addr, value, as_memory_search_addr<T>(cpu, phys_addr));
+	}
+}
+
+/*
+ * pmio specific accessors
+ */
+template<typename T>
+T io_read(cpu_t *cpu, port_t port)
+{
+	return as_io_dispatch_read<T>(cpu, port, as_io_search_port<T>(cpu, port));
+}
+
+template<typename T>
+void io_write(cpu_t *cpu, port_t port, T value)
+{
+	as_io_dispatch_write<T>(cpu, port, value, as_io_search_port<T>(cpu, port));
 }

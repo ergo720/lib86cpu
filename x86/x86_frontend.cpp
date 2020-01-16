@@ -21,6 +21,7 @@
 #include "x86_memory.h"
 
 #define PROFILE_NUM_TIMES 30
+using entry_t = translated_code_t * (*)(uint32_t dummy, cpu_ctx_t * cpu_ctx);
 
 Value *
 get_struct_member_pointer(Value *gep_start, const unsigned gep_index, translated_code_t *tc, BasicBlock *bb)
@@ -98,10 +99,10 @@ get_struct_eflags(translated_code_t *tc)
 }
 
 Value *
-calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, size_t instr_size)
+calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, size_t instr_size)
 {
-	Value * next_eip = BinaryOperator::Create(Instruction::Add, CONST32(cpu->cpu_ctx.regs.eip), CONST32(instr_size), "", bb);
-	new StoreInst(next_eip, get_struct_member_pointer(cpu->ptr_regs, EIP_idx, tc, bb), bb);
+	Value *next_eip = BinaryOperator::Create(Instruction::Add, ptr_eip, CONST32(instr_size), "", bb);
+	new StoreInst(next_eip, GEP_EIP(), bb);
 	return BinaryOperator::Create(Instruction::Add, CONST32(cpu->cpu_ctx.regs.cs_hidden.base), next_eip, "", bb);
 }
 
@@ -207,21 +208,37 @@ get_ext_fn(cpu_t *cpu, translated_code_t *tc, Function *func)
 {
 	static size_t bit_size[6] = { 8, 16, 32, 8, 16, 32 };
 	static size_t arg_size[6] = { 32, 32, 32, 16, 16, 16 };
-	static const char *func_name_ld[3] = { "mem_read8", "mem_read16", "mem_read32" };
+	static const char *func_name_ld[6] = { "mem_read8", "mem_read16", "mem_read32", "io_read8", "io_read16", "io_read32" };
 	static const char *func_name_st[6] = { "mem_write8", "mem_write16", "mem_write32", "io_write8", "io_write16", "io_write32" };
 	Function::arg_iterator args_start = func->arg_begin();
 	args_start++;
 
-	for (uint8_t i = 0; i < 3; i++) {
-		cpu->ptr_mem_ldfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), args_start->getType(), getIntegerType(32)));
+	for (uint8_t i = 0; i < 6; i++) {
+		cpu->ptr_mem_ldfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), args_start->getType(),
+			getIntegerType(arg_size[i]), getIntegerType(32)));
 	}
 
 	for (uint8_t i = 0; i < 6; i++) {
-		cpu->ptr_mem_stfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_st[i], getVoidType(), args_start->getType(), getIntegerType(arg_size[i]), getIntegerType(bit_size[i])));
+		cpu->ptr_mem_stfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_st[i], getVoidType(), args_start->getType(),
+			getIntegerType(arg_size[i]), getIntegerType(bit_size[i]), getIntegerType(32)));
 	}
 
 	cpu->exp_fn = cast<Function>(tc->mod->getOrInsertFunction("cpu_raise_exception", getVoidType(), args_start->getType(), getIntegerType(8), getIntegerType(32)));
-	cpu->crN_fn = cast<Function>(tc->mod->getOrInsertFunction("cpu_update_crN", getVoidType(), args_start->getType(), getIntegerType(32), getIntegerType(8)));
+	cpu->crN_fn = cast<Function>(tc->mod->getOrInsertFunction("cpu_update_crN", getVoidType(), args_start->getType(), getIntegerType(32), getIntegerType(8), getIntegerType(32)));
+}
+
+translated_code_t *
+tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
+{
+	try {
+		// run the translated code
+		entry_t entry = static_cast<entry_t>(tc->ptr_code);
+		return entry(0, cpu_ctx);
+	}
+	catch (uint8_t expno) {
+		// don't link the exception code with the other code blocks
+		return nullptr;
+	}
 }
 
 static inline uint32_t
@@ -382,7 +399,7 @@ create_tc_fntype(cpu_t *cpu, translated_code_t *tc)
 	type_struct_cpu_ctx_t_fields.push_back(get_struct_reg(cpu, tc));
 	type_struct_cpu_ctx_t_fields.push_back(get_struct_eflags(tc));
 
-	IntegerType *type_i32 = getIntegerType(32);                                      // pc ptr
+	IntegerType *type_i32 = getIntegerType(32);                                      // eip/pc ptr
 	PointerType *type_pstruct = PointerType::getUnqual(StructType::create(_CTX(),
 		type_struct_cpu_ctx_t_fields, "struct.cpu_ctx_t", false));                   // cpu_ctx ptr
 

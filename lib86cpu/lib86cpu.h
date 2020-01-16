@@ -91,6 +91,7 @@ enum mem_type_t {
 template<typename T>
 struct memory_region_t {
 	T start;
+	T end;
 	int type;
 	int priority;
 	fp_read read_handler;
@@ -98,16 +99,16 @@ struct memory_region_t {
 	void *opaque;
 	addr_t alias_offset;
 	memory_region_t<T> *aliased_region;
-	memory_region_t() : start(0), alias_offset(0), type(MEM_UNMAPPED), priority(0), read_handler(nullptr), write_handler(nullptr),
+	memory_region_t() : start(0), end(0), alias_offset(0), type(MEM_UNMAPPED), priority(0), read_handler(nullptr), write_handler(nullptr),
 		opaque(nullptr), aliased_region(nullptr) {};
 };
 
 template<typename T>
 struct sort_by_priority
 {
-	bool operator() (const std::tuple<T, T, const std::unique_ptr<memory_region_t<T>> &> &lhs, const std::tuple<T, T, const std::unique_ptr<memory_region_t<T>> &> &rhs) const
+	bool operator() (const std::reference_wrapper<std::unique_ptr<memory_region_t<T>>> &lhs, const std::reference_wrapper<std::unique_ptr<memory_region_t<T>>> &rhs) const
 	{
-		return std::get<2>(lhs)->priority > std::get<2>(rhs)->priority;
+		return lhs.get()->priority > rhs.get()->priority;
 	}
 };
 
@@ -127,6 +128,12 @@ struct disas_ctx_t {
 	BasicBlock *bb;
 	Value *next_pc;
 	uint8_t flags;
+	addr_t virt_pc, start_pc, pc;
+	addr_t instr_page_addr;
+#if DEBUG_LOG
+	uint8_t instr_bytes[15];
+	uint8_t byte_idx;
+#endif
 };
 
 struct regs_layout_t {
@@ -157,10 +164,11 @@ struct cpu_t {
 	const regs_layout_t *regs_layout;
 	cpu_ctx_t cpu_ctx;
 	uint8_t *ram;
+	memory_region_t<addr_t> *pt_mr;
 	std::unique_ptr<interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>> memory_space_tree;
-	std::unique_ptr<interval_tree<io_port_t, std::unique_ptr<memory_region_t<io_port_t>>>> io_space_tree;
-	std::set<std::tuple<addr_t, addr_t, const std::unique_ptr<memory_region_t<addr_t>> &>, sort_by_priority<addr_t>> memory_out;
-	std::set<std::tuple<io_port_t, io_port_t, const std::unique_ptr<memory_region_t<io_port_t>> &>, sort_by_priority<io_port_t>> io_out;
+	std::unique_ptr<interval_tree<port_t, std::unique_ptr<memory_region_t<port_t>>>> io_space_tree;
+	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<addr_t>>>, sort_by_priority<addr_t>> memory_out;
+	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<port_t>>>, sort_by_priority<port_t>> io_out;
 	std::forward_list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
 
 	/* llvm specific variables */
@@ -169,7 +177,7 @@ struct cpu_t {
 	Value *ptr_cpu_ctx;
 	Value *ptr_regs;
 	Value *ptr_eflags;
-	Function *ptr_mem_ldfn[3];
+	Function *ptr_mem_ldfn[6];
 	Function *ptr_mem_stfn[6];
 	Function *exp_fn;
 	Function *crN_fn;

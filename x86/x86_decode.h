@@ -223,8 +223,6 @@ struct x86_instr { /* Instances of x86_instr are populated in arch_x86_decode_in
 	struct x86_operand	operand[OPNUM_COUNT];
 };
 
-int
-decode_instr(cpu_t *cpu, struct x86_instr *instr, addr_t pc);
-
-int
-get_instr_length(struct x86_instr *instr);
+int get_instr_length(struct x86_instr *instr);
+size_t disasm_instr_att(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_line, disas_ctx_t *disas_ctx);
+size_t disasm_instr_intel(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_line, disas_ctx_t *disas_ctx);

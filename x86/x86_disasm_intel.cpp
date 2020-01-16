@@ -335,16 +335,15 @@ print_operand(addr_t pc, char *operands, size_t size, struct x86_instr *instr, s
 	return ret;
 }
 
-int
-disasm_instr_intel(cpu_t *cpu, addr_t pc, x86_instr *instr, char *line, unsigned int max_line)
+size_t
+disasm_instr_intel(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_line, disas_ctx_t *disas_ctx)
 {
 	char operands[32];
 	int len = 0;
+	addr_t pc = disas_ctx->virt_pc;
 
 	assert(((cpu->cpu_flags & CPU_INTEL_SYNTAX) >> CPU_INTEL_SYNTAX_SHIFT) == 1);
-	if (decode_instr(cpu, instr, pc)) {
-		return -1;
-	}
+	decode_instr(cpu, instr, disas_ctx);
 
 	operands[0] = '\0';
 

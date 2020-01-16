@@ -14,17 +14,14 @@ const char *mnemo[] = {
 #undef DECLARE_OPC
 };
 
-extern int disasm_instr_att(cpu_t *cpu, addr_t pc, x86_instr *instr, char *line, unsigned int max_line);
-extern int disasm_instr_intel(cpu_t *cpu, addr_t pc, x86_instr *instr, char *line, unsigned int max_line);
-
-typedef int(*fp_disasm_instr)(cpu_t *cpu, addr_t pc, x86_instr *instr, char *line, unsigned int max_line);
+using fp_disasm_instr = size_t(*)(cpu_t *, x86_instr *, char *, unsigned int, disas_ctx_t *);
 fp_disasm_instr disasm_func[] = {
 	disasm_instr_att,
 	disasm_instr_intel,
 };
 
-int
-disasm_instr(cpu_t *cpu, addr_t pc, x86_instr *instr, char *line, unsigned int max_line)
+size_t
+disasm_instr(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_line, disas_ctx_t *disas_ctx)
 {
-	return (*disasm_func[(cpu->cpu_flags & CPU_INTEL_SYNTAX) >> CPU_INTEL_SYNTAX_SHIFT])(cpu, pc, instr, line, max_line);
+	return (*disasm_func[(cpu->cpu_flags & CPU_INTEL_SYNTAX) >> CPU_INTEL_SYNTAX_SHIFT])(cpu, instr, line, max_line, disas_ctx);
 }

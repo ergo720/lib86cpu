@@ -37,8 +37,8 @@ public:
 	~interval_tree() { destroy(root); }
 	bool insert(key &start, key &end, val &&data);
 	bool erase(key &start, key &end);
-	template <typename comparator = std::less<key>>
-	void search(key &start, key &end, std::set<std::tuple<key, key, const val &>, comparator> &out);
+	template <typename comparator>
+	void search(key &start, key &end, std::set<std::reference_wrapper<val>, comparator> &out);
 
 private:
 	interval_tree() : root(nullptr) {};
@@ -46,7 +46,7 @@ private:
 	node_t<key, val> *insert(node_t<key, val> *node, key &start, key &end, val &&data, bool &inserted);
 	node_t<key, val> *erase(node_t<key, val> *gnode, key &start, key &end, bool &deleted);
 	template <typename comparator>
-	void search(node_t<key, val> *node, key &start, key &end, std::set<std::tuple<key, key, const val &>, comparator> &out);
+	void search(node_t<key, val> *node, key &start, key &end, std::set<std::reference_wrapper<val>, comparator> &out);
 	node_t<key, val> *find_successor(node_t<key, val> *node);
 	void replace_parent(node_t<key, val> *parent, node_t<key, val> *child);
 	void set_max(node_t<key, val> *node);
@@ -117,7 +117,7 @@ bool interval_tree<key, val>::erase(key &start, key &end)
 
 template<typename key, typename val>
 template <typename comparator>
-void interval_tree<key, val>::search(key &start, key &end, std::set<std::tuple<key, key, const val &>, comparator> &out)
+void interval_tree<key, val>::search(key &start, key &end, std::set<std::reference_wrapper<val>, comparator> &out)
 {
 	out.clear();
 	search(root, start, end, out);
@@ -249,14 +249,14 @@ node_t<key, val> *interval_tree<key, val>::erase(node_t<key, val> *node, key &st
 
 template<typename key, typename val>
 template <typename comparator>
-void interval_tree<key, val>::search(node_t<key, val> *node, key &start, key &end, std::set<std::tuple<key, key, const val &>, comparator> &out)
+void interval_tree<key, val>::search(node_t<key, val> *node, key &start, key &end, std::set<std::reference_wrapper<val>, comparator> &out)
 {
 	if (node == nullptr) {
 		return;
 	}
 
 	if ((node->i.start <= end) && (node->i.end >= start)) {
-		out.emplace(node->i.start, node->i.end, node->value);
+		out.emplace(std::ref(node->value));
 	}
 
 	if ((node->left != nullptr) && (node->left->max >= start)) {

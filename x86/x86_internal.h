@@ -8,12 +8,24 @@
 
 #include "x86_decode.h"
 
+#define DISAS_FLG_PE_MODE      (1 << 0)
+#define DISAS_FLG_TC_INDIRECT  (1 << 1)
+#define DISAS_FLG_PAGE_CROSS   (1 << 2)
+#define DISAS_FLG_FETCH_FAULT  DISAS_FLG_PAGE_CROSS
+
 void cpu_x86_init(cpu_t *cpu);
 lib86cpu_status cpu_exec_tc(cpu_t *cpu);
+addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std::function<void(cpu_ctx_t *, uint8_t, uint32_t)> raise_fault);
 void tc_protect(void* addr, size_t size, bool ro);
-int disasm_instr(cpu_t *cpu, addr_t pc, x86_instr *instr, char *line, unsigned int max_line);
-int decode_instr(cpu_t *cpu, x86_instr *instr, addr_t pc);
+size_t disasm_instr(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_line, disas_ctx_t *disas_ctx);
+void decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx);
 JIT_EXTERNAL_CALL_C void cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip);
+
+inline addr_t
+get_pc(cpu_ctx_t *cpu_ctx)
+{
+    return cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
+}
 
 extern const char *mnemo[];
 
@@ -50,28 +62,11 @@ extern const char *mnemo[];
 #define IDTR_idx    29
 #define GDTR_idx    30
 
-#define CF_shift    0
-#define PF_shift    2
-#define AF_shift    4
-#define ZF_shift    6
-#define SF_shift    7
-#define TF_shift    8
-#define IF_shift    9
-#define DF_shift    10
-#define OF_shift    11
-#define IOPL_shift  12
-#define NT_shift    14
-#define RF_shift    16
-#define VM_shift    17
-#define AC_shift    18
-#define VIF_shift   19
-#define VIP_shift   20
-#define ID_shift    21
-#define TF_MASK     (1 << TF_shift)
-#define IF_MASK     (1 << IF_shift)
-#define DF_MASK     (1 << DF_shift)
-#define RF_MASK     (1 << RF_shift)
-#define AC_MASK     (1 << AC_shift)
+#define TF_MASK     (1 << 8)
+#define IF_MASK     (1 << 9)
+#define DF_MASK     (1 << 10)
+#define RF_MASK     (1 << 16)
+#define AC_MASK     (1 << 18)
 
 // exception numbers
 #define EXP_DE  0   // divide error
@@ -93,6 +88,24 @@ extern const char *mnemo[];
 #define EXP_MC  18  // machine check
 #define EXP_XF  19  // SIMD floating point exception
 
+// pte flags
+#define PTE_PRESENT   (1 << 0)
+#define PTE_WRITE     (1 << 1)
+#define PTE_USER      (1 << 2)
+#define PTE_ACCESSED  (1 << 5)
+#define PTE_DIRTY     (1 << 6)
+#define PTE_LARGE     (1 << 7)
+#define PTE_ADDR_4K   0xFFFFF000
+#define PTE_ADDR_4M   0xFFC00000
+
+// page macros
+#define PAGE_SHIFT        12
+#define PAGE_SHIFT_LARGE  22
+#define PAGE_SIZE         (1 << PAGE_SHIFT)
+#define PAGE_SIZE_LARGE   (1 << PAGE_SHIFT_LARGE)
+#define PAGE_MASK         (PAGE_SIZE - 1)
+#define PAGE_MASK_LARGE   (PAGE_SIZE_LARGE - 1)
+
 #define SEG_offset  ES_idx
 #define CR_offset   CR0_idx
 
@@ -103,35 +116,25 @@ extern const char *mnemo[];
 #define R48_LIMIT 1
 
 // control register flags
-#define CR0_PG_SHIFT 31
-#define CR0_CD_SHIFT 30
-#define CR0_NW_SHIFT 29
-#define CR0_AM_SHIFT 18
-#define CR0_WP_SHIFT 16
-#define CR0_NE_SHIFT 5
-#define CR0_ET_SHIFT 4
-#define CR0_TS_SHIFT 3
-#define CR0_EM_SHIFT 2
-#define CR0_MP_SHIFT 1
-#define CR0_PE_SHIFT 0
-#define CR0_PG_MASK (1 << CR0_PG_SHIFT)
-#define CR0_CD_MASK (1 << CR0_CD_SHIFT)
-#define CR0_NW_MASK (1 << CR0_NW_SHIFT)
-#define CR0_AM_MASK (1 << CR0_AM_SHIFT)
-#define CR0_WP_MASK (1 << CR0_WP_SHIFT)
-#define CR0_NE_MASK (1 << CR0_NE_SHIFT)
-#define CR0_ET_MASK (1 << CR0_ET_SHIFT)
-#define CR0_TS_MASK (1 << CR0_TS_SHIFT)
-#define CR0_EM_MASK (1 << CR0_EM_SHIFT)
-#define CR0_MP_MASK (1 << CR0_MP_SHIFT)
-#define CR0_PE_MASK (1 << CR0_PE_SHIFT)
+#define CR0_PG_MASK (1 << 31)
+#define CR0_CD_MASK (1 << 30)
+#define CR0_NW_MASK (1 << 29)
+#define CR0_AM_MASK (1 << 18)
+#define CR0_WP_MASK (1 << 16)
+#define CR0_NE_MASK (1 << 5)
+#define CR0_ET_MASK (1 << 4)
+#define CR0_TS_MASK (1 << 3)
+#define CR0_EM_MASK (1 << 2)
+#define CR0_MP_MASK (1 << 1)
+#define CR0_PE_MASK (1 << 0)
 #define CR0_FLG_MASK (CR0_PG_MASK | CR0_CD_MASK | CR0_NW_MASK | CR0_AM_MASK | CR0_WP_MASK | CR0_NE_MASK | CR0_ET_MASK |\
 CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
-#define CR3_PCD_SHIFT 4
-#define CR3_PWT_SHIFT 3
-#define CR3_PD_MASK 0xFFFFFF00
-#define CR3_PCD_MASK (1 << CR3_PCD_SHIFT)
-#define CR3_PWT_MASK (1 << CR3_PWT_SHIFT)
-#define CR3_FLG_MASK (CR3_PD_MASK | CR3_PCD_MASK | CR3_PCD_MASK)
+#define CR3_PD_MASK 0xFFFFF000
+#define CR3_PCD_MASK (1 << 4)
+#define CR3_PWT_MASK (1 << 3)
+#define CR3_FLG_MASK (CR3_PD_MASK | CR3_PCD_MASK | CR3_PWT_MASK)
+#define CR4_PSE (1 << 4)
 
 #define CPU_PE_MODE (cpu->cpu_ctx.regs.cr0 & CR0_PE_MASK)
+
+#define X86_MAX_INSTR_LENGTH 15
