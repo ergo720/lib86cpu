@@ -92,7 +92,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std:
 		uint32_t pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr));
 
 		if (!(pte & PTE_PRESENT)) {
-			raise_fault(&cpu->cpu_ctx, EXP_PF, eip - cpu->cpu_ctx.regs.cs_hidden.base);
+			raise_fault(&cpu->cpu_ctx, EXP_PF, eip);
 			LIB86CPU_ABORT();
 		}
 
@@ -109,7 +109,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std:
 				}
 				return (pte & PTE_ADDR_4M) + (addr & PAGE_MASK_LARGE);
 			}
-			raise_fault(&cpu->cpu_ctx, EXP_PF, eip - cpu->cpu_ctx.regs.cs_hidden.base);
+			raise_fault(&cpu->cpu_ctx, EXP_PF, eip);
 			LIB86CPU_ABORT();
 		}
 
@@ -117,7 +117,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std:
 		pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr));
 
 		if (!(pte & PTE_PRESENT)) {
-			raise_fault(&cpu->cpu_ctx, EXP_PF, eip - cpu->cpu_ctx.regs.cs_hidden.base);
+			raise_fault(&cpu->cpu_ctx, EXP_PF, eip);
 			LIB86CPU_ABORT();
 		}
 
@@ -131,7 +131,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std:
 			}
 			return (pte & PTE_ADDR_4K) + (addr & PAGE_MASK);
 		}
-		raise_fault(&cpu->cpu_ctx, EXP_PF, eip - cpu->cpu_ctx.regs.cs_hidden.base);
+		raise_fault(&cpu->cpu_ctx, EXP_PF, eip);
 		LIB86CPU_ABORT();
 	}
 }
