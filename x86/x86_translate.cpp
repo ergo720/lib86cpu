@@ -208,10 +208,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				[[fallthrough]];
 
 			case 0x05: {
-				Value *val, *sum, *eax;
+				Value *val, *sum, *eax, *dst;
 				val = GET_IMM();
-				eax = LD_REG_val(GET_REG(OPNUM_DST));
+				dst = GET_REG(OPNUM_DST);
+				eax = LD_REG_val(dst);
 				sum = ADD(eax, val);
+				ST_REG_val(sum, dst);
 				SET_FLG_SUM(sum, eax, val);
 			}
 			break;

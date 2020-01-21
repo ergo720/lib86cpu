@@ -88,7 +88,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std:
 	}
 	else {
 		// XXX: for now this assumes that the cpu is always in supervisor mode
-		addr_t pte_addr = (cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK) + (addr & 0xFFC00000) * 4;
+		addr_t pte_addr = (cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK) | (addr >> PAGE_SHIFT_LARGE) * 4;
 		uint32_t pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr));
 
 		if (!(pte & PTE_PRESENT)) {
@@ -107,13 +107,13 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std:
 					}
 					ram_write<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr), pte);
 				}
-				return (pte & PTE_ADDR_4M) + (addr & PAGE_MASK_LARGE);
+				return (pte & PTE_ADDR_4M) | (addr & PAGE_MASK_LARGE);
 			}
 			raise_fault(&cpu->cpu_ctx, EXP_PF, eip);
 			LIB86CPU_ABORT();
 		}
 
-		pte_addr = (pte & PTE_ADDR_4K) + ((addr >> PAGE_SHIFT) & 0x3FF) * 4;
+		pte_addr = (pte & PTE_ADDR_4K) | ((addr >> PAGE_SHIFT) & 0x3FF) * 4;
 		pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr));
 
 		if (!(pte & PTE_PRESENT)) {
@@ -129,7 +129,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std:
 				}
 				ram_write<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr), pte);
 			}
-			return (pte & PTE_ADDR_4K) + (addr & PAGE_MASK);
+			return (pte & PTE_ADDR_4K) | (addr & PAGE_MASK);
 		}
 		raise_fault(&cpu->cpu_ctx, EXP_PF, eip);
 		LIB86CPU_ABORT();

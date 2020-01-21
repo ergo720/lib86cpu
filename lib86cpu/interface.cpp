@@ -25,7 +25,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 		return LIB86CPU_NO_MEMORY;
 	}
 
-	cpu->ram = new uint8_t[ramsize]();
+	cpu->ram = new uint8_t[ramsize];
 	if (cpu->ram == nullptr) {
 		cpu_free(cpu);
 		return LIB86CPU_NO_MEMORY;
