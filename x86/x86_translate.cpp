@@ -177,14 +177,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			}
 		}
 
-		if ((disas_ctx->flags & DISAS_FLG_CS32_MODE) ^ instr.op_size_override) {
+		if ((disas_ctx->flags & DISAS_FLG_CS32) ^ instr.op_size_override) {
 			size_mode = SIZE32;
 		}
 		else {
 			size_mode = SIZE16;
 		}
 
-		if ((disas_ctx->flags & DISAS_FLG_CS32_MODE) ^ instr.addr_size_override) {
+		if ((disas_ctx->flags & DISAS_FLG_CS32) ^ instr.addr_size_override) {
 			addr_mode = ADDR32;
 		}
 		else {

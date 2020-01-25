@@ -1014,7 +1014,7 @@ decode_rel(cpu_t *cpu, struct x86_instr *instr, disas_ctx_t *disas_ctx, uint8_t 
 static void
 decode_moffset(cpu_t *cpu, struct x86_instr *instr, disas_ctx_t *disas_ctx, uint8_t page_cross)
 {
-	if (instr->addr_size_override ^ (disas_ctx->flags & DISAS_FLG_CS32_MODE)) {
+	if (instr->addr_size_override ^ (disas_ctx->flags & DISAS_FLG_CS32)) {
 		instr->disp = ram_fetch<uint32_t>(cpu, disas_ctx, page_cross);
 	}
 	else {
@@ -1293,7 +1293,7 @@ decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx)
 				continue; // repeat loop
 			case X86_DECODE_CLASS_DIFF_SYNTAX:
 				// Calculate diff_syntax_* last dimension index : 0 = AT&T 16 bit, 1 = AT&T sintax 32 bit, 2 = Intel syntax 16 bit , 3 = Intel syntax 32 bit
-				bits = (instr->op_size_override ^ (disas_ctx->flags & DISAS_FLG_CS32_MODE)) | (use_intel << 1);
+				bits = (instr->op_size_override ^ (disas_ctx->flags & DISAS_FLG_CS32)) | (use_intel << 1);
 				opcode = diff_syntax_opcodes[GET_FIELD(decode, X86_DIFF_SYNTAX)][bits];
 				if (instr_byte == 0x62)
 					instr->flags |= diff_syntax_flags_0x62[bits];
@@ -1316,7 +1316,7 @@ decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx)
 		instr->flags |= decode & ~GET_MASK(X86_OPCODE);
 		if (instr->flags & MOD_RM) {
 			decode_modrm_fields(instr, ram_fetch<uint8_t>(cpu, disas_ctx, page_cross));
-			decode_modrm_addr_modes(instr, disas_ctx->flags & DISAS_FLG_CS32_MODE);
+			decode_modrm_addr_modes(instr, disas_ctx->flags & DISAS_FLG_CS32);
 		}
 	} else { // Read from grp*_decode_table
 		// Mask away (initially set) width flags, if the group entry also has a width flag :
@@ -1326,10 +1326,10 @@ decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx)
 		if (decode & ADDRMOD_MASK)
 			instr->flags &= ~ADDRMOD_MASK;
 		instr->flags |= decode & ~GET_MASK(X86_OPCODE);
-		decode_modrm_addr_modes(instr, disas_ctx->flags & DISAS_FLG_CS32_MODE);
+		decode_modrm_addr_modes(instr, disas_ctx->flags & DISAS_FLG_CS32);
 	}
 
-	if (no_fixed_size && (instr->op_size_override ^ (disas_ctx->flags & DISAS_FLG_CS32_MODE))) {
+	if (no_fixed_size && (instr->op_size_override ^ (disas_ctx->flags & DISAS_FLG_CS32))) {
 		if (instr->flags & WIDTH_WORD) {
 			instr->flags &= ~WIDTH_WORD;
 			instr->flags |= WIDTH_DWORD;
@@ -1351,7 +1351,7 @@ decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx)
 	if (instr->flags & REL_MASK)
 		decode_rel(cpu, instr, disas_ctx, page_cross);
 
-	set_instr_seg(instr, disas_ctx->flags & DISAS_FLG_CS32_MODE);
+	set_instr_seg(instr, disas_ctx->flags & DISAS_FLG_CS32);
 
 	decode_src_operand(instr);
 

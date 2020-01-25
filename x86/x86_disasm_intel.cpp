@@ -349,19 +349,19 @@ disasm_instr_intel(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_li
 
 	/* Intel syntax operands */
 	if (!(instr->flags & DST_NONE))
-		len += print_operand(pc, operands + len, sizeof(operands) - len, instr, &instr->operand[OPNUM_DST], disas_ctx->flags & DISAS_FLG_CS32_MODE);
+		len += print_operand(pc, operands + len, sizeof(operands) - len, instr, &instr->operand[OPNUM_DST], disas_ctx->flags & DISAS_FLG_CS32);
 
 	if (!(instr->flags & SRC_NONE) && !(instr->flags & DST_NONE))
 		len += snprintf(operands + len, sizeof(operands) - len, ",");
 
 	if (!(instr->flags & SRC_NONE))
-		len += print_operand(pc, operands + len, sizeof(operands) - len, instr, &instr->operand[OPNUM_SRC], disas_ctx->flags & DISAS_FLG_CS32_MODE);
+		len += print_operand(pc, operands + len, sizeof(operands) - len, instr, &instr->operand[OPNUM_SRC], disas_ctx->flags & DISAS_FLG_CS32);
 
 	if (!(instr->flags & SRC_NONE) && !(instr->flags & OP3_NONE))
 		len += snprintf(operands + len, sizeof(operands) - len, ",");
 
 	if (!(instr->flags & OP3_NONE))
-		len += print_operand(pc, operands + len, sizeof(operands) - len, instr, &instr->operand[OPNUM_THIRD], disas_ctx->flags & DISAS_FLG_CS32_MODE);
+		len += print_operand(pc, operands + len, sizeof(operands) - len, instr, &instr->operand[OPNUM_THIRD], disas_ctx->flags & DISAS_FLG_CS32);
 
 	snprintf(line, max_line, "%s%s%-s %s", lock_names[instr->lock_prefix], prefix_names[instr->rep_prefix], to_mnemonic(instr), operands);
 

@@ -11,7 +11,7 @@
 #define HFLG_CS32     (1 << 0)
 #define HFLG_PE_MODE  (1 << 2)
 
-#define DISAS_FLG_CS32_MODE    HFLG_CS32
+#define DISAS_FLG_CS32         HFLG_CS32
 #define DISAS_FLG_TC_INDIRECT  (1 << 1)
 #define DISAS_FLG_PAGE_CROSS   (1 << 2)
 #define DISAS_FLG_FETCH_FAULT  DISAS_FLG_PAGE_CROSS
