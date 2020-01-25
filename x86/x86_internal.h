@@ -8,7 +8,10 @@
 
 #include "x86_decode.h"
 
-#define DISAS_FLG_PE_MODE      (1 << 0)
+#define HFLG_CS32     (1 << 0)
+#define HFLG_PE_MODE  (1 << 2)
+
+#define DISAS_FLG_CS32_MODE    HFLG_CS32
 #define DISAS_FLG_TC_INDIRECT  (1 << 1)
 #define DISAS_FLG_PAGE_CROSS   (1 << 2)
 #define DISAS_FLG_FETCH_FAULT  DISAS_FLG_PAGE_CROSS
@@ -134,7 +137,5 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define CR3_PWT_MASK (1 << 3)
 #define CR3_FLG_MASK (CR3_PD_MASK | CR3_PCD_MASK | CR3_PWT_MASK)
 #define CR4_PSE (1 << 4)
-
-#define CPU_PE_MODE (cpu->cpu_ctx.regs.cr0 & CR0_PE_MASK)
 
 #define X86_MAX_INSTR_LENGTH 15

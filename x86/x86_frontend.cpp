@@ -49,6 +49,8 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 	std::vector<Type *>type_struct_reg48_t_fields;
 
 	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
+	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
+	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
 	StructType *type_struct_hiddenseg_t = StructType::create(_CTX(), type_struct_hiddenseg_t_fields, "struct.hiddenseg_t", false);
 
 	type_struct_seg_t_fields.push_back(getIntegerType(16));
@@ -250,11 +252,14 @@ tc_hash(addr_t pc)
 translated_code_t *
 tc_cache_search(cpu_t *cpu, addr_t pc)
 {
+	uint32_t flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | RF_MASK | AC_MASK));
 	uint32_t idx = tc_hash(pc);
 	auto it = cpu->code_cache[idx].begin();
 	while (it != cpu->code_cache[idx].end()) {
 		translated_code_t *tc = it->get();
-		if (tc->cs_base == cpu->cpu_ctx.regs.cs_hidden.base && tc->pc == pc) {
+		if (tc->cs_base == cpu->cpu_ctx.regs.cs_hidden.base &&
+			tc->pc == pc &&
+			tc->flags == flags) {
 			return tc;
 		}
 		it++;
@@ -398,6 +403,7 @@ create_tc_fntype(cpu_t *cpu, translated_code_t *tc)
 	type_struct_cpu_ctx_t_fields.push_back(PointerType::getUnqual(StructType::create(_CTX(), "struct.cpu_t")));  // NOTE: opaque struct
 	type_struct_cpu_ctx_t_fields.push_back(get_struct_reg(cpu, tc));
 	type_struct_cpu_ctx_t_fields.push_back(get_struct_eflags(tc));
+	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(32));
 
 	IntegerType *type_i32 = getIntegerType(32);                                      // eip/pc ptr
 	PointerType *type_pstruct = PointerType::getUnqual(StructType::create(_CTX(),
@@ -525,7 +531,7 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 
 	switch (operand->type) {
 	case OPTYPE_MEM:
-		if (instr->addr_size_override ^ CPU_PE_MODE) {
+		if (instr->addr_size_override ^ (cpu->cpu_ctx.hflags & HFLG_CS32)) {
 			uint8_t reg_idx;
 			switch (operand->reg) {
 			case 0:
@@ -594,7 +600,7 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 	case OPTYPE_MOFFSET:
 		return ADD(CONST32(operand->disp), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
 	case OPTYPE_MEM_DISP:
-		if (instr->addr_size_override ^ CPU_PE_MODE) {
+		if (instr->addr_size_override ^ (cpu->cpu_ctx.hflags & HFLG_CS32)) {
 			Value *reg;
 			uint8_t reg_idx;
 			switch (instr->mod) {

@@ -99,6 +99,8 @@ cpu_x86_init(cpu_t *cpu)
 	cpu->cpu_ctx.regs.edx = 0x00000680; // TODO: stepping id
 	cpu->cpu_ctx.regs.cs = 0xF000;
 	cpu->cpu_ctx.regs.cs_hidden.base = 0xFFFF0000;
+	cpu->cpu_ctx.regs.es_hidden.limit = cpu->cpu_ctx.regs.cs_hidden.limit = cpu->cpu_ctx.regs.ss_hidden.limit =
+	cpu->cpu_ctx.regs.ds_hidden.limit = cpu->cpu_ctx.regs.fs_hidden.limit = cpu->cpu_ctx.regs.gs_hidden.limit = 0xFFFF;
 	cpu->cpu_ctx.regs.eflags = 0x2;
 	cpu->cpu_ctx.regs.cr0 = 0x60000010;
 	cpu->cpu_ctx.regs.idtr_limit = cpu->cpu_ctx.regs.gdtr_limit = 0xFFFF;

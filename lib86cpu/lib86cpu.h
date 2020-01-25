@@ -117,6 +117,7 @@ struct translated_code_t {
 	Module *mod;
 	addr_t cs_base;
 	addr_t pc;
+	uint32_t flags;
 	void *ptr_code;
 	void *jmp_offset[3];
 	size_t jmp_code_size;
@@ -156,6 +157,7 @@ struct cpu_ctx_t {
 	cpu_t *cpu;
 	regs_t regs;
 	lazy_eflags_t lazy_eflags;
+	uint32_t hflags;
 };
 
 struct cpu_t {

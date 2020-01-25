@@ -14,7 +14,7 @@
 #include "x86_memory.h"
 
 #define BAD       printf("%s: encountered unimplemented instruction %s\n", __func__, get_instr_name(instr.opcode)); return LIB86CPU_OP_NOT_IMPLEMENTED
-#define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), disas_ctx->flags & DISAS_FLG_PE_MODE ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
+#define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
 #define UNREACHABLE printf("%s: unreachable line %d reached!\n", __func__, __LINE__); return LIB86CPU_UNREACHABLE
 
 
@@ -29,7 +29,7 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip)
 {
 	cpu_t *cpu = cpu_ctx->cpu;
 
-	if (CPU_PE_MODE) {
+	if (cpu_ctx->hflags & HFLG_PE_MODE) {
 		printf("Exceptions are unsupported in protected mode (for now)\n");
 		exit(1);
 	}
@@ -76,6 +76,15 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip)
 		}
 		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
 			tc_cache_clear(cpu_ctx->cpu);
+			if (new_cr & CR0_PE_MASK) {
+				if (cpu_ctx->regs.cs_hidden.flags & HFLG_CS32) {
+					cpu_ctx->hflags |= HFLG_CS32;
+				}
+				cpu_ctx->hflags |= HFLG_PE_MODE;
+			}
+			else {
+				cpu_ctx->hflags &= ~(HFLG_CS32 | HFLG_PE_MODE);
+			}
 		}
 		cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
 		break;
@@ -141,6 +150,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			bytes = get_instr_length(&instr);
 
 #endif
+
 		}
 		catch (uint8_t expno) {
 			switch (expno)
@@ -167,14 +177,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			}
 		}
 
-		if ((disas_ctx->flags & DISAS_FLG_PE_MODE) ^ instr.op_size_override) {
+		if ((disas_ctx->flags & DISAS_FLG_CS32_MODE) ^ instr.op_size_override) {
 			size_mode = SIZE32;
 		}
 		else {
 			size_mode = SIZE16;
 		}
 
-		if ((disas_ctx->flags & DISAS_FLG_PE_MODE) ^ instr.addr_size_override) {
+		if ((disas_ctx->flags & DISAS_FLG_CS32_MODE) ^ instr.addr_size_override) {
 			addr_mode = ADDR32;
 		}
 		else {
@@ -289,7 +299,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			switch (instr.opcode_byte)
 			{
 			case 0x9A: {
-				if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
+				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					BAD_MODE;
 				}
 				addr_t ret_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes;
@@ -343,7 +353,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
 				}
 				else if (instr.reg_opc == 3) {
-					if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
+					if (cpu_ctx->hflags & HFLG_PE_MODE) {
 						BAD_MODE;
 					}
 					assert(instr.operand[OPNUM_SRC].type == OPTYPE_MEM ||
@@ -414,7 +424,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		case X86_OPC_CLI: {
 			assert(instr.opcode_byte == 0xFA);
 
-			if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
+			if (cpu_ctx->hflags & HFLG_PE_MODE) {
 				BAD_MODE;
 			}
 			else {
@@ -969,7 +979,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			break;
 
 			case 0xEA: {
-				if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
+				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					BAD_MODE;
 				}
 				addr_t new_eip = instr.operand[OPNUM_SRC].imm;
@@ -988,7 +998,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				if (instr.reg_opc == 5) {
 					BAD;
 #if 0
-					if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
+					if (cpu_ctx->hflags & HFLG_PE_MODE) {
 						BAD_MODE;
 					}
 					assert(instr.operand[OPNUM_SRC].type == OPTYPE_MEM ||
@@ -1202,7 +1212,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		case X86_OPC_LFS:
 		case X86_OPC_LGS:
 		case X86_OPC_LSS: {
-			if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
+			if (cpu_ctx->hflags & HFLG_PE_MODE) {
 				BAD_MODE;
 			}
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
@@ -1294,7 +1304,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			break;
 
 			case 0x8C: {
-				if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
+				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					BAD_MODE;
 				}
 				Value *val, *rm;
@@ -1304,21 +1314,21 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			break;
 
 			case 0x8E: {
-				if (disas_ctx->flags & DISAS_FLG_PE_MODE) {
+				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					BAD_MODE;
 				}
 				if (instr.operand[OPNUM_DST].reg == 1 || instr.operand[OPNUM_DST].reg > 5) {
 					RAISE(EXP_UD, pc - cpu_ctx->regs.cs_hidden.base);
 					disas_ctx->next_pc = CONST32(0); // unreachable
 					disas_ctx->bb = bb;
-					translate_next = 0;
 				}
 				else {
 					Value *val, *rm;
-					GET_RM(OPNUM_SRC, val = LD_REG_val(rm); , val = LD_MEM(MEM_LD16_idx, rm););
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(MEM_LD16_idx, rm););
 					ST_SEG(val, instr.operand[OPNUM_DST].reg + SEG_offset);
 					ST_SEG_HIDDEN(SHL(ZEXT32(val), CONST32(4)), instr.operand[OPNUM_DST].reg + SEG_offset, SEG_BASE_idx);
 				}
+				translate_next = 0;
 			}
 			break;
 
@@ -2186,7 +2196,7 @@ cpu_exec_tc(cpu_t *cpu)
 
 			// prepare the disas ctx
 			disas_ctx_t disas_ctx;
-			disas_ctx.flags = CPU_PE_MODE;
+			disas_ctx.flags = cpu->cpu_ctx.hflags & HFLG_CS32;
 			disas_ctx.func = func;
 			disas_ctx.bb = BasicBlock::Create(_CTX(), "", func, 0);
 			disas_ctx.next_pc = nullptr;
@@ -2225,6 +2235,7 @@ cpu_exec_tc(cpu_t *cpu)
 
 			tc->pc = pc;
 			tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
+			tc->flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | RF_MASK | AC_MASK));
 
 			tc->ptr_code = reinterpret_cast<void *>(cpu->jit->lookup("start")->getAddress());
 			assert(tc->ptr_code);

@@ -22,6 +22,8 @@
 		uint16_t		_reg;	\
 		struct { \
 			uint32_t base; \
+			uint32_t limit; \
+			uint32_t flags; \
 		} _reg ## _hidden; \
 	}
 
