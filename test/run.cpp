@@ -189,9 +189,9 @@ main(int argc, char **argv)
 
 #else
 
-	cpu->regs.cs = 0;
-	cpu->regs.cs_hidden.base = 0;
-	cpu->regs.eip = code_entry;
+	cpu->cpu_ctx.regs.cs = 0;
+	cpu->cpu_ctx.regs.cs_hidden.base = 0;
+	cpu->cpu_ctx.regs.eip = code_entry;
 
 	if (!LIB86CPU_CHECK_SUCCESS(memory_init_region_ram(cpu, 0, ramsize, 1))) {
 		printf("Failed to initialize ram memory!\n");
