@@ -170,7 +170,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				// the instruction exceeded the maximum allowed length
 				RAISE(expno, pc - cpu->cpu_ctx.regs.cs_hidden.base);
 				disas_ctx->next_pc = CONST32(0); // unreachable
-				disas_ctx->bb = bb;
 				return LIB86CPU_SUCCESS;
 
 			case 0xFF:
@@ -402,7 +401,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				UNREACHABLE;
 			}
 
-			disas_ctx->bb = bb;
 			translate_next = 0;
 		}
 		break;
@@ -909,24 +907,26 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 			Value *dst_pc = new AllocaInst(getIntegerType(32), 0, "", bb);
 			BasicBlock *bb_jmp = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+			BasicBlock *bb_exit = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 			BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
-			BR_COND(bb_jmp, bb_next, val, bb);
-			disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+			BR_COND(bb_jmp, bb_exit, val, bb);
 
-			Value *next_pc = calc_next_pc_emit(cpu, tc, bb_next, ptr_eip, bytes);
-			new StoreInst(next_pc, dst_pc, bb_next);
-			BR_UNCOND(disas_ctx->bb, bb_next);
+			bb = bb_exit;
+			Value *next_pc = calc_next_pc_emit(cpu, tc, bb, ptr_eip, bytes);
+			new StoreInst(next_pc, dst_pc, bb);
+			BR_UNCOND(bb_next, bb);
 
 			addr_t jump_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
 			if (size_mode == SIZE16) {
 				jump_eip &= 0x0000FFFF;
 			}
 			bb = bb_jmp;
-			new StoreInst(CONST32(jump_eip), GEP_EIP(), bb_jmp);
-			new StoreInst(CONST32(jump_eip + cpu_ctx->regs.cs_hidden.base), dst_pc, bb_jmp);
-			BR_UNCOND(disas_ctx->bb, bb_jmp);
+			new StoreInst(CONST32(jump_eip), GEP_EIP(), bb);
+			new StoreInst(CONST32(jump_eip + cpu_ctx->regs.cs_hidden.base), dst_pc, bb);
+			BR_UNCOND(bb_next, bb);
 
-			disas_ctx->next_pc = new LoadInst(dst_pc, "", false, disas_ctx->bb);
+			bb = bb_next;
+			disas_ctx->next_pc = new LoadInst(dst_pc, "", false, bb);
 
 			translate_next = 0;
 		}
@@ -945,7 +945,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
 				RAISE(EXP_UD, pc - cpu_ctx->regs.cs_hidden.base);
 				disas_ctx->next_pc = CONST32(0); // unreachable
-				disas_ctx->bb = bb;
 				translate_next = 0;
 			}
 			else {
@@ -1042,7 +1041,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				UNREACHABLE;
 			}
 
-			disas_ctx->bb = bb;
 			translate_next = 0;
 		}
 		break;
@@ -1190,23 +1188,25 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			Value *dst_pc = new AllocaInst(getIntegerType(32), 0, "", bb);
 			BasicBlock *bb_loop = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 			BasicBlock *bb_exit = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+			BasicBlock* bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 			BR_COND(bb_loop, bb_exit, AND(ICMP_NE(val, zero), zf), bb);
-			disas_ctx->bb = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
 
-			Value *exit_pc = calc_next_pc_emit(cpu, tc, bb_exit, ptr_eip, bytes);
-			new StoreInst(exit_pc, dst_pc, bb_exit);
-			BR_UNCOND(disas_ctx->bb, bb_exit);
+			bb = bb_exit;
+			Value *exit_pc = calc_next_pc_emit(cpu, tc, bb, ptr_eip, bytes);
+			new StoreInst(exit_pc, dst_pc, bb);
+			BR_UNCOND(bb_next, bb);
 
 			addr_t loop_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
 			if (size_mode == SIZE16) {
 				loop_eip &= 0x0000FFFF;
 			}
 			bb = bb_loop;
-			new StoreInst(CONST32(loop_eip), GEP_EIP(), bb_loop);
-			new StoreInst(CONST32(loop_eip + cpu_ctx->regs.cs_hidden.base), dst_pc, bb_loop);
-			BR_UNCOND(disas_ctx->bb, bb_loop);
+			new StoreInst(CONST32(loop_eip), GEP_EIP(), bb);
+			new StoreInst(CONST32(loop_eip + cpu_ctx->regs.cs_hidden.base), dst_pc, bb);
+			BR_UNCOND(bb_next, bb);
 
-			disas_ctx->next_pc = new LoadInst(dst_pc, "", false, disas_ctx->bb);
+			bb = bb_next;
+			disas_ctx->next_pc = new LoadInst(dst_pc, "", false, bb);
 
 			translate_next = 0;
 		}
@@ -1224,7 +1224,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
 				RAISE(EXP_UD, pc - cpu_ctx->regs.cs_hidden.base);
 				disas_ctx->next_pc = CONST32(0); // unreachable
-				disas_ctx->bb = bb;
 				translate_next = 0;
 			}
 			else {
@@ -1293,7 +1292,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				}
 
 				disas_ctx->next_pc = calc_next_pc_emit(cpu, tc, bb, ptr_eip, bytes);
-				disas_ctx->bb = bb;
 				translate_next = 0;
 			}
 			break;
@@ -1326,7 +1324,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				if (instr.operand[OPNUM_DST].reg == 1 || instr.operand[OPNUM_DST].reg > 5) {
 					RAISE(EXP_UD, pc - cpu_ctx->regs.cs_hidden.base);
 					disas_ctx->next_pc = CONST32(0); // unreachable
-					disas_ctx->bb = bb;
 				}
 				else {
 					Value *val, *rm;
@@ -1673,7 +1670,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			}
 
 			disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
-			disas_ctx->bb = bb;
 			translate_next = 0;
 		}
 		break;
@@ -1706,7 +1702,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			}
 
 			disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
-			disas_ctx->bb = bb;
 			translate_next = 0;
 		}
 		break;
@@ -2149,6 +2144,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 	} while ((translate_next | (disas_ctx->flags & DISAS_FLG_PAGE_CROSS)) == 1);
 
+	disas_ctx->bb = bb;
+
 	if (disas_ctx->next_pc == nullptr) {
 		// this can happen when the last instruction crosses a page boundary and it's not a control flow change instruction
 
@@ -2285,7 +2282,6 @@ cpu_exec_tc(cpu_t *cpu)
 
 		// see if we can link the previous tc with the current one
 		if (prev_tc != nullptr &&
-			prev_tc->cs_base == cpu->cpu_ctx.regs.cs_hidden.base &&
 #if defined __i386 || defined _M_IX86
 			(prev_tc->jmp_code_size == 20)) {
 #else

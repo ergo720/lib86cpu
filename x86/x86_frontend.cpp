@@ -283,7 +283,7 @@ tc_cache_clear(cpu_t *cpu)
 	}
 
 	// annoyingly, llvm doesn't implement module removal, which means we have to destroy the entire jit object to delete the memory of the
-	// generated code blocks. This is doumented at https://llvm.org/docs/ORCv2.html and in particular "Module removal is not yet supported.
+	// generated code blocks. This is documented at https://llvm.org/docs/ORCv2.html and in particular "Module removal is not yet supported.
 	// There is no equivalent of the layer concept removeModule/removeObject methods. Work on resource tracking and removal in ORCv2 is ongoing."
 
 	delete cpu->dl;
@@ -294,7 +294,7 @@ tc_cache_clear(cpu_t *cpu)
 	SubtargetFeatures features;
 	StringMap<bool> host_features;
 	if (sys::getHostCPUFeatures(host_features))
-		for (auto& F : host_features) {
+		for (auto &F : host_features) {
 			features.AddFeature(F.first(), F.second);
 		}
 	jtmb->setCPU(sys::getHostCPUName())
