@@ -65,7 +65,7 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip)
 }
 
 JIT_EXTERNAL_CALL_C void
-cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip)
+cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes)
 {
 	switch (idx)
 	{
@@ -85,6 +85,12 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip)
 			else {
 				cpu_ctx->hflags &= ~(HFLG_CS32 | HFLG_PE_MODE);
 			}
+
+			// since tc_cache_clear has deleted the calling code block, we must return to the translator with an exception. We also have to setup the eip
+			// to point to the next instruction
+			cpu_ctx->regs.eip = (eip + bytes);
+			cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
+			throw static_cast<uint8_t>(0xFF);
 		}
 		cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
 		break;
@@ -1276,7 +1282,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				{
 				case 0:
 				case 3:
-					CallInst::Create(cpu->crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(instr.operand[OPNUM_DST].reg), ptr_eip }, "", bb);
+					CallInst::Create(cpu->crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(instr.operand[OPNUM_DST].reg), ptr_eip, CONST32(bytes) }, "", bb);
 					break;
 				case 2:
 				case 4:
@@ -2155,8 +2161,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 lib86cpu_status
 cpu_exec_tc(cpu_t *cpu)
 {
-	orc::MangleAndInterner mangle(cpu->jit->getExecutionSession(), *cpu->dl);
-	orc::SymbolNameSet module_symbol_names({ mangle("start"), mangle("tail"), mangle("main") });
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
 	uint16_t num_tc = 0;
 	addr_t pc;
@@ -2244,9 +2248,15 @@ cpu_exec_tc(cpu_t *cpu)
 			tc->jmp_offset[2] = reinterpret_cast<void *>(cpu->jit->lookup("main")->getAddress());
 			assert(tc->jmp_offset[0] && tc->jmp_offset[2]);
 
-			// now remove the function symbol names so that we can reuse them for other modules
-			auto err = cpu->jit->getMainJITDylib().remove(module_symbol_names);
-			assert(!err);
+			{
+				// now remove the function symbol names so that we can reuse them for other modules
+				// NOTE: the mangle object must be destroyed when tc_cache_clear is called or else some symbols won't be removed when the jit
+				// object is destroyed and llvm will assert
+				orc::MangleAndInterner mangle(cpu->jit->getExecutionSession(), *cpu->dl);
+				orc::SymbolNameSet module_symbol_names({ mangle("start"), mangle("tail"), mangle("main") });
+				[[maybe_unused]] auto err = cpu->jit->getMainJITDylib().remove(module_symbol_names);
+				assert(!err);
+			}
 
 			// llvm will delete the context and the module by itself, so we just null both the pointers now to prevent accidental usage
 			tc->ctx = nullptr;
@@ -2255,6 +2265,9 @@ cpu_exec_tc(cpu_t *cpu)
 			ptr_tc = tc.get();
 
 			if (disas_ctx.flags & DISAS_FLG_PAGE_CROSS) {
+				// this will leave behind the memory of the generated code block, however tc_cache_clear will still delete it later so
+				// this is probably acceptable for now
+
 				tc_run_code(&cpu->cpu_ctx, ptr_tc);
 				prev_tc = nullptr;
 				continue;

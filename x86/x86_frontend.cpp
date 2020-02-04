@@ -226,7 +226,8 @@ get_ext_fn(cpu_t *cpu, translated_code_t *tc, Function *func)
 	}
 
 	cpu->exp_fn = cast<Function>(tc->mod->getOrInsertFunction("cpu_raise_exception", getVoidType(), args_start->getType(), getIntegerType(8), getIntegerType(32)));
-	cpu->crN_fn = cast<Function>(tc->mod->getOrInsertFunction("cpu_update_crN", getVoidType(), args_start->getType(), getIntegerType(32), getIntegerType(8), getIntegerType(32)));
+	cpu->crN_fn = cast<Function>(tc->mod->getOrInsertFunction("cpu_update_crN", getVoidType(), args_start->getType(), getIntegerType(32), getIntegerType(8), getIntegerType(32),
+		getIntegerType(32)));
 }
 
 translated_code_t *
@@ -238,7 +239,7 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 		return entry(0, cpu_ctx);
 	}
 	catch (uint8_t expno) {
-		// don't link the exception code with the other code blocks
+		// don't link the previous code block if we returned with an exception
 		return nullptr;
 	}
 }
@@ -280,6 +281,44 @@ tc_cache_clear(cpu_t *cpu)
 	for (auto &bucket : cpu->code_cache) {
 		bucket.clear();
 	}
+
+	// annoyingly, llvm doesn't implement module removal, which means we have to destroy the entire jit object to delete the memory of the
+	// generated code blocks. This is doumented at https://llvm.org/docs/ORCv2.html and in particular "Module removal is not yet supported.
+	// There is no equivalent of the layer concept removeModule/removeObject methods. Work on resource tracking and removal in ORCv2 is ongoing."
+
+	delete cpu->dl;
+	auto jtmb = orc::JITTargetMachineBuilder::detectHost();
+	if (!jtmb) {
+		LIB86CPU_ABORT();
+	}
+	SubtargetFeatures features;
+	StringMap<bool> host_features;
+	if (sys::getHostCPUFeatures(host_features))
+		for (auto& F : host_features) {
+			features.AddFeature(F.first(), F.second);
+		}
+	jtmb->setCPU(sys::getHostCPUName())
+		.addFeatures(features.getFeatures())
+		.setRelocationModel(None)
+		.setCodeModel(None);
+	auto dl = jtmb->getDefaultDataLayoutForTarget();
+	if (!dl) {
+		LIB86CPU_ABORT();
+	}
+	cpu->dl = new DataLayout(*dl);
+	if (cpu->dl == nullptr) {
+		LIB86CPU_ABORT();
+	}
+	auto jit = orc::LLJIT::Create(std::move(*jtmb), *dl, std::thread::hardware_concurrency());
+	if (!jit) {
+		LIB86CPU_ABORT();
+	}
+	cpu->jit = std::move(*jit);
+	cpu->jit->getMainJITDylib().setGenerator(
+		*orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(*dl));
+#ifdef _WIN32
+	cpu->jit->getObjLinkingLayer().setOverrideObjectFlagsWithResponsibilityFlags(true);
+#endif
 }
 
 void
