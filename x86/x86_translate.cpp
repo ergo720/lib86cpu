@@ -114,13 +114,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 	uint8_t size_mode;
 	uint8_t addr_mode;
 	BasicBlock *bb = disas_ctx->bb;
+	Function *func = bb->getParent();
 	cpu_ctx_t *cpu_ctx = &cpu->cpu_ctx;
 	addr_t pc = disas_ctx->virt_pc;
 	size_t bytes = 0;
 	// we can use the same indexes for both loads and stores because they have the same order in cpu->ptr_mem_xxfn
 	static const uint8_t fn_idx[3] = { MEM_LD32_idx, MEM_LD16_idx, MEM_LD8_idx };
 
-	Function::arg_iterator args_func = disas_ctx->func->arg_begin();
+	Function::arg_iterator args_func = func->arg_begin();
 	Value *ptr_eip = args_func++;
 	ptr_eip = CONST32(pc - cpu_ctx->regs.cs_hidden.base);
 	cpu->ptr_cpu_ctx = args_func++;
@@ -522,7 +523,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 			case 0xA7: {
 				Value *val, *df, *sub, *addr1, *addr2, *src1, *src2, *esi, *edi;
-				BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BasicBlock *bb_next = _BB();
 
 				if (instr.rep_prefix) {
 					REP_start();
@@ -578,8 +579,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				SET_FLG_SUB(sub, src1, src2);
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
-				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
-				BasicBlock *bb_sub = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BasicBlock *bb_sum = _BB();
+				BasicBlock *bb_sub = _BB();
 				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
 
 				bb = bb_sum;
@@ -905,15 +906,15 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				UNREACHABLE;
 			}
 
-			Value *dst_pc = new AllocaInst(getIntegerType(32), 0, "", bb);
-			BasicBlock *bb_jmp = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
-			BasicBlock *bb_exit = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
-			BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+			Value *dst_pc = ALLOC32();
+			BasicBlock *bb_jmp = _BB();
+			BasicBlock *bb_exit = _BB();
+			BasicBlock *bb_next = _BB();
 			BR_COND(bb_jmp, bb_exit, val, bb);
 
 			bb = bb_exit;
 			Value *next_pc = calc_next_pc_emit(cpu, tc, bb, ptr_eip, bytes);
-			new StoreInst(next_pc, dst_pc, bb);
+			ST(dst_pc, next_pc);
 			BR_UNCOND(bb_next, bb);
 
 			addr_t jump_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
@@ -921,12 +922,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				jump_eip &= 0x0000FFFF;
 			}
 			bb = bb_jmp;
-			new StoreInst(CONST32(jump_eip), GEP_EIP(), bb);
-			new StoreInst(CONST32(jump_eip + cpu_ctx->regs.cs_hidden.base), dst_pc, bb);
+			ST(GEP_EIP(), CONST32(jump_eip));
+			ST(dst_pc, CONST32(jump_eip + cpu_ctx->regs.cs_hidden.base));
 			BR_UNCOND(bb_next, bb);
 
 			bb = bb_next;
-			disas_ctx->next_pc = new LoadInst(dst_pc, "", false, bb);
+			disas_ctx->next_pc = LD(dst_pc);
 
 			translate_next = 0;
 		}
@@ -1059,7 +1060,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 			case 0xAD: {
 				Value *val, *df, *addr, *src, *esi;
-				BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BasicBlock *bb_next = _BB();
 
 				if (instr.rep_prefix) {
 					REP_start();
@@ -1106,8 +1107,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				}
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
-				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
-				BasicBlock *bb_sub = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BasicBlock *bb_sum = _BB();
+				BasicBlock *bb_sub = _BB();
 				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
 
 				bb = bb_sum;
@@ -1188,15 +1189,15 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				UNREACHABLE;
 			}
 
-			Value *dst_pc = new AllocaInst(getIntegerType(32), 0, "", bb);
-			BasicBlock *bb_loop = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
-			BasicBlock *bb_exit = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
-			BasicBlock* bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+			Value *dst_pc = ALLOC32();
+			BasicBlock *bb_loop = _BB();
+			BasicBlock *bb_exit = _BB();
+			BasicBlock* bb_next = _BB();
 			BR_COND(bb_loop, bb_exit, AND(ICMP_NE(val, zero), zf), bb);
 
 			bb = bb_exit;
 			Value *exit_pc = calc_next_pc_emit(cpu, tc, bb, ptr_eip, bytes);
-			new StoreInst(exit_pc, dst_pc, bb);
+			ST(dst_pc, exit_pc);
 			BR_UNCOND(bb_next, bb);
 
 			addr_t loop_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
@@ -1204,12 +1205,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				loop_eip &= 0x0000FFFF;
 			}
 			bb = bb_loop;
-			new StoreInst(CONST32(loop_eip), GEP_EIP(), bb);
-			new StoreInst(CONST32(loop_eip + cpu_ctx->regs.cs_hidden.base), dst_pc, bb);
+			ST(GEP_EIP(), CONST32(loop_eip));
+			ST(dst_pc, CONST32(loop_eip + cpu_ctx->regs.cs_hidden.base));
 			BR_UNCOND(bb_next, bb);
 
 			bb = bb_next;
-			disas_ctx->next_pc = new LoadInst(dst_pc, "", false, bb);
+			disas_ctx->next_pc = LD(dst_pc);
 
 			translate_next = 0;
 		}
@@ -1388,7 +1389,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 			case 0xA5: {
 				Value *val, *df, *addr1, *addr2, *src, *esi, *edi;
-				BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BasicBlock *bb_next = _BB();
 
 				if (instr.rep_prefix) {
 					REP_start();
@@ -1439,8 +1440,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				}
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
-				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
-				BasicBlock *bb_sub = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BasicBlock *bb_sum = _BB();
+				BasicBlock *bb_sub = _BB();
 				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
 
 				bb = bb_sum;
@@ -1736,7 +1737,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 			case 0xAF: {
 				Value *val, *df, *sub, *addr, *src, *edi, *eax;
-				BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BasicBlock *bb_next = _BB();
 
 				if (instr.rep_prefix) {
 					REP_start();
@@ -1788,8 +1789,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				SET_FLG_SUB(sub, eax, src);
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
-				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
-				BasicBlock *bb_sub = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BasicBlock *bb_sum = _BB();
+				BasicBlock *bb_sub = _BB();
 				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
 
 				bb = bb_sum;
@@ -1956,7 +1957,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 			case 0xAB: {
 				Value *val, *df, *addr, *edi;
-				BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BasicBlock *bb_next = _BB();
 
 				if (instr.rep_prefix) {
 					REP_start();
@@ -2000,8 +2001,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				}
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
-				BasicBlock *bb_sum = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
-				BasicBlock *bb_sub = BasicBlock::Create(_CTX(), "", disas_ctx->func, 0);
+				BasicBlock *bb_sum = _BB();
+				BasicBlock *bb_sub = _BB();
 				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
 
 				bb = bb_sum;
@@ -2200,8 +2201,7 @@ cpu_exec_tc(cpu_t *cpu)
 			// prepare the disas ctx
 			disas_ctx_t disas_ctx;
 			disas_ctx.flags = (cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT;
-			disas_ctx.func = func;
-			disas_ctx.bb = BasicBlock::Create(_CTX(), "", func, 0);
+			disas_ctx.bb = _BB();
 			disas_ctx.next_pc = nullptr;
 			disas_ctx.virt_pc = get_pc(&cpu->cpu_ctx);
 			disas_ctx.pc = pc;

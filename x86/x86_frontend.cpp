@@ -95,7 +95,7 @@ get_struct_eflags(translated_code_t *tc)
 
 	type_struct_eflags_t_fields.push_back(getIntegerType(32));
 	type_struct_eflags_t_fields.push_back(getIntegerType(32));
-	type_struct_eflags_t_fields.push_back(getIntegerArrayType(8, 256));
+	type_struct_eflags_t_fields.push_back(getArrayIntegerType(8, 256));
 
 	return StructType::create(_CTX(), type_struct_eflags_t_fields, "struct.eflags_t", false);
 }
@@ -104,7 +104,7 @@ Value *
 calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, size_t instr_size)
 {
 	Value *next_eip = BinaryOperator::Create(Instruction::Add, ptr_eip, CONST32(instr_size), "", bb);
-	new StoreInst(next_eip, GEP_EIP(), bb);
+	ST(GEP_EIP(), next_eip);
 	return BinaryOperator::Create(Instruction::Add, CONST32(cpu->cpu_ctx.regs.cs_hidden.base), next_eip, "", bb);
 }
 
@@ -113,7 +113,7 @@ raise_exception_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb2, uint8_t
 {
 	BasicBlock *bb = BasicBlock::Create(_CTX(), "", bb2->getParent(), 0);
 	RAISE(expno);
-	new UnreachableInst(_CTX(), bb);
+	UNREACH();
 	return bb;
 }
 
@@ -127,8 +127,8 @@ write_seg_hidden_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const u
 
 	if (reg == CS) {
 		Value *ptr_hflags = GEP(cpu->ptr_cpu_ctx, 3);
-		Value *hflags = new LoadInst(ptr_hflags, "", false, bb);
-		new StoreInst(OR(SHR(AND(flags, CONST32(SEG_HIDDEN_DB)), CONST32(20)), hflags), ptr_hflags, bb);
+		Value *hflags = LD(ptr_hflags);
+		ST(ptr_hflags, OR(SHR(AND(flags, CONST32(SEG_HIDDEN_DB)), CONST32(20)), hflags));
 	}
 	else {
 		// all other registers are unsupported for now
@@ -145,44 +145,44 @@ read_seg_desc_base_emit(translated_code_t *tc, BasicBlock *bb, Value *desc)
 static Value *
 read_seg_desc_limit_emit(translated_code_t *tc, BasicBlock *&bb, Value *desc)
 {
-	Value *limit = new AllocaInst(getIntegerType(32), 0, "", bb);
-	new StoreInst(TRUNC32(OR(AND(desc, CONST64(0xFFFF)), SHR(AND(desc, CONST64(0xF000000000000)), CONST64(32)))), limit, bb);
+	Value *limit = ALLOC32();
+	ST(limit, TRUNC32(OR(AND(desc, CONST64(0xFFFF)), SHR(AND(desc, CONST64(0xF000000000000)), CONST64(32)))));
 	BasicBlock *bb_g = BasicBlock::Create(_CTX(), "", bb->getParent(), 0);
 	BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", bb->getParent(), 0);
 	BR_COND(bb_g, bb_next, ICMP_NE(AND(desc, CONST64(SEG_DESC_G)), CONST64(0)), bb);
 	bb = bb_g;
-	new StoreInst(OR(SHL(new LoadInst(limit, "", false, bb), CONST32(12)), CONST32(PAGE_MASK)), limit, bb);
+	ST(limit, OR(SHL(LD(limit), CONST32(12)), CONST32(PAGE_MASK)));
 	BR_UNCOND(bb_next, bb);
 	bb = bb_next;
-	return new LoadInst(limit, "", false, bb);
+	return LD(limit);
 }
 
 static Value *
 read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
 {
 	Function *func = bb->getParent();
-	BasicBlock *bb_next1 = BasicBlock::Create(_CTX(), "", func, 0);
-	BasicBlock *bb_next2 = BasicBlock::Create(_CTX(), "", func, 0);
-	BasicBlock *bb_gdt = BasicBlock::Create(_CTX(), "", func, 0);
-	BasicBlock *bb_ldt = BasicBlock::Create(_CTX(), "", func, 0);
+	BasicBlock *bb_next1 = _BB();
+	BasicBlock *bb_next2 = _BB();
+	BasicBlock *bb_gdt = _BB();
+	BasicBlock *bb_ldt = _BB();
 
-	Value *base = new AllocaInst(getIntegerType(32), 0, "", bb);
-	Value *limit = new AllocaInst(getIntegerType(16), 0, "", bb);
+	Value *base = ALLOC32();
+	Value *limit = ALLOC16();
 	Value *idx = SHR(sel, CONST16(3));
 	Value *ti = SHR(AND(sel, CONST16(4)), CONST16(2));
 	BR_COND(bb_gdt, bb_ldt, ICMP_EQ(ti, CONST16(0)), bb);
 	bb = bb_gdt;
-	new StoreInst(LD_R48(GDTR_idx, R48_BASE), base, bb);
-	new StoreInst(LD_R48(GDTR_idx, R48_LIMIT), limit, bb);
+	ST(base, LD_R48(GDTR_idx, R48_BASE));
+	ST(limit, LD_R48(GDTR_idx, R48_LIMIT));
 	BR_UNCOND(bb_next1, bb);
 	bb = bb_ldt;
 	// we don't support LDTs yet, so just abort
-	CallInst::Create(Intrinsic::getDeclaration(tc->mod, Intrinsic::trap), "", bb);
-	new UnreachableInst(_CTX(), bb);
+	INTRINSIC(trap);
+	UNREACH();
 	bb = bb_next1;
-	Value *desc_addr = ADD(new LoadInst(base, "", false, bb), ZEXT32(MUL(idx, CONST16(8))));
+	Value *desc_addr = ADD(LD(base), ZEXT32(MUL(idx, CONST16(8))));
 	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
-	BR_COND(bb_exp, bb_next2, ICMP_UGT(ADD(desc_addr, CONST32(7)), ADD(new LoadInst(base, "", false, bb), ZEXT32(new LoadInst(limit, "", false, bb)))), bb); // sel idx outside of descriptor table
+	BR_COND(bb_exp, bb_next2, ICMP_UGT(ADD(desc_addr, CONST32(7)), ADD(LD(base), ZEXT32(LD(limit)))), bb); // sel idx outside of descriptor table
 	bb = bb_next2;
 	return LD_MEM(MEM_LD64_idx, desc_addr);
 }
@@ -191,15 +191,15 @@ void
 ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *eip, Value *ptr_eip)
 {
 	Function *func = bb->getParent();
-	BasicBlock *bb_next1 = BasicBlock::Create(_CTX(), "", func, 0);
-	BasicBlock *bb_next2 = BasicBlock::Create(_CTX(), "", func, 0);
-	BasicBlock *bb_next3 = BasicBlock::Create(_CTX(), "", func, 0);
-	BasicBlock *bb_next4 = BasicBlock::Create(_CTX(), "", func, 0);
-	BasicBlock *bb_sys = BasicBlock::Create(_CTX(), "", func, 0);
-	BasicBlock *bb_nonsys = BasicBlock::Create(_CTX(), "", func, 0);
-	BasicBlock *bb_code = BasicBlock::Create(_CTX(), "", func, 0);
-	BasicBlock *bb_conf = BasicBlock::Create(_CTX(), "", func, 0);
-	BasicBlock *bb_nonconf = BasicBlock::Create(_CTX(), "", func, 0);
+	BasicBlock *bb_next1 = _BB();
+	BasicBlock *bb_next2 = _BB();
+	BasicBlock *bb_next3 = _BB();
+	BasicBlock *bb_next4 = _BB();
+	BasicBlock *bb_sys = _BB();
+	BasicBlock *bb_nonsys = _BB();
+	BasicBlock *bb_code = _BB();
+	BasicBlock *bb_conf = _BB();
+	BasicBlock *bb_nonconf = _BB();
 
 	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
 	BR_COND(bb_exp, bb_next1, ICMP_EQ(sel, CONST16(0)), bb); // sel == NULL
@@ -209,8 +209,8 @@ ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Val
 	BR_COND(bb_sys, bb_nonsys, ICMP_EQ(s, CONST64(0)), bb);
 	bb = bb_sys;
 	// we don't support system descriptors yet, so just abort
-	CallInst::Create(Intrinsic::getDeclaration(tc->mod, Intrinsic::trap), "", bb);
-	new UnreachableInst(_CTX(), bb);
+	INTRINSIC(trap);
+	UNREACH();
 	bb = bb_nonsys;
 	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
 	BR_COND(bb_exp, bb_code, ICMP_EQ(AND(desc, CONST64(SEG_DESC_DC)), CONST64(0)), bb); // cannot be a data segment
@@ -219,8 +219,8 @@ ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Val
 	BR_COND(bb_conf, bb_nonconf, ICMP_NE(AND(desc, CONST64(SEG_DESC_C)), CONST64(0)), bb);
 	bb = bb_conf;
 	// we don't support conforming code segments yet, so just abort
-	CallInst::Create(Intrinsic::getDeclaration(tc->mod, Intrinsic::trap), "", bb);
-	new UnreachableInst(_CTX(), bb);
+	INTRINSIC(trap);
+	UNREACH();
 	bb = bb_nonconf;
 	Value *rpl = AND(sel, CONST16(3));
 	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
@@ -574,13 +574,13 @@ FunctionType *
 create_tc_fntype(cpu_t *cpu, translated_code_t *tc)
 {
 	std::vector<Type *>type_struct_cpu_ctx_t_fields;
-	type_struct_cpu_ctx_t_fields.push_back(PointerType::getUnqual(StructType::create(_CTX(), "struct.cpu_t")));  // NOTE: opaque struct
+	type_struct_cpu_ctx_t_fields.push_back(getPointerType(StructType::create(_CTX(), "struct.cpu_t")));  // NOTE: opaque struct
 	type_struct_cpu_ctx_t_fields.push_back(get_struct_reg(cpu, tc));
 	type_struct_cpu_ctx_t_fields.push_back(get_struct_eflags(tc));
 	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(32));
 
 	IntegerType *type_i32 = getIntegerType(32);                                      // eip/pc ptr
-	PointerType *type_pstruct = PointerType::getUnqual(StructType::create(_CTX(),
+	PointerType *type_pstruct = getPointerType(StructType::create(_CTX(),
 		type_struct_cpu_ctx_t_fields, "struct.cpu_ctx_t", false));                   // cpu_ctx ptr
 
 	std::vector<Type *> type_func_args;
@@ -588,8 +588,8 @@ create_tc_fntype(cpu_t *cpu, translated_code_t *tc)
 	type_func_args.push_back(type_pstruct);
 
 	FunctionType *type_func = FunctionType::get(
-		PointerType::getUnqual(StructType::create(_CTX(), "struct.tc_t")),  // ret, as opaque tc struct
-		type_func_args,                                                     // args
+		getPointerType(StructType::create(_CTX(), "struct.tc_t")),  // ret, as opaque tc struct
+		type_func_args,                                             // args
 		false);
 
 	return type_func;
@@ -653,11 +653,11 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disa
 		// emit some dummy instructions, a call to tc_profile_indirect and a conditional jump. We do this ourselves to avoid llvm messing with the stack,
 		// which would lead to a crash when a jump is taken
 
-		Function::arg_iterator args_start = disas_ctx->func->arg_begin();
+		Function::arg_iterator args_start = disas_ctx->bb->getParent()->arg_begin();
 		args_start++;
 
-		tc->mod->getOrInsertFunction("tc_profile_indirect", PointerType::get(getIntegerType(8), 0), args_start->getType(),
-			PointerType::get(StructType::create(_CTX(), "struct.tc_t"), 0), getIntegerType(32));
+		tc->mod->getOrInsertFunction("tc_profile_indirect", getPointerType(getIntegerType(8)), args_start->getType(),
+			getPointerType(StructType::create(_CTX(), "struct.tc_t")), getIntegerType(32));
 		uintptr_t addr = cpu->jit->lookup("tc_profile_indirect")->getAddress();
 
 #if defined __i386 || defined _M_IX86

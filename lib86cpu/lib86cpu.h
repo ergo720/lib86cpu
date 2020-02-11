@@ -127,7 +127,6 @@ struct translated_code_t {
 };
 
 struct disas_ctx_t {
-	Function *func;
 	BasicBlock *bb;
 	Value *next_pc;
 	uint8_t flags;
