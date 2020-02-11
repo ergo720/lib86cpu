@@ -71,7 +71,7 @@ case OPTYPE_SIB_DISP: \
 	break; \
 \
 default: \
-	UNREACHABLE; \
+	LIB86CPU_ABORT(); \
 }
 
 #define INTPTR(v) ConstantInt::get(getIntegerPointerType(), reinterpret_cast<uintptr_t>(v))

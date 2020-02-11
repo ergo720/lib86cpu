@@ -15,7 +15,6 @@
 
 #define BAD       printf("%s: encountered unimplemented instruction %s\n", __func__, get_instr_name(instr.opcode)); return LIB86CPU_OP_NOT_IMPLEMENTED
 #define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
-#define UNREACHABLE printf("%s: unreachable line %d reached!\n", __func__, __LINE__); return LIB86CPU_UNREACHABLE
 
 
 const char *
@@ -393,13 +392,13 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
 				}
 				else {
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 			}
 			break;
 
 			default:
-				UNREACHABLE;
+				LIB86CPU_ABORT();
 			}
 
 			translate_next = 0;
@@ -546,7 +545,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 
 				switch (size_mode)
@@ -573,7 +572,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 
 				SET_FLG_SUB(sub, src1, src2);
@@ -630,7 +629,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			break;
 
 			default:
-				UNREACHABLE;
+				LIB86CPU_ABORT();
 			}
 		}
 		break;
@@ -681,13 +680,13 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 			}
 			break;
 
 			default:
-				UNREACHABLE;
+				LIB86CPU_ABORT();
 			}
 		}
 		break;
@@ -735,7 +734,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 			}
 			break;
@@ -778,7 +777,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 				SET_FLG_SUM(sum, val, one);
 				ST_FLG_AUX(OR(OR(cf_old, SHR(XOR(cf_old, LD_OF()), CONST32(1))), AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF))));
@@ -903,7 +902,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				break;
 
 			default:
-				UNREACHABLE;
+				LIB86CPU_ABORT();
 			}
 
 			Value *dst_pc = ALLOC32();
@@ -1036,13 +1035,13 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					BAD;
 				}
 				else {
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 			}
 			break;
 
 			default:
-				UNREACHABLE;
+				LIB86CPU_ABORT();
 			}
 
 			translate_next = 0;
@@ -1079,7 +1078,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 
 				switch (size_mode)
@@ -1103,7 +1102,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
@@ -1144,7 +1143,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			break;
 
 			default:
-				UNREACHABLE;
+				LIB86CPU_ABORT();
 			}
 		}
 		break;
@@ -1168,7 +1167,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				break;
 
 			default:
-				UNREACHABLE;
+				LIB86CPU_ABORT();
 			}
 
 			switch (addr_mode)
@@ -1186,7 +1185,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				break;
 
 			default:
-				UNREACHABLE;
+				LIB86CPU_ABORT();
 			}
 
 			Value *dst_pc = ALLOC32();
@@ -1264,7 +1263,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 			}
 		}
@@ -1292,7 +1291,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					BAD;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 
 				disas_ctx->next_pc = calc_next_pc_emit(cpu, tc, bb, ptr_eip, bytes);
@@ -1412,7 +1411,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 
 				switch (size_mode)
@@ -1436,7 +1435,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
@@ -1481,7 +1480,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			break;
 
 			default:
-				UNREACHABLE;
+				LIB86CPU_ABORT();
 			}
 		}
 		break;
@@ -1532,13 +1531,13 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 			}
 			break;
 
 			default:
-				UNREACHABLE;
+				LIB86CPU_ABORT();
 			}
 		}
 		break;
@@ -1756,7 +1755,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 
 				switch (size_mode)
@@ -1783,7 +1782,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 
 				SET_FLG_SUB(sub, eax, src);
@@ -1836,7 +1835,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			break;
 
 			default:
-				UNREACHABLE;
+				LIB86CPU_ABORT();
 			}
 		}
 		break;
@@ -1976,7 +1975,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 
 				switch (size_mode)
@@ -1997,7 +1996,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					break;
 
 				default:
-					UNREACHABLE;
+					LIB86CPU_ABORT();
 				}
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
@@ -2038,7 +2037,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			break;
 
 			default:
-				UNREACHABLE;
+				LIB86CPU_ABORT();
 			}
 		}
 		break;
@@ -2141,7 +2140,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			break;
 
 		default:
-			UNREACHABLE;
+			LIB86CPU_ABORT();
 		}
 
 		pc += bytes;

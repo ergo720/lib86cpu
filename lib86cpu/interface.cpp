@@ -136,7 +136,6 @@ cpu_run(cpu_t *cpu)
 		case LIB86CPU_NO_MEMORY:
 		case LIB86CPU_UNKNOWN_INSTR:
 		case LIB86CPU_OP_NOT_IMPLEMENTED:
-		case LIB86CPU_UNREACHABLE:
 			// these are fatal errors, simply exit the cpu loop
 			return status;
 		}
