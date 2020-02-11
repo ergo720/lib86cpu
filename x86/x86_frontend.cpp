@@ -132,7 +132,7 @@ write_seg_hidden_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const u
 	}
 	else {
 		// all other registers are unsupported for now
-		LIB86CPU_ABORT();
+		LIB86CPU_ABORT_msg("Writing to the hidden part of an unsupported segment register\n");
 	}
 }
 
@@ -244,21 +244,27 @@ ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Val
 Value *
 get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t size_mode)
 {
+	Value *value;
+
 	switch (size_mode)
 	{
 	case SIZE8:
-		return CONST8(instr->operand[idx].imm);
+		value = CONST8(instr->operand[idx].imm);
+		break;
 
 	case SIZE16:
-		return CONST16(instr->operand[idx].imm);
+		value = CONST16(instr->operand[idx].imm);
+		break;
 
 	case SIZE32:
-		return CONST32(instr->operand[idx].imm);
+		value = CONST32(instr->operand[idx].imm);
+		break;
 
 	default:
-		LIB86CPU_ABORT();
-		return nullptr;
+		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s\n", size_mode, __func__);
 	}
+
+	return value;
 }
 
 Value *
@@ -289,7 +295,7 @@ set_flags_sum(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *sum, Val
 		break;
 
 	default:
-		LIB86CPU_ABORT();
+		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s\n", size_mode, __func__);
 	}
 }
 
@@ -314,7 +320,7 @@ set_flags_sub(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *sub, Val
 		break;
 
 	default:
-		LIB86CPU_ABORT();
+		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s\n", size_mode, __func__);
 	}
 }
 
@@ -424,7 +430,7 @@ tc_cache_clear(cpu_t *cpu)
 	delete cpu->dl;
 	auto jtmb = orc::JITTargetMachineBuilder::detectHost();
 	if (!jtmb) {
-		LIB86CPU_ABORT();
+		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
 	}
 	SubtargetFeatures features;
 	StringMap<bool> host_features;
@@ -438,15 +444,15 @@ tc_cache_clear(cpu_t *cpu)
 		.setCodeModel(None);
 	auto dl = jtmb->getDefaultDataLayoutForTarget();
 	if (!dl) {
-		LIB86CPU_ABORT();
+		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
 	}
 	cpu->dl = new DataLayout(*dl);
 	if (cpu->dl == nullptr) {
-		LIB86CPU_ABORT();
+		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
 	}
 	auto jit = orc::LLJIT::Create(std::move(*jtmb), *dl, std::thread::hardware_concurrency());
 	if (!jit) {
-		LIB86CPU_ABORT();
+		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
 	}
 	cpu->jit = std::move(*jit);
 	cpu->jit->getMainJITDylib().setGenerator(

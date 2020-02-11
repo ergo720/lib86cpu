@@ -68,6 +68,12 @@ do {\
     exit(1);\
 } while (0)
 
+#define LIB86CPU_ABORT_msg(...) \
+do {\
+    printf(__VA_ARGS__);\
+    exit(1);\
+} while (0)
+
 // used to generate the parity table
 // borrowed from Bit Twiddling Hacks by Sean Eron Anderson (public domain)
 // http://graphics.stanford.edu/~seander/bithacks.html#ParityLookupTable

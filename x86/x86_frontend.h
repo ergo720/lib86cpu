@@ -71,7 +71,7 @@ case OPTYPE_SIB_DISP: \
 	break; \
 \
 default: \
-	LIB86CPU_ABORT(); \
+	LIB86CPU_ABORT_msg("Invalid operand type used in GET_RM macro!\n"); \
 }
 
 #define INTPTR(v) ConstantInt::get(getIntegerPointerType(), reinterpret_cast<uintptr_t>(v))

@@ -52,7 +52,7 @@ check_page_access(cpu_t *cpu, uint8_t access_level, uint8_t cpu_level)
 		break;
 
 	default:
-		LIB86CPU_ABORT();
+		LIB86CPU_ABORT_msg("Invalid access_level \"%c\" used in %s\n", access_level, __func__);
 	}
 
 	assert(access != -1);
