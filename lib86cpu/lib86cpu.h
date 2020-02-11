@@ -70,6 +70,8 @@ do {\
 } while (0)
 
 // used to generate the parity table
+// borrowed from Bit Twiddling Hacks by Sean Eron Anderson (public domain)
+// http://graphics.stanford.edu/~seander/bithacks.html#ParityLookupTable
 #define P2(n) n, n ^ 1, n ^ 1, n
 #define P4(n) P2(n), P2(n ^ 1), P2(n ^ 1), P2(n)
 #define P6(n) P4(n), P4(n ^ 1), P4(n ^ 1), P4(n)
@@ -172,6 +174,7 @@ struct cpu_t {
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<addr_t>>>, sort_by_priority<addr_t>> memory_out;
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<port_t>>>, sort_by_priority<port_t>> io_out;
 	std::forward_list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
+	uint16_t num_tc;
 
 	/* llvm specific variables */
 	std::unique_ptr<orc::LLJIT> jit;
@@ -179,8 +182,8 @@ struct cpu_t {
 	Value *ptr_cpu_ctx;
 	Value *ptr_regs;
 	Value *ptr_eflags;
-	Function *ptr_mem_ldfn[6];
-	Function *ptr_mem_stfn[6];
+	Function *ptr_mem_ldfn[7];
+	Function *ptr_mem_stfn[7];
 	Function *exp_fn;
 	Function *crN_fn;
 };

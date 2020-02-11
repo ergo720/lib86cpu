@@ -8,13 +8,6 @@
 
 #include "x86_decode.h"
 
-#define HFLG_CS32     (1 << 0)
-#define HFLG_PE_MODE  (1 << 2)
-
-#define DISAS_FLG_CS32         HFLG_CS32
-#define DISAS_FLG_TC_INDIRECT  (1 << 1)
-#define DISAS_FLG_PAGE_CROSS   (1 << 2)
-#define DISAS_FLG_FETCH_FAULT  DISAS_FLG_PAGE_CROSS
 
 void cpu_x86_init(cpu_t *cpu);
 lib86cpu_status cpu_exec_tc(cpu_t *cpu);
@@ -31,6 +24,29 @@ get_pc(cpu_ctx_t *cpu_ctx)
 }
 
 extern const char *mnemo[];
+
+// cpu hidden flags
+#define HFLG_CPL      (3 << 0)
+#define HFLG_CS32     (1 << 2)
+#define HFLG_PE_MODE  (1 << 4)
+#define CS32_SHIFT    2
+
+// disassembly context flags
+#define DISAS_FLG_CS32         (1 << 0)
+#define DISAS_FLG_TC_INDIRECT  (1 << 1)
+#define DISAS_FLG_PAGE_CROSS   (1 << 2)
+#define DISAS_FLG_FETCH_FAULT  DISAS_FLG_PAGE_CROSS
+
+// segment descriptor flags
+#define SEG_DESC_C    (1ULL << 42)
+#define SEG_DESC_DC   (1ULL << 43)
+#define SEG_DESC_S    (1ULL << 44)
+#define SEG_DESC_DPL  (3ULL << 45)
+#define SEG_DESC_P    (1ULL << 47)
+#define SEG_DESC_G    (1ULL << 55)
+
+// segment hidden flags
+#define SEG_HIDDEN_DB  (1 << 22)
 
 // reg indexes in cpu->regs_layout
 #define EAX_idx     0
@@ -65,6 +81,18 @@ extern const char *mnemo[];
 #define IDTR_idx    29
 #define GDTR_idx    30
 
+#define SEG_offset  ES_idx
+#define CR_offset   CR0_idx
+
+#define SEG_SEL_idx     0
+#define SEG_HIDDEN_idx  1
+#define SEG_BASE_idx    0
+#define SEG_LIMIT_idx   1
+#define SEG_FLG_idx     2
+#define R48_BASE        0
+#define R48_LIMIT       1
+
+// eflags macros
 #define TF_MASK     (1 << 8)
 #define IF_MASK     (1 << 9)
 #define DF_MASK     (1 << 10)
@@ -108,15 +136,6 @@ extern const char *mnemo[];
 #define PAGE_SIZE_LARGE   (1 << PAGE_SHIFT_LARGE)
 #define PAGE_MASK         (PAGE_SIZE - 1)
 #define PAGE_MASK_LARGE   (PAGE_SIZE_LARGE - 1)
-
-#define SEG_offset  ES_idx
-#define CR_offset   CR0_idx
-
-#define SEG_SEL_idx     0
-#define SEG_HIDDEN_idx  1
-#define SEG_BASE_idx    0
-#define R48_BASE  0
-#define R48_LIMIT 1
 
 // control register flags
 #define CR0_PG_MASK (1 << 31)

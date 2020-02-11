@@ -21,6 +21,7 @@ Value *get_r8h_pointer(Value *gep_start, translated_code_t *tc, BasicBlock *bb);
 void get_ext_fn(cpu_t *cpu, translated_code_t *tc, Function *func);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlock *bb, unsigned opnum);
 Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, size_t instr_size);
+void ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *eip, Value *ptr_eip);
 Value *get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t size_mode);
 Value *get_register_op(cpu_t *cpu, translated_code_t *tc, x86_instr *instr, BasicBlock *bb, uint8_t idx);
 void set_flags_sum(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *sum, Value *a, Value *b, uint8_t size_mode);
@@ -37,15 +38,17 @@ void set_flags(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *res, Va
 #define MEM_LD8_idx  0
 #define MEM_LD16_idx 1
 #define MEM_LD32_idx 2
-#define IO_LD8_idx   3
-#define IO_LD16_idx  4
-#define IO_LD32_idx  5
+#define MEM_LD64_idx 3
+#define IO_LD8_idx   4
+#define IO_LD16_idx  5
+#define IO_LD32_idx  6
 #define MEM_ST8_idx  0
 #define MEM_ST16_idx 1
 #define MEM_ST32_idx 2
-#define IO_ST8_idx   3
-#define IO_ST16_idx  4
-#define IO_ST32_idx  5
+#define MEM_ST64_idx 3
+#define IO_ST8_idx   4
+#define IO_ST16_idx  5
+#define IO_ST32_idx  6
 
 #define GET_IMM() get_immediate_op(tc, &instr, OPNUM_SRC, size_mode)
 #define GET_IMM8() get_immediate_op(tc, &instr, OPNUM_SRC, SIZE8)
@@ -115,6 +118,7 @@ default: \
 #define BR_UNCOND(t, bb) BranchInst::Create(t, bb)
 #define ICMP_EQ(a, b) new ICmpInst(*bb, ICmpInst::ICMP_EQ, a, b, "")
 #define ICMP_NE(a, b) new ICmpInst(*bb, ICmpInst::ICMP_NE, a, b, "")
+#define ICMP_UGT(a, b) new ICmpInst(*bb, ICmpInst::ICMP_UGT, a, b, "")
 #define NOT_ZERO(s,v) AND(SHR(OR(v, SUB(CONSTs(s, 0), v)), CONSTs(s, s-1)), CONSTs(s, 1))
 
 #define GEP(ptr, idx)  get_struct_member_pointer(ptr, idx, tc, bb)
@@ -161,6 +165,7 @@ default: \
 #define ST_REG_val(val, reg) new StoreInst(val, reg, bb)
 #define ST_SEG(val, seg) new StoreInst(val, GEP_SEL(seg), bb)
 #define ST_SEG_HIDDEN(val, seg, idx) new StoreInst(val, GEP(GEP(GEP(cpu->ptr_regs, seg), SEG_HIDDEN_idx), idx), bb)
+#define LD_R48(reg, idx) new LoadInst(GEP(GEP(cpu->ptr_regs, reg), idx), "", false, bb)
 #define LD_R32(idx) new LoadInst(GEP(cpu->ptr_regs, idx), "", false, bb)
 #define LD_R16(idx) new LoadInst(GEP_R16(idx), "", false, bb)
 #define LD_R8L(idx) new LoadInst(GEP_R8L(idx), "", false, bb)
@@ -173,7 +178,7 @@ default: \
 #define ST_MEM(idx, addr, val) CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, val, ptr_eip }, "", bb)
 
 #define LD_PARITY(idx) new LoadInst(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST8(0), idx }, "", bb), "", false, bb)
-#define RAISE(expno, eip) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, CONST8(expno), CONST32(eip) }, "", bb)
+#define RAISE(expno) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, CONST8(expno), ptr_eip }, "", bb)
 #define SET_FLG_SUM(sum, a , b) set_flags_sum(cpu, tc, bb, sum, a, b, size_mode)
 #define SET_FLG_SUB(sub, a , b) set_flags_sub(cpu, tc, bb, sub, a, b, size_mode)
 #define SET_FLG(res, aux) set_flags(cpu, tc, bb, res, aux, size_mode)

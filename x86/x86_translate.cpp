@@ -77,10 +77,10 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
 			tc_cache_clear(cpu_ctx->cpu);
 			if (new_cr & CR0_PE_MASK) {
-				if (cpu_ctx->regs.cs_hidden.flags & HFLG_CS32) {
+				if (cpu_ctx->regs.cs_hidden.flags & SEG_HIDDEN_DB) {
 					cpu_ctx->hflags |= HFLG_CS32;
 				}
-				cpu_ctx->hflags |= HFLG_PE_MODE;
+				cpu_ctx->hflags |= (HFLG_PE_MODE | (cpu_ctx->regs.cs & HFLG_CPL));
 			}
 			else {
 				cpu_ctx->hflags &= ~(HFLG_CS32 | HFLG_PE_MODE);
@@ -168,7 +168,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 			case EXP_GP:
 				// the instruction exceeded the maximum allowed length
-				RAISE(expno, pc - cpu->cpu_ctx.regs.cs_hidden.base);
+				RAISE(expno);
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				return LIB86CPU_SUCCESS;
 
@@ -943,7 +943,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		case X86_OPC_LIDTL:
 		case X86_OPC_LIDTW: {
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
-				RAISE(EXP_UD, pc - cpu_ctx->regs.cs_hidden.base);
+				RAISE(EXP_UD);
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
@@ -984,18 +984,21 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			break;
 
 			case 0xEA: {
-				if (cpu_ctx->hflags & HFLG_PE_MODE) {
-					BAD_MODE;
-				}
 				addr_t new_eip = instr.operand[OPNUM_SRC].imm;
 				uint16_t new_sel = instr.operand[OPNUM_SRC].seg_sel;
 				if (size_mode == SIZE16) {
 					new_eip &= 0x0000FFFF;
 				}
-				ST_R32(CONST32(new_eip), EIP_idx);
-				ST_SEG(CONST16(new_sel), CS_idx);
-				ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
-				disas_ctx->next_pc = CONST32((static_cast<uint32_t>(new_sel) << 4) + new_eip);
+				if (cpu_ctx->hflags & HFLG_PE_MODE) {
+					ljmp_pe_emit(cpu, tc, bb, CONST16(new_sel), CONST32(new_eip), ptr_eip);
+					disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), CONST32(new_eip));
+				}
+				else {
+					ST_R32(CONST32(new_eip), EIP_idx);
+					ST_SEG(CONST16(new_sel), CS_idx);
+					ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
+					disas_ctx->next_pc = CONST32((static_cast<uint32_t>(new_sel) << 4) + new_eip);
+				}
 			}
 			break;
 
@@ -1222,7 +1225,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				BAD_MODE;
 			}
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
-				RAISE(EXP_UD, pc - cpu_ctx->regs.cs_hidden.base);
+				RAISE(EXP_UD);
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
@@ -1322,7 +1325,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					BAD_MODE;
 				}
 				if (instr.operand[OPNUM_DST].reg == 1 || instr.operand[OPNUM_DST].reg > 5) {
-					RAISE(EXP_UD, pc - cpu_ctx->regs.cs_hidden.base);
+					RAISE(EXP_UD);
 					disas_ctx->next_pc = CONST32(0); // unreachable
 				}
 				else {
@@ -2159,7 +2162,6 @@ lib86cpu_status
 cpu_exec_tc(cpu_t *cpu)
 {
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
-	uint16_t num_tc = 0;
 	addr_t pc;
 
 	// this will exit only in the case of errors
@@ -2197,7 +2199,7 @@ cpu_exec_tc(cpu_t *cpu)
 
 			// prepare the disas ctx
 			disas_ctx_t disas_ctx;
-			disas_ctx.flags = cpu->cpu_ctx.hflags & HFLG_CS32;
+			disas_ctx.flags = (cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT;
 			disas_ctx.func = func;
 			disas_ctx.bb = BasicBlock::Create(_CTX(), "", func, 0);
 			disas_ctx.next_pc = nullptr;
@@ -2270,13 +2272,11 @@ cpu_exec_tc(cpu_t *cpu)
 				continue;
 			}
 			else {
-				if (num_tc == CODE_CACHE_MAX_SIZE) {
+				if (cpu->num_tc == CODE_CACHE_MAX_SIZE) {
 					tc_cache_clear(cpu);
 					prev_tc = nullptr;
-					num_tc = 0;
 				}
 				tc_cache_insert(cpu, pc, std::move(tc));
-				num_tc++;
 			}
 		}
 

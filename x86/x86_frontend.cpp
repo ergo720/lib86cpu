@@ -108,6 +108,139 @@ calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_
 	return BinaryOperator::Create(Instruction::Add, CONST32(cpu->cpu_ctx.regs.cs_hidden.base), next_eip, "", bb);
 }
 
+static BasicBlock *
+raise_exception_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb2, uint8_t expno, Value *ptr_eip)
+{
+	BasicBlock *bb = BasicBlock::Create(_CTX(), "", bb2->getParent(), 0);
+	RAISE(expno);
+	new UnreachableInst(_CTX(), bb);
+	return bb;
+}
+
+static void
+write_seg_hidden_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const unsigned int reg, Value *sel, Value *base, Value *limit, Value *flags)
+{
+	ST_SEG(sel, reg + SEG_offset);
+	ST_SEG_HIDDEN(base, reg + SEG_offset, SEG_BASE_idx);
+	ST_SEG_HIDDEN(limit, reg + SEG_offset, SEG_LIMIT_idx);
+	ST_SEG_HIDDEN(flags, reg + SEG_offset, SEG_FLG_idx);
+
+	if (reg == CS) {
+		Value *ptr_hflags = GEP(cpu->ptr_cpu_ctx, 3);
+		Value *hflags = new LoadInst(ptr_hflags, "", false, bb);
+		new StoreInst(OR(SHR(AND(flags, CONST32(SEG_HIDDEN_DB)), CONST32(20)), hflags), ptr_hflags, bb);
+	}
+	else {
+		// all other registers are unsupported for now
+		LIB86CPU_ABORT();
+	}
+}
+
+static Value *
+read_seg_desc_base_emit(translated_code_t *tc, BasicBlock *bb, Value *desc)
+{
+	return TRUNC32(OR(OR(SHR(AND(desc, CONST64(0xFFFF0000)), CONST64(16)), SHR(AND(desc, CONST64(0xFF00000000)), CONST64(16))), SHR(AND(desc, CONST64(0xFF00000000000000)), CONST64(32))));
+}
+
+static Value *
+read_seg_desc_limit_emit(translated_code_t *tc, BasicBlock *&bb, Value *desc)
+{
+	Value *limit = new AllocaInst(getIntegerType(32), 0, "", bb);
+	new StoreInst(TRUNC32(OR(AND(desc, CONST64(0xFFFF)), SHR(AND(desc, CONST64(0xF000000000000)), CONST64(32)))), limit, bb);
+	BasicBlock *bb_g = BasicBlock::Create(_CTX(), "", bb->getParent(), 0);
+	BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", bb->getParent(), 0);
+	BR_COND(bb_g, bb_next, ICMP_NE(AND(desc, CONST64(SEG_DESC_G)), CONST64(0)), bb);
+	bb = bb_g;
+	new StoreInst(OR(SHL(new LoadInst(limit, "", false, bb), CONST32(12)), CONST32(PAGE_MASK)), limit, bb);
+	BR_UNCOND(bb_next, bb);
+	bb = bb_next;
+	return new LoadInst(limit, "", false, bb);
+}
+
+static Value *
+read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
+{
+	Function *func = bb->getParent();
+	BasicBlock *bb_next1 = BasicBlock::Create(_CTX(), "", func, 0);
+	BasicBlock *bb_next2 = BasicBlock::Create(_CTX(), "", func, 0);
+	BasicBlock *bb_gdt = BasicBlock::Create(_CTX(), "", func, 0);
+	BasicBlock *bb_ldt = BasicBlock::Create(_CTX(), "", func, 0);
+
+	Value *base = new AllocaInst(getIntegerType(32), 0, "", bb);
+	Value *limit = new AllocaInst(getIntegerType(16), 0, "", bb);
+	Value *idx = SHR(sel, CONST16(3));
+	Value *ti = SHR(AND(sel, CONST16(4)), CONST16(2));
+	BR_COND(bb_gdt, bb_ldt, ICMP_EQ(ti, CONST16(0)), bb);
+	bb = bb_gdt;
+	new StoreInst(LD_R48(GDTR_idx, R48_BASE), base, bb);
+	new StoreInst(LD_R48(GDTR_idx, R48_LIMIT), limit, bb);
+	BR_UNCOND(bb_next1, bb);
+	bb = bb_ldt;
+	// we don't support LDTs yet, so just abort
+	CallInst::Create(Intrinsic::getDeclaration(tc->mod, Intrinsic::trap), "", bb);
+	new UnreachableInst(_CTX(), bb);
+	bb = bb_next1;
+	Value *desc_addr = ADD(new LoadInst(base, "", false, bb), ZEXT32(MUL(idx, CONST16(8))));
+	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+	BR_COND(bb_exp, bb_next2, ICMP_UGT(ADD(desc_addr, CONST32(7)), ADD(new LoadInst(base, "", false, bb), ZEXT32(new LoadInst(limit, "", false, bb)))), bb); // sel idx outside of descriptor table
+	bb = bb_next2;
+	return LD_MEM(MEM_LD64_idx, desc_addr);
+}
+
+void
+ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *eip, Value *ptr_eip)
+{
+	Function *func = bb->getParent();
+	BasicBlock *bb_next1 = BasicBlock::Create(_CTX(), "", func, 0);
+	BasicBlock *bb_next2 = BasicBlock::Create(_CTX(), "", func, 0);
+	BasicBlock *bb_next3 = BasicBlock::Create(_CTX(), "", func, 0);
+	BasicBlock *bb_next4 = BasicBlock::Create(_CTX(), "", func, 0);
+	BasicBlock *bb_sys = BasicBlock::Create(_CTX(), "", func, 0);
+	BasicBlock *bb_nonsys = BasicBlock::Create(_CTX(), "", func, 0);
+	BasicBlock *bb_code = BasicBlock::Create(_CTX(), "", func, 0);
+	BasicBlock *bb_conf = BasicBlock::Create(_CTX(), "", func, 0);
+	BasicBlock *bb_nonconf = BasicBlock::Create(_CTX(), "", func, 0);
+
+	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+	BR_COND(bb_exp, bb_next1, ICMP_EQ(sel, CONST16(0)), bb); // sel == NULL
+	bb = bb_next1;
+	Value *desc = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip);
+	Value *s = AND(desc, CONST64(SEG_DESC_S));
+	BR_COND(bb_sys, bb_nonsys, ICMP_EQ(s, CONST64(0)), bb);
+	bb = bb_sys;
+	// we don't support system descriptors yet, so just abort
+	CallInst::Create(Intrinsic::getDeclaration(tc->mod, Intrinsic::trap), "", bb);
+	new UnreachableInst(_CTX(), bb);
+	bb = bb_nonsys;
+	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+	BR_COND(bb_exp, bb_code, ICMP_EQ(AND(desc, CONST64(SEG_DESC_DC)), CONST64(0)), bb); // cannot be a data segment
+	bb = bb_code;
+	Value *dpl = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_DPL)), CONST64(45)));
+	BR_COND(bb_conf, bb_nonconf, ICMP_NE(AND(desc, CONST64(SEG_DESC_C)), CONST64(0)), bb);
+	bb = bb_conf;
+	// we don't support conforming code segments yet, so just abort
+	CallInst::Create(Intrinsic::getDeclaration(tc->mod, Intrinsic::trap), "", bb);
+	new UnreachableInst(_CTX(), bb);
+	bb = bb_nonconf;
+	Value *rpl = AND(sel, CONST16(3));
+	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+	uint16_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
+	Value *val = OR(ICMP_UGT(rpl, CONST16(cpl)), ICMP_NE(dpl, CONST16(cpl)));
+	BR_COND(bb_exp, bb_next2, val, bb); // segment privilege violation
+	bb = bb_next2;
+	Value *p = AND(desc, CONST64(SEG_DESC_P));
+	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_NP, ptr_eip);
+	BR_COND(bb_exp, bb_next3, ICMP_EQ(p, CONST64(0)), bb); // segment not present
+	bb = bb_next3;
+	Value *limit = read_seg_desc_limit_emit(tc, bb, desc);
+	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+	BR_COND(bb_exp, bb_next4, ICMP_UGT(eip, limit), bb); // segment limit exceeded
+	bb = bb_next4;
+	write_seg_hidden_emit(cpu, tc, bb, CS, OR(AND(sel, CONST16(0xFFFC)), CONST16(cpl)), read_seg_desc_base_emit(tc, bb, desc),
+		limit, TRUNC32(SHR(AND(desc, CONST64(0xFFFFFFFF00000000)), CONST64(32))));
+	ST_R32(eip, EIP_idx);
+}
+
 Value *
 get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t size_mode)
 {
@@ -208,19 +341,19 @@ optimize(translated_code_t *tc, Function *func)
 void
 get_ext_fn(cpu_t *cpu, translated_code_t *tc, Function *func)
 {
-	static size_t bit_size[6] = { 8, 16, 32, 8, 16, 32 };
-	static size_t arg_size[6] = { 32, 32, 32, 16, 16, 16 };
-	static const char *func_name_ld[6] = { "mem_read8", "mem_read16", "mem_read32", "io_read8", "io_read16", "io_read32" };
-	static const char *func_name_st[6] = { "mem_write8", "mem_write16", "mem_write32", "io_write8", "io_write16", "io_write32" };
+	static size_t bit_size[7] = { 8, 16, 32, 64, 8, 16, 32 };
+	static size_t arg_size[7] = { 32, 32, 32, 32, 16, 16, 16 };
+	static const char *func_name_ld[7] = { "mem_read8", "mem_read16", "mem_read32", "mem_read64", "io_read8", "io_read16", "io_read32" };
+	static const char *func_name_st[7] = { "mem_write8", "mem_write16", "mem_write32", "mem_write64", "io_write8", "io_write16", "io_write32" };
 	Function::arg_iterator args_start = func->arg_begin();
 	args_start++;
 
-	for (uint8_t i = 0; i < 6; i++) {
+	for (uint8_t i = 0; i < 7; i++) {
 		cpu->ptr_mem_ldfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), args_start->getType(),
 			getIntegerType(arg_size[i]), getIntegerType(32)));
 	}
 
-	for (uint8_t i = 0; i < 6; i++) {
+	for (uint8_t i = 0; i < 7; i++) {
 		cpu->ptr_mem_stfn[i] = cast<Function>(tc->mod->getOrInsertFunction(func_name_st[i], getVoidType(), args_start->getType(),
 			getIntegerType(arg_size[i]), getIntegerType(bit_size[i]), getIntegerType(32)));
 	}
@@ -272,12 +405,14 @@ tc_cache_search(cpu_t *cpu, addr_t pc)
 void
 tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc)
 {
+	cpu->num_tc++;
 	cpu->code_cache[tc_hash(pc)].push_front(std::move(tc));
 }
 
 void
 tc_cache_clear(cpu_t *cpu)
 {
+	cpu->num_tc = 0;
 	for (auto &bucket : cpu->code_cache) {
 		bucket.clear();
 	}
@@ -570,7 +705,7 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 
 	switch (operand->type) {
 	case OPTYPE_MEM:
-		if (instr->addr_size_override ^ (cpu->cpu_ctx.hflags & HFLG_CS32)) {
+		if (instr->addr_size_override ^ (cpu->cpu_ctx.hflags & HFLG_CS32 >> CS32_SHIFT)) {
 			uint8_t reg_idx;
 			switch (operand->reg) {
 			case 0:
@@ -639,7 +774,7 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 	case OPTYPE_MOFFSET:
 		return ADD(CONST32(operand->disp), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
 	case OPTYPE_MEM_DISP:
-		if (instr->addr_size_override ^ (cpu->cpu_ctx.hflags & HFLG_CS32)) {
+		if (instr->addr_size_override ^ (cpu->cpu_ctx.hflags & HFLG_CS32 >> CS32_SHIFT)) {
 			Value *reg;
 			uint8_t reg_idx;
 			switch (instr->mod) {

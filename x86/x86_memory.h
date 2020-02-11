@@ -20,9 +20,11 @@ void check_instr_length(cpu_t *cpu, addr_t start_pc, addr_t pc, size_t size);
 JIT_EXTERNAL_CALL_C uint8_t mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip);
 JIT_EXTERNAL_CALL_C uint16_t mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip);
 JIT_EXTERNAL_CALL_C uint32_t mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip);
+JIT_EXTERNAL_CALL_C uint64_t mem_read64(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip);
 JIT_EXTERNAL_CALL_C void mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip);
 JIT_EXTERNAL_CALL_C void mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip);
 JIT_EXTERNAL_CALL_C void mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip);
+JIT_EXTERNAL_CALL_C void mem_write64(cpu_ctx_t * cpu_ctx, addr_t addr, uint64_t value, uint32_t eip);
 JIT_EXTERNAL_CALL_C uint8_t io_read8(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip);
 JIT_EXTERNAL_CALL_C uint16_t io_read16(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip);
 JIT_EXTERNAL_CALL_C uint32_t io_read32(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip);
@@ -235,24 +237,32 @@ using fp_ram_read = T(*)(cpu_t *, void *);
 template<typename T>
 using fp_ram_write = void(*)(cpu_t *, void *, T);
 
-inline constexpr std::tuple<fp_ram_read<uint8_t>, fp_ram_read<uint16_t>, fp_ram_read<uint32_t>, fp_ram_read<uint32_t>,
-	fp_ram_write<uint8_t>, fp_ram_write<uint16_t>, fp_ram_write<uint32_t>, fp_ram_write<uint32_t>> ram_func[2] = {
-		{ ram_read_le<uint8_t>, ram_read_le<uint16_t>, nullptr, ram_read_le<uint32_t>,
-		ram_write_le<uint8_t>, ram_write_le<uint16_t>, nullptr, ram_write_le<uint32_t> },
-		{ ram_read_be<uint8_t>, ram_read_be<uint16_t>, nullptr, ram_read_be<uint32_t>,
-		ram_write_be<uint8_t>, ram_write_be<uint16_t>, nullptr, ram_write_be<uint32_t> },
+inline constexpr std::tuple<fp_ram_read<uint8_t>, fp_ram_read<uint16_t>, fp_ram_read<uint32_t>, fp_ram_read<uint64_t>,
+	fp_ram_write<uint8_t>, fp_ram_write<uint16_t>, fp_ram_write<uint32_t>, fp_ram_write<uint64_t>> ram_func[2] = {
+		{ ram_read_le<uint8_t>, ram_read_le<uint16_t>, ram_read_le<uint32_t>, ram_read_le<uint64_t>,
+		ram_write_le<uint8_t>, ram_write_le<uint16_t>, ram_write_le<uint32_t>, ram_write_le<uint64_t> },
+		{ ram_read_be<uint8_t>, ram_read_be<uint16_t>, ram_read_be<uint32_t>, ram_read_be<uint64_t>,
+		ram_write_be<uint8_t>, ram_write_be<uint16_t>, ram_write_be<uint32_t>, ram_write_be<uint64_t> },
+};
+
+// borrowed from Bit Twiddling Hacks by Sean Eron Anderson (public domain)
+// http://graphics.stanford.edu/~seander/bithacks.html#IntegerLogDeBruijn
+inline constexpr int MultiplyDeBruijnBitPosition2[32] =
+{
+  0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
+  31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
 };
 
 template<typename T>
 T ram_read(cpu_t *cpu, void *ram_ptr)
 {
-	return (*std::get<sizeof(T) - 1>(ram_func[cpu->cpu_flags & CPU_FLAG_SWAPMEM]))(cpu, ram_ptr);
+	return (*std::get<MultiplyDeBruijnBitPosition2[static_cast<uint32_t>(sizeof(T) * 0x077CB531U) >> 27]>(ram_func[cpu->cpu_flags & CPU_FLAG_SWAPMEM]))(cpu, ram_ptr);
 }
 
 template<typename T>
 void ram_write(cpu_t *cpu, void *ram_ptr, T value)
 {
-	(*std::get<sizeof(T) + 4 - 1>(ram_func[cpu->cpu_flags & CPU_FLAG_SWAPMEM]))(cpu, ram_ptr, value);
+	(*std::get<MultiplyDeBruijnBitPosition2[static_cast<uint32_t>(sizeof(T) * 0x077CB531U) >> 27] + 4>(ram_func[cpu->cpu_flags & CPU_FLAG_SWAPMEM]))(cpu, ram_ptr, value);
 }
 
 template<typename T>

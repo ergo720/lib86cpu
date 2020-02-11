@@ -165,6 +165,12 @@ mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip)
 	return mem_read<uint32_t>(cpu_ctx->cpu, addr, eip);
 }
 
+uint64_t
+mem_read64(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip)
+{
+	return mem_read<uint64_t>(cpu_ctx->cpu, addr, eip);
+}
+
 void
 mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip)
 {
@@ -181,6 +187,12 @@ void
 mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip)
 {
 	mem_write<uint32_t>(cpu_ctx->cpu, addr, value, eip);
+}
+
+void
+mem_write64(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t value, uint32_t eip)
+{
+	mem_write<uint64_t>(cpu_ctx->cpu, addr, value, eip);
 }
 
 uint8_t
