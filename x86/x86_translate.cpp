@@ -121,8 +121,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 	static const uint8_t fn_idx[3] = { MEM_LD32_idx, MEM_LD16_idx, MEM_LD8_idx };
 
 	Function::arg_iterator args_func = func->arg_begin();
-	Value *ptr_eip = args_func++;
-	ptr_eip = CONST32(pc - cpu_ctx->regs.cs_hidden.base);
+	args_func++;
+	Value *ptr_eip = CONST32(pc - cpu_ctx->regs.cs_hidden.base);
 	cpu->ptr_cpu_ctx = args_func++;
 	cpu->ptr_cpu_ctx->setName("cpu_ctx");
 	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, 1);
