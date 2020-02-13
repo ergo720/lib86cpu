@@ -99,7 +99,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std:
 
 		uint8_t cpu_lv = (is_write << 1) | ((cpl_to_page_priv[cpu->cpu_ctx.hflags & HFLG_CPL] & (cpu->cpu_ctx.hflags & HFLG_CPL_PRIV)) >> 3);
 		uint8_t pde_priv = (pte & PTE_WRITE) | (pte & PTE_USER);
-		if ((pte & PTE_LARGE) && (cpu->cpu_ctx.regs.cr4 & CR4_PSE)) {
+		if ((pte & PTE_LARGE) && (cpu->cpu_ctx.regs.cr4 & CR4_PSE_MASK)) {
 			if (check_page_access(cpu, pde_priv, cpu_lv)) {
 				if (!(pte & PTE_ACCESSED) || is_write) {
 					pte |= PTE_ACCESSED;

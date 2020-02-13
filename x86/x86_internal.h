@@ -158,6 +158,6 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define CR3_PCD_MASK (1 << 4)
 #define CR3_PWT_MASK (1 << 3)
 #define CR3_FLG_MASK (CR3_PD_MASK | CR3_PCD_MASK | CR3_PWT_MASK)
-#define CR4_PSE (1 << 4)
+#define CR4_PSE_MASK (1 << 4)
 
 #define X86_MAX_INSTR_LENGTH 15
