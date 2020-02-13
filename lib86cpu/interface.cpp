@@ -141,19 +141,7 @@ cpu_run(cpu_t *cpu)
 {
 	sync_hflags(cpu);
 
-	// main cpu loop
-	while (true) {
-		lib86cpu_status status = cpu_exec_tc(cpu);
-		switch (status)
-		{
-		case LIB86CPU_LLVM_ERROR:
-		case LIB86CPU_NO_MEMORY:
-		case LIB86CPU_UNKNOWN_INSTR:
-		case LIB86CPU_OP_NOT_IMPLEMENTED:
-			// these are fatal errors, simply exit the cpu loop
-			return status;
-		}
-	}
+	return cpu_exec_tc(cpu);
 }
 
 static void

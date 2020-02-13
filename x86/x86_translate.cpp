@@ -2173,7 +2173,7 @@ cpu_exec_tc(cpu_t *cpu)
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
 	addr_t pc;
 
-	// this will exit only in the case of errors
+	// main cpu loop
 	while (true) {
 
 		try {
