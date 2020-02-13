@@ -275,8 +275,7 @@ T ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t page_cross)
 		memory_region_t<addr_t> *region;
 		check_instr_length(cpu, disas_ctx->start_pc, disas_ctx->virt_pc, sizeof(T));
 		while (i < sizeof(T)) {
-			disas_ctx->pc = mmu_translate_addr(cpu, disas_ctx->virt_pc, 0, disas_ctx->start_pc - cpu->cpu_ctx.regs.cs_hidden.base,
-				[](cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip) { throw expno; });
+			disas_ctx->pc = mmu_translate_addr(cpu, disas_ctx->virt_pc, 0, disas_ctx->start_pc - cpu->cpu_ctx.regs.cs_hidden.base, cpu_throw_exception);
 			region = as_memory_search_addr<T>(cpu, disas_ctx->pc);
 			value |= (static_cast<T>(as_ram_dispatch_read<uint8_t>(cpu, disas_ctx->pc, region)) << (i * 8));
 			disas_ctx->virt_pc++;

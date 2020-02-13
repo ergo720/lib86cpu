@@ -24,13 +24,20 @@ get_instr_name(unsigned num)
 }
 
 [[noreturn]] void
+cpu_throw_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip)
+{
+	cpu_ctx->hflags |= HFLG_CPL_PRIV;
+	throw expno;
+}
+
+[[noreturn]] void
 cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip)
 {
 	cpu_t *cpu = cpu_ctx->cpu;
 
 	if (cpu_ctx->hflags & HFLG_PE_MODE) {
-		printf("Exceptions are unsupported in protected mode (for now)\n");
-		exit(1);
+		cpu_ctx->hflags |= HFLG_CPL_PRIV;
+		LIB86CPU_ABORT_msg("Exceptions are unsupported in protected mode (for now)\n");
 	}
 
 	// push to the stack eflags, cs and eip
@@ -129,6 +136,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 	cpu->ptr_regs->setName("regs");
 	cpu->ptr_eflags = GEP(cpu->ptr_cpu_ctx, 2);
 	cpu->ptr_eflags->setName("eflags");
+	cpu->ptr_hflags = GEP(cpu->ptr_cpu_ctx, 3);
+	cpu->ptr_hflags->setName("hflags");
 
 	do {
 

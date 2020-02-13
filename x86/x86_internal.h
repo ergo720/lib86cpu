@@ -16,6 +16,7 @@ void tc_protect(void* addr, size_t size, bool ro);
 size_t disasm_instr(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_line, disas_ctx_t *disas_ctx);
 void decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx);
 JIT_EXTERNAL_CALL_C void cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip);
+void cpu_throw_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip);
 
 inline addr_t
 get_pc(cpu_ctx_t *cpu_ctx)
@@ -26,10 +27,12 @@ get_pc(cpu_ctx_t *cpu_ctx)
 extern const char *mnemo[];
 
 // cpu hidden flags
-#define HFLG_CPL      (3 << 0)
-#define HFLG_CS32     (1 << 2)
-#define HFLG_PE_MODE  (1 << 4)
-#define CS32_SHIFT    2
+#define HFLG_CPL        (3 << 0)
+#define HFLG_CS32       (1 << 2)
+#define HFLG_PE_MODE    (1 << 4)
+#define HFLG_CPL_PRIV   (1 << 5)
+#define CS32_SHIFT      2
+#define CPL_PRIV_SHIFT  5
 
 // disassembly context flags
 #define DISAS_FLG_CS32         (1 << 0)

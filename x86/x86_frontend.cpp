@@ -126,9 +126,8 @@ write_seg_hidden_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const u
 	ST_SEG_HIDDEN(flags, reg + SEG_offset, SEG_FLG_idx);
 
 	if (reg == CS) {
-		Value *ptr_hflags = GEP(cpu->ptr_cpu_ctx, 3);
-		Value *hflags = LD(ptr_hflags);
-		ST(ptr_hflags, OR(SHR(AND(flags, CONST32(SEG_HIDDEN_DB)), CONST32(20)), hflags));
+		Value *hflags = LD(cpu->ptr_hflags);
+		ST(cpu->ptr_hflags, OR(SHR(AND(flags, CONST32(SEG_HIDDEN_DB)), CONST32(20)), hflags));
 	}
 	else {
 		// all other registers are unsupported for now
@@ -184,7 +183,14 @@ read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *se
 	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
 	BR_COND(bb_exp, bb_next2, ICMP_UGT(ADD(desc_addr, CONST32(7)), ADD(LD(base), ZEXT32(LD(limit)))), bb); // sel idx outside of descriptor table
 	bb = bb_next2;
-	return LD_MEM(MEM_LD64_idx, desc_addr);
+	Value *hflags = LD(cpu->ptr_hflags);
+	hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
+	ST(cpu->ptr_hflags, hflags);
+	Value *desc = LD_MEM(MEM_LD64_idx, desc_addr);
+	hflags = LD(cpu->ptr_hflags);
+	hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
+	ST(cpu->ptr_hflags, hflags);
+	return desc;
 }
 
 void

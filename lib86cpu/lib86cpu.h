@@ -186,6 +186,7 @@ struct cpu_t {
 	Value *ptr_cpu_ctx;
 	Value *ptr_regs;
 	Value *ptr_eflags;
+	Value *ptr_hflags;
 	Function *ptr_mem_ldfn[7];
 	Function *ptr_mem_stfn[7];
 	Function *exp_fn;

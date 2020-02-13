@@ -77,7 +77,7 @@ check_page_privilege(cpu_t *cpu, uint8_t cpu_level, uint8_t pde_priv, uint8_t pt
 	int8_t access_lv = access_table[pde_priv][pte_priv];
 	assert(access_lv != -1);
 
-	return check_page_access(cpu, access_lv, cpu_level);;
+	return check_page_access(cpu, access_lv, cpu_level);
 }
 
 addr_t
@@ -87,7 +87,8 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std:
 		return addr;
 	}
 	else {
-		// XXX: for now this assumes that the cpu is always in supervisor mode
+		static const uint8_t cpl_to_page_priv[4] = { 0, 0, 0, 1 << CPL_PRIV_SHIFT };
+
 		addr_t pte_addr = (cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK) | (addr >> PAGE_SHIFT_LARGE) * 4;
 		uint32_t pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr));
 
@@ -96,7 +97,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std:
 			LIB86CPU_ABORT();
 		}
 
-		uint8_t cpu_lv = is_write << 1;
+		uint8_t cpu_lv = (is_write << 1) | ((cpl_to_page_priv[cpu->cpu_ctx.hflags & HFLG_CPL] & (cpu->cpu_ctx.hflags & HFLG_CPL_PRIV)) >> 3);
 		uint8_t pde_priv = (pte & PTE_WRITE) | (pte & PTE_USER);
 		if ((pte & PTE_LARGE) && (cpu->cpu_ctx.regs.cr4 & CR4_PSE)) {
 			if (check_page_access(cpu, pde_priv, cpu_lv)) {
@@ -141,8 +142,7 @@ check_instr_length(cpu_t *cpu, addr_t start_pc, addr_t pc, size_t size)
 {
 	pc += size;
 	if (pc - start_pc > X86_MAX_INSTR_LENGTH) {
-		volatile addr_t addr = mmu_translate_addr(cpu, pc - 1, 0, start_pc - cpu->cpu_ctx.regs.cs_hidden.base,
-			[](cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip) { throw expno; });
+		volatile addr_t addr = mmu_translate_addr(cpu, pc - 1, 0, start_pc - cpu->cpu_ctx.regs.cs_hidden.base, cpu_throw_exception);
 		throw EXP_GP;
 	}
 }

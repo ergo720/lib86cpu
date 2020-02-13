@@ -127,6 +127,8 @@ cpu_free(cpu_t *cpu)
 lib86cpu_status
 cpu_run(cpu_t *cpu)
 {
+	cpu->cpu_ctx.hflags |= HFLG_CPL_PRIV;
+
 	// main cpu loop
 	while (true) {
 		lib86cpu_status status = cpu_exec_tc(cpu);
