@@ -1230,9 +1230,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		case X86_OPC_LFS:
 		case X86_OPC_LGS:
 		case X86_OPC_LSS: {
-			if (cpu_ctx->hflags & HFLG_PE_MODE) {
-				BAD_MODE;
-			}
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
 				RAISE(EXP_UD);
 				disas_ctx->next_pc = CONST32(0); // unreachable
@@ -1240,40 +1237,65 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			}
 			else {
 				Value *offset, *sel, *rm;
+				unsigned int sel_idx;
 				GET_RM(OPNUM_SRC, assert(0);, offset = LD_MEM(fn_idx[size_mode], rm);
 				rm = size_mode == SIZE16 ? ADD(rm, CONST32(2)) : ADD(rm, CONST32(4));
 				sel = LD_MEM(MEM_LD16_idx, rm););
-				ST_REG_val(offset, GET_REG(OPNUM_DST));
+
 				switch (instr.opcode_byte)
 				{
 				case 0xB2:
-					ST_SEG(sel, SS_idx);
-					ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), SS_idx, SEG_BASE_idx);
+					sel_idx = SS_idx;
 					break;
 
 				case 0xB4:
-					ST_SEG(sel, FS_idx);
-					ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), FS_idx, SEG_BASE_idx);
+					sel_idx = FS_idx;
 					break;
 
 				case 0xB5:
-					ST_SEG(sel, GS_idx);
-					ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), GS_idx, SEG_BASE_idx);
+					sel_idx = GS_idx;
 					break;
 
 				case 0xC4:
-					ST_SEG(sel, ES_idx);
-					ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), ES_idx, SEG_BASE_idx);
+					sel_idx = ES_idx;
 					break;
 
 				case 0xC5:
-					ST_SEG(sel, DS_idx);
-					ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), DS_idx, SEG_BASE_idx);
+					sel_idx = DS_idx;
 					break;
 
 				default:
 					LIB86CPU_ABORT();
 				}
+
+				if (cpu_ctx->hflags & HFLG_PE_MODE) {
+					if (sel_idx == SS_idx) {
+						Value *desc = read_ss_sel(cpu, tc, bb, sel, ptr_eip);
+						write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, desc),
+							read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
+					}
+					else {
+						BasicBlock *bb_null_seg =_BB();
+						BasicBlock *bb_next1 = _BB();
+						BasicBlock *bb_next2 = _BB();
+
+						BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
+						bb = bb_null_seg;
+						ST_SEG(sel, sel_idx);
+						BR_UNCOND(bb_next2, bb);
+						bb = bb_next1;
+						Value *desc = read_seg_sel(cpu, tc, bb, sel, ptr_eip);
+						write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel /* & rpl?? */, read_seg_desc_base_emit(tc, bb, desc),
+							read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
+						BR_UNCOND(bb_next2, bb);
+						bb = bb_next2;
+					}
+				}
+				else {
+					ST_SEG(sel, sel_idx);
+					ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), sel_idx, SEG_BASE_idx);
+				}
+				ST_REG_val(offset, GET_REG(OPNUM_DST));
 			}
 		}
 		break;

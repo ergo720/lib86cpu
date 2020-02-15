@@ -117,37 +117,40 @@ raise_exception_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb2, uint8_t
 	return bb;
 }
 
-static void
+void
 write_seg_hidden_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const unsigned int reg, Value *sel, Value *base, Value *limit, Value *flags)
 {
-	ST_SEG(sel, reg + SEG_offset);
-	ST_SEG_HIDDEN(base, reg + SEG_offset, SEG_BASE_idx);
-	ST_SEG_HIDDEN(limit, reg + SEG_offset, SEG_LIMIT_idx);
-	ST_SEG_HIDDEN(flags, reg + SEG_offset, SEG_FLG_idx);
+	ST_SEG(sel, reg);
+	ST_SEG_HIDDEN(base, reg, SEG_BASE_idx);
+	ST_SEG_HIDDEN(limit, reg, SEG_LIMIT_idx);
+	ST_SEG_HIDDEN(flags, reg, SEG_FLG_idx);
 
-	if (reg == CS) {
+	if (reg == CS_idx) {
 		Value *hflags = LD(cpu->ptr_hflags);
 		ST(cpu->ptr_hflags, OR(SHR(AND(flags, CONST32(SEG_HIDDEN_DB)), CONST32(20)), hflags));
 	}
-	else {
-		// all other registers are unsupported for now
-		LIB86CPU_ABORT_msg("Writing to the hidden part of an unsupported segment register\n");
-	}
 }
 
-static Value *
+Value *
 read_seg_desc_base_emit(translated_code_t *tc, BasicBlock *bb, Value *desc)
 {
 	return TRUNC32(OR(OR(SHR(AND(desc, CONST64(0xFFFF0000)), CONST64(16)), SHR(AND(desc, CONST64(0xFF00000000)), CONST64(16))), SHR(AND(desc, CONST64(0xFF00000000000000)), CONST64(32))));
 }
 
-static Value *
+Value *
+read_seg_desc_flags_emit(translated_code_t *tc, BasicBlock *bb, Value *desc)
+{
+	return TRUNC32(SHR(AND(desc, CONST64(0xFFFFFFFF00000000)), CONST64(32)));
+}
+
+Value *
 read_seg_desc_limit_emit(translated_code_t *tc, BasicBlock *&bb, Value *desc)
 {
+	Function *func = bb->getParent();
 	Value *limit = ALLOC32();
 	ST(limit, TRUNC32(OR(AND(desc, CONST64(0xFFFF)), SHR(AND(desc, CONST64(0xF000000000000)), CONST64(32)))));
-	BasicBlock *bb_g = BasicBlock::Create(_CTX(), "", bb->getParent(), 0);
-	BasicBlock *bb_next = BasicBlock::Create(_CTX(), "", bb->getParent(), 0);
+	BasicBlock *bb_g = _BB();
+	BasicBlock *bb_next = _BB();
 	BR_COND(bb_g, bb_next, ICMP_NE(AND(desc, CONST64(SEG_DESC_G)), CONST64(0)), bb);
 	bb = bb_g;
 	ST(limit, OR(SHL(LD(limit), CONST32(12)), CONST32(PAGE_MASK)));
@@ -193,6 +196,69 @@ read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *se
 	return desc;
 }
 
+Value *
+read_ss_sel(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
+{
+	Function *func = bb->getParent();
+	BasicBlock *bb_next1 = _BB();
+	BasicBlock *bb_next2 = _BB();
+	BasicBlock *bb_next3 = _BB();
+
+	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+	BR_COND(bb_exp, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb); // sel == NULL
+	bb = bb_next1;
+	Value *desc = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip);
+	Value *s = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(44))); // cannot be a system segment
+	Value *d = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_DC)), CONST64(42))); // cannot be a code segment
+	Value *w = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_W)), CONST64(39))); // cannot be a non-writable data segment
+	Value *cpl = CONST16(cpu->cpu_ctx.hflags & HFLG_CPL); // check for segment privilege violations
+	Value *dpl = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_DPL)), CONST64(42)));
+	Value *rpl = SHL(AND(sel, CONST16(3)), CONST16(5));
+	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+	Value *val = XOR(OR(OR(OR(OR(s, d), w), dpl), rpl), OR(OR(OR(OR(CONST16(1), CONST16(0)), CONST16(4)), SHL(cpl, CONST16(3))), SHL(cpl, CONST16(5))));
+	BR_COND(bb_exp, bb_next2, ICMP_NE(val, CONST16(0)), bb);
+	Value *p = AND(desc, CONST64(SEG_DESC_P));
+	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_SS, ptr_eip);
+	BR_COND(bb_exp, bb_next3, ICMP_EQ(p, CONST64(0)), bb); // segment not present
+	bb = bb_next3;
+	return desc;
+}
+
+Value *
+read_seg_sel(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
+{
+	Function *func = bb->getParent();
+	BasicBlock *bb_nonsys = _BB();
+	BasicBlock *bb_check = _BB();
+	BasicBlock *bb_next1 = _BB();
+	BasicBlock *bb_next2 = _BB();
+	BasicBlock *bb_next3 = _BB();
+
+	Value *desc = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip);
+	Value *s = AND(desc, CONST64(SEG_DESC_S));
+	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+	BR_COND(bb_exp, bb_nonsys, ICMP_EQ(s, CONST64(0)), bb); // cannot be a system segment
+	bb = bb_nonsys;
+	Value *d = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_DC)), CONST64(43)));
+	Value *r = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_R)), CONST64(40)));
+	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+	BR_COND(bb_exp, bb_next1, ICMP_EQ(OR(d, r), CONST16(1)), bb); // cannot be a non-readable code segment
+	bb = bb_next1;
+	BR_COND(bb_check, bb_next2, OR(ICMP_EQ(d, CONST16(0)), ICMP_EQ(AND(desc, CONST64(SEG_DESC_C)), CONST64(0))), bb);
+	bb = bb_check;
+	Value *cpl = CONST16(cpu->cpu_ctx.hflags & HFLG_CPL);
+	Value *dpl = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_DPL)), CONST64(45)));
+	Value *rpl = AND(sel, CONST16(3));
+	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+	BR_COND(bb_exp, bb_next2, AND(ICMP_UGT(rpl, dpl), ICMP_UGT(cpl, dpl)), bb); // segment privilege violation
+	bb = bb_next2;
+	Value *p = AND(desc, CONST64(SEG_DESC_P));
+	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_NP, ptr_eip);
+	BR_COND(bb_exp, bb_next3, ICMP_EQ(p, CONST64(0)), bb); // segment not present
+	bb = bb_next3;
+	return desc;
+}
+
 void
 ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *eip, Value *ptr_eip)
 {
@@ -208,7 +274,7 @@ ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Val
 	BasicBlock *bb_nonconf = _BB();
 
 	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
-	BR_COND(bb_exp, bb_next1, ICMP_EQ(sel, CONST16(0)), bb); // sel == NULL
+	BR_COND(bb_exp, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb); // sel == NULL
 	bb = bb_next1;
 	Value *desc = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip);
 	Value *s = AND(desc, CONST64(SEG_DESC_S));
@@ -242,8 +308,9 @@ ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Val
 	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
 	BR_COND(bb_exp, bb_next4, ICMP_UGT(eip, limit), bb); // segment limit exceeded
 	bb = bb_next4;
-	write_seg_hidden_emit(cpu, tc, bb, CS, OR(AND(sel, CONST16(0xFFFC)), CONST16(cpl)), read_seg_desc_base_emit(tc, bb, desc),
-		limit, TRUNC32(SHR(AND(desc, CONST64(0xFFFFFFFF00000000)), CONST64(32))));
+	ST_SEG(sel, CS_idx);
+	write_seg_hidden_emit(cpu, tc, bb, CS_idx, OR(AND(sel, CONST16(0xFFFC)), CONST16(cpl)), read_seg_desc_base_emit(tc, bb, desc),
+		limit, read_seg_desc_flags_emit(tc, bb, desc));
 	ST_R32(eip, EIP_idx);
 }
 
@@ -717,7 +784,7 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 
 	switch (operand->type) {
 	case OPTYPE_MEM:
-		if (instr->addr_size_override ^ (cpu->cpu_ctx.hflags & HFLG_CS32 >> CS32_SHIFT)) {
+		if (instr->addr_size_override ^ ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT)) {
 			uint8_t reg_idx;
 			switch (operand->reg) {
 			case 0:
@@ -786,7 +853,7 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 	case OPTYPE_MOFFSET:
 		return ADD(CONST32(operand->disp), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
 	case OPTYPE_MEM_DISP:
-		if (instr->addr_size_override ^ (cpu->cpu_ctx.hflags & HFLG_CS32 >> CS32_SHIFT)) {
+		if (instr->addr_size_override ^ ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT)) {
 			Value *reg;
 			uint8_t reg_idx;
 			switch (instr->mod) {
