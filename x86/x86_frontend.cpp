@@ -51,15 +51,15 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
 	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
 	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
-	StructType *type_struct_hiddenseg_t = StructType::create(_CTX(), type_struct_hiddenseg_t_fields, "struct.hiddenseg_t", false);
+	StructType *type_struct_hiddenseg_t = StructType::create(CTX(), type_struct_hiddenseg_t_fields, "struct.hiddenseg_t", false);
 
 	type_struct_seg_t_fields.push_back(getIntegerType(16));
 	type_struct_seg_t_fields.push_back(type_struct_hiddenseg_t);
-	StructType *type_struct_seg_t = StructType::create(_CTX(), type_struct_seg_t_fields, "struct.seg_t", false);
+	StructType *type_struct_seg_t = StructType::create(CTX(), type_struct_seg_t_fields, "struct.seg_t", false);
 
 	type_struct_reg48_t_fields.push_back(getIntegerType(32));
 	type_struct_reg48_t_fields.push_back(getIntegerType(16));
-	StructType *type_struct_reg48_t = StructType::create(_CTX(), type_struct_reg48_t_fields, "struct.reg48_t", false);
+	StructType *type_struct_reg48_t = StructType::create(CTX(), type_struct_reg48_t_fields, "struct.reg48_t", false);
 
 	for (uint8_t n = 0; n < CPU_NUM_REGS; n++) {
 		switch (n)
@@ -85,7 +85,7 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 		}
 	}
 
-	return StructType::create(_CTX(), type_struct_reg_t_fields, "struct.regs_t", false);
+	return StructType::create(CTX(), type_struct_reg_t_fields, "struct.regs_t", false);
 }
 
 static StructType *
@@ -97,7 +97,7 @@ get_struct_eflags(translated_code_t *tc)
 	type_struct_eflags_t_fields.push_back(getIntegerType(32));
 	type_struct_eflags_t_fields.push_back(getArrayIntegerType(8, 256));
 
-	return StructType::create(_CTX(), type_struct_eflags_t_fields, "struct.eflags_t", false);
+	return StructType::create(CTX(), type_struct_eflags_t_fields, "struct.eflags_t", false);
 }
 
 Value *
@@ -111,7 +111,7 @@ calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_
 static BasicBlock *
 raise_exception_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb2, uint8_t expno, Value *ptr_eip)
 {
-	BasicBlock *bb = BasicBlock::Create(_CTX(), "", bb2->getParent(), 0);
+	BasicBlock *bb = BasicBlock::Create(CTX(), "", bb2->getParent(), 0);
 	RAISE(expno);
 	UNREACH();
 	return bb;
@@ -149,8 +149,8 @@ read_seg_desc_limit_emit(translated_code_t *tc, BasicBlock *&bb, Value *desc)
 	Function *func = bb->getParent();
 	Value *limit = ALLOC32();
 	ST(limit, TRUNC32(OR(AND(desc, CONST64(0xFFFF)), SHR(AND(desc, CONST64(0xF000000000000)), CONST64(32)))));
-	BasicBlock *bb_g = _BB();
-	BasicBlock *bb_next = _BB();
+	BasicBlock *bb_g = BB();
+	BasicBlock *bb_next = BB();
 	BR_COND(bb_g, bb_next, ICMP_NE(AND(desc, CONST64(SEG_DESC_G)), CONST64(0)), bb);
 	bb = bb_g;
 	ST(limit, OR(SHL(LD(limit), CONST32(12)), CONST32(PAGE_MASK)));
@@ -163,10 +163,10 @@ static Value *
 read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
 {
 	Function *func = bb->getParent();
-	BasicBlock *bb_next1 = _BB();
-	BasicBlock *bb_next2 = _BB();
-	BasicBlock *bb_gdt = _BB();
-	BasicBlock *bb_ldt = _BB();
+	BasicBlock *bb_next1 = BB();
+	BasicBlock *bb_next2 = BB();
+	BasicBlock *bb_gdt = BB();
+	BasicBlock *bb_ldt = BB();
 
 	Value *base = ALLOC32();
 	Value *limit = ALLOC16();
@@ -200,9 +200,9 @@ Value *
 read_ss_sel(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
 {
 	Function *func = bb->getParent();
-	BasicBlock *bb_next1 = _BB();
-	BasicBlock *bb_next2 = _BB();
-	BasicBlock *bb_next3 = _BB();
+	BasicBlock *bb_next1 = BB();
+	BasicBlock *bb_next2 = BB();
+	BasicBlock *bb_next3 = BB();
 
 	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
 	BR_COND(bb_exp, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb); // sel == NULL
@@ -228,11 +228,11 @@ Value *
 read_seg_sel(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
 {
 	Function *func = bb->getParent();
-	BasicBlock *bb_nonsys = _BB();
-	BasicBlock *bb_check = _BB();
-	BasicBlock *bb_next1 = _BB();
-	BasicBlock *bb_next2 = _BB();
-	BasicBlock *bb_next3 = _BB();
+	BasicBlock *bb_nonsys = BB();
+	BasicBlock *bb_check = BB();
+	BasicBlock *bb_next1 = BB();
+	BasicBlock *bb_next2 = BB();
+	BasicBlock *bb_next3 = BB();
 
 	Value *desc = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip);
 	Value *s = AND(desc, CONST64(SEG_DESC_S));
@@ -263,15 +263,15 @@ void
 ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *eip, Value *ptr_eip)
 {
 	Function *func = bb->getParent();
-	BasicBlock *bb_next1 = _BB();
-	BasicBlock *bb_next2 = _BB();
-	BasicBlock *bb_next3 = _BB();
-	BasicBlock *bb_next4 = _BB();
-	BasicBlock *bb_sys = _BB();
-	BasicBlock *bb_nonsys = _BB();
-	BasicBlock *bb_code = _BB();
-	BasicBlock *bb_conf = _BB();
-	BasicBlock *bb_nonconf = _BB();
+	BasicBlock *bb_next1 = BB();
+	BasicBlock *bb_next2 = BB();
+	BasicBlock *bb_next3 = BB();
+	BasicBlock *bb_next4 = BB();
+	BasicBlock *bb_sys = BB();
+	BasicBlock *bb_nonsys = BB();
+	BasicBlock *bb_code = BB();
+	BasicBlock *bb_conf = BB();
+	BasicBlock *bb_nonconf = BB();
 
 	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
 	BR_COND(bb_exp, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb); // sel == NULL
@@ -653,13 +653,13 @@ FunctionType *
 create_tc_fntype(cpu_t *cpu, translated_code_t *tc)
 {
 	std::vector<Type *>type_struct_cpu_ctx_t_fields;
-	type_struct_cpu_ctx_t_fields.push_back(getPointerType(StructType::create(_CTX(), "struct.cpu_t")));  // NOTE: opaque struct
+	type_struct_cpu_ctx_t_fields.push_back(getPointerType(StructType::create(CTX(), "struct.cpu_t")));  // NOTE: opaque struct
 	type_struct_cpu_ctx_t_fields.push_back(get_struct_reg(cpu, tc));
 	type_struct_cpu_ctx_t_fields.push_back(get_struct_eflags(tc));
 	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(32));
 
 	IntegerType *type_i32 = getIntegerType(32);                                      // eip/pc ptr
-	PointerType *type_pstruct = getPointerType(StructType::create(_CTX(),
+	PointerType *type_pstruct = getPointerType(StructType::create(CTX(),
 		type_struct_cpu_ctx_t_fields, "struct.cpu_ctx_t", false));                   // cpu_ctx ptr
 
 	std::vector<Type *> type_func_args;
@@ -667,7 +667,7 @@ create_tc_fntype(cpu_t *cpu, translated_code_t *tc)
 	type_func_args.push_back(type_pstruct);
 
 	FunctionType *type_func = FunctionType::get(
-		getPointerType(StructType::create(_CTX(), "struct.tc_t")),  // ret, as opaque tc struct
+		getPointerType(StructType::create(CTX(), "struct.tc_t")),  // ret, as opaque tc struct
 		type_func_args,                                             // args
 		false);
 
@@ -687,7 +687,7 @@ create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype)
 	start->addAttribute(1U, Attribute::NoCapture);
 
 	// create the bb of the start function
-	BasicBlock *bb = BasicBlock::Create(_CTX(), "", start, 0);
+	BasicBlock *bb = BasicBlock::Create(CTX(), "", start, 0);
 
 	Function::arg_iterator args_start = start->arg_begin();
 	Value *dummy = args_start++;
@@ -704,7 +704,7 @@ create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype)
 	// insert a call to the translation function and a ret for the start function
 	CallInst *ci = CallInst::Create(func, std::vector<Value *> { dummy, ptr_cpu_ctx }, "", bb);
 	ci->setCallingConv(CallingConv::Fast);
-	ReturnInst::Create(_CTX(), ci, bb);
+	ReturnInst::Create(CTX(), ci, bb);
 
 	return func;
 }
@@ -721,7 +721,7 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disa
 	tail->setCallingConv(CallingConv::Fast);
 
 	// create the bb of the tail function
-	BasicBlock *bb = BasicBlock::Create(_CTX(), "", tail, 0);
+	BasicBlock *bb = BasicBlock::Create(CTX(), "", tail, 0);
 
 	FunctionType *type_func_asm = FunctionType::get(
 		getVoidType(),  // void ret
@@ -736,7 +736,7 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disa
 		args_start++;
 
 		tc->mod->getOrInsertFunction("tc_profile_indirect", getPointerType(getIntegerType(8)), args_start->getType(),
-			getPointerType(StructType::create(_CTX(), "struct.tc_t")), getIntegerType(32));
+			getPointerType(StructType::create(CTX(), "struct.tc_t")), getIntegerType(32));
 		uintptr_t addr = cpu->jit->lookup("tc_profile_indirect")->getAddress();
 
 #if defined __i386 || defined _M_IX86
@@ -766,13 +766,13 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disa
 #endif
 	}
 
-	ReturnInst::Create(_CTX(), CONSTptr(8, tc), bb);
+	ReturnInst::Create(CTX(), CONSTptr(8, tc), bb);
 
 	// insert a call to the tail function and a ret for the main function
 	CallInst *ci = CallInst::Create(tail, std::vector<Value *> { disas_ctx->next_pc, cpu->ptr_cpu_ctx }, "", disas_ctx->bb);
 	ci->setCallingConv(CallingConv::Fast);
 	ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
-	ReturnInst::Create(_CTX(), ci, disas_ctx->bb);
+	ReturnInst::Create(CTX(), ci, disas_ctx->bb);
 }
 
 Value *

@@ -35,12 +35,12 @@ void set_flags_sub(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *sub
 void set_flags(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *res, Value *aux, uint8_t size_mode);
 
 
-#define _CTX() (*tc->ctx)
-#define _BB() BasicBlock::Create(_CTX(), "", func, 0)
-#define getIntegerType(x) (IntegerType::get(_CTX(), x))
+#define CTX() (*tc->ctx)
+#define BB() BasicBlock::Create(CTX(), "", func, 0) //
+#define getIntegerType(x) (IntegerType::get(CTX(), x))
 #define getPointerType(x) (PointerType::getUnqual(x))
-#define getIntegerPointerType() (cpu->dl->getIntPtrType(_CTX()))
-#define getVoidType() (Type::getVoidTy(_CTX()))
+#define getIntegerPointerType() (cpu->dl->getIntPtrType(CTX()))
+#define getVoidType() (Type::getVoidTy(CTX()))
 #define getArrayIntegerType(x, n) (ArrayType::get(getIntegerType(x), n))
 
 #define MEM_LD8_idx  0
@@ -97,7 +97,7 @@ default: \
 #define ST(ptr, v) new StoreInst(v, ptr, bb)
 #define LD(ptr) new LoadInst(ptr, "", false, bb)
 
-#define UNREACH() new UnreachableInst(_CTX(), bb)
+#define UNREACH() new UnreachableInst(CTX(), bb)
 #define INTRINSIC(id) CallInst::Create(Intrinsic::getDeclaration(tc->mod, Intrinsic::id), "", bb)
 
 #define ZEXT(s, v) new ZExtInst(v, getIntegerType(s), "", bb)
@@ -202,7 +202,7 @@ default: \
 #define SET_FLG_SUB(sub, a, b) set_flags_sub(cpu, tc, bb, sub, a, b, size_mode)
 #define SET_FLG(res, aux) set_flags(cpu, tc, bb, res, aux, size_mode)
 
-#define REP_start() disas_ctx->bb = _BB(); \
+#define REP_start() disas_ctx->bb = BB(); \
 Value *ecx, *zero; \
 if (addr_mode == ADDR16) { \
 	ecx = LD_R16(ECX_idx); \
