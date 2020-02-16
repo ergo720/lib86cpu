@@ -100,7 +100,7 @@ calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_
 	return BinaryOperator::Create(Instruction::Add, CONST32(cpu->cpu_ctx.regs.cs_hidden.base), next_eip, "", bb);
 }
 
-static BasicBlock *
+BasicBlock *
 raise_exception_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb2, uint8_t expno, Value *ptr_eip)
 {
 	BasicBlock *bb = BasicBlock::Create(CTX(), "", bb2->getParent(), 0);
@@ -151,7 +151,7 @@ read_seg_desc_limit_emit(translated_code_t *tc, BasicBlock *&bb, Value *desc)
 	return LD(limit);
 }
 
-static Value *
+Value *
 read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
 {
 	Function *func = bb->getParent();

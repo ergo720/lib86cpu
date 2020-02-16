@@ -1057,7 +1057,49 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		}
 		break;
 
-		case X86_OPC_LLDT:        BAD;
+		case X86_OPC_LLDT: {
+			if (!(cpu_ctx->hflags & HFLG_PE_MODE)) {
+				RAISE(EXP_UD);
+				disas_ctx->next_pc = CONST32(0); // unreachable
+				translate_next = 0;
+			}
+			else if (cpu_ctx->hflags & HFLG_CPL) {
+				RAISE(EXP_GP);
+				disas_ctx->next_pc = CONST32(0); // unreachable
+				translate_next = 0;
+			}
+			else {
+				Value *sel, *rm;
+				BasicBlock *bb_null_seg = BB();
+				BasicBlock *bb_next1 = BB();
+				BasicBlock *bb_next2 = BB();
+				BasicBlock *bb_next3 = BB();
+				BasicBlock *bb_next4 = BB();
+
+				GET_RM(OPNUM_SRC, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
+				BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
+				bb = bb_null_seg;
+				ST_SEG(sel, LDTR_idx);
+				BR_UNCOND(bb_next4, bb);
+				bb = bb_next1;
+				Value *desc = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip);
+				Value *s = SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(40));
+				Value *ty = SHR(AND(desc, CONST64(SEG_DESC_TY)), CONST64(40));
+				BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+				BR_COND(bb_exp, bb_next2, ICMP_NE(XOR(OR(s, ty), CONST64(SEG_DESC_LDT)), CONST64(0)), bb); // must be ldt type
+				bb = bb_next2;
+				Value *p = AND(desc, CONST64(SEG_DESC_P));
+				bb_exp = raise_exception_emit(cpu, tc, bb, EXP_NP, ptr_eip);
+				BR_COND(bb_exp, bb_next3, ICMP_EQ(p, CONST64(0)), bb); // segment not present
+				bb = bb_next3;
+				write_seg_hidden_emit(cpu, tc, bb, LDTR_idx, sel, read_seg_desc_base_emit(tc, bb, desc),
+					read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
+				BR_UNCOND(bb_next4, bb);
+				bb = bb_next4;
+			}
+		}
+		break;
+
 		case X86_OPC_LMSW:        BAD;
 		case X86_OPC_LODS: {
 			switch (instr.opcode_byte)
