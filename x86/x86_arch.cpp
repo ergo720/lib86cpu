@@ -39,8 +39,9 @@ static constexpr regs_layout_t regs_layout[CPU_NUM_REGS] = {
 	{ 32, DR7_idx,	  "dr7" },
 	{ 32, EFLAGS_idx, "eflags" },
 	{ 32, EIP_idx,	  "eip" },
-	{ 48, IDTR_idx,	  "idtr" },
-	{ 48, GDTR_idx,	  "gdtr" },
+	{ 0, IDTR_idx,	  "idtr" },
+	{ 0, GDTR_idx,	  "gdtr" },
+	{ 0, LDTR_idx,	  "ldtr" },
 };
 
 static constexpr bool
@@ -86,6 +87,7 @@ static_assert(check_regs_layout_idx(27), "wrong index in regs_layout array!");
 static_assert(check_regs_layout_idx(28), "wrong index in regs_layout array!");
 static_assert(check_regs_layout_idx(29), "wrong index in regs_layout array!");
 static_assert(check_regs_layout_idx(30), "wrong index in regs_layout array!");
+static_assert(check_regs_layout_idx(31), "wrong index in regs_layout array!");
 
 
 void
@@ -103,5 +105,5 @@ cpu_x86_init(cpu_t *cpu)
 	cpu->cpu_ctx.regs.ds_hidden.limit = cpu->cpu_ctx.regs.fs_hidden.limit = cpu->cpu_ctx.regs.gs_hidden.limit = 0xFFFF;
 	cpu->cpu_ctx.regs.eflags = 0x2;
 	cpu->cpu_ctx.regs.cr0 = 0x60000010;
-	cpu->cpu_ctx.regs.idtr_limit = cpu->cpu_ctx.regs.gdtr_limit = 0xFFFF;
+	cpu->cpu_ctx.regs.idtr_hidden.limit = cpu->cpu_ctx.regs.gdtr_hidden.limit = cpu->cpu_ctx.regs.ldtr_hidden.limit = 0xFFFF;
 }

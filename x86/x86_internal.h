@@ -85,6 +85,7 @@ extern const char *mnemo[];
 #define EIP_idx     28
 #define IDTR_idx    29
 #define GDTR_idx    30
+#define LDTR_idx    31
 
 #define SEG_offset  ES_idx
 #define CR_offset   CR0_idx
@@ -94,8 +95,6 @@ extern const char *mnemo[];
 #define SEG_BASE_idx    0
 #define SEG_LIMIT_idx   1
 #define SEG_FLG_idx     2
-#define R48_BASE        0
-#define R48_LIMIT       1
 
 // eflags macros
 #define TF_MASK     (1 << 8)

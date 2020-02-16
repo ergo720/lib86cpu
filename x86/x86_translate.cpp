@@ -60,7 +60,7 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip)
 	cpu_ctx->regs.eflags &= ~(TF_MASK | IF_MASK | RF_MASK | AC_MASK);
 
 	// transfer program control to the exception handler specified in the idt
-	addr_t vec_addr = cpu_ctx->regs.idtr_base + expno * 4;
+	addr_t vec_addr = cpu_ctx->regs.idtr_hidden.base + expno * 4;
 	uint32_t vec_entry = mem_read<uint32_t>(cpu, vec_addr, eip);
 	cpu_ctx->regs.cs = (vec_entry & 0xFFFF0000) >> 16;
 	cpu_ctx->regs.cs_hidden.base = cpu_ctx->regs.cs << 4;
@@ -971,8 +971,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				if (size_mode == SIZE16) {
 					base = AND(base, CONST32(0x00FFFFFF));
 				}
-				ST_R48(base, reg_idx, R48_BASE);
-				ST_R48(limit, reg_idx, R48_LIMIT);
+				ST_SEG_HIDDEN(base, reg_idx, SEG_BASE_idx);
+				ST_SEG_HIDDEN(ZEXT32(limit), reg_idx, SEG_LIMIT_idx);
 			}
 		}
 		break;

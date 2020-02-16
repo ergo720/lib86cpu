@@ -46,7 +46,6 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 	std::vector<Type *>type_struct_reg_t_fields;
 	std::vector<Type *>type_struct_seg_t_fields;
 	std::vector<Type *>type_struct_hiddenseg_t_fields;
-	std::vector<Type *>type_struct_reg48_t_fields;
 
 	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
 	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
@@ -57,10 +56,6 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 	type_struct_seg_t_fields.push_back(type_struct_hiddenseg_t);
 	StructType *type_struct_seg_t = StructType::create(CTX(), type_struct_seg_t_fields, "struct.seg_t", false);
 
-	type_struct_reg48_t_fields.push_back(getIntegerType(32));
-	type_struct_reg48_t_fields.push_back(getIntegerType(16));
-	StructType *type_struct_reg48_t = StructType::create(CTX(), type_struct_reg48_t_fields, "struct.reg48_t", false);
-
 	for (uint8_t n = 0; n < CPU_NUM_REGS; n++) {
 		switch (n)
 		{
@@ -69,14 +64,11 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 		case SS_idx:
 		case DS_idx:
 		case FS_idx:
-		case GS_idx: {
-			type_struct_reg_t_fields.push_back(type_struct_seg_t);
-		}
-		break;
-
+		case GS_idx:
 		case IDTR_idx:
-		case GDTR_idx: {
-			type_struct_reg_t_fields.push_back(type_struct_reg48_t);
+		case GDTR_idx:
+		case LDTR_idx: {
+			type_struct_reg_t_fields.push_back(type_struct_seg_t);
 		}
 		break;
 
@@ -169,13 +161,13 @@ read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *se
 	BasicBlock *bb_ldt = BB();
 
 	Value *base = ALLOC32();
-	Value *limit = ALLOC16();
+	Value *limit = ALLOC32();
 	Value *idx = SHR(sel, CONST16(3));
 	Value *ti = SHR(AND(sel, CONST16(4)), CONST16(2));
 	BR_COND(bb_gdt, bb_ldt, ICMP_EQ(ti, CONST16(0)), bb);
 	bb = bb_gdt;
-	ST(base, LD_R48(GDTR_idx, R48_BASE));
-	ST(limit, LD_R48(GDTR_idx, R48_LIMIT));
+	ST(base, LD_SEG_HIDDEN(GDTR_idx, SEG_BASE_idx));
+	ST(limit, LD_SEG_HIDDEN(GDTR_idx, SEG_LIMIT_idx));
 	BR_UNCOND(bb_next1, bb);
 	bb = bb_ldt;
 	// we don't support LDTs yet, so just abort
@@ -184,7 +176,7 @@ read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *se
 	bb = bb_next1;
 	Value *desc_addr = ADD(LD(base), ZEXT32(MUL(idx, CONST16(8))));
 	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
-	BR_COND(bb_exp, bb_next2, ICMP_UGT(ADD(desc_addr, CONST32(7)), ADD(LD(base), ZEXT32(LD(limit)))), bb); // sel idx outside of descriptor table
+	BR_COND(bb_exp, bb_next2, ICMP_UGT(ADD(desc_addr, CONST32(7)), ADD(LD(base), LD(limit))), bb); // sel idx outside of descriptor table
 	bb = bb_next2;
 	Value *hflags = LD(cpu->ptr_hflags);
 	hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
