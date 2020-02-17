@@ -67,4 +67,5 @@ struct regs_t {
 	DEFINE_SEG_REG(idtr); // selector and flags unused
 	DEFINE_SEG_REG(gdtr); // selector and flags unused
 	DEFINE_SEG_REG(ldtr);
+	DEFINE_SEG_REG(tr);
 };

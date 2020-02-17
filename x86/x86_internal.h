@@ -88,6 +88,7 @@ extern const char *mnemo[];
 #define IDTR_idx    29
 #define GDTR_idx    30
 #define LDTR_idx    31
+#define TR_idx      32
 
 #define SEG_offset  ES_idx
 #define CR_offset   CR0_idx

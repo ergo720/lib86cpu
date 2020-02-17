@@ -1317,7 +1317,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 							read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
 					}
 					else {
-						BasicBlock *bb_null_seg =BB();
+						BasicBlock *bb_null_seg = BB();
 						BasicBlock *bb_next1 = BB();
 						BasicBlock *bb_next2 = BB();
 

@@ -67,7 +67,8 @@ get_struct_reg(cpu_t *cpu, translated_code_t *tc)
 		case GS_idx:
 		case IDTR_idx:
 		case GDTR_idx:
-		case LDTR_idx: {
+		case LDTR_idx:
+		case TR_idx: {
 			type_struct_reg_t_fields.push_back(type_struct_seg_t);
 		}
 		break;
@@ -768,7 +769,7 @@ create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disa
 }
 
 Value *
-get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb, unsigned opnum)
+get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb, const unsigned opnum)
 {
 	assert(opnum < OPNUM_COUNT && "Invalid operand number specified\n");
 

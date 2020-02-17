@@ -19,7 +19,7 @@ void optimize(translated_code_t *tc, Function *func);
 Value *get_struct_member_pointer(Value *gep_start, const unsigned gep_index, translated_code_t *tc, BasicBlock *bb);
 Value *get_r8h_pointer(Value *gep_start, translated_code_t *tc, BasicBlock *bb);
 void get_ext_fn(cpu_t *cpu, translated_code_t *tc, Function *func);
-Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlock *bb, unsigned opnum);
+Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlock *bb, const unsigned opnum);
 Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, size_t instr_size);
 BasicBlock *raise_exception_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb2, uint8_t expno, Value *ptr_eip);
 void ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *eip, Value *ptr_eip);
@@ -38,7 +38,7 @@ void set_flags(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *res, Va
 
 
 #define CTX() (*tc->ctx)
-#define BB() BasicBlock::Create(CTX(), "", func, 0) //
+#define BB() BasicBlock::Create(CTX(), "", func, 0)
 #define getIntegerType(x) (IntegerType::get(CTX(), x))
 #define getPointerType(x) (PointerType::getUnqual(x))
 #define getIntegerPointerType() (cpu->dl->getIntPtrType(CTX()))
