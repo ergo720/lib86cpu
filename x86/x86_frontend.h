@@ -29,6 +29,7 @@ Value *read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Va
 Value *read_seg_desc_base_emit(translated_code_t *tc, BasicBlock *bb, Value *desc);
 Value *read_seg_desc_limit_emit(translated_code_t *tc, BasicBlock *&bb, Value *desc);
 Value *read_seg_desc_flags_emit(translated_code_t *tc, BasicBlock *bb, Value *desc);
+std::vector<Value *> read_tss_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip);
 void write_seg_hidden_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const unsigned int reg, Value *sel, Value *base, Value *limit, Value *flags);
 Value *get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t size_mode);
 Value *get_register_op(cpu_t *cpu, translated_code_t *tc, x86_instr *instr, BasicBlock *bb, uint8_t idx);

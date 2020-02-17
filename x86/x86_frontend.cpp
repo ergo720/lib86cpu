@@ -189,6 +189,37 @@ read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *se
 	return desc;
 }
 
+std::vector<Value *>
+read_tss_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
+{
+	std::vector<Value *> vec;
+	Function *func = bb->getParent();
+	BasicBlock *bb_next1 = BB();
+	BasicBlock *bb_next2 = BB();
+
+	Value *idx = SHR(sel, CONST16(3));
+	Value *ti = SHR(AND(sel, CONST16(4)), CONST16(2));
+	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+	BR_COND(bb_exp, bb_next1, ICMP_NE(ti, CONST16(0)), bb); // must be in the gdt
+	bb = bb_next1;
+	Value *base = LD_SEG_HIDDEN(GDTR_idx, SEG_BASE_idx);
+	Value *limit = LD_SEG_HIDDEN(GDTR_idx, SEG_LIMIT_idx);
+	Value *desc_addr = ADD(base, ZEXT32(MUL(idx, CONST16(8))));
+	vec.push_back(desc_addr);
+	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+	BR_COND(bb_exp, bb_next2, ICMP_UGT(ADD(desc_addr, CONST32(7)), ADD(base, limit)), bb); // sel idx outside of descriptor table
+	bb = bb_next2;
+	Value *hflags = LD(cpu->ptr_hflags);
+	hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
+	ST(cpu->ptr_hflags, hflags);
+	Value *desc = LD_MEM(MEM_LD64_idx, desc_addr);
+	hflags = LD(cpu->ptr_hflags);
+	hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
+	ST(cpu->ptr_hflags, hflags);
+	vec.push_back(desc);
+	return vec;
+}
+
 Value *
 read_ss_sel(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
 {

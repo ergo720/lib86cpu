@@ -44,13 +44,16 @@ extern const char *mnemo[];
 #define SEG_DESC_TY   (15ULL << 40) // type
 #define SEG_DESC_W    (1ULL << 41)  // write
 #define SEG_DESC_R    SEG_DESC_W    // read
+#define SEG_DESC_BY   SEG_DESC_W    // busy
 #define SEG_DESC_C    (1ULL << 42)  // conforming
 #define SEG_DESC_DC   (1ULL << 43)  // data/code
 #define SEG_DESC_S    (1ULL << 44)  // system
 #define SEG_DESC_DPL  (3ULL << 45)  // dpl
 #define SEG_DESC_P    (1ULL << 47)  // present
 #define SEG_DESC_G    (1ULL << 55)  // granularity
-#define SEG_DESC_LDT  2             // system / ldt
+#define SEG_DESC_TSS16AV  1         // system / tss, 16 bit, available
+#define SEG_DESC_LDT      2         // system / ldt
+#define SEG_DESC_TSS32AV  9         // system / tss, 32 bit, available
 
 // segment hidden flags
 #define SEG_HIDDEN_DB  (1 << 22)  // default size

@@ -1058,6 +1058,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		break;
 
 		case X86_OPC_LLDT: {
+			assert(instr.reg_opc == 2);
+
 			if (!(cpu_ctx->hflags & HFLG_PE_MODE)) {
 				RAISE(EXP_UD);
 				disas_ctx->next_pc = CONST32(0); // unreachable
@@ -1079,7 +1081,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				GET_RM(OPNUM_SRC, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
 				BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
 				bb = bb_null_seg;
-				ST_SEG(sel, LDTR_idx);
+				write_seg_hidden_emit(cpu, tc, bb, LDTR_idx, sel, CONST32(0), CONST32(0), CONST32(0));
 				BR_UNCOND(bb_next4, bb);
 				bb = bb_next1;
 				Value *desc = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip);
@@ -1323,7 +1325,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 						BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
 						bb = bb_null_seg;
-						ST_SEG(sel, sel_idx);
+						write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
 						BR_UNCOND(bb_next2, bb);
 						bb = bb_next1;
 						Value *desc = read_seg_sel(cpu, tc, bb, sel, ptr_eip);
@@ -1342,7 +1344,61 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		}
 		break;
 
-		case X86_OPC_LTR:         BAD;
+		case X86_OPC_LTR: {
+			assert(instr.reg_opc == 3);
+
+			if (!(cpu_ctx->hflags & HFLG_PE_MODE)) {
+				RAISE(EXP_UD);
+				disas_ctx->next_pc = CONST32(0); // unreachable
+				translate_next = 0;
+			}
+			else if (cpu_ctx->hflags & HFLG_CPL) {
+				RAISE(EXP_GP);
+				disas_ctx->next_pc = CONST32(0); // unreachable
+				translate_next = 0;
+			}
+			else {
+				Value *sel, *rm;
+				std::vector<Value *> vec;
+				BasicBlock *bb_null_seg = BB();
+				BasicBlock *bb_next1 = BB();
+				BasicBlock *bb_next2 = BB();
+				BasicBlock *bb_next3 = BB();
+				BasicBlock *bb_next4 = BB();
+
+				GET_RM(OPNUM_SRC, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
+				BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
+				bb = bb_null_seg;
+				write_seg_hidden_emit(cpu, tc, bb, TR_idx, sel, CONST32(0), CONST32(0), CONST32(0));
+				BR_UNCOND(bb_next4, bb);
+				bb = bb_next1;
+				vec = read_tss_desc_emit(cpu, tc, bb, sel, ptr_eip);
+				Value *desc = vec[1];
+				Value *s = SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(40));
+				Value *ty = SHR(AND(desc, CONST64(SEG_DESC_TY)), CONST64(40));
+				BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+				Value *val = OR(ICMP_EQ(OR(s, ty), CONST64(SEG_DESC_TSS16AV)), ICMP_EQ(OR(s, ty), CONST64(SEG_DESC_TSS32AV)));
+				BR_COND(bb_exp, bb_next2, ICMP_EQ(val, CONSTs(1, 0)), bb); // must be an available tss
+				bb = bb_next2;
+				Value *p = AND(desc, CONST64(SEG_DESC_P));
+				bb_exp = raise_exception_emit(cpu, tc, bb, EXP_NP, ptr_eip);
+				BR_COND(bb_exp, bb_next3, ICMP_EQ(p, CONST64(0)), bb); // segment not present
+				bb = bb_next3;
+				Value *hflags = LD(cpu->ptr_hflags);
+				hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
+				ST(cpu->ptr_hflags, hflags);
+				ST_MEM(MEM_LD64_idx, vec[0], OR(desc, CONST64(SEG_DESC_BY)));
+				hflags = LD(cpu->ptr_hflags);
+				hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
+				ST(cpu->ptr_hflags, hflags);
+				write_seg_hidden_emit(cpu, tc, bb, TR_idx, sel, read_seg_desc_base_emit(tc, bb, desc),
+					read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
+				BR_UNCOND(bb_next4, bb);
+				bb = bb_next4;
+			}
+		}
+		break;
+
 		case X86_OPC_MOV:
 			switch (instr.opcode_byte)
 			{
