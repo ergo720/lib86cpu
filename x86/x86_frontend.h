@@ -20,6 +20,8 @@ Value *get_struct_member_pointer(Value *gep_start, const unsigned gep_index, tra
 Value *get_r8h_pointer(Value *gep_start, translated_code_t *tc, BasicBlock *bb);
 void get_ext_fn(cpu_t *cpu, translated_code_t *tc, Function *func);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlock *bb, const unsigned opnum);
+Value *mem_read_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *ptr_eip, const unsigned int idx);
+void mem_write_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *value, Value *ptr_eip, const unsigned int idx);
 Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, size_t instr_size);
 BasicBlock *raise_exception_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb2, uint8_t expno, Value *ptr_eip);
 void ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *eip, Value *ptr_eip);
@@ -196,6 +198,8 @@ default: \
 
 #define LD_MEM(idx, addr) CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, ptr_eip }, "", bb)
 #define ST_MEM(idx, addr, val) CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, val, ptr_eip }, "", bb)
+#define LD_MEM_PRIV(idx, addr) mem_read_no_cpl_emit(cpu, tc, bb, addr, ptr_eip, idx)
+#define ST_MEM_PRIV(idx, addr, val) mem_write_no_cpl_emit(cpu, tc, bb, addr, val, ptr_eip, idx)
 
 #define LD_PARITY(idx) LD(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST8(0), idx }, "", bb))
 #define RAISE(expno) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, CONST8(expno), ptr_eip }, "", bb)

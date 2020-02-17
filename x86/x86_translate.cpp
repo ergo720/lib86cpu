@@ -1384,13 +1384,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				bb_exp = raise_exception_emit(cpu, tc, bb, EXP_NP, ptr_eip);
 				BR_COND(bb_exp, bb_next3, ICMP_EQ(p, CONST64(0)), bb); // segment not present
 				bb = bb_next3;
-				Value *hflags = LD(cpu->ptr_hflags);
-				hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
-				ST(cpu->ptr_hflags, hflags);
-				ST_MEM(MEM_LD64_idx, vec[0], OR(desc, CONST64(SEG_DESC_BY)));
-				hflags = LD(cpu->ptr_hflags);
-				hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
-				ST(cpu->ptr_hflags, hflags);
+				ST_MEM_PRIV(MEM_LD64_idx, vec[0], OR(desc, CONST64(SEG_DESC_BY)));
 				write_seg_hidden_emit(cpu, tc, bb, TR_idx, sel, read_seg_desc_base_emit(tc, bb, desc),
 					read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
 				BR_UNCOND(bb_next4, bb);

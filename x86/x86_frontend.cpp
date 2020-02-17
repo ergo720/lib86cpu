@@ -179,14 +179,7 @@ read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *se
 	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
 	BR_COND(bb_exp, bb_next2, ICMP_UGT(ADD(desc_addr, CONST32(7)), ADD(LD(base), LD(limit))), bb); // sel idx outside of descriptor table
 	bb = bb_next2;
-	Value *hflags = LD(cpu->ptr_hflags);
-	hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
-	ST(cpu->ptr_hflags, hflags);
-	Value *desc = LD_MEM(MEM_LD64_idx, desc_addr);
-	hflags = LD(cpu->ptr_hflags);
-	hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
-	ST(cpu->ptr_hflags, hflags);
-	return desc;
+	return LD_MEM_PRIV(MEM_LD64_idx, desc_addr);
 }
 
 std::vector<Value *>
@@ -209,13 +202,7 @@ read_tss_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *se
 	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
 	BR_COND(bb_exp, bb_next2, ICMP_UGT(ADD(desc_addr, CONST32(7)), ADD(base, limit)), bb); // sel idx outside of descriptor table
 	bb = bb_next2;
-	Value *hflags = LD(cpu->ptr_hflags);
-	hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
-	ST(cpu->ptr_hflags, hflags);
-	Value *desc = LD_MEM(MEM_LD64_idx, desc_addr);
-	hflags = LD(cpu->ptr_hflags);
-	hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
-	ST(cpu->ptr_hflags, hflags);
+	Value *desc = LD_MEM_PRIV(MEM_LD64_idx, desc_addr);
 	vec.push_back(desc);
 	return vec;
 }
@@ -336,6 +323,31 @@ ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Val
 	write_seg_hidden_emit(cpu, tc, bb, CS_idx, OR(AND(sel, CONST16(0xFFFC)), CONST16(cpl)), read_seg_desc_base_emit(tc, bb, desc),
 		limit, read_seg_desc_flags_emit(tc, bb, desc));
 	ST_R32(eip, EIP_idx);
+}
+
+Value *
+mem_read_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *ptr_eip, const unsigned int idx)
+{
+	Value *hflags = LD(cpu->ptr_hflags);
+	hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
+	ST(cpu->ptr_hflags, hflags);
+	Value *value = LD_MEM(idx, addr);
+	hflags = LD(cpu->ptr_hflags);
+	hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
+	ST(cpu->ptr_hflags, hflags);
+	return value;
+}
+
+void
+mem_write_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *value, Value *ptr_eip, const unsigned int idx)
+{
+	Value *hflags = LD(cpu->ptr_hflags);
+	hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
+	ST(cpu->ptr_hflags, hflags);
+	ST_MEM(idx, addr, value);
+	hflags = LD(cpu->ptr_hflags);
+	hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
+	ST(cpu->ptr_hflags, hflags);
 }
 
 Value *
