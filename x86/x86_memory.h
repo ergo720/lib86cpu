@@ -75,7 +75,7 @@ T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *regi
 
 		case MEM_UNMAPPED:
 			LOG("Memory read to unmapped memory at address %#010x with size %d\n", addr, sizeof(T));
-			return 0xFFFFFFFF;
+			return std::numeric_limits<T>::max();
 
 		default:
 			LIB86CPU_ABORT();
@@ -83,7 +83,7 @@ T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *regi
 	}
 	else {
 		LOG("Memory read at address %#010x with size %d is not completely inside a memory region\n", addr, sizeof(T));
-		return 0xFFFFFFFF;
+		return std::numeric_limits<T>::max();
 	}
 }
 
@@ -109,7 +109,7 @@ T as_ram_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *region)
 	}
 	else {
 		LOG("Memory read at address %#010x with size %d is not completely inside a memory region\n", addr, sizeof(T));
-		return 0xFFFFFFFF;
+		return std::numeric_limits<T>::max();
 	}
 }
 
@@ -158,7 +158,7 @@ T as_io_dispatch_read(cpu_t *cpu, port_t port, memory_region_t<port_t> *region)
 
 		case MEM_UNMAPPED:
 			LOG("Memory read to unmapped memory at port %#06hx with size %d\n", port, sizeof(T));
-			return 0xFFFFFFFF;
+			return std::numeric_limits<T>::max();
 
 		default:
 			LIB86CPU_ABORT();
@@ -166,7 +166,7 @@ T as_io_dispatch_read(cpu_t *cpu, port_t port, memory_region_t<port_t> *region)
 	}
 	else {
 		LOG("Memory read at port %#06hx with size %d is not completely inside a memory region\n", port, sizeof(T));
-		return 0xFFFFFFFF;
+		return std::numeric_limits<T>::max();
 	}
 }
 

@@ -154,7 +154,7 @@ static uint32_t
 default_mmio_read_handler(addr_t addr, size_t size, void *opaque)
 {
 	LOG("Unhandled MMIO read at address %#010x with size %d\n", addr, size);
-	return 0xFFFFFFFF;
+	return std::numeric_limits<uint32_t>::max();
 }
 
 static void
@@ -167,7 +167,7 @@ static uint32_t
 default_pmio_read_handler(addr_t addr, size_t size, void *opaque)
 {
 	LOG("Unhandled PMIO read at port %#06x with size %d\n", addr, size);
-	return 0xFFFFFFFF;
+	return std::numeric_limits<uint32_t>::max();
 }
 
 lib86cpu_status
