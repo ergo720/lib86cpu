@@ -1434,9 +1434,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			break;
 
 			case 0x8C: {
-				if (cpu_ctx->hflags & HFLG_PE_MODE) {
-					BAD_MODE;
-				}
 				Value *val, *rm;
 				val = LD_SEG(instr.operand[OPNUM_SRC].reg + SEG_offset);
 				GET_RM(OPNUM_DST, ST_REG_val(ZEXT32(val), IBITCAST32(rm));, ST_MEM(MEM_LD16_idx, rm, val););
@@ -1444,20 +1441,44 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			break;
 
 			case 0x8E: {
-				if (cpu_ctx->hflags & HFLG_PE_MODE) {
-					BAD_MODE;
-				}
-				if (instr.operand[OPNUM_DST].reg == 1 || instr.operand[OPNUM_DST].reg > 5) {
+				if (instr.operand[OPNUM_DST].reg == 1) {
 					RAISE(EXP_UD);
 					disas_ctx->next_pc = CONST32(0); // unreachable
+					translate_next = 0;
 				}
 				else {
-					Value *val, *rm;
-					GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(MEM_LD16_idx, rm););
-					ST_SEG(val, instr.operand[OPNUM_DST].reg + SEG_offset);
-					ST_SEG_HIDDEN(SHL(ZEXT32(val), CONST32(4)), instr.operand[OPNUM_DST].reg + SEG_offset, SEG_BASE_idx);
+					Value *sel, *rm;
+					const unsigned int sel_idx = instr.operand[OPNUM_DST].reg + SEG_offset;
+					GET_RM(OPNUM_SRC, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
+
+					if (cpu_ctx->hflags & HFLG_PE_MODE) {
+						if (sel_idx == SS_idx) {
+							Value *desc = read_ss_sel(cpu, tc, bb, sel, ptr_eip);
+							write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, desc),
+								read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
+						}
+						else {
+							BasicBlock *bb_null_seg = BB();
+							BasicBlock *bb_next1 = BB();
+							BasicBlock *bb_next2 = BB();
+
+							BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
+							bb = bb_null_seg;
+							write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
+							BR_UNCOND(bb_next2, bb);
+							bb = bb_next1;
+							Value *desc = read_seg_sel(cpu, tc, bb, sel, ptr_eip);
+							write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel /* & rpl?? */, read_seg_desc_base_emit(tc, bb, desc),
+								read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
+							BR_UNCOND(bb_next2, bb);
+							bb = bb_next2;
+						}
+					}
+					else {
+						ST_SEG(sel, instr.operand[OPNUM_DST].reg + SEG_offset);
+						ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), instr.operand[OPNUM_DST].reg + SEG_offset, SEG_BASE_idx);
+					}
 				}
-				translate_next = 0;
 			}
 			break;
 
