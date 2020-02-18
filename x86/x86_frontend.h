@@ -25,9 +25,10 @@ void mem_write_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Va
 Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, size_t instr_size);
 BasicBlock *raise_exception_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb2, uint8_t expno, Value *ptr_eip);
 void ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *eip, Value *ptr_eip);
-Value *read_ss_sel(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip);
-Value *read_seg_sel(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip);
-Value *read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip);
+std::vector<Value *> check_ss_desc_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip);
+std::vector<Value *> check_seg_desc_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip);
+void set_access_flg_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *desc, Value *desc_addr, Value *ptr_eip);
+std::vector<Value *> read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip);
 Value *read_seg_desc_base_emit(translated_code_t *tc, BasicBlock *bb, Value *desc);
 Value *read_seg_desc_limit_emit(translated_code_t *tc, BasicBlock *&bb, Value *desc);
 Value *read_seg_desc_flags_emit(translated_code_t *tc, BasicBlock *bb, Value *desc);

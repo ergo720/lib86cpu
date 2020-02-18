@@ -42,6 +42,7 @@ extern const char *mnemo[];
 
 // segment descriptor flags
 #define SEG_DESC_TY   (15ULL << 40) // type
+#define SEG_DESC_A    (1ULL << 40)  // accessed
 #define SEG_DESC_W    (1ULL << 41)  // write
 #define SEG_DESC_R    SEG_DESC_W    // read
 #define SEG_DESC_BY   SEG_DESC_W    // busy

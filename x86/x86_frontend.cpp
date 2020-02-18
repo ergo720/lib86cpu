@@ -124,6 +124,20 @@ write_seg_hidden_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const u
 	}
 }
 
+void
+set_access_flg_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *desc, Value *desc_addr, Value *ptr_eip)
+{
+	Function *func = bb->getParent();
+	BasicBlock *bb_a = BB();
+	BasicBlock *bb_next1 = BB();
+
+	BR_COND(bb_a, bb_next1, ICMP_EQ(OR(SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(44)), SHR(AND(desc, CONST64(SEG_DESC_A)), CONST64(39))), CONST64(1)), bb);
+	bb = bb_a;
+	ST_MEM_PRIV(MEM_ST64_idx, desc_addr, OR(desc, CONST64(SEG_DESC_A)));
+	BR_UNCOND(bb_next1, bb);
+	bb = bb_next1;
+}
+
 Value *
 read_seg_desc_base_emit(translated_code_t *tc, BasicBlock *bb, Value *desc)
 {
@@ -152,9 +166,10 @@ read_seg_desc_limit_emit(translated_code_t *tc, BasicBlock *&bb, Value *desc)
 	return LD(limit);
 }
 
-Value *
+std::vector<Value *>
 read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
 {
+	std::vector<Value *> vec;
 	Function *func = bb->getParent();
 	BasicBlock *bb_next1 = BB();
 	BasicBlock *bb_next2 = BB();
@@ -176,10 +191,13 @@ read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *se
 	UNREACH();
 	bb = bb_next1;
 	Value *desc_addr = ADD(LD(base), ZEXT32(MUL(idx, CONST16(8))));
+	vec.push_back(desc_addr);
 	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
 	BR_COND(bb_exp, bb_next2, ICMP_UGT(ADD(desc_addr, CONST32(7)), ADD(LD(base), LD(limit))), bb); // sel idx outside of descriptor table
 	bb = bb_next2;
-	return LD_MEM_PRIV(MEM_LD64_idx, desc_addr);
+	Value *desc = LD_MEM_PRIV(MEM_LD64_idx, desc_addr);
+	vec.push_back(desc);
+	return vec;
 }
 
 std::vector<Value *>
@@ -207,9 +225,10 @@ read_tss_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *se
 	return vec;
 }
 
-Value *
-read_ss_sel(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
+std::vector<Value *>
+check_ss_desc_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
 {
+	std::vector<Value *> vec;
 	Function *func = bb->getParent();
 	BasicBlock *bb_next1 = BB();
 	BasicBlock *bb_next2 = BB();
@@ -218,7 +237,8 @@ read_ss_sel(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Valu
 	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
 	BR_COND(bb_exp, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb); // sel == NULL
 	bb = bb_next1;
-	Value *desc = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip);
+	vec = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip);
+	Value *desc = vec[1];
 	Value *s = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(44))); // cannot be a system segment
 	Value *d = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_DC)), CONST64(42))); // cannot be a code segment
 	Value *w = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_W)), CONST64(39))); // cannot be a non-writable data segment
@@ -232,12 +252,13 @@ read_ss_sel(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Valu
 	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_SS, ptr_eip);
 	BR_COND(bb_exp, bb_next3, ICMP_EQ(p, CONST64(0)), bb); // segment not present
 	bb = bb_next3;
-	return desc;
+	return vec;
 }
 
-Value *
-read_seg_sel(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
+std::vector<Value *>
+check_seg_desc_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
 {
+	std::vector<Value *> vec;
 	Function *func = bb->getParent();
 	BasicBlock *bb_nonsys = BB();
 	BasicBlock *bb_check = BB();
@@ -245,7 +266,8 @@ read_seg_sel(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Val
 	BasicBlock *bb_next2 = BB();
 	BasicBlock *bb_next3 = BB();
 
-	Value *desc = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip);
+	vec = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip);
+	Value *desc = vec[1];
 	Value *s = AND(desc, CONST64(SEG_DESC_S));
 	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
 	BR_COND(bb_exp, bb_nonsys, ICMP_EQ(s, CONST64(0)), bb); // cannot be a system segment
@@ -267,12 +289,13 @@ read_seg_sel(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Val
 	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_NP, ptr_eip);
 	BR_COND(bb_exp, bb_next3, ICMP_EQ(p, CONST64(0)), bb); // segment not present
 	bb = bb_next3;
-	return desc;
+	return vec;
 }
 
 void
 ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *eip, Value *ptr_eip)
 {
+	std::vector<Value *> vec;
 	Function *func = bb->getParent();
 	BasicBlock *bb_next1 = BB();
 	BasicBlock *bb_next2 = BB();
@@ -287,7 +310,8 @@ ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Val
 	BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
 	BR_COND(bb_exp, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb); // sel == NULL
 	bb = bb_next1;
-	Value *desc = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip);
+	vec = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip);
+	Value *desc = vec[1];
 	Value *s = AND(desc, CONST64(SEG_DESC_S));
 	BR_COND(bb_sys, bb_nonsys, ICMP_EQ(s, CONST64(0)), bb);
 	bb = bb_sys;
@@ -319,7 +343,7 @@ ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Val
 	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
 	BR_COND(bb_exp, bb_next4, ICMP_UGT(eip, limit), bb); // segment limit exceeded
 	bb = bb_next4;
-	ST_SEG(sel, CS_idx);
+	set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
 	write_seg_hidden_emit(cpu, tc, bb, CS_idx, OR(AND(sel, CONST16(0xFFFC)), CONST16(cpl)), read_seg_desc_base_emit(tc, bb, desc),
 		limit, read_seg_desc_flags_emit(tc, bb, desc));
 	ST_R32(eip, EIP_idx);

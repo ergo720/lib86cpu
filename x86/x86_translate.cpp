@@ -1084,7 +1084,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				write_seg_hidden_emit(cpu, tc, bb, LDTR_idx, sel, CONST32(0), CONST32(0), CONST32(0));
 				BR_UNCOND(bb_next4, bb);
 				bb = bb_next1;
-				Value *desc = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip);
+				Value *desc = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip)[1];
 				Value *s = SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(40));
 				Value *ty = SHR(AND(desc, CONST64(SEG_DESC_TY)), CONST64(40));
 				BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
@@ -1313,10 +1313,13 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				}
 
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
+					std::vector<Value *> vec;
+
 					if (sel_idx == SS_idx) {
-						Value *desc = read_ss_sel(cpu, tc, bb, sel, ptr_eip);
-						write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, desc),
-							read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
+						vec = check_ss_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
+						set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
+						write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, vec[1]),
+							read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
 					}
 					else {
 						BasicBlock *bb_null_seg = BB();
@@ -1328,9 +1331,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 						write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
 						BR_UNCOND(bb_next2, bb);
 						bb = bb_next1;
-						Value *desc = read_seg_sel(cpu, tc, bb, sel, ptr_eip);
-						write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel /* & rpl?? */, read_seg_desc_base_emit(tc, bb, desc),
-							read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
+						vec = check_seg_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
+						set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
+						write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel /* & rpl?? */, read_seg_desc_base_emit(tc, bb, vec[1]),
+							read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
 						BR_UNCOND(bb_next2, bb);
 						bb = bb_next2;
 					}
@@ -1452,10 +1456,13 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					GET_RM(OPNUM_SRC, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
 
 					if (cpu_ctx->hflags & HFLG_PE_MODE) {
+						std::vector<Value *> vec;
+
 						if (sel_idx == SS_idx) {
-							Value *desc = read_ss_sel(cpu, tc, bb, sel, ptr_eip);
-							write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, desc),
-								read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
+							vec = check_ss_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
+							set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
+							write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, vec[1]),
+								read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
 						}
 						else {
 							BasicBlock *bb_null_seg = BB();
@@ -1467,9 +1474,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 							write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
 							BR_UNCOND(bb_next2, bb);
 							bb = bb_next1;
-							Value *desc = read_seg_sel(cpu, tc, bb, sel, ptr_eip);
-							write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel /* & rpl?? */, read_seg_desc_base_emit(tc, bb, desc),
-								read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
+							vec = check_seg_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
+							set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
+							write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel /* & rpl?? */, read_seg_desc_base_emit(tc, bb, vec[1]),
+								read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
 							BR_UNCOND(bb_next2, bb);
 							bb = bb_next2;
 						}
