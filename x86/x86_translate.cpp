@@ -1023,7 +1023,35 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 		case X86_OPC_LAHF:        BAD;
 		case X86_OPC_LAR:         BAD;
-		case X86_OPC_LEA:         BAD;
+		case X86_OPC_LEA: {
+			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
+				RAISE(EXP_UD);
+				disas_ctx->next_pc = CONST32(0); // unreachable
+				translate_next = 0;
+			}
+			else {
+				Value *rm, *reg, *offset;
+				GET_RM(OPNUM_SRC, assert(0);, offset = SUB(rm, LD_SEG_HIDDEN(instr.seg + SEG_offset, SEG_BASE_idx));
+				offset = addr_mode == ADDR16 ? TRUNC16(offset) : offset;);
+				reg = GET_REG(OPNUM_DST);
+
+				switch (size_mode)
+				{
+				case SIZE16:
+					addr_mode == ADDR16 ? ST_REG_val(offset, reg) : ST_REG_val(TRUNC16(offset), reg);
+					break;
+
+				case SIZE32:
+					addr_mode == ADDR16 ? ST_REG_val(ZEXT32(offset), reg) : ST_REG_val(offset, reg);
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+			}
+		}
+		break;
+
 		case X86_OPC_LEAVE:       BAD;
 		case X86_OPC_LGDTD:
 		case X86_OPC_LGDTL:
