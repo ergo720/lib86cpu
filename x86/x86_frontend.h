@@ -22,6 +22,7 @@ void get_ext_fn(cpu_t *cpu, translated_code_t *tc, Function *func);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlock *bb, const unsigned opnum);
 Value *mem_read_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *ptr_eip, const unsigned int idx);
 void mem_write_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *value, Value *ptr_eip, const unsigned int idx);
+void check_io_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *port, Value *mask, Value *ptr_eip);
 Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, size_t instr_size);
 BasicBlock *raise_exception_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb2, uint8_t expno, Value *ptr_eip);
 void ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *eip, Value *ptr_eip);
@@ -144,6 +145,7 @@ default: \
 #define ICMP_EQ(a, b) new ICmpInst(*bb, ICmpInst::ICMP_EQ, a, b, "")
 #define ICMP_NE(a, b) new ICmpInst(*bb, ICmpInst::ICMP_NE, a, b, "")
 #define ICMP_UGT(a, b) new ICmpInst(*bb, ICmpInst::ICMP_UGT, a, b, "")
+#define ICMP_ULT(a, b) new ICmpInst(*bb, ICmpInst::ICMP_ULT, a, b, "")
 #define NOT_ZERO(s, v) AND(SHR(OR(v, SUB(CONSTs(s, 0), v)), CONSTs(s, s-1)), CONSTs(s, 1))
 
 #define GEP(ptr, idx)  get_struct_member_pointer(ptr, idx, tc, bb)

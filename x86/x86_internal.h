@@ -107,6 +107,7 @@ extern const char *mnemo[];
 #define TF_MASK     (1 << 8)
 #define IF_MASK     (1 << 9)
 #define DF_MASK     (1 << 10)
+#define IOPL_MASK   (3 << 12)
 #define RF_MASK     (1 << 16)
 #define AC_MASK     (1 << 18)
 

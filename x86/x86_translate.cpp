@@ -1751,7 +1751,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			switch (instr.opcode_byte)
 			{
 			case 0xEE: {
-				ST_MEM(IO_ST8_idx, LD_R16(EDX_idx), LD_R8L(EAX_idx));
+				Value *port = LD_R16(EDX_idx);
+				check_io_priv_emit(cpu, tc, bb, ZEXT32(port), CONST32(1), ptr_eip);
+				ST_MEM(IO_ST8_idx, port, LD_R8L(EAX_idx));
 			}
 			break;
 
@@ -2389,7 +2391,7 @@ cpu_exec_tc(cpu_t *cpu)
 
 			tc->pc = pc;
 			tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
-			tc->flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | RF_MASK | AC_MASK));
+			tc->flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
 
 			tc->ptr_code = reinterpret_cast<void *>(cpu->jit->lookup("start")->getAddress());
 			assert(tc->ptr_code);

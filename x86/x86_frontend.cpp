@@ -374,6 +374,32 @@ mem_write_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *
 	ST(cpu->ptr_hflags, hflags);
 }
 
+void
+check_io_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *port, Value *mask, Value *ptr_eip)
+{
+	if ((cpu->cpu_ctx.hflags & HFLG_PE_MODE) && ((cpu->cpu_ctx.hflags & HFLG_CPL) > ((cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12))) {
+		Function *func = bb->getParent();
+		BasicBlock *bb_next1 = BB();
+		BasicBlock *bb_next2 = BB();
+		BasicBlock *bb_next3 = BB();
+		BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+
+		Value *base = LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx);
+		Value *limit = LD_SEG_HIDDEN(TR_idx, SEG_LIMIT_idx);
+		BR_COND(bb_exp, bb_next1, ICMP_ULT(limit, CONST32(103)), bb);
+		bb = bb_next1;
+		Value *io_map_offset = ZEXT32(LD_MEM(MEM_LD16_idx, ADD(base, CONST32(102))));
+		Value *io_port_offset = ADD(io_map_offset, SHR(port, CONST32(3)));
+		BR_COND(bb_exp, bb_next2, ICMP_UGT(ADD(io_port_offset, CONST32(1)), limit), bb);
+		bb = bb_next2;
+		Value *value = ALLOC32();
+		ST(value, ZEXT32(LD_MEM(MEM_LD16_idx, ADD(base, io_port_offset))));
+		ST(value, SHR(LD(value), AND(port, CONST32(7))));
+		BR_COND(bb_exp, bb_next3, ICMP_NE(AND(LD(value), mask), CONST32(0)), bb);
+		bb = bb_next3;
+	}
+}
+
 Value *
 get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t size_mode)
 {
@@ -525,7 +551,7 @@ tc_hash(addr_t pc)
 translated_code_t *
 tc_cache_search(cpu_t *cpu, addr_t pc)
 {
-	uint32_t flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | RF_MASK | AC_MASK));
+	uint32_t flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
 	uint32_t idx = tc_hash(pc);
 	auto it = cpu->code_cache[idx].begin();
 	while (it != cpu->code_cache[idx].end()) {
