@@ -188,9 +188,9 @@ read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *se
 	ST(limit, LD_SEG_HIDDEN(GDTR_idx, SEG_LIMIT_idx));
 	BR_UNCOND(bb_next1, bb);
 	bb = bb_ldt;
-	// we don't support LDTs yet, so just abort
-	INTRINSIC(trap);
-	UNREACH();
+	ST(base, LD_SEG_HIDDEN(LDTR_idx, SEG_BASE_idx));
+	ST(limit, LD_SEG_HIDDEN(LDTR_idx, SEG_LIMIT_idx));
+	BR_UNCOND(bb_next1, bb);
 	bb = bb_next1;
 	Value *desc_addr = ADD(LD(base), ZEXT32(MUL(idx, CONST16(8))));
 	vec.push_back(desc_addr);
