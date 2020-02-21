@@ -1291,7 +1291,7 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 	case OPTYPE_SIB_MEM:
 	case OPTYPE_SIB_DISP:
 		assert((instr->mod == 0 || instr->mod == 1 || instr->mod == 2) && instr->rm == 4);
-		Value *scale, *idx, *base;
+		Value *scale, *idx, *base, *disp;
 		if (instr->scale < 4) {
 			scale = CONST32(1ULL << instr->scale);
 		}
@@ -1345,7 +1345,25 @@ get_operand(cpu_t *cpu, x86_instr *instr , translated_code_t *tc, BasicBlock *bb
 			assert(0 && "Unknown sib base specified\n");
 			return nullptr;
 		}
-		return ADD(ADD(base, MUL(idx, scale)), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
+		switch (instr->mod)
+		{
+		case 0:
+			disp = CONST32(0);
+			break;
+		case 1:
+			disp = SEXT32(CONST8(instr->disp));
+			break;
+		case 2:
+			disp = CONST32(instr->disp);
+			break;
+		case 3:
+			assert(0 && "instr->mod specifies OPTYPE_REG with sib addressing mode!\n");
+			return nullptr;
+		default:
+			assert(0 && "Unknown instr->mod specified with instr->base == 5\n");
+			return nullptr;
+		}
+		return ADD(ADD(ADD(base, MUL(idx, scale)), disp), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
 	default:
 		assert(0 && "Unknown operand type specified\n");
 		return nullptr;
