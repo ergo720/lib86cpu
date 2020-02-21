@@ -111,7 +111,7 @@ raise_exception_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb2, uint8_t
 }
 
 void
-write_seg_hidden_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const unsigned int reg, Value *sel, Value *base, Value *limit, Value *flags)
+write_seg_reg_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const unsigned int reg, Value *sel, Value *base, Value *limit, Value *flags)
 {
 	ST_SEG(sel, reg);
 	ST_SEG_HIDDEN(base, reg, SEG_BASE_idx);
@@ -119,8 +119,10 @@ write_seg_hidden_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const u
 	ST_SEG_HIDDEN(flags, reg, SEG_FLG_idx);
 
 	if (reg == CS_idx) {
-		Value *hflags = LD(cpu->ptr_hflags);
-		ST(cpu->ptr_hflags, OR(SHR(AND(flags, CONST32(SEG_HIDDEN_DB)), CONST32(20)), hflags));
+		ST(cpu->ptr_hflags, OR(SHR(AND(flags, CONST32(SEG_HIDDEN_DB)), CONST32(20)), AND(LD(cpu->ptr_hflags), CONST32(~HFLG_CS32))));
+	}
+	else if (reg == SS_idx) {
+		ST(cpu->ptr_hflags, OR(SHR(AND(flags, CONST32(SEG_HIDDEN_DB)), CONST32(19)), AND(LD(cpu->ptr_hflags), CONST32(~HFLG_SS32))));
 	}
 }
 
@@ -248,6 +250,7 @@ check_ss_desc_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Valu
 	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
 	Value *val = XOR(OR(OR(OR(OR(s, d), w), dpl), rpl), OR(OR(OR(OR(CONST16(1), CONST16(0)), CONST16(4)), SHL(cpl, CONST16(3))), SHL(cpl, CONST16(5))));
 	BR_COND(bb_exp, bb_next2, ICMP_NE(val, CONST16(0)), bb);
+	bb = bb_next2;
 	Value *p = AND(desc, CONST64(SEG_DESC_P));
 	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_SS, ptr_eip);
 	BR_COND(bb_exp, bb_next3, ICMP_EQ(p, CONST64(0)), bb); // segment not present
@@ -344,7 +347,7 @@ ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Val
 	BR_COND(bb_exp, bb_next4, ICMP_UGT(eip, limit), bb); // segment limit exceeded
 	bb = bb_next4;
 	set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
-	write_seg_hidden_emit(cpu, tc, bb, CS_idx, OR(AND(sel, CONST16(0xFFFC)), CONST16(cpl)), read_seg_desc_base_emit(tc, bb, desc),
+	write_seg_reg_emit(cpu, tc, bb, CS_idx, OR(AND(sel, CONST16(0xFFFC)), CONST16(cpl)), read_seg_desc_base_emit(tc, bb, desc),
 		limit, read_seg_desc_flags_emit(tc, bb, desc));
 	ST_R32(eip, EIP_idx);
 }
@@ -398,6 +401,88 @@ check_io_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *po
 		BR_COND(bb_exp, bb_next3, ICMP_NE(AND(LD(value), mask), CONST32(0)), bb);
 		bb = bb_next3;
 	}
+}
+
+void
+stack_push_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *value, Value *ptr_eip, uint32_t size_mode)
+{
+	assert(size_mode != SIZE8);
+
+	switch ((size_mode << 1) | ((cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
+	{
+	case 0: { // sp, push 32
+		Value *new_sp = SUB(LD_R16(ESP_idx), CONST16(4));
+		ST_MEM(MEM_ST32_idx, ADD(ZEXT32(new_sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
+		ST_R16(new_sp, ESP_idx);
+	}
+	break;
+
+	case 1: { // esp, push 32
+		Value *new_esp = SUB(LD_R32(ESP_idx), CONST32(4));
+		ST_MEM(MEM_ST32_idx, ADD(new_esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
+		ST_R32(new_esp, ESP_idx);
+	}
+	break;
+
+	case 2: { // sp, push 16
+		Value *new_sp = SUB(LD_R16(ESP_idx), CONST16(2));
+		ST_MEM(MEM_ST16_idx, ADD(ZEXT32(new_sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
+		ST_R16(new_sp, ESP_idx);
+	}
+	break;
+
+	case 3: { // esp, push 16
+		Value *new_esp = SUB(LD_R32(ESP_idx), CONST32(2));
+		ST_MEM(MEM_ST16_idx, ADD(new_esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
+		ST_R32(new_esp, ESP_idx);
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+Value *
+stack_push_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *value, Value *ptr_eip, Value *ptr_esp, uint32_t size_mode)
+{
+	assert(size_mode != SIZE8);
+
+	switch ((size_mode << 1) | ((cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
+	{
+	case 0: { // sp, push 32
+		Value *new_sp = SUB(ptr_esp, CONST16(4));
+		ST_MEM(MEM_ST32_idx, ADD(ZEXT32(new_sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
+		ptr_esp = new_sp;
+	}
+	break;
+
+	case 1: { // esp, push 32
+		Value *new_esp = SUB(ptr_esp, CONST32(4));
+		ST_MEM(MEM_ST32_idx, ADD(new_esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
+		ptr_esp = new_esp;
+	}
+	break;
+
+	case 2: { // sp, push 16
+		Value *new_sp = SUB(ptr_esp, CONST16(2));
+		ST_MEM(MEM_ST16_idx, ADD(ZEXT32(new_sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
+		ptr_esp = new_sp;
+	}
+	break;
+
+	case 3: { // esp, push 16
+		Value *new_esp = SUB(ptr_esp, CONST32(2));
+		ST_MEM(MEM_ST16_idx, ADD(new_esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
+		ptr_esp = new_esp;
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+
+	return ptr_esp;
 }
 
 Value *

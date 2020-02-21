@@ -86,10 +86,13 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 				if (cpu_ctx->regs.cs_hidden.flags & SEG_HIDDEN_DB) {
 					cpu_ctx->hflags |= HFLG_CS32;
 				}
+				if (cpu_ctx->regs.ss_hidden.flags & SEG_HIDDEN_DB) {
+					cpu_ctx->hflags |= HFLG_SS32;
+				}
 				cpu_ctx->hflags |= (HFLG_PE_MODE | (cpu_ctx->regs.cs & HFLG_CPL));
 			}
 			else {
-				cpu_ctx->hflags &= ~(HFLG_CS32 | HFLG_PE_MODE);
+				cpu_ctx->hflags &= ~(HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE);
 			}
 
 			// since tc_cache_clear has deleted the calling code block, we must return to the translator with an exception. We also have to setup the eip
@@ -319,15 +322,21 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				addr_t ret_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes;
 				addr_t call_eip = instr.operand[OPNUM_SRC].imm;
 				uint16_t new_sel = instr.operand[OPNUM_SRC].seg_sel;
+				Value *cs, *eip;
 				if (size_mode == SIZE16) {
+					cs = CONST16(cpu_ctx->regs.cs);
+					eip = CONST16(ret_eip);
 					call_eip &= 0x0000FFFF;
 				}
-				// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
-				Value *sp = SUB(LD_R16(ESP_idx), size_mode == SIZE16 ? CONST16(2) : CONST16(4));
-				ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(cpu_ctx->regs.cs) : CONST32(cpu_ctx->regs.cs));
-				sp = SUB(sp, size_mode == SIZE16 ? CONST16(2) : CONST16(4));
-				ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
-				ST_R16(sp, ESP_idx);
+				else {
+					cs = CONST32(cpu_ctx->regs.cs);
+					eip = CONST32(ret_eip);
+				}
+
+				GET_ESP();
+				Value *esp = MEM_PUSH_ESP(LD(ptr_esp), cs);
+				esp = MEM_PUSH_ESP(esp, eip);
+				ST_REG_val(esp, ptr_esp);
 				ST_SEG(CONST16(new_sel), CS_idx);
 				ST_R32(CONST32(call_eip), EIP_idx);
 				ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
@@ -1109,7 +1118,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				GET_RM(OPNUM_SRC, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
 				BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
 				bb = bb_null_seg;
-				write_seg_hidden_emit(cpu, tc, bb, LDTR_idx, sel, CONST32(0), CONST32(0), CONST32(0));
+				write_seg_reg_emit(cpu, tc, bb, LDTR_idx, sel, CONST32(0), CONST32(0), CONST32(0));
 				BR_UNCOND(bb_next4, bb);
 				bb = bb_next1;
 				Value *desc = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip)[1];
@@ -1122,7 +1131,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				bb_exp = raise_exception_emit(cpu, tc, bb, EXP_NP, ptr_eip);
 				BR_COND(bb_exp, bb_next3, ICMP_EQ(p, CONST64(0)), bb); // segment not present
 				bb = bb_next3;
-				write_seg_hidden_emit(cpu, tc, bb, LDTR_idx, sel, read_seg_desc_base_emit(tc, bb, desc),
+				write_seg_reg_emit(cpu, tc, bb, LDTR_idx, sel, read_seg_desc_base_emit(tc, bb, desc),
 					read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
 				BR_UNCOND(bb_next4, bb);
 				bb = bb_next4;
@@ -1344,9 +1353,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					std::vector<Value *> vec;
 
 					if (sel_idx == SS_idx) {
+						translate_next = 0;
 						vec = check_ss_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
 						set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
-						write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, vec[1]),
+						write_seg_reg_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, vec[1]),
 							read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
 					}
 					else {
@@ -1356,12 +1366,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 						BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
 						bb = bb_null_seg;
-						write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
+						write_seg_reg_emit(cpu, tc, bb, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
 						BR_UNCOND(bb_next2, bb);
 						bb = bb_next1;
 						vec = check_seg_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
 						set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
-						write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel /* & rpl?? */, read_seg_desc_base_emit(tc, bb, vec[1]),
+						write_seg_reg_emit(cpu, tc, bb, sel_idx, sel /* & rpl?? */, read_seg_desc_base_emit(tc, bb, vec[1]),
 							read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
 						BR_UNCOND(bb_next2, bb);
 						bb = bb_next2;
@@ -1401,7 +1411,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				GET_RM(OPNUM_SRC, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
 				BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
 				bb = bb_null_seg;
-				write_seg_hidden_emit(cpu, tc, bb, TR_idx, sel, CONST32(0), CONST32(0), CONST32(0));
+				write_seg_reg_emit(cpu, tc, bb, TR_idx, sel, CONST32(0), CONST32(0), CONST32(0));
 				BR_UNCOND(bb_next4, bb);
 				bb = bb_next1;
 				vec = read_tss_desc_emit(cpu, tc, bb, sel, ptr_eip);
@@ -1417,7 +1427,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				BR_COND(bb_exp, bb_next3, ICMP_EQ(p, CONST64(0)), bb); // segment not present
 				bb = bb_next3;
 				ST_MEM_PRIV(MEM_LD64_idx, vec[0], OR(desc, CONST64(SEG_DESC_BY)));
-				write_seg_hidden_emit(cpu, tc, bb, TR_idx, sel, read_seg_desc_base_emit(tc, bb, desc),
+				write_seg_reg_emit(cpu, tc, bb, TR_idx, sel, read_seg_desc_base_emit(tc, bb, desc),
 					read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
 				BR_UNCOND(bb_next4, bb);
 				bb = bb_next4;
@@ -1449,7 +1459,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					LIB86CPU_ABORT();
 				}
 
-				disas_ctx->next_pc = calc_next_pc_emit(cpu, tc, bb, ptr_eip, bytes);
 				translate_next = 0;
 			}
 			break;
@@ -1487,9 +1496,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 						std::vector<Value *> vec;
 
 						if (sel_idx == SS_idx) {
+							translate_next = 0;
 							vec = check_ss_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
 							set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
-							write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, vec[1]),
+							write_seg_reg_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, vec[1]),
 								read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
 						}
 						else {
@@ -1499,12 +1509,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 							BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
 							bb = bb_null_seg;
-							write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
+							write_seg_reg_emit(cpu, tc, bb, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
 							BR_UNCOND(bb_next2, bb);
 							bb = bb_next1;
 							vec = check_seg_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
 							set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
-							write_seg_hidden_emit(cpu, tc, bb, sel_idx, sel /* & rpl?? */, read_seg_desc_base_emit(tc, bb, vec[1]),
+							write_seg_reg_emit(cpu, tc, bb, sel_idx, sel /* & rpl?? */, read_seg_desc_base_emit(tc, bb, vec[1]),
 								read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
 							BR_UNCOND(bb_next2, bb);
 							bb = bb_next2;
@@ -1808,22 +1818,98 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		break;
 
 		case X86_OPC_POPF:        BAD;
-		case X86_OPC_PUSH:        BAD;
-		case X86_OPC_PUSHA: {
-			// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
-			Value *sp = LD_R16(ESP_idx);
-			Value *sp_sub = size_mode == SIZE16 ? CONST16(2) : CONST16(4);
-			Value *esp_ori = size_mode == SIZE16 ? LD_R16(ESP_idx) : LD_R32(ESP_idx);
-			for (uint8_t reg_idx = EAX_idx; reg_idx < ES_idx; reg_idx++) {
-				sp = SUB(sp, sp_sub);
-				if (reg_idx == ESP_idx) {
-					ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), esp_ori);
-				}
-				else {
-					ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? LD_R16(reg_idx) : LD_R32(reg_idx));
-				}
+		case X86_OPC_PUSH: {
+			switch (instr.opcode_byte)
+			{
+			case 0x50:
+			case 0x51:
+			case 0x52:
+			case 0x53:
+			case 0x54:
+			case 0x55:
+			case 0x56:
+			case 0x57: {
+				assert(instr.operand[OPNUM_SRC].type == OPTYPE_REG);
+
+				Value *reg = size_mode == SIZE16 ? LD_R16(instr.operand[OPNUM_SRC].reg) : LD_R32(instr.operand[OPNUM_SRC].reg);
+				MEM_PUSH(reg);
 			}
-			ST_R16(sp, ESP_idx);
+			break;
+
+			case 0x68: {
+				Value *imm = size_mode == SIZE16 ? SEXT16(CONST8(instr.operand[OPNUM_SRC].imm)) : SEXT32(CONST8(instr.operand[OPNUM_SRC].imm));
+				MEM_PUSH(imm);
+			}
+			break;
+
+			case 0x6A: {
+				Value *imm = size_mode == SIZE16 ? CONST16(instr.operand[OPNUM_SRC].imm) : CONST32(instr.operand[OPNUM_SRC].imm);
+				MEM_PUSH(imm);
+			}
+			break;
+
+			case 0xFF: {
+				assert(instr.reg_opc == 6);
+
+				Value *rm, *val;
+				GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				MEM_PUSH(val);
+			}
+			break;
+
+			case 0x06:
+			case 0x0E:
+			case 0x16:
+			case 0x1E:
+			case 0xA0:
+			case 0xA8: {
+				assert(instr.operand[OPNUM_SRC].type == OPTYPE_SEG_REG);
+
+				Value *reg = LD_R16(instr.operand[OPNUM_SRC].reg + SEG_offset);
+				if (size_mode == SIZE32) {
+					reg = ZEXT32(reg);
+				}
+				MEM_PUSH(reg);
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+		}
+		break;
+
+		case X86_OPC_PUSHA: {
+			std::vector<Value *> vec;
+
+			if (size_mode == SIZE16) {
+				vec.push_back(LD_R16(EAX_idx));
+				vec.push_back(LD_R16(ECX_idx));
+				vec.push_back(LD_R16(EDX_idx));
+				vec.push_back(LD_R16(EBX_idx));
+				vec.push_back(LD_R16(ESP_idx));
+				vec.push_back(LD_R16(EBP_idx));
+				vec.push_back(LD_R16(ESI_idx));
+				vec.push_back(LD_R16(EDI_idx));
+			}
+			else {
+				vec.push_back(LD_R32(EAX_idx));
+				vec.push_back(LD_R32(ECX_idx));
+				vec.push_back(LD_R32(EDX_idx));
+				vec.push_back(LD_R32(EBX_idx));
+				vec.push_back(LD_R32(ESP_idx));
+				vec.push_back(LD_R32(EBP_idx));
+				vec.push_back(LD_R32(ESI_idx));
+				vec.push_back(LD_R32(EDI_idx));
+			}
+
+			GET_ESP();
+			Value *esp = LD(ptr_esp);
+			for (auto &reg : vec) {
+				esp = MEM_PUSH_ESP(esp, reg);
+			}
+
+			ST_REG_val(esp, ptr_esp);
 		}
 		break;
 
@@ -2332,8 +2418,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 	disas_ctx->bb = bb;
 
 	if (disas_ctx->next_pc == nullptr) {
-		// this can happen when the last instruction crosses a page boundary and it's not a control flow change instruction
-
 		disas_ctx->next_pc = calc_next_pc_emit(cpu, tc, bb, ptr_eip, bytes);
 	}
 

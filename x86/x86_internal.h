@@ -29,9 +29,11 @@ extern const char *mnemo[];
 // cpu hidden flags
 #define HFLG_CPL        (3 << 0)
 #define HFLG_CS32       (1 << 2)
+#define HFLG_SS32       (1 << 3)
 #define HFLG_PE_MODE    (1 << 4)
 #define HFLG_CPL_PRIV   (1 << 5)
 #define CS32_SHIFT      2
+#define SS32_SHIFT      3
 #define CPL_PRIV_SHIFT  5
 
 // disassembly context flags

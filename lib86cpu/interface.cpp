@@ -21,6 +21,9 @@ sync_hflags(cpu_t *cpu)
 		if (cpu->cpu_ctx.regs.cs_hidden.flags & SEG_HIDDEN_DB) {
 			cpu->cpu_ctx.hflags |= HFLG_CS32;
 		}
+		if (cpu->cpu_ctx.regs.ss_hidden.flags & SEG_HIDDEN_DB) {
+			cpu->cpu_ctx.hflags |= HFLG_SS32;
+		}
 	}
 }
 
