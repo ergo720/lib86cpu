@@ -20,11 +20,11 @@ Value *get_struct_member_pointer(Value *gep_start, const unsigned gep_index, tra
 Value *get_r8h_pointer(Value *gep_start, translated_code_t *tc, BasicBlock *bb);
 void get_ext_fn(cpu_t *cpu, translated_code_t *tc, Function *func);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlock *bb, const unsigned opnum);
-Value *mem_read_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *ptr_eip, const unsigned int idx);
-void mem_write_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *value, Value *ptr_eip, const unsigned int idx);
+Value *mem_read_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *ptr_eip, const unsigned idx);
+void mem_write_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *value, Value *ptr_eip, const unsigned idx);
 void check_io_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *port, Value *mask, Value *ptr_eip);
-void stack_push_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *value, Value *ptr_eip, uint32_t size_mode);
-Value *stack_push_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *value, Value *ptr_eip, Value *ptr_esp, uint32_t size_mode);
+void stack_push_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, std::vector<Value *> &vec, Value *ptr_eip, uint32_t size_mode);
+std::vector<Value *> stack_pop_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, uint32_t size_mode, const unsigned num);
 Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, size_t instr_size);
 BasicBlock *raise_exception_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb2, uint8_t expno, Value *ptr_eip);
 void ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *eip, Value *ptr_eip);
@@ -36,7 +36,7 @@ Value *read_seg_desc_base_emit(translated_code_t *tc, BasicBlock *bb, Value *des
 Value *read_seg_desc_limit_emit(translated_code_t *tc, BasicBlock *&bb, Value *desc);
 Value *read_seg_desc_flags_emit(translated_code_t *tc, BasicBlock *bb, Value *desc);
 std::vector<Value *> read_tss_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip);
-void write_seg_reg_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const unsigned int reg, Value *sel, Value *base, Value *limit, Value *flags);
+void write_seg_reg_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const unsigned reg, Value *sel, Value *base, Value *limit, Value *flags);
 Value *get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t size_mode);
 Value *get_register_op(cpu_t *cpu, translated_code_t *tc, x86_instr *instr, BasicBlock *bb, uint8_t idx);
 void set_flags_sum(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *sum, Value *a, Value *b, uint8_t size_mode);
@@ -205,8 +205,8 @@ default: \
 #define ST_MEM(idx, addr, val) CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, val, ptr_eip }, "", bb)
 #define LD_MEM_PRIV(idx, addr) mem_read_no_cpl_emit(cpu, tc, bb, addr, ptr_eip, idx)
 #define ST_MEM_PRIV(idx, addr, val) mem_write_no_cpl_emit(cpu, tc, bb, addr, val, ptr_eip, idx)
-#define MEM_PUSH_ESP(esp, val) stack_push_emit(cpu, tc, bb, val, ptr_eip, esp, size_mode)
-#define MEM_PUSH(val) stack_push_emit(cpu, tc, bb, val, ptr_eip, size_mode)
+#define MEM_PUSH(vec) stack_push_emit(cpu, tc, bb, vec, ptr_eip, size_mode)
+#define MEM_POP(n) stack_pop_emit(cpu, tc, bb, ptr_eip, size_mode, n)
 
 #define LD_PARITY(idx) LD(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST8(0), idx }, "", bb))
 #define RAISE(expno) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, CONST8(expno), ptr_eip }, "", bb)
@@ -277,14 +277,6 @@ else { \
 	ST_R32(ecx, ECX_idx); \
 } \
 BR_COND(disas_ctx->bb, bb_next, AND(ICMP_NE(ecx, zero), ICMP_EQ(LD_ZF(), CONST32(0))), bb)
-
-#define GET_ESP() Value *ptr_esp; \
-if (cpu->cpu_ctx.hflags & HFLG_SS32) { \
-	ptr_esp = GEP_R32(ESP_idx); \
-} \
-else { \
-	ptr_esp = GEP_R16(ESP_idx); \
-}
 
 // the lazy eflags idea comes from reading these two papers:
 // How Bochs Works Under the Hood (2nd edition) http://bochs.sourceforge.net/How%20the%20Bochs%20works%20under%20the%20hood%202nd%20edition.pdf

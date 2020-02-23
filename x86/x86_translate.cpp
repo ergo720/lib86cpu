@@ -333,10 +333,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					eip = CONST32(ret_eip);
 				}
 
-				GET_ESP();
-				Value *esp = MEM_PUSH_ESP(LD(ptr_esp), cs);
-				esp = MEM_PUSH_ESP(esp, eip);
-				ST_REG_val(esp, ptr_esp);
+				std::vector<Value *> vec;
+				vec.push_back(cs);
+				vec.push_back(eip);
+				MEM_PUSH(vec);
 				ST_SEG(CONST16(new_sel), CS_idx);
 				ST_R32(CONST32(call_eip), EIP_idx);
 				ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
@@ -350,10 +350,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				if (size_mode == SIZE16) {
 					call_eip &= 0x0000FFFF;
 				}
-				// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
-				Value *sp = SUB(LD_R16(ESP_idx), size_mode == SIZE16 ? CONST16(2) : CONST16(4));
-				ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
-				ST_R16(sp, ESP_idx);
+
+				std::vector<Value *> vec;
+				vec.push_back(size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
+				MEM_PUSH(vec);
 				ST_R32(CONST32(call_eip), EIP_idx);
 				disas_ctx->next_pc = CONST32(cpu_ctx->regs.cs_hidden.base + call_eip);
 			}
@@ -364,13 +364,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					Value *call_eip, *rm, *sp;
 					addr_t ret_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes;
 					GET_RM(OPNUM_SRC, call_eip = LD_REG_val(rm);, call_eip = LD_MEM(fn_idx[size_mode], rm););
-					// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
-					sp = SUB(LD_R16(ESP_idx), size_mode == SIZE16 ? CONST16(2) : CONST16(4));
-					ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
+					std::vector<Value *> vec;
+					vec.push_back(size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
+					MEM_PUSH(vec);
 					if (size_mode == SIZE16) {
 						call_eip = ZEXT32(call_eip);
 					}
-					ST_R16(sp, ESP_idx);
 					ST_R32(call_eip, EIP_idx);
 					disas_ctx->next_pc = ADD(CONST32(cpu_ctx->regs.cs_hidden.base), call_eip);
 					disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
@@ -384,24 +383,26 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_MEM ||
 						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_DISP);
 
+					Value *cs, *eip , *call_eip, *call_cs, *cs_addr, *offset_addr = GET_OP(OPNUM_SRC);
 					addr_t ret_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes;
-					// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
-					Value *sp = SUB(LD_R16(ESP_idx), size_mode == SIZE16 ? CONST16(2) : CONST16(4));
-					ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(cpu_ctx->regs.cs) : CONST32(cpu_ctx->regs.cs));
-					sp = SUB(sp, size_mode == SIZE16 ? CONST16(2) : CONST16(4));
-					ST_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
-					Value *call_eip, *call_cs, *cs_addr, *offset_addr = GET_OP(OPNUM_SRC);
 					if (size_mode == SIZE16) {
 						call_eip = ZEXT32(LD_MEM(MEM_LD16_idx, offset_addr));
 						cs_addr = ADD(offset_addr, CONST32(2));
+						cs = CONST16(cpu_ctx->regs.cs);
+						eip = CONST16(ret_eip);
 					}
 					else {
 						call_eip = LD_MEM(MEM_LD32_idx, offset_addr);
 						cs_addr = ADD(offset_addr, CONST32(4));
+						cs = CONST32(cpu_ctx->regs.cs);
+						eip = CONST32(ret_eip);
 					}
 					call_cs = LD_MEM(MEM_LD16_idx, cs_addr);
 
-					ST_R16(sp, ESP_idx);
+					std::vector<Value *> vec;
+					vec.push_back(cs);
+					vec.push_back(eip);
+					MEM_PUSH(vec);
 					ST_SEG(call_cs, CS_idx);
 					ST_R32(call_eip, EIP_idx);
 					Value *call_cs_base = SHL(ZEXT32(call_cs), CONST32(4));
@@ -1318,7 +1319,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			}
 			else {
 				Value *offset, *sel, *rm;
-				unsigned int sel_idx;
+				unsigned sel_idx;
 				GET_RM(OPNUM_SRC, assert(0);, offset = LD_MEM(fn_idx[size_mode], rm);
 				rm = size_mode == SIZE16 ? ADD(rm, CONST32(2)) : ADD(rm, CONST32(4));
 				sel = LD_MEM(MEM_LD16_idx, rm););
@@ -1489,7 +1490,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				}
 				else {
 					Value *sel, *rm;
-					const unsigned int sel_idx = instr.operand[OPNUM_DST].reg + SEG_offset;
+					const unsigned sel_idx = instr.operand[OPNUM_DST].reg + SEG_offset;
 					GET_RM(OPNUM_SRC, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
 
 					if (cpu_ctx->hflags & HFLG_PE_MODE) {
@@ -1801,24 +1802,167 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			break;
 
 		case X86_OPC_OUTS:        BAD;
-		case X86_OPC_POP:         BAD;
-		case X86_OPC_POPA: {
-			// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
-			Value *sp = LD_R16(ESP_idx);
-			Value *sp_add = size_mode == SIZE16 ? CONST16(2) : CONST16(4);
-			for (int8_t reg_idx = EDI_idx; reg_idx >= EAX_idx; reg_idx--) {
-				if (reg_idx != ESP_idx) {
-					Value *reg = LD_MEM(fn_idx[size_mode], ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
-					size_mode == SIZE16 ? ST_R16(reg, reg_idx) : ST_R32(reg, reg_idx);
+		case X86_OPC_POP: {
+			std::vector<Value *> vec;
+
+			switch (instr.opcode_byte)
+			{
+				case 0x58:
+				case 0x59:
+				case 0x5A:
+				case 0x5B:
+				case 0x5C:
+				case 0x5D:
+				case 0x5E:
+				case 0x5F: {
+					assert(instr.operand[OPNUM_SRC].type == OPTYPE_REG);
+
+					vec = MEM_POP(1);
+					ST_REG_val(vec[1], vec[2]);
+					size_mode == SIZE16 ? ST_R16(vec[0], instr.operand[OPNUM_SRC].reg) : ST_R32(vec[0], instr.operand[OPNUM_SRC].reg);
 				}
-				sp = ADD(sp, sp_add);
+				break;
+
+				case 0x8F: {
+					assert(instr.reg_opc == 0);
+
+					vec = MEM_POP(1);
+					if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
+						Value *rm = GET_OP(OPNUM_SRC);
+						ST_REG_val(vec[1], vec[2]);
+						ST_REG_val(vec[0], rm);
+					}
+					else {
+						Value *esp = cpu->cpu_ctx.hflags & HFLG_SS32 ? LD_R32(ESP_idx) : LD_R16(ESP_idx);
+						ST_REG_val(vec[1], vec[2]);
+						Value *rm = GET_OP(OPNUM_SRC);
+						ST_REG_val(esp, vec[2]);
+						ST_MEM(fn_idx[size_mode], rm, vec[0]);
+						ST_REG_val(vec[1], vec[2]);
+					}
+				}
+				break;
+
+				case 0x1F:
+				case 0x07:
+				case 0x17:
+				case 0xA1:
+				case 0xA9: {
+					const unsigned sel_idx = instr.operand[OPNUM_SRC].reg + SEG_offset;
+					vec = MEM_POP(1);
+					Value *sel = vec[0];
+					if (size_mode == SIZE32) {
+						sel = TRUNC16(sel);
+					}
+
+					if (cpu_ctx->hflags & HFLG_PE_MODE) {
+						std::vector<Value *> vec;
+
+						if (sel_idx == SS_idx) {
+							translate_next = 0;
+							vec = check_ss_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
+							set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
+							write_seg_reg_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, vec[1]),
+								read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
+						}
+						else {
+							BasicBlock *bb_null_seg = BB();
+							BasicBlock *bb_next1 = BB();
+							BasicBlock *bb_next2 = BB();
+
+							BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
+							bb = bb_null_seg;
+							write_seg_reg_emit(cpu, tc, bb, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
+							BR_UNCOND(bb_next2, bb);
+							bb = bb_next1;
+							vec = check_seg_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
+							set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
+							write_seg_reg_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, vec[1]),
+								read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
+							BR_UNCOND(bb_next2, bb);
+							bb = bb_next2;
+						}
+					}
+					else {
+						ST_SEG(sel, sel_idx);
+						ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), sel_idx, SEG_BASE_idx);
+					}
+
+					ST_REG_val(vec[1], vec[2]);
+				}
+				break;
+
+				default:
+					LIB86CPU_ABORT();
 			}
-			ST_R16(sp, ESP_idx);
+		}
+		break;
+
+		case X86_OPC_POPA: {
+			switch ((size_mode << 1) | ((cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
+			{
+			case 0: {
+				Value *sp = LD_R16(ESP_idx);
+				for (int8_t reg_idx = EDI_idx; reg_idx >= EAX_idx; reg_idx--) {
+					if (reg_idx != ESP_idx) {
+						Value *reg = LD_MEM(MEM_LD32_idx, ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
+						ST_R32(reg, reg_idx);
+					}
+					sp = ADD(sp, CONST16(4));
+				}
+				ST_R16(sp, ESP_idx);
+			}
+			break;
+
+			case 1: {
+				Value *esp = LD_R32(ESP_idx);
+				for (int8_t reg_idx = EDI_idx; reg_idx >= EAX_idx; reg_idx--) {
+					if (reg_idx != ESP_idx) {
+						Value *reg = LD_MEM(MEM_LD32_idx, ADD(esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
+						ST_R32(reg, reg_idx);
+					}
+					esp = ADD(esp, CONST32(4));
+				}
+				ST_R32(esp, ESP_idx);
+			}
+			break;
+
+			case 2: {
+				Value *sp = LD_R16(ESP_idx);
+				for (int8_t reg_idx = EDI_idx; reg_idx >= EAX_idx; reg_idx--) {
+					if (reg_idx != ESP_idx) {
+						Value *reg = LD_MEM(MEM_LD16_idx, ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
+						ST_R16(reg, reg_idx);
+					}
+					sp = ADD(sp, CONST16(2));
+				}
+				ST_R16(sp, ESP_idx);
+			}
+			break;
+
+			case 3: {
+				Value *esp = LD_R32(ESP_idx);
+				for (int8_t reg_idx = EDI_idx; reg_idx >= EAX_idx; reg_idx--) {
+					if (reg_idx != ESP_idx) {
+						Value *reg = LD_MEM(MEM_LD16_idx, ADD(esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
+						ST_R16(reg, reg_idx);
+					}
+					esp = ADD(esp, CONST32(2));
+				}
+				ST_R32(esp, ESP_idx);
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
 		}
 		break;
 
 		case X86_OPC_POPF:        BAD;
 		case X86_OPC_PUSH: {
+			std::vector<Value *> vec;
+
 			switch (instr.opcode_byte)
 			{
 			case 0x50:
@@ -1831,20 +1975,20 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			case 0x57: {
 				assert(instr.operand[OPNUM_SRC].type == OPTYPE_REG);
 
-				Value *reg = size_mode == SIZE16 ? LD_R16(instr.operand[OPNUM_SRC].reg) : LD_R32(instr.operand[OPNUM_SRC].reg);
-				MEM_PUSH(reg);
+				vec.push_back(size_mode == SIZE16 ? LD_R16(instr.operand[OPNUM_SRC].reg) : LD_R32(instr.operand[OPNUM_SRC].reg));
+				MEM_PUSH(vec);
 			}
 			break;
 
 			case 0x68: {
-				Value *imm = size_mode == SIZE16 ? SEXT16(CONST8(instr.operand[OPNUM_SRC].imm)) : SEXT32(CONST8(instr.operand[OPNUM_SRC].imm));
-				MEM_PUSH(imm);
+				vec.push_back(size_mode == SIZE16 ? CONST16(instr.operand[OPNUM_SRC].imm) : CONST32(instr.operand[OPNUM_SRC].imm));
+				MEM_PUSH(vec);
 			}
 			break;
 
 			case 0x6A: {
-				Value *imm = size_mode == SIZE16 ? CONST16(instr.operand[OPNUM_SRC].imm) : CONST32(instr.operand[OPNUM_SRC].imm);
-				MEM_PUSH(imm);
+				vec.push_back(size_mode == SIZE16 ? SEXT16(CONST8(instr.operand[OPNUM_SRC].imm)) : SEXT32(CONST8(instr.operand[OPNUM_SRC].imm)));
+				MEM_PUSH(vec);
 			}
 			break;
 
@@ -1853,7 +1997,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 				Value *rm, *val;
 				GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-				MEM_PUSH(val);
+				vec.push_back(val);
+				MEM_PUSH(vec);
 			}
 			break;
 
@@ -1869,7 +2014,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				if (size_mode == SIZE32) {
 					reg = ZEXT32(reg);
 				}
-				MEM_PUSH(reg);
+				vec.push_back(reg);
+				MEM_PUSH(vec);
 			}
 			break;
 
@@ -1903,13 +2049,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				vec.push_back(LD_R32(EDI_idx));
 			}
 
-			GET_ESP();
-			Value *esp = LD(ptr_esp);
-			for (auto &reg : vec) {
-				esp = MEM_PUSH_ESP(esp, reg);
-			}
-
-			ST_REG_val(esp, ptr_esp);
+			MEM_PUSH(vec);
 		}
 		break;
 
@@ -1923,13 +2063,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			switch (instr.opcode_byte)
 			{
 			case 0xC3: {
-				// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
-				Value *sp = ZEXT32(LD_R16(ESP_idx));
-				Value *ret_eip = LD_MEM(fn_idx[size_mode], ADD(sp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
+				std::vector<Value *> vec = MEM_POP(1);
+				Value *ret_eip = vec[0];
 				if (size_mode == SIZE16) {
 					ret_eip = ZEXT32(ret_eip);
 				}
-				ST_R16(TRUNC16(ADD(sp, size_mode == SIZE16 ? CONST32(2) : CONST32(4))), ESP_idx);
+				ST_REG_val(vec[1], vec[2]);
 				ST_R32(ret_eip, EIP_idx);
 
 				disas_ctx->next_pc = ADD(CONST32(cpu_ctx->regs.cs_hidden.base), ret_eip);
@@ -1950,18 +2089,22 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			switch (instr.opcode_byte)
 			{
 			case 0xCB: {
-				// TODO: this should use the B flag of the current stack segment descriptor instead of being hardcoded to the sp
-				Value *sp = ZEXT32(LD_R16(ESP_idx));
-				Value *ret_eip = LD_MEM(fn_idx[size_mode], ADD(sp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
+				if (cpu_ctx->hflags & HFLG_PE_MODE) {
+					BAD_MODE;
+				}
+				std::vector<Value *> vec = MEM_POP(2);
+				Value *ret_eip = vec[0];
+				Value *ret_cs = vec[1];
 				if (size_mode == SIZE16) {
 					ret_eip = ZEXT32(ret_eip);
 				}
-				sp = ADD(sp, size_mode == SIZE16 ? CONST32(2) : CONST32(4));
-				Value *ret_cs = LD_MEM(fn_idx[size_mode], ADD(sp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
-				ST_R16(TRUNC16(ADD(sp, size_mode == SIZE16 ? CONST32(2) : CONST32(4))), ESP_idx);
+				else {
+					ret_cs = TRUNC16(ret_cs);
+				}
+				ST_REG_val(vec[2], vec[3]);
 				ST_R32(ret_eip, EIP_idx);
-				ST_R16(size_mode == SIZE16 ? ret_cs : TRUNC16(ret_cs), CS_idx);
-				Value *ret_cs_base = SHL(size_mode == SIZE16 ? ZEXT32(ret_cs) : ret_cs, CONST32(4));
+				ST_R16(ret_cs, CS_idx);
+				Value *ret_cs_base = SHL(ZEXT32(ret_cs), CONST32(4));
 				ST_SEG_HIDDEN(ret_cs_base, CS_idx, SEG_BASE_idx);
 
 				disas_ctx->next_pc = ADD(ret_cs_base, ret_eip);

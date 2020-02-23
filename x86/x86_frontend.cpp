@@ -111,7 +111,7 @@ raise_exception_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb2, uint8_t
 }
 
 void
-write_seg_reg_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const unsigned int reg, Value *sel, Value *base, Value *limit, Value *flags)
+write_seg_reg_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const unsigned reg, Value *sel, Value *base, Value *limit, Value *flags)
 {
 	ST_SEG(sel, reg);
 	ST_SEG_HIDDEN(base, reg, SEG_BASE_idx);
@@ -353,7 +353,7 @@ ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Val
 }
 
 Value *
-mem_read_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *ptr_eip, const unsigned int idx)
+mem_read_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *ptr_eip, const unsigned idx)
 {
 	Value *hflags = LD(cpu->ptr_hflags);
 	hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
@@ -366,7 +366,7 @@ mem_read_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *a
 }
 
 void
-mem_write_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *value, Value *ptr_eip, const unsigned int idx)
+mem_write_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *value, Value *ptr_eip, const unsigned idx)
 {
 	Value *hflags = LD(cpu->ptr_hflags);
 	hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
@@ -404,36 +404,49 @@ check_io_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *po
 }
 
 void
-stack_push_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *value, Value *ptr_eip, uint32_t size_mode)
+stack_push_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, std::vector<Value *> &vec, Value *ptr_eip, uint32_t size_mode)
 {
 	assert(size_mode != SIZE8);
+	assert(vec.size() != 0);
 
 	switch ((size_mode << 1) | ((cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
 	case 0: { // sp, push 32
-		Value *new_sp = SUB(LD_R16(ESP_idx), CONST16(4));
-		ST_MEM(MEM_ST32_idx, ADD(ZEXT32(new_sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
+		Value *new_sp = LD_R16(ESP_idx);
+		for (auto &val : vec) {
+			new_sp = SUB(new_sp, CONST16(4));
+			ST_MEM(MEM_ST32_idx, ADD(ZEXT32(new_sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), val);
+		}
 		ST_R16(new_sp, ESP_idx);
 	}
 	break;
 
 	case 1: { // esp, push 32
-		Value *new_esp = SUB(LD_R32(ESP_idx), CONST32(4));
-		ST_MEM(MEM_ST32_idx, ADD(new_esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
+		Value *new_esp = LD_R32(ESP_idx);
+		for (auto &val : vec) {
+			new_esp = SUB(new_esp, CONST32(4));
+			ST_MEM(MEM_ST32_idx, ADD(new_esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), val);
+		}
 		ST_R32(new_esp, ESP_idx);
 	}
 	break;
 
 	case 2: { // sp, push 16
-		Value *new_sp = SUB(LD_R16(ESP_idx), CONST16(2));
-		ST_MEM(MEM_ST16_idx, ADD(ZEXT32(new_sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
+		Value *new_sp = LD_R16(ESP_idx);
+		for (auto &val : vec) {
+			new_sp = SUB(new_sp, CONST16(2));
+			ST_MEM(MEM_ST16_idx, ADD(ZEXT32(new_sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), val);
+		}
 		ST_R16(new_sp, ESP_idx);
 	}
 	break;
 
 	case 3: { // esp, push 16
-		Value *new_esp = SUB(LD_R32(ESP_idx), CONST32(2));
-		ST_MEM(MEM_ST16_idx, ADD(new_esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
+		Value *new_esp = LD_R32(ESP_idx);
+		for (auto &val : vec) {
+			new_esp = SUB(new_esp, CONST32(2));
+			ST_MEM(MEM_ST16_idx, ADD(new_esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), val);
+		}
 		ST_R32(new_esp, ESP_idx);
 	}
 	break;
@@ -443,38 +456,55 @@ stack_push_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *value,
 	}
 }
 
-Value *
-stack_push_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *value, Value *ptr_eip, Value *ptr_esp, uint32_t size_mode)
+std::vector<Value *>
+stack_pop_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, uint32_t size_mode, const unsigned num)
 {
 	assert(size_mode != SIZE8);
+	std::vector<Value *> vec;
 
 	switch ((size_mode << 1) | ((cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
-	case 0: { // sp, push 32
-		Value *new_sp = SUB(ptr_esp, CONST16(4));
-		ST_MEM(MEM_ST32_idx, ADD(ZEXT32(new_sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
-		ptr_esp = new_sp;
+	case 0: { // sp, pop 32
+		Value *sp = LD_R16(ESP_idx);
+		for (unsigned i = 0; i < num; i++) {
+			vec.push_back(LD_MEM(MEM_LD32_idx, ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx))));
+			sp = ADD(sp, CONST16(4));
+		}
+		vec.push_back(sp);
+		vec.push_back(GEP_R16(ESP_idx));
 	}
 	break;
 
-	case 1: { // esp, push 32
-		Value *new_esp = SUB(ptr_esp, CONST32(4));
-		ST_MEM(MEM_ST32_idx, ADD(new_esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
-		ptr_esp = new_esp;
+	case 1: { // esp, pop 32
+		Value *esp = LD_R32(ESP_idx);
+		for (unsigned i = 0; i < num; i++) {
+			vec.push_back(LD_MEM(MEM_LD32_idx, ADD(esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx))));
+			esp = ADD(esp, CONST32(4));
+		}
+		vec.push_back(esp);
+		vec.push_back(GEP_R32(ESP_idx));
 	}
 	break;
 
-	case 2: { // sp, push 16
-		Value *new_sp = SUB(ptr_esp, CONST16(2));
-		ST_MEM(MEM_ST16_idx, ADD(ZEXT32(new_sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
-		ptr_esp = new_sp;
+	case 2: { // sp, pop 16
+		Value *sp = LD_R16(ESP_idx);
+		for (unsigned i = 0; i < num; i++) {
+			vec.push_back(LD_MEM(MEM_LD16_idx, ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx))));
+			sp = ADD(sp, CONST16(2));
+		}
+		vec.push_back(sp);
+		vec.push_back(GEP_R16(ESP_idx));
 	}
 	break;
 
-	case 3: { // esp, push 16
-		Value *new_esp = SUB(ptr_esp, CONST32(2));
-		ST_MEM(MEM_ST16_idx, ADD(new_esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), value);
-		ptr_esp = new_esp;
+	case 3: { // esp, pop 16
+		Value *esp = LD_R32(ESP_idx);
+		for (unsigned i = 0; i < num; i++) {
+			vec.push_back(LD_MEM(MEM_LD16_idx, ADD(esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx))));
+			esp = ADD(esp, CONST32(2));
+		}
+		vec.push_back(esp);
+		vec.push_back(GEP_R32(ESP_idx));
 	}
 	break;
 
@@ -482,7 +512,7 @@ stack_push_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *value,
 		LIB86CPU_ABORT();
 	}
 
-	return ptr_esp;
+	return vec;
 }
 
 Value *
