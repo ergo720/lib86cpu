@@ -144,6 +144,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 	do {
 
+		int len = 0;
 		x86_instr instr = { 0 };
 		ptr_eip = ADD(ptr_eip, CONST32(bytes));
 
@@ -152,15 +153,16 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 #ifdef DEBUG_LOG
 
 			// print the disassembled instructions only in debug builds
-			char disassembly_line[80];
+			char disassembly_line[80], buffer[256];
 			bytes = disasm_instr(cpu, &instr, disassembly_line, sizeof(disassembly_line), disas_ctx);
 
-			printf(".,%08lx ", static_cast<unsigned long>(pc));
+			len += std::snprintf(buffer + len, sizeof(buffer) - len, ".,%08lx ", static_cast<unsigned long>(pc));
 			for (uint8_t i = 0; i < bytes; i++) {
-				printf("%02X ", disas_ctx->instr_bytes[i]);
+				len += std::snprintf(buffer + len, sizeof(buffer) - len, "%02X ", disas_ctx->instr_bytes[i]);
 			}
-			printf("%*s", (24 - 3 * bytes) + 1, "");
-			printf("%-23s\n", disassembly_line);
+			len += std::snprintf(buffer + len, sizeof(buffer) - len, "%*s", (24 - 3 * bytes) + 1, "");
+			std::snprintf(buffer + len, sizeof(buffer) - len, "%-23s\n", disassembly_line);
+			std::printf("%s", buffer);
 
 #else
 
