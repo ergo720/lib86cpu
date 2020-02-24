@@ -92,7 +92,7 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 				cpu_ctx->hflags |= (HFLG_PE_MODE | (cpu_ctx->regs.cs & HFLG_CPL));
 			}
 			else {
-				cpu_ctx->hflags &= ~(HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE);
+				cpu_ctx->hflags &= ~(HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE);
 			}
 
 			// since tc_cache_clear has deleted the calling code block, we must return to the translator with an exception. We also have to setup the eip
@@ -848,7 +848,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 			case 0x72:
 			case 0x82:
-				val = ICMP_NE(LD_CF(), CONST32(2)); // CF != 0
+				val = ICMP_NE(LD_CF(), CONST32(0)); // CF != 0
 				break;
 
 			case 0x73:
@@ -1959,7 +1959,38 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		}
 		break;
 
-		case X86_OPC_POPF:        BAD;
+		case X86_OPC_POPF: {
+			std::vector<Value *> vec = MEM_POP(1);
+			Value *eflags = vec[0];
+			Value *mask = CONST32(TF_MASK | DF_MASK | NT_MASK);
+			uint32_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
+			uint32_t iopl = (cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12;
+			if (cpl == 0) {
+				mask = OR(mask, CONST32(IOPL_MASK | IF_MASK));
+			}
+			else if (iopl >= cpl) {
+				mask = OR(mask, CONST32(IF_MASK));
+			}
+
+			if (size_mode == SIZE32) {
+				mask = OR(mask, CONST32(ID_MASK | AC_MASK));
+			}
+			else {
+				eflags = ZEXT32(eflags);
+			}
+
+			ST_R32(AND(OR(OR(AND(LD_R32(EFLAGS_idx), NOT(mask)), AND(eflags, mask)), CONST32(2)), CONST32(~RF_MASK)), EFLAGS_idx);
+			Value *cf_new = AND(eflags, CONST32(1));
+			Value *of_new = SHL(XOR(SHR(AND(eflags, CONST32(0x800)), CONST32(11)), cf_new), CONST32(30));
+			Value *sfd = SHR(AND(eflags, CONST32(128)), CONST32(7));
+			Value *pdb = SHL(XOR(CONST32(4), AND(eflags, CONST32(4))), CONST32(6));
+			ST_FLG_RES(SHL(XOR(AND(eflags, CONST32(64)), CONST32(64)), CONST32(2)));
+			ST_FLG_AUX(OR(OR(OR(OR(SHL(cf_new, CONST32(31)), SHR(AND(eflags, CONST32(16)), CONST32(1))), of_new), sfd), pdb));
+			ST_REG_val(vec[1], vec[2]);
+			translate_next = 0;
+		}
+		break;
+
 		case X86_OPC_PUSH: {
 			std::vector<Value *> vec;
 

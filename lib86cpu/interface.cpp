@@ -15,9 +15,10 @@
 static void
 sync_hflags(cpu_t *cpu)
 {
-	cpu->cpu_ctx.hflags = (cpu->cpu_ctx.regs.cs & HFLG_CPL) | HFLG_CPL_PRIV;
+	uint16_t cs = cpu->cpu_ctx.regs.cs;
+	cpu->cpu_ctx.hflags |= HFLG_CPL_PRIV;
 	if (cpu->cpu_ctx.regs.cr0 & CR0_PE_MASK) {
-		cpu->cpu_ctx.hflags |= HFLG_PE_MODE;
+		cpu->cpu_ctx.hflags |= ((cpu->cpu_ctx.regs.cs & HFLG_CPL) | HFLG_PE_MODE);
 		if (cpu->cpu_ctx.regs.cs_hidden.flags & SEG_HIDDEN_DB) {
 			cpu->cpu_ctx.hflags |= HFLG_CS32;
 		}

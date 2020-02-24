@@ -110,8 +110,10 @@ extern const char *mnemo[];
 #define IF_MASK     (1 << 9)
 #define DF_MASK     (1 << 10)
 #define IOPL_MASK   (3 << 12)
+#define NT_MASK     (1 << 14)
 #define RF_MASK     (1 << 16)
 #define AC_MASK     (1 << 18)
+#define ID_MASK     (1 << 21)
 
 // exception numbers
 #define EXP_DE  0   // divide error
