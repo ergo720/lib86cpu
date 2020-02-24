@@ -2084,7 +2084,27 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		}
 		break;
 
-		case X86_OPC_PUSHF:       BAD;
+		case X86_OPC_PUSHF: {
+			Value *flags = OR(OR(OR(OR(OR(SHR(LD_CF(), CONST32(31)),
+				SHR(LD_OF(), CONST32(20))),
+				SHL(XOR(NOT_ZERO(32, LD_ZF()), CONST32(1)), CONST32(6))),
+				SHL(LD_SF(), CONST32(7))),
+				SHL(XOR(ZEXT32(LD_PF()), CONST32(1)), CONST32(2))),
+				SHL(LD_AF(), CONST32(1))
+				);
+
+			std::vector<Value *> vec;
+			if (size_mode == SIZE16) {
+				vec.push_back(OR(LD_R16(EFLAGS_idx), TRUNC16(flags)));
+			}
+			else {
+				vec.push_back(AND(OR(LD_R32(EFLAGS_idx), flags), CONST32(0xFCFFFF)));
+			}
+
+			MEM_PUSH(vec);
+		}
+		break;
+
 		case X86_OPC_RCL:         BAD;
 		case X86_OPC_RCR:         BAD;
 		case X86_OPC_RDMSR:       BAD;
