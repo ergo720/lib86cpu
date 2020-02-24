@@ -281,6 +281,7 @@ T ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t page_cross)
 			disas_ctx->virt_pc++;
 			i++;
 		}
+		disas_ctx->pc++;
 		if (cpu->cpu_flags & CPU_FLAG_SWAPMEM) {
 			sys::swapByteOrder<T>(value);
 		}
