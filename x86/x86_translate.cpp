@@ -269,6 +269,32 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		case X86_OPC_AND: {
 			switch (instr.opcode_byte)
 			{
+			case 0x20:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x21: {
+				Value *val, *reg, *rm;
+				reg = GET_REG(OPNUM_SRC);
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = AND(val, reg); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
+				val = AND(val, reg); ST_MEM(fn_idx[size_mode], rm, val););
+				SET_FLG(val, CONST32(0));
+			}
+			break;
+
+			case 0x22:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x23: {
+				Value *val, *reg, *rm;
+				reg = GET_OP(OPNUM_DST);
+				GET_RM(OPNUM_SRC, val = LD_REG_val(rm); val = AND(LD(reg), val);, val = LD_MEM(fn_idx[size_mode], rm); val = AND(LD(reg), val););
+				ST_REG_val(val, reg);
+				SET_FLG(val, CONST32(0));
+			}
+			break;
+
 			case 0x24:
 				size_mode = SIZE8;
 				[[fallthrough]];
@@ -286,10 +312,17 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				size_mode = SIZE8;
 				[[fallthrough]];
 
-			case 0x81: {
+			case 0x81:
+			case 0x83: {
 				assert(instr.reg_opc == 4);
 
-				Value *val, *rm, *src = GET_IMM();
+				Value *val, *rm, *src;
+				if (instr.opcode_byte == 0x83) {
+					src = size_mode == SIZE16 ? SEXT16(GET_IMM8()) : SEXT32(GET_IMM8());
+				}
+				else {
+					src = GET_IMM();
+				}
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = AND(val, src); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
 				val = AND(val, src); ST_MEM(fn_idx[size_mode], rm, val););
 				SET_FLG(val, CONST32(0));
@@ -297,7 +330,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			break;
 
 			default:
-				BAD;
+				LIB86CPU_ABORT();
 			}
 		}
 		break;
