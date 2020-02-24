@@ -190,6 +190,7 @@ default: \
 #define ST_R32(val, idx) ST(GEP(cpu->ptr_regs, idx), val)
 #define ST_R16(val, idx) ST(GEP_R16(idx), val)
 #define ST_R8L(val, idx) ST(GEP_R8L(idx), val)
+#define ST_R8H(val, idx) ST(GEP_R8H(idx), val)
 #define ST_REG_val(val, reg) ST(reg, val)
 #define ST_SEG(val, seg) ST(GEP_SEL(seg), val)
 #define ST_SEG_HIDDEN(val, seg, idx) ST(GEP(GEP(GEP(cpu->ptr_regs, seg), SEG_HIDDEN_idx), idx), val)

@@ -1031,7 +1031,19 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		}
 		break;
 
-		case X86_OPC_LAHF:        BAD;
+		case X86_OPC_LAHF: {
+			Value *flags = OR(OR(OR(OR(OR(SHR(LD_CF(), CONST32(31)),
+				SHL(XOR(NOT_ZERO(32, LD_ZF()), CONST32(1)), CONST32(6))),
+				SHL(LD_SF(), CONST32(7))),
+				SHL(XOR(ZEXT32(LD_PF()), CONST32(1)), CONST32(2))),
+				SHL(LD_AF(), CONST32(1))),
+				CONST32(2)
+			);
+
+			ST_R8H(TRUNC8(flags), EAX_idx);
+		}
+		break;
+
 		case X86_OPC_LAR:         BAD;
 		case X86_OPC_LEA: {
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
