@@ -113,8 +113,6 @@ extern const char *mnemo[];
 #define NT_MASK     (1 << 14)
 #define RF_MASK     (1 << 16)
 #define AC_MASK     (1 << 18)
-#define VIF_MASK    (1 << 19)
-#define VIP_MASK    (1 << 20)
 #define ID_MASK     (1 << 21)
 
 // exception numbers

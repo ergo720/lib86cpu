@@ -482,11 +482,21 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		case X86_OPC_CLI: {
 			assert(instr.opcode_byte == 0xFA);
 
+			Value *eflags = LD_R32(EFLAGS_idx);
 			if (cpu_ctx->hflags & HFLG_PE_MODE) {
-				BAD_MODE;
+
+				// we don't support virtual 8086 mode, so we don't need to check for it
+				if (((cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12) >= (cpu->cpu_ctx.hflags & HFLG_CPL)) {
+					eflags = AND(eflags, CONST32(~IF_MASK));
+					ST_R32(eflags, EFLAGS_idx);
+				}
+				else {
+					RAISE(EXP_GP);
+					disas_ctx->next_pc = CONST32(0); // unreachable
+					translate_next = 0;
+				}
 			}
 			else {
-				Value *eflags = LD_R32(EFLAGS_idx);
 				eflags = AND(eflags, CONST32(~IF_MASK));
 				ST_R32(eflags, EFLAGS_idx);
 			}
@@ -2462,26 +2472,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			if (cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
 
 				// we don't support virtual 8086 mode, so we don't need to check for it
-				uint32_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
-				uint32_t iopl = (cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12;
-				if (iopl >= cpl) {
+				if (((cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12) >= (cpu->cpu_ctx.hflags & HFLG_CPL)) {
 					eflags = OR(eflags, CONST32(IF_MASK));
 					ST_R32(eflags, EFLAGS_idx);
 				}
 				else {
-					if ((iopl < cpl) && (cpl == 3)) {
-						BasicBlock *bb_next1 = BB();
-						BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
-						BR_COND(bb_exp, bb_next1, ICMP_NE(AND(eflags, CONST32(VIP_MASK)), CONST32(0)), bb);
-						bb = bb_next1;
-						eflags = OR(eflags, CONST32(VIF_MASK));
-						ST_R32(eflags, EFLAGS_idx);
-					}
-					else {
-						RAISE(EXP_GP);
-						disas_ctx->next_pc = CONST32(0); // unreachable
-						translate_next = 0;
-					}
+					RAISE(EXP_GP);
+					disas_ctx->next_pc = CONST32(0); // unreachable
+					translate_next = 0;
 				}
 			}
 			else {
