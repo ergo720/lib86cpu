@@ -860,7 +860,15 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		case X86_OPC_INTO:        BAD;
 		case X86_OPC_INVD:        BAD;
 		case X86_OPC_INVLPG:      BAD;
-		case X86_OPC_IRET:        BAD;
+		case X86_OPC_IRET: {
+			assert(instr.opcode_byte == 0xCF);
+
+			disas_ctx->next_pc = iret_emit(cpu, tc, bb, ptr_eip, size_mode);
+			disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
+			translate_next = 0;
+		}
+		break;
+
 		case X86_OPC_JECXZ:
 		case X86_OPC_JO:
 		case X86_OPC_JNO:

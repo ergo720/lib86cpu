@@ -93,6 +93,17 @@ get_struct_eflags(translated_code_t *tc)
 	return StructType::create(CTX(), type_struct_eflags_t_fields, "struct.eflags_t", false);
 }
 
+std::vector<BasicBlock *>
+gen_bbs(translated_code_t *tc, Function *func, unsigned num)
+{
+	std::vector<BasicBlock *> vec;
+	for (unsigned i = 0; i < num; i++) {
+		vec.push_back(BB());
+	}
+
+	return vec;
+}
+
 Value *
 calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, size_t instr_size)
 {
@@ -108,6 +119,35 @@ raise_exception_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb2, uint8_t
 	RAISE(expno);
 	UNREACH();
 	return bb;
+}
+
+void
+write_eflags(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *eflags, Value *mask)
+{
+	ST_R32(AND(OR(OR(AND(LD_R32(EFLAGS_idx), NOT(mask)), AND(eflags, mask)), CONST32(2)), CONST32(~RF_MASK)), EFLAGS_idx);
+	Value *cf_new = AND(eflags, CONST32(1));
+	Value *of_new = SHL(XOR(SHR(AND(eflags, CONST32(0x800)), CONST32(11)), cf_new), CONST32(30));
+	Value *sfd = SHR(AND(eflags, CONST32(128)), CONST32(7));
+	Value *pdb = SHL(XOR(CONST32(4), AND(eflags, CONST32(4))), CONST32(6));
+	ST_FLG_RES(SHL(XOR(AND(eflags, CONST32(64)), CONST32(64)), CONST32(2)));
+	ST_FLG_AUX(OR(OR(OR(OR(SHL(cf_new, CONST32(31)), SHR(AND(eflags, CONST32(16)), CONST32(1))), of_new), sfd), pdb));
+}
+
+static void
+validate_seg_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, unsigned reg)
+{
+	std::vector<BasicBlock *> vec_bb = gen_bbs(tc, bb->getParent(), 2);
+	Value *flags = LD_SEG_HIDDEN(reg, SEG_FLG_idx);
+	Value *c = AND(flags, CONST32(1 << 10));
+	Value *d = AND(flags, CONST32(1 << 11));
+	Value *s = AND(flags, CONST32(1 << 12));
+	Value *dpl = SHR(AND(flags, CONST32(3 << 13)), CONST32(13));
+	Value *cpl = AND(LD(cpu->ptr_hflags), CONST32(HFLG_CPL));
+	BR_COND(vec_bb[0], vec_bb[1], AND(ICMP_UGT(cpl, dpl), AND(ICMP_NE(s, CONST32(0)), OR(ICMP_EQ(d, CONST32(0)), ICMP_EQ(c, CONST32(0))))), bb);
+	bb = vec_bb[0];
+	write_seg_reg_emit(cpu, tc, bb, reg, CONST16(0), CONST32(0), CONST32(0), CONST32(0));
+	BR_UNCOND(vec_bb[1], bb);
+	bb = vec_bb[1];
 }
 
 void
@@ -228,7 +268,7 @@ read_tss_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *se
 }
 
 std::vector<Value *>
-check_ss_desc_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip)
+check_ss_desc_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip, Value *cs)
 {
 	std::vector<Value *> vec;
 	Function *func = bb->getParent();
@@ -244,11 +284,19 @@ check_ss_desc_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Valu
 	Value *s = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(44))); // cannot be a system segment
 	Value *d = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_DC)), CONST64(42))); // cannot be a code segment
 	Value *w = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_W)), CONST64(39))); // cannot be a non-writable data segment
-	Value *cpl = CONST16(cpu->cpu_ctx.hflags & HFLG_CPL); // check for segment privilege violations
 	Value *dpl = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_DPL)), CONST64(42)));
 	Value *rpl = SHL(AND(sel, CONST16(3)), CONST16(5));
 	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
-	Value *val = XOR(OR(OR(OR(OR(s, d), w), dpl), rpl), OR(OR(OR(OR(CONST16(1), CONST16(0)), CONST16(4)), SHL(cpl, CONST16(3))), SHL(cpl, CONST16(5))));
+	Value *val;
+	// check for segment privilege violations
+	if (cs == nullptr) {
+		Value *cpl = CONST16(cpu->cpu_ctx.hflags & HFLG_CPL);
+		val = XOR(OR(OR(OR(OR(s, d), w), dpl), rpl), OR(OR(OR(OR(CONST16(1), CONST16(0)), CONST16(4)), SHL(cpl, CONST16(3))), SHL(cpl, CONST16(5))));
+	}
+	else {
+		Value *rpl_cs = AND(cs, CONST16(3));
+		val = XOR(OR(OR(OR(OR(s, d), w), dpl), rpl), OR(OR(OR(OR(CONST16(1), CONST16(0)), CONST16(4)), SHL(rpl_cs, CONST16(3))), SHL(rpl_cs, CONST16(5))));
+	}
 	BR_COND(bb_exp, bb_next2, ICMP_NE(val, CONST16(0)), bb);
 	bb = bb_next2;
 	Value *p = AND(desc, CONST64(SEG_DESC_P));
@@ -303,7 +351,6 @@ ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Val
 	BasicBlock *bb_next1 = BB();
 	BasicBlock *bb_next2 = BB();
 	BasicBlock *bb_next3 = BB();
-	BasicBlock *bb_next4 = BB();
 	BasicBlock *bb_sys = BB();
 	BasicBlock *bb_nonsys = BB();
 	BasicBlock *bb_code = BB();
@@ -342,14 +389,153 @@ ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Val
 	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_NP, ptr_eip);
 	BR_COND(bb_exp, bb_next3, ICMP_EQ(p, CONST64(0)), bb); // segment not present
 	bb = bb_next3;
-	Value *limit = read_seg_desc_limit_emit(tc, bb, desc);
-	bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
-	BR_COND(bb_exp, bb_next4, ICMP_UGT(eip, limit), bb); // segment limit exceeded
-	bb = bb_next4;
 	set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
 	write_seg_reg_emit(cpu, tc, bb, CS_idx, OR(AND(sel, CONST16(0xFFFC)), CONST16(cpl)), read_seg_desc_base_emit(tc, bb, desc),
-		limit, read_seg_desc_flags_emit(tc, bb, desc));
+		read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
 	ST_R32(eip, EIP_idx);
+}
+
+Value *
+iret_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *ptr_eip, uint8_t size_mode)
+{
+	std::vector<Value *> vec;
+	Value *eip, *cs, *eflags, *mask;
+	if (cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
+		std::vector<BasicBlock *> vec_bb = gen_bbs(tc, bb->getParent(), 13);
+		eflags = LD_R32(EFLAGS_idx);
+		BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(eflags, CONST32(VM_MASK)), CONST32(0)), bb);
+		bb = vec_bb[0];
+		// we don't support virtual 8086 mode, so just abort
+		INTRINSIC(trap);
+		UNREACH();
+		bb = vec_bb[1];
+		BR_COND(vec_bb[2], vec_bb[3], ICMP_NE(AND(eflags, CONST32(NT_MASK)), CONST32(0)), bb);
+		bb = vec_bb[2];
+		// we don't support task returns yet, so just abort
+		INTRINSIC(trap);
+		UNREACH();
+		bb = vec_bb[3];
+		vec = MEM_POP(3);
+		eip = vec[0];
+		cs = vec[1];
+		Value *temp_eflags = vec[2];
+		Value *esp_old = vec[3];
+		Value *esp_old_ptr = vec[4];
+
+		if (size_mode == SIZE16) {
+			eip = ZEXT32(eip);
+			temp_eflags = ZEXT32(temp_eflags);
+			mask = CONST32(NT_MASK | DF_MASK | TF_MASK);
+		}
+		else {
+			cs = TRUNC16(cs);
+			mask = CONST32(ID_MASK | AC_MASK | RF_MASK | NT_MASK | DF_MASK | TF_MASK);
+		}
+
+		uint16_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
+		if (cpl == 0) {
+			BR_COND(vec_bb[0], vec_bb[4], ICMP_NE(AND(temp_eflags, CONST32(VM_MASK)), CONST32(0)), bb);
+			bb = vec_bb[4];
+		}
+
+		BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+		BR_COND(bb_exp, vec_bb[5], ICMP_EQ(SHR(cs, CONST16(2)), CONST16(0)), bb); // sel == NULL
+		bb = vec_bb[5];
+		std::vector<Value *> vec_cs = read_seg_desc_emit(cpu, tc, bb, cs, ptr_eip);
+		Value *cs_desc_addr = vec_cs[0];
+		Value *cs_desc = vec_cs[1];
+		Value *s = SHR(AND(cs_desc, CONST64(SEG_DESC_S)), CONST64(44)); // cannot be a system segment
+		Value *d = SHR(AND(cs_desc, CONST64(SEG_DESC_DC)), CONST64(42)); // cannot be a data segment
+		bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+		BR_COND(bb_exp, vec_bb[6], ICMP_NE(OR(s, d), CONST64(3)), bb);
+		bb = vec_bb[6];
+		Value *rpl = AND(cs, CONST16(3));
+		BR_COND(bb_exp, vec_bb[7], ICMP_ULT(rpl, CONST16(cpl)), bb); // cannot be more privileged
+		bb = vec_bb[7];
+		Value *c = AND(cs_desc, CONST64(SEG_DESC_C));
+		Value *dpl = TRUNC16(SHR(AND(cs_desc, CONST64(SEG_DESC_DPL)), CONST64(45)));
+		BR_COND(bb_exp, vec_bb[8], AND(ICMP_NE(c, CONST64(0)), ICMP_UGT(dpl, rpl)), bb); // privilege violation
+		bb = vec_bb[8];
+		Value *p = AND(cs_desc, CONST64(SEG_DESC_P));
+		bb_exp = raise_exception_emit(cpu, tc, bb, EXP_NP, ptr_eip);
+		BR_COND(bb_exp, vec_bb[9], ICMP_EQ(p, CONST64(0)), bb); // segment not present
+		bb = vec_bb[9];
+		BR_COND(vec_bb[10], vec_bb[11], ICMP_UGT(rpl, CONST16(cpl)), bb);
+
+		// less privileged
+		bb = vec_bb[10];
+		vec = MEM_POP_AT(2, 3);
+		Value *esp = vec[0];
+		Value *ss = vec[1];
+
+		if (size_mode == SIZE16) {
+			esp = ZEXT32(esp);
+		}
+		else {
+			ss = TRUNC16(ss);
+		}
+
+		std::vector<Value *> vec_ss = check_ss_desc_priv_emit(cpu, tc, bb, ss, ptr_eip, cs);
+		ST_R32(eip, EIP_idx);
+		set_access_flg_seg_desc_emit(cpu, tc, bb, cs_desc, cs_desc_addr, ptr_eip);
+		write_seg_reg_emit(cpu, tc, bb, CS_idx, cs, read_seg_desc_base_emit(tc, bb, cs_desc),
+			read_seg_desc_limit_emit(tc, bb, cs_desc), read_seg_desc_flags_emit(tc, bb, cs_desc));
+		ST_R32(esp, ESP_idx);
+		Value *ss_desc_addr = vec_ss[0];
+		Value *ss_desc = vec_ss[1];
+		set_access_flg_seg_desc_emit(cpu, tc, bb, ss_desc, ss_desc_addr, ptr_eip);
+		write_seg_reg_emit(cpu, tc, bb, SS_idx, ss, read_seg_desc_base_emit(tc, bb, ss_desc),
+			read_seg_desc_limit_emit(tc, bb, ss_desc), read_seg_desc_flags_emit(tc, bb, ss_desc));
+
+		if (cpl <= ((cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12)) {
+			mask = OR(mask, CONST32(IF_MASK));
+		}
+		if (cpl == 0) {
+			mask = OR(mask, CONST32(VIP_MASK | VIF_MASK | VM_MASK | IOPL_MASK));
+		}
+
+		write_eflags(cpu, tc, bb, temp_eflags, mask);
+		ST(cpu->ptr_hflags, OR(ZEXT32(rpl), AND(LD(cpu->ptr_hflags), CONST32(~HFLG_CPL))));
+		validate_seg_emit(cpu, tc, bb, DS_idx);
+		validate_seg_emit(cpu, tc, bb, ES_idx);
+		validate_seg_emit(cpu, tc, bb, FS_idx);
+		validate_seg_emit(cpu, tc, bb, GS_idx);
+		BR_UNCOND(vec_bb[12], bb);
+
+		// same privilege
+		bb = vec_bb[11];
+		ST_REG_val(esp_old, esp_old_ptr);
+		ST_R32(eip, EIP_idx);
+		set_access_flg_seg_desc_emit(cpu, tc, bb, cs_desc, cs_desc_addr, ptr_eip);
+		write_seg_reg_emit(cpu, tc, bb, CS_idx, cs, read_seg_desc_base_emit(tc, bb, cs_desc),
+			read_seg_desc_limit_emit(tc, bb, cs_desc), read_seg_desc_flags_emit(tc, bb, cs_desc));
+		write_eflags(cpu, tc, bb, temp_eflags, mask);
+		BR_UNCOND(vec_bb[12], bb);
+		bb = vec_bb[12];
+		return ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), eip);
+	}
+	else {
+		vec = MEM_POP(3);
+		eip = vec[0];
+		cs = vec[1];
+		eflags = vec[2];
+
+		if (size_mode == SIZE16) {
+			eip = ZEXT32(eip);
+			eflags = ZEXT32(eflags);
+			mask = CONST32(TF_MASK | IF_MASK | DF_MASK | IOPL_MASK | NT_MASK);
+		}
+		else {
+			cs = TRUNC16(cs);
+			mask = CONST32(ID_MASK | AC_MASK | TF_MASK | IF_MASK | DF_MASK | IOPL_MASK | NT_MASK);
+		}
+
+		ST_REG_val(vec[3], vec[4]);
+		ST_R32(eip, EIP_idx);
+		ST_SEG(cs, CS_idx);
+		write_eflags(cpu, tc, bb, eflags, mask);
+		return ADD(SHL(ZEXT32(cs), CONST32(4)), eip);
+	}
 }
 
 Value *
@@ -457,7 +643,7 @@ stack_push_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, std::vector<V
 }
 
 std::vector<Value *>
-stack_pop_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, uint32_t size_mode, const unsigned num)
+stack_pop_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, uint32_t size_mode, const unsigned num, const unsigned pop_at)
 {
 	assert(size_mode != SIZE8);
 	std::vector<Value *> vec;
@@ -465,7 +651,7 @@ stack_pop_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip
 	switch ((size_mode << 1) | ((cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
 	case 0: { // sp, pop 32
-		Value *sp = LD_R16(ESP_idx);
+		Value *sp = ADD(LD_R16(ESP_idx), MUL(CONST16(pop_at), CONST16(4)));
 		for (unsigned i = 0; i < num; i++) {
 			vec.push_back(LD_MEM(MEM_LD32_idx, ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx))));
 			sp = ADD(sp, CONST16(4));
@@ -476,7 +662,7 @@ stack_pop_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip
 	break;
 
 	case 1: { // esp, pop 32
-		Value *esp = LD_R32(ESP_idx);
+		Value *esp = ADD(LD_R32(ESP_idx), MUL(CONST32(pop_at), CONST32(4)));
 		for (unsigned i = 0; i < num; i++) {
 			vec.push_back(LD_MEM(MEM_LD32_idx, ADD(esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx))));
 			esp = ADD(esp, CONST32(4));
@@ -487,7 +673,7 @@ stack_pop_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip
 	break;
 
 	case 2: { // sp, pop 16
-		Value *sp = LD_R16(ESP_idx);
+		Value *sp = ADD(LD_R16(ESP_idx), MUL(CONST16(pop_at), CONST16(2)));
 		for (unsigned i = 0; i < num; i++) {
 			vec.push_back(LD_MEM(MEM_LD16_idx, ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx))));
 			sp = ADD(sp, CONST16(2));
@@ -498,7 +684,7 @@ stack_pop_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip
 	break;
 
 	case 3: { // esp, pop 16
-		Value *esp = LD_R32(ESP_idx);
+		Value *esp = ADD(LD_R32(ESP_idx), MUL(CONST32(pop_at), CONST32(2)));
 		for (unsigned i = 0; i < num; i++) {
 			vec.push_back(LD_MEM(MEM_LD16_idx, ADD(esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx))));
 			esp = ADD(esp, CONST32(2));
