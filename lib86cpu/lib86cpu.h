@@ -132,7 +132,6 @@ struct translated_code_t {
 };
 
 struct disas_ctx_t {
-	BasicBlock *bb;
 	Value *next_pc;
 	uint8_t flags;
 	addr_t virt_pc, start_pc, pc;
@@ -173,6 +172,7 @@ struct cpu_t {
 	cpu_ctx_t cpu_ctx;
 	uint8_t *ram;
 	memory_region_t<addr_t> *pt_mr;
+	translated_code_t *tc; // tc for which we are currently generating code
 	std::unique_ptr<interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>> memory_space_tree;
 	std::unique_ptr<interval_tree<port_t, std::unique_ptr<memory_region_t<port_t>>>> io_space_tree;
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<addr_t>>>, sort_by_priority<addr_t>> memory_out;
@@ -187,6 +187,8 @@ struct cpu_t {
 	Value *ptr_regs;
 	Value *ptr_eflags;
 	Value *ptr_hflags;
+	Value *instr_eip;
+	BasicBlock *bb; // bb to which we are currently adding llvm instructions
 	Function *ptr_mem_ldfn[7];
 	Function *ptr_mem_stfn[7];
 	Function *exp_fn;

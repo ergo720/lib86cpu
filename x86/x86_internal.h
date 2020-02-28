@@ -18,12 +18,6 @@ void decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx);
 JIT_EXTERNAL_CALL_C void cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip);
 void cpu_throw_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip);
 
-inline addr_t
-get_pc(cpu_ctx_t *cpu_ctx)
-{
-    return cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
-}
-
 extern const char *mnemo[];
 
 // cpu hidden flags

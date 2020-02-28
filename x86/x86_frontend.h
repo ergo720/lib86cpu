@@ -7,45 +7,47 @@
 #pragma once
 
 
-FunctionType * create_tc_fntype(cpu_t *cpu, translated_code_t *tc);
-Function *create_tc_prologue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype);
-void create_tc_epilogue(cpu_t *cpu, translated_code_t *tc, FunctionType *fntype, disas_ctx_t *disas_ctx);
+FunctionType * create_tc_fntype(cpu_t *cpu);
+Function *create_tc_prologue(cpu_t *cpu, FunctionType *fntype);
+void create_tc_epilogue(cpu_t *cpu, FunctionType *fntype, disas_ctx_t *disas_ctx);
 translated_code_t *tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc);
 void tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc, addr_t pc);
 translated_code_t *tc_cache_search(cpu_t *cpu, addr_t pc);
 void tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc);
 void tc_cache_clear(cpu_t *cpu);
-void optimize(translated_code_t *tc, Function *func);
-Value *get_struct_member_pointer(Value *gep_start, const unsigned gep_index, translated_code_t *tc, BasicBlock *bb);
-Value *get_r8h_pointer(Value *gep_start, translated_code_t *tc, BasicBlock *bb);
-void get_ext_fn(cpu_t *cpu, translated_code_t *tc, Function *func);
-Value *get_operand(cpu_t *cpu, x86_instr *instr, translated_code_t *tc, BasicBlock *bb, const unsigned opnum);
-Value *mem_read_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *ptr_eip, const unsigned idx);
-void mem_write_no_cpl_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *addr, Value *value, Value *ptr_eip, const unsigned idx);
-void check_io_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *port, Value *mask, Value *ptr_eip);
-void stack_push_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, std::vector<Value *> &vec, Value *ptr_eip, uint32_t size_mode);
-std::vector<Value *> stack_pop_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, uint32_t size_mode, const unsigned num, const unsigned pop_at = 0);
-Value *calc_next_pc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *ptr_eip, size_t instr_size);
-BasicBlock *raise_exception_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb2, uint8_t expno, Value *ptr_eip);
-void ljmp_pe_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *eip, Value *ptr_eip);
-Value *iret_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *ptr_eip, uint8_t size_mode);
-std::vector<Value *> check_ss_desc_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip, Value *cs = nullptr);
-std::vector<Value *> check_seg_desc_priv_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip);
-void set_access_flg_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *desc, Value *desc_addr, Value *ptr_eip);
-std::vector<Value *> read_seg_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip);
-Value *read_seg_desc_base_emit(translated_code_t *tc, BasicBlock *bb, Value *desc);
-Value *read_seg_desc_limit_emit(translated_code_t *tc, BasicBlock *&bb, Value *desc);
-Value *read_seg_desc_flags_emit(translated_code_t *tc, BasicBlock *bb, Value *desc);
-std::vector<Value *> read_tss_desc_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *&bb, Value *sel, Value *ptr_eip);
-void write_seg_reg_emit(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, const unsigned reg, Value *sel, Value *base, Value *limit, Value *flags);
-Value *get_immediate_op(translated_code_t *tc, x86_instr *instr, uint8_t idx, uint8_t size_mode);
-Value *get_register_op(cpu_t *cpu, translated_code_t *tc, x86_instr *instr, BasicBlock *bb, uint8_t idx);
-void set_flags_sum(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *sum, Value *a, Value *b, uint8_t size_mode);
-void set_flags_sub(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *sub, Value *a, Value *b, uint8_t size_mode);
-void set_flags(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *res, Value *aux, uint8_t size_mode);
+void optimize(cpu_t *cpu, Function *func);
+std::vector<BasicBlock *> gen_bbs(cpu_t *cpu, Function *func, const unsigned num);
+Value *get_struct_member_pointer(cpu_t *cpu, Value *gep_start, const unsigned gep_index);
+Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
+void get_ext_fn(cpu_t *cpu, Function *func);
+Value *get_operand(cpu_t *cpu, x86_instr *instr, const unsigned opnum);
+Value *mem_read_no_cpl_emit(cpu_t *cpu, Value *addr, const unsigned idx);
+void mem_write_no_cpl_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx);
+void check_io_priv_emit(cpu_t *cpu, Value *port, Value *mask);
+void stack_push_emit(cpu_t *cpu, std::vector<Value *> &vec, uint32_t size_mode);
+std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at = 0);
+Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
+BasicBlock *raise_exception_emit(cpu_t *cpu, uint8_t expno);
+void ljmp_pe_emit(cpu_t *cpu, Value *sel, Value *eip);
+Value *iret_emit(cpu_t *cpu, uint8_t size_mode);
+std::vector<Value *> check_ss_desc_priv_emit(cpu_t *cpu, Value *sel, Value *cs = nullptr);
+std::vector<Value *> check_seg_desc_priv_emit(cpu_t *cpu, Value *sel);
+void set_access_flg_seg_desc_emit(cpu_t *cpu, Value *desc, Value *desc_addr);
+std::vector<Value *> read_seg_desc_emit(cpu_t *cpu, Value *sel);
+Value *read_seg_desc_base_emit(cpu_t *cpu, Value *desc);
+Value *read_seg_desc_limit_emit(cpu_t *cpu, Value *desc);
+Value *read_seg_desc_flags_emit(cpu_t *cpu, Value *desc);
+std::vector<Value *> read_tss_desc_emit(cpu_t *cpu, Value *sel);
+void write_seg_reg_emit(cpu_t *cpu, const unsigned reg, std::vector<Value *> &vec);
+Value *get_immediate_op(cpu_t *cpu, x86_instr *instr, uint8_t idx, uint8_t size_mode);
+Value *get_register_op(cpu_t *cpu, x86_instr *instr, uint8_t idx);
+void set_flags_sum(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode);
+void set_flags_sub(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode);
+void set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode);
+void write_eflags(cpu_t *cpu, Value *eflags, Value *mask);
 
 
-#define CTX() (*tc->ctx)
+#define CTX() (*cpu->tc->ctx)
 #define BB() BasicBlock::Create(CTX(), "", func, 0)
 #define getIntegerType(x) (IntegerType::get(CTX(), x))
 #define getPointerType(x) (PointerType::getUnqual(x))
@@ -68,10 +70,10 @@ void set_flags(cpu_t *cpu, translated_code_t *tc, BasicBlock *bb, Value *res, Va
 #define IO_ST16_idx  5
 #define IO_ST32_idx  6
 
-#define GET_IMM() get_immediate_op(tc, &instr, OPNUM_SRC, size_mode)
-#define GET_IMM8() get_immediate_op(tc, &instr, OPNUM_SRC, SIZE8)
-#define GET_REG(idx) get_register_op(cpu, tc, &instr, bb, idx)
-#define GET_OP(op) get_operand(cpu, &instr, tc, bb, op)
+#define GET_IMM() get_immediate_op(cpu, &instr, OPNUM_SRC, size_mode)
+#define GET_IMM8() get_immediate_op(cpu, &instr, OPNUM_SRC, SIZE8)
+#define GET_REG(idx) get_register_op(cpu, &instr, idx)
+#define GET_OP(op) get_operand(cpu, &instr, op)
 #define GET_RM(idx, r, m) 	rm = GET_OP(idx); \
 switch (instr.operand[idx].type) \
 { \
@@ -92,70 +94,69 @@ default: \
 
 #define INTPTR(v) ConstantInt::get(getIntegerPointerType(), reinterpret_cast<uintptr_t>(v))
 #define CONSTs(s, v) ConstantInt::get(getIntegerType(s), v)
-#define CONSTptr(s, v) ConstantExpr::getIntToPtr(INTPTR(v), getPointerType(getIntegerType(s)))
 #define CONST1(v) CONSTs(1, v)
 #define CONST8(v) CONSTs(8, v)
 #define CONST16(v) CONSTs(16, v)
 #define CONST32(v) CONSTs(32, v)
 #define CONST64(v) CONSTs(64, v)
 
-#define ALLOCs(s) new AllocaInst(getIntegerType(s), 0, "", bb)
+#define ALLOCs(s) new AllocaInst(getIntegerType(s), 0, "", cpu->bb)
 #define ALLOC8() ALLOCs(8)
 #define ALLOC16() ALLOCs(16)
 #define ALLOC32() ALLOCs(32)
 
-#define ST(ptr, v) new StoreInst(v, ptr, bb)
-#define LD(ptr) new LoadInst(ptr, "", false, bb)
+#define ST(ptr, v) new StoreInst(v, ptr, cpu->bb)
+#define LD(ptr) new LoadInst(ptr, "", false, cpu->bb)
 
-#define UNREACH() new UnreachableInst(CTX(), bb)
-#define INTRINSIC(id) CallInst::Create(Intrinsic::getDeclaration(tc->mod, Intrinsic::id), "", bb)
+#define UNREACH() new UnreachableInst(CTX(), cpu->bb)
+#define INTRINSIC(id) CallInst::Create(Intrinsic::getDeclaration(cpu->tc->mod, Intrinsic::id), "", cpu->bb)
 
-#define ZEXT(s, v) new ZExtInst(v, getIntegerType(s), "", bb)
+#define ZEXT(s, v) new ZExtInst(v, getIntegerType(s), "", cpu->bb)
 #define ZEXT8(v) ZEXT(8, v)
 #define ZEXT16(v) ZEXT(16, v)
 #define ZEXT32(v) ZEXT(32, v)
 #define ZEXT64(v) ZEXT(64, v)
 
-#define SEXT(s, v) new SExtInst(v, getIntegerType(s), "", bb)
+#define SEXT(s, v) new SExtInst(v, getIntegerType(s), "", cpu->bb)
 #define SEXT8(v) SEXT(8, v)
 #define SEXT16(v) SEXT(16, v)
 #define SEXT32(v) SEXT(32, v)
 #define SEXT64(v) SEXT(64, v)
 
-#define IBITCASTs(s, v) new BitCastInst(v, getPointerType(getIntegerType(s)), "", bb)
+#define IBITCASTs(s, v) new BitCastInst(v, getPointerType(getIntegerType(s)), "", cpu->bb)
 #define IBITCAST8(v) IBITCASTs(8, v)
 #define IBITCAST16(v) IBITCASTs(16, v)
 #define IBITCAST32(v) IBITCASTs(32, v)
 
-#define TRUNCs(s,v) new TruncInst(v, getIntegerType(s), "", bb)
+#define TRUNCs(s,v) new TruncInst(v, getIntegerType(s), "", cpu->bb)
 #define TRUNC8(v) TRUNCs(8, v)
 #define TRUNC16(v) TRUNCs(16, v)
 #define TRUNC32(v) TRUNCs(32, v)
 
-#define ADD(a, b) BinaryOperator::Create(Instruction::Add, a, b, "", bb)
-#define SUB(a, b) BinaryOperator::Create(Instruction::Sub, a, b, "", bb)
-#define MUL(a, b) BinaryOperator::Create(Instruction::Mul, a, b, "", bb)
-#define UDIV(a, b) BinaryOperator::Create(Instruction::UDiv, a, b, "", bb)
-#define UREM(a, b) BinaryOperator::Create(Instruction::URem, a, b, "", bb)
-#define AND(a, b) BinaryOperator::Create(Instruction::And, a, b, "", bb)
-#define XOR(a, b) BinaryOperator::Create(Instruction::Xor, a, b, "", bb)
-#define OR(a, b) BinaryOperator::Create(Instruction::Or, a, b, "", bb)
-#define NOT(a) BinaryOperator::CreateNot(a, "", bb)
-#define SHR(a, sh) BinaryOperator::Create(Instruction::LShr, a, sh, "", bb)
-#define SHL(a, sh) BinaryOperator::Create(Instruction::Shl, a, sh, "", bb)
-#define BR_COND(t, f, val, bb) BranchInst::Create(t, f, val, bb)
-#define BR_UNCOND(t, bb) BranchInst::Create(t, bb)
-#define ICMP_EQ(a, b) new ICmpInst(*bb, ICmpInst::ICMP_EQ, a, b, "")
-#define ICMP_NE(a, b) new ICmpInst(*bb, ICmpInst::ICMP_NE, a, b, "")
-#define ICMP_UGT(a, b) new ICmpInst(*bb, ICmpInst::ICMP_UGT, a, b, "")
-#define ICMP_ULT(a, b) new ICmpInst(*bb, ICmpInst::ICMP_ULT, a, b, "")
+#define ADD(a, b) BinaryOperator::Create(Instruction::Add, a, b, "", cpu->bb)
+#define SUB(a, b) BinaryOperator::Create(Instruction::Sub, a, b, "", cpu->bb)
+#define MUL(a, b) BinaryOperator::Create(Instruction::Mul, a, b, "", cpu->bb)
+#define UDIV(a, b) BinaryOperator::Create(Instruction::UDiv, a, b, "", cpu->bb)
+#define UREM(a, b) BinaryOperator::Create(Instruction::URem, a, b, "", cpu->bb)
+#define AND(a, b) BinaryOperator::Create(Instruction::And, a, b, "", cpu->bb)
+#define XOR(a, b) BinaryOperator::Create(Instruction::Xor, a, b, "", cpu->bb)
+#define OR(a, b) BinaryOperator::Create(Instruction::Or, a, b, "", cpu->bb)
+#define NOT(a) BinaryOperator::CreateNot(a, "", cpu->bb)
+#define SHR(a, sh) BinaryOperator::Create(Instruction::LShr, a, sh, "", cpu->bb)
+#define SHL(a, sh) BinaryOperator::Create(Instruction::Shl, a, sh, "", cpu->bb)
+#define BR_COND(t, f, val) BranchInst::Create(t, f, val, cpu->bb)
+#define BR_UNCOND(t) BranchInst::Create(t, cpu->bb)
+#define ICMP_EQ(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_EQ, a, b, "")
+#define ICMP_NE(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_NE, a, b, "")
+#define ICMP_UGT(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_UGT, a, b, "")
+#define ICMP_ULT(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_ULT, a, b, "")
 #define NOT_ZERO(s, v) AND(SHR(OR(v, SUB(CONSTs(s, 0), v)), CONSTs(s, s-1)), CONSTs(s, 1))
 
-#define GEP(ptr, idx)  get_struct_member_pointer(ptr, idx, tc, bb)
+#define GEP(ptr, idx)  get_struct_member_pointer(cpu, ptr, idx)
 #define GEP_R32(idx)   GEP(cpu->ptr_regs, idx)
 #define GEP_R16(idx)   IBITCAST16(GEP(cpu->ptr_regs, idx))
 #define GEP_R8L(idx)   IBITCAST8(GEP(cpu->ptr_regs, idx))
-#define GEP_R8H(idx)   get_r8h_pointer(IBITCAST8(GEP(cpu->ptr_regs, idx)), tc, bb)
+#define GEP_R8H(idx)   get_r8h_pointer(cpu, IBITCAST8(GEP(cpu->ptr_regs, idx)))
 #define GEP_SEL(idx)   GEP(GEP(cpu->ptr_regs, idx), SEG_SEL_idx)
 #define GEP_EAX()      GEP_R32(EAX_idx)
 #define GEP_ECX()      GEP_R32(ECX_idx)
@@ -203,21 +204,21 @@ default: \
 #define LD_SEG(seg) LD(GEP_SEL(seg))
 #define LD_SEG_HIDDEN(seg, idx) LD(GEP(GEP(GEP(cpu->ptr_regs, seg), SEG_HIDDEN_idx), idx))
 
-#define LD_MEM(idx, addr) CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, ptr_eip }, "", bb)
-#define ST_MEM(idx, addr, val) CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, val, ptr_eip }, "", bb)
-#define LD_MEM_PRIV(idx, addr) mem_read_no_cpl_emit(cpu, tc, bb, addr, ptr_eip, idx)
-#define ST_MEM_PRIV(idx, addr, val) mem_write_no_cpl_emit(cpu, tc, bb, addr, val, ptr_eip, idx)
-#define MEM_PUSH(vec) stack_push_emit(cpu, tc, bb, vec, ptr_eip, size_mode)
-#define MEM_POP(n) stack_pop_emit(cpu, tc, bb, ptr_eip, size_mode, n)
-#define MEM_POP_AT(n, at) stack_pop_emit(cpu, tc, bb, ptr_eip, size_mode, n, at)
+#define LD_MEM(idx, addr) CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, cpu->instr_eip }, "", cpu->bb)
+#define ST_MEM(idx, addr, val) CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, val, cpu->instr_eip }, "", cpu->bb)
+#define LD_MEM_PRIV(idx, addr) mem_read_no_cpl_emit(cpu, addr, idx)
+#define ST_MEM_PRIV(idx, addr, val) mem_write_no_cpl_emit(cpu, addr, val, idx)
+#define MEM_PUSH(vec) stack_push_emit(cpu, vec, size_mode)
+#define MEM_POP(n) stack_pop_emit(cpu, size_mode, n)
+#define MEM_POP_AT(n, at) stack_pop_emit(cpu, size_mode, n, at)
 
-#define LD_PARITY(idx) LD(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST8(0), idx }, "", bb))
-#define RAISE(expno) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, CONST8(expno), ptr_eip }, "", bb)
-#define SET_FLG_SUM(sum, a, b) set_flags_sum(cpu, tc, bb, sum, a, b, size_mode)
-#define SET_FLG_SUB(sub, a, b) set_flags_sub(cpu, tc, bb, sub, a, b, size_mode)
-#define SET_FLG(res, aux) set_flags(cpu, tc, bb, res, aux, size_mode)
+#define LD_PARITY(idx) LD(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST8(0), idx }, "", cpu->bb))
+#define RAISE(expno) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, CONST8(expno), cpu->instr_eip }, "", cpu->bb)
+#define SET_FLG_SUM(sum, a, b) set_flags_sum(cpu, std::vector<Value *> { sum, a , b }, size_mode)
+#define SET_FLG_SUB(sub, a, b) set_flags_sub(cpu, std::vector<Value *> { sub, a , b }, size_mode)
+#define SET_FLG(res, aux) set_flags(cpu, res, aux, size_mode)
 
-#define REP_start() disas_ctx->bb = BB(); \
+#define REP_start() vec_bb.push_back(BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0)); \
 Value *ecx, *zero; \
 if (addr_mode == ADDR16) { \
 	ecx = LD_R16(ECX_idx); \
@@ -227,8 +228,8 @@ else { \
 	ecx = LD_R32(ECX_idx); \
 	zero = CONST32(0); \
 } \
-BR_COND(disas_ctx->bb, bb_next, ICMP_NE(ecx, zero), bb); \
-bb = disas_ctx->bb
+BR_COND(vec_bb[3], vec_bb[2], ICMP_NE(ecx, zero), cpu->bb); \
+cpu->bb = vec_bb[3];
 
 #define REP() Value *ecx, *zero, *one; \
 if (addr_mode == ADDR16) { \
@@ -245,7 +246,7 @@ else { \
 	ecx = SUB(ecx, one); \
 	ST_R32(ecx, ECX_idx); \
 } \
-BR_COND(disas_ctx->bb, bb_next, ICMP_NE(ecx, zero), bb)
+BR_COND(vec_bb[3], vec_bb[2], ICMP_NE(ecx, zero))
 
 #define REPNZ() Value *ecx, *zero, *one; \
 if (addr_mode == ADDR16) { \
@@ -262,7 +263,7 @@ else { \
 	ecx = SUB(ecx, one); \
 	ST_R32(ecx, ECX_idx); \
 } \
-BR_COND(disas_ctx->bb, bb_next, AND(ICMP_NE(ecx, zero), ICMP_NE(LD_ZF(), CONST32(0))), bb)
+BR_COND(vec_bb[3], vec_bb[2], AND(ICMP_NE(ecx, zero), ICMP_NE(LD_ZF(), CONST32(0))))
 
 #define REPZ() Value *ecx, *zero, *one; \
 if (addr_mode == ADDR16) { \
@@ -279,7 +280,7 @@ else { \
 	ecx = SUB(ecx, one); \
 	ST_R32(ecx, ECX_idx); \
 } \
-BR_COND(disas_ctx->bb, bb_next, AND(ICMP_NE(ecx, zero), ICMP_EQ(LD_ZF(), CONST32(0))), bb)
+BR_COND(vec_bb[3], vec_bb[2], AND(ICMP_NE(ecx, zero), ICMP_EQ(LD_ZF(), CONST32(0))))
 
 // the lazy eflags idea comes from reading these two papers:
 // How Bochs Works Under the Hood (2nd edition) http://bochs.sourceforge.net/How%20the%20Bochs%20works%20under%20the%20hood%202nd%20edition.pdf

@@ -117,22 +117,19 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 }
 
 static lib86cpu_status
-cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
+cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 {
 	uint8_t translate_next = 1;
 	uint8_t size_mode;
 	uint8_t addr_mode;
-	BasicBlock *bb = disas_ctx->bb;
-	Function *func = bb->getParent();
 	cpu_ctx_t *cpu_ctx = &cpu->cpu_ctx;
 	addr_t pc = disas_ctx->virt_pc;
-	size_t bytes = 0;
+	size_t bytes;
 	// we can use the same indexes for both loads and stores because they have the same order in cpu->ptr_mem_xxfn
 	static const uint8_t fn_idx[3] = { MEM_LD32_idx, MEM_LD16_idx, MEM_LD8_idx };
 
-	Function::arg_iterator args_func = func->arg_begin();
+	Function::arg_iterator args_func = cpu->bb->getParent()->arg_begin();
 	args_func++;
-	Value *ptr_eip = CONST32(pc - cpu_ctx->regs.cs_hidden.base);
 	cpu->ptr_cpu_ctx = args_func++;
 	cpu->ptr_cpu_ctx->setName("cpu_ctx");
 	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, 1);
@@ -146,7 +143,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 		int len = 0;
 		x86_instr instr = { 0 };
-		ptr_eip = ADD(ptr_eip, CONST32(bytes));
+		cpu->instr_eip = CONST32(pc - cpu_ctx->regs.cs_hidden.base);
 
 		try {
 
@@ -586,7 +583,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 			case 0xA7: {
 				Value *val, *df, *sub, *addr1, *addr2, *src1, *src2, *esi, *edi;
-				BasicBlock *bb_next = BB();
+				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
 
 				if (instr.rep_prefix) {
 					REP_start();
@@ -642,11 +639,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				SET_FLG_SUB(sub, src1, src2);
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
-				BasicBlock *bb_sum = BB();
-				BasicBlock *bb_sub = BB();
-				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(df, CONST32(0)));
 
-				bb = bb_sum;
+				cpu->bb = vec_bb[0];
 				Value *esi_sum = ADD(esi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sum), ESI_idx) : ST_R32(esi_sum, ESI_idx);
 				Value *edi_sum = ADD(edi, val);
@@ -664,10 +659,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				break;
 
 				default:
-					BR_UNCOND(bb_next, bb);
+					BR_UNCOND(vec_bb[2]);
 				}
 
-				bb = bb_sub;
+				cpu->bb = vec_bb[1];
 				Value *esi_sub = SUB(esi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sub), ESI_idx) : ST_R32(esi_sub, ESI_idx);
 				Value *edi_sub = SUB(edi, val);
@@ -685,10 +680,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				break;
 
 				default:
-					BR_UNCOND(bb_next, bb);
+					BR_UNCOND(vec_bb[2]);
 				}
 
-				bb = bb_next;
+				cpu->bb = vec_bb[2];
 			}
 			break;
 
@@ -863,7 +858,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 		case X86_OPC_IRET: {
 			assert(instr.opcode_byte == 0xCF);
 
-			disas_ctx->next_pc = iret_emit(cpu, tc, bb, ptr_eip, size_mode);
+			disas_ctx->next_pc = iret_emit(cpu, size_mode);
 			disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
 			translate_next = 0;
 		}
@@ -978,26 +973,24 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			}
 
 			Value *dst_pc = ALLOC32();
-			BasicBlock *bb_jmp = BB();
-			BasicBlock *bb_exit = BB();
-			BasicBlock *bb_next = BB();
-			BR_COND(bb_jmp, bb_exit, val, bb);
+			std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+			BR_COND(vec_bb[0], vec_bb[1], val);
 
-			bb = bb_exit;
-			Value *next_pc = calc_next_pc_emit(cpu, tc, bb, ptr_eip, bytes);
+			cpu->bb = vec_bb[1];
+			Value *next_pc = calc_next_pc_emit(cpu, bytes);
 			ST(dst_pc, next_pc);
-			BR_UNCOND(bb_next, bb);
+			BR_UNCOND(vec_bb[2]);
 
 			addr_t jump_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
 			if (size_mode == SIZE16) {
 				jump_eip &= 0x0000FFFF;
 			}
-			bb = bb_jmp;
+			cpu->bb = vec_bb[0];
 			ST(GEP_EIP(), CONST32(jump_eip));
 			ST(dst_pc, CONST32(jump_eip + cpu_ctx->regs.cs_hidden.base));
-			BR_UNCOND(bb_next, bb);
+			BR_UNCOND(vec_bb[2]);
 
-			bb = bb_next;
+			cpu->bb = vec_bb[2];
 			disas_ctx->next_pc = LD(dst_pc);
 
 			translate_next = 0;
@@ -1026,7 +1019,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 					new_eip &= 0x0000FFFF;
 				}
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
-					ljmp_pe_emit(cpu, tc, bb, CONST16(new_sel), CONST32(new_eip), ptr_eip);
+					ljmp_pe_emit(cpu, CONST16(new_sel), CONST32(new_eip));
 					disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), CONST32(new_eip));
 				}
 				else {
@@ -1175,32 +1168,27 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			}
 			else {
 				Value *sel, *rm;
-				BasicBlock *bb_null_seg = BB();
-				BasicBlock *bb_next1 = BB();
-				BasicBlock *bb_next2 = BB();
-				BasicBlock *bb_next3 = BB();
-				BasicBlock *bb_next4 = BB();
-
+				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 5);
 				GET_RM(OPNUM_SRC, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
-				BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
-				bb = bb_null_seg;
-				write_seg_reg_emit(cpu, tc, bb, LDTR_idx, sel, CONST32(0), CONST32(0), CONST32(0));
-				BR_UNCOND(bb_next4, bb);
-				bb = bb_next1;
-				Value *desc = read_seg_desc_emit(cpu, tc, bb, sel, ptr_eip)[1];
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
+				cpu->bb = vec_bb[0];
+				write_seg_reg_emit(cpu, LDTR_idx, std::vector<Value *> { sel, CONST32(0), CONST32(0), CONST32(0) });
+				BR_UNCOND(vec_bb[4]);
+				cpu->bb = vec_bb[1];
+				Value *desc = read_seg_desc_emit(cpu, sel)[1];
 				Value *s = SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(40));
 				Value *ty = SHR(AND(desc, CONST64(SEG_DESC_TY)), CONST64(40));
-				BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
-				BR_COND(bb_exp, bb_next2, ICMP_NE(XOR(OR(s, ty), CONST64(SEG_DESC_LDT)), CONST64(0)), bb); // must be ldt type
-				bb = bb_next2;
+				BasicBlock *bb_exp = raise_exception_emit(cpu, EXP_GP);
+				BR_COND(bb_exp, vec_bb[2], ICMP_NE(XOR(OR(s, ty), CONST64(SEG_DESC_LDT)), CONST64(0))); // must be ldt type
+				cpu->bb = vec_bb[2];
 				Value *p = AND(desc, CONST64(SEG_DESC_P));
-				bb_exp = raise_exception_emit(cpu, tc, bb, EXP_NP, ptr_eip);
-				BR_COND(bb_exp, bb_next3, ICMP_EQ(p, CONST64(0)), bb); // segment not present
-				bb = bb_next3;
-				write_seg_reg_emit(cpu, tc, bb, LDTR_idx, sel, read_seg_desc_base_emit(tc, bb, desc),
-					read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
-				BR_UNCOND(bb_next4, bb);
-				bb = bb_next4;
+				bb_exp = raise_exception_emit(cpu, EXP_NP);
+				BR_COND(bb_exp, vec_bb[3], ICMP_EQ(p, CONST64(0))); // segment not present
+				cpu->bb = vec_bb[3];
+				write_seg_reg_emit(cpu, LDTR_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, desc),
+					read_seg_desc_limit_emit(cpu, desc), read_seg_desc_flags_emit(cpu, desc)});
+				BR_UNCOND(vec_bb[4]);
+				cpu->bb = vec_bb[4];
 			}
 		}
 		break;
@@ -1215,8 +1203,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 			case 0xAD: {
 				Value *val, *df, *addr, *src, *esi;
-				BasicBlock *bb_next = BB();
-
+				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
 				if (instr.rep_prefix) {
 					REP_start();
 				}
@@ -1262,11 +1249,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				}
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
-				BasicBlock *bb_sum = BB();
-				BasicBlock *bb_sub = BB();
-				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(df, CONST32(0)));
 
-				bb = bb_sum;
+				cpu->bb = vec_bb[0];
 				Value *esi_sum = ADD(esi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sum), ESI_idx) : ST_R32(esi_sum, ESI_idx);
 				switch (instr.rep_prefix)
@@ -1277,10 +1262,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				break;
 
 				default:
-					BR_UNCOND(bb_next, bb);
+					BR_UNCOND(vec_bb[2]);
 				}
 
-				bb = bb_sub;
+				cpu->bb = vec_bb[1];
 				Value *esi_sub = SUB(esi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sub), ESI_idx) : ST_R32(esi_sub, ESI_idx);
 				switch (instr.rep_prefix)
@@ -1291,10 +1276,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				break;
 
 				default:
-					BR_UNCOND(bb_next, bb);
+					BR_UNCOND(vec_bb[2]);
 				}
 
-				bb = bb_next;
+				cpu->bb = vec_bb[2];
 			}
 			break;
 
@@ -1345,26 +1330,24 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			}
 
 			Value *dst_pc = ALLOC32();
-			BasicBlock *bb_loop = BB();
-			BasicBlock *bb_exit = BB();
-			BasicBlock* bb_next = BB();
-			BR_COND(bb_loop, bb_exit, AND(ICMP_NE(val, zero), zf), bb);
+			std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+			BR_COND(vec_bb[0], vec_bb[1], AND(ICMP_NE(val, zero), zf));
 
-			bb = bb_exit;
-			Value *exit_pc = calc_next_pc_emit(cpu, tc, bb, ptr_eip, bytes);
+			cpu->bb = vec_bb[1];
+			Value *exit_pc = calc_next_pc_emit(cpu, bytes);
 			ST(dst_pc, exit_pc);
-			BR_UNCOND(bb_next, bb);
+			BR_UNCOND(vec_bb[2]);
 
 			addr_t loop_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes + instr.operand[OPNUM_SRC].rel;
 			if (size_mode == SIZE16) {
 				loop_eip &= 0x0000FFFF;
 			}
-			bb = bb_loop;
+			cpu->bb = vec_bb[0];
 			ST(GEP_EIP(), CONST32(loop_eip));
 			ST(dst_pc, CONST32(loop_eip + cpu_ctx->regs.cs_hidden.base));
-			BR_UNCOND(bb_next, bb);
+			BR_UNCOND(vec_bb[2]);
 
-			bb = bb_next;
+			cpu->bb = vec_bb[2];
 			disas_ctx->next_pc = LD(dst_pc);
 
 			translate_next = 0;
@@ -1420,27 +1403,24 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 					if (sel_idx == SS_idx) {
 						translate_next = 0;
-						vec = check_ss_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
-						set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
-						write_seg_reg_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, vec[1]),
-							read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
+						vec = check_ss_desc_priv_emit(cpu, sel);
+						set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
+						write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, vec[1]),
+							read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
 					}
 					else {
-						BasicBlock *bb_null_seg = BB();
-						BasicBlock *bb_next1 = BB();
-						BasicBlock *bb_next2 = BB();
-
-						BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
-						bb = bb_null_seg;
-						write_seg_reg_emit(cpu, tc, bb, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
-						BR_UNCOND(bb_next2, bb);
-						bb = bb_next1;
-						vec = check_seg_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
-						set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
-						write_seg_reg_emit(cpu, tc, bb, sel_idx, sel /* & rpl?? */, read_seg_desc_base_emit(tc, bb, vec[1]),
-							read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
-						BR_UNCOND(bb_next2, bb);
-						bb = bb_next2;
+						std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+						BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
+						cpu->bb = vec_bb[0];
+						write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, CONST32(0), CONST32(0), CONST32(0) });
+						BR_UNCOND(vec_bb[2]);
+						cpu->bb = vec_bb[1];
+						vec = check_seg_desc_priv_emit(cpu, sel);
+						set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
+						write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel /* & rpl?? */, read_seg_desc_base_emit(cpu, vec[1]),
+							read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
+						BR_UNCOND(vec_bb[2]);
+						cpu->bb = vec_bb[2];
 					}
 				}
 				else {
@@ -1467,36 +1447,30 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			}
 			else {
 				Value *sel, *rm;
-				std::vector<Value *> vec;
-				BasicBlock *bb_null_seg = BB();
-				BasicBlock *bb_next1 = BB();
-				BasicBlock *bb_next2 = BB();
-				BasicBlock *bb_next3 = BB();
-				BasicBlock *bb_next4 = BB();
-
+				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 5);
 				GET_RM(OPNUM_SRC, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
-				BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
-				bb = bb_null_seg;
-				write_seg_reg_emit(cpu, tc, bb, TR_idx, sel, CONST32(0), CONST32(0), CONST32(0));
-				BR_UNCOND(bb_next4, bb);
-				bb = bb_next1;
-				vec = read_tss_desc_emit(cpu, tc, bb, sel, ptr_eip);
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
+				cpu->bb = vec_bb[0];
+				write_seg_reg_emit(cpu, TR_idx, std::vector<Value *> { sel, CONST32(0), CONST32(0), CONST32(0) });
+				BR_UNCOND(vec_bb[4]);
+				cpu->bb = vec_bb[1];
+				std::vector<Value *> vec = read_tss_desc_emit(cpu, sel);
 				Value *desc = vec[1];
 				Value *s = SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(40));
 				Value *ty = SHR(AND(desc, CONST64(SEG_DESC_TY)), CONST64(40));
-				BasicBlock *bb_exp = raise_exception_emit(cpu, tc, bb, EXP_GP, ptr_eip);
+				BasicBlock *bb_exp = raise_exception_emit(cpu, EXP_GP);
 				Value *val = OR(ICMP_EQ(OR(s, ty), CONST64(SEG_DESC_TSS16AV)), ICMP_EQ(OR(s, ty), CONST64(SEG_DESC_TSS32AV)));
-				BR_COND(bb_exp, bb_next2, ICMP_EQ(val, CONSTs(1, 0)), bb); // must be an available tss
-				bb = bb_next2;
+				BR_COND(bb_exp, vec_bb[2], ICMP_EQ(val, CONSTs(1, 0))); // must be an available tss
+				cpu->bb = vec_bb[2];
 				Value *p = AND(desc, CONST64(SEG_DESC_P));
-				bb_exp = raise_exception_emit(cpu, tc, bb, EXP_NP, ptr_eip);
-				BR_COND(bb_exp, bb_next3, ICMP_EQ(p, CONST64(0)), bb); // segment not present
-				bb = bb_next3;
+				bb_exp = raise_exception_emit(cpu, EXP_NP);
+				BR_COND(bb_exp, vec_bb[3], ICMP_EQ(p, CONST64(0))); // segment not present
+				cpu->bb = vec_bb[3];
 				ST_MEM_PRIV(MEM_LD64_idx, vec[0], OR(desc, CONST64(SEG_DESC_BY)));
-				write_seg_reg_emit(cpu, tc, bb, TR_idx, sel, read_seg_desc_base_emit(tc, bb, desc),
-					read_seg_desc_limit_emit(tc, bb, desc), read_seg_desc_flags_emit(tc, bb, desc));
-				BR_UNCOND(bb_next4, bb);
-				bb = bb_next4;
+				write_seg_reg_emit(cpu, TR_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, desc),
+					read_seg_desc_limit_emit(cpu, desc), read_seg_desc_flags_emit(cpu, desc)});
+				BR_UNCOND(vec_bb[4]);
+				cpu->bb = vec_bb[4];
 			}
 		}
 		break;
@@ -1515,7 +1489,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				{
 				case 0:
 				case 3:
-					CallInst::Create(cpu->crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(instr.operand[OPNUM_DST].reg), ptr_eip, CONST32(bytes) }, "", bb);
+					CallInst::Create(cpu->crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(instr.operand[OPNUM_DST].reg), cpu->instr_eip, CONST32(bytes) }, "", cpu->bb);
 					break;
 				case 2:
 				case 4:
@@ -1563,27 +1537,24 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 						if (sel_idx == SS_idx) {
 							translate_next = 0;
-							vec = check_ss_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
-							set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
-							write_seg_reg_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, vec[1]),
-								read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
+							vec = check_ss_desc_priv_emit(cpu, sel);
+							set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
+							write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, vec[1]),
+								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
 						}
 						else {
-							BasicBlock *bb_null_seg = BB();
-							BasicBlock *bb_next1 = BB();
-							BasicBlock *bb_next2 = BB();
-
-							BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
-							bb = bb_null_seg;
-							write_seg_reg_emit(cpu, tc, bb, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
-							BR_UNCOND(bb_next2, bb);
-							bb = bb_next1;
-							vec = check_seg_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
-							set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
-							write_seg_reg_emit(cpu, tc, bb, sel_idx, sel /* & rpl?? */, read_seg_desc_base_emit(tc, bb, vec[1]),
-								read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
-							BR_UNCOND(bb_next2, bb);
-							bb = bb_next2;
+							std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+							BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
+							cpu->bb = vec_bb[0];
+							write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, CONST32(0), CONST32(0), CONST32(0) });
+							BR_UNCOND(vec_bb[2]);
+							cpu->bb = vec_bb[1];
+							vec = check_seg_desc_priv_emit(cpu, sel);
+							set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
+							write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel /* & rpl?? */, read_seg_desc_base_emit(cpu, vec[1]),
+								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
+							BR_UNCOND(vec_bb[2]);
+							cpu->bb = vec_bb[2];
 						}
 					}
 					else {
@@ -1644,7 +1615,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 			case 0xA5: {
 				Value *val, *df, *addr1, *addr2, *src, *esi, *edi;
-				BasicBlock *bb_next = BB();
+				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
 
 				if (instr.rep_prefix) {
 					REP_start();
@@ -1695,11 +1666,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				}
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
-				BasicBlock *bb_sum = BB();
-				BasicBlock *bb_sub = BB();
-				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(df, CONST32(0)));
 
-				bb = bb_sum;
+				cpu->bb = vec_bb[0];
 				Value *esi_sum = ADD(esi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sum), ESI_idx) : ST_R32(esi_sum, ESI_idx);
 				Value *edi_sum = ADD(edi, val);
@@ -1712,10 +1681,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				break;
 
 				default:
-					BR_UNCOND(bb_next, bb);
+					BR_UNCOND(vec_bb[2]);
 				}
 
-				bb = bb_sub;
+				cpu->bb = vec_bb[1];
 				Value *esi_sub = SUB(esi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sub), ESI_idx) : ST_R32(esi_sub, ESI_idx);
 				Value *edi_sub = SUB(edi, val);
@@ -1728,10 +1697,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				break;
 
 				default:
-					BR_UNCOND(bb_next, bb);
+					BR_UNCOND(vec_bb[2]);
 				}
 
-				bb = bb_next;
+				cpu->bb = vec_bb[2];
 			}
 			break;
 
@@ -1856,7 +1825,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 			{
 			case 0xEE: {
 				Value *port = LD_R16(EDX_idx);
-				check_io_priv_emit(cpu, tc, bb, ZEXT32(port), CONST32(1), ptr_eip);
+				check_io_priv_emit(cpu, ZEXT32(port), CONST32(1));
 				ST_MEM(IO_ST8_idx, port, LD_R8L(EAX_idx));
 			}
 			break;
@@ -1925,27 +1894,24 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 						if (sel_idx == SS_idx) {
 							translate_next = 0;
-							vec = check_ss_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
-							set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
-							write_seg_reg_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, vec[1]),
-								read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
+							vec = check_ss_desc_priv_emit(cpu, sel);
+							set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
+							write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, vec[1]),
+								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
 						}
 						else {
-							BasicBlock *bb_null_seg = BB();
-							BasicBlock *bb_next1 = BB();
-							BasicBlock *bb_next2 = BB();
-
-							BR_COND(bb_null_seg, bb_next1, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)), bb);
-							bb = bb_null_seg;
-							write_seg_reg_emit(cpu, tc, bb, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
-							BR_UNCOND(bb_next2, bb);
-							bb = bb_next1;
-							vec = check_seg_desc_priv_emit(cpu, tc, bb, sel, ptr_eip);
-							set_access_flg_seg_desc_emit(cpu, tc, bb, vec[1], vec[0], ptr_eip);
-							write_seg_reg_emit(cpu, tc, bb, sel_idx, sel, read_seg_desc_base_emit(tc, bb, vec[1]),
-								read_seg_desc_limit_emit(tc, bb, vec[1]), read_seg_desc_flags_emit(tc, bb, vec[1]));
-							BR_UNCOND(bb_next2, bb);
-							bb = bb_next2;
+							std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+							BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
+							cpu->bb = vec_bb[0];
+							write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, CONST32(0), CONST32(0), CONST32(0) });
+							BR_UNCOND(vec_bb[2]);
+							cpu->bb = vec_bb[1];
+							vec = check_seg_desc_priv_emit(cpu, sel);
+							set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
+							write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, vec[1]),
+								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
+							BR_UNCOND(vec_bb[2]);
+							cpu->bb = vec_bb[2];
 						}
 					}
 					else {
@@ -2044,13 +2010,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				eflags = ZEXT32(eflags);
 			}
 
-			ST_R32(AND(OR(OR(AND(LD_R32(EFLAGS_idx), NOT(mask)), AND(eflags, mask)), CONST32(2)), CONST32(~RF_MASK)), EFLAGS_idx);
-			Value *cf_new = AND(eflags, CONST32(1));
-			Value *of_new = SHL(XOR(SHR(AND(eflags, CONST32(0x800)), CONST32(11)), cf_new), CONST32(30));
-			Value *sfd = SHR(AND(eflags, CONST32(128)), CONST32(7));
-			Value *pdb = SHL(XOR(CONST32(4), AND(eflags, CONST32(4))), CONST32(6));
-			ST_FLG_RES(SHL(XOR(AND(eflags, CONST32(64)), CONST32(64)), CONST32(2)));
-			ST_FLG_AUX(OR(OR(OR(OR(SHL(cf_new, CONST32(31)), SHR(AND(eflags, CONST32(16)), CONST32(1))), of_new), sfd), pdb));
+			write_eflags(cpu, eflags, mask);
 			ST_REG_val(vec[1], vec[2]);
 			translate_next = 0;
 		}
@@ -2263,7 +2223,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 			case 0xAF: {
 				Value *val, *df, *sub, *addr, *src, *edi, *eax;
-				BasicBlock *bb_next = BB();
+				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
 
 				if (instr.rep_prefix) {
 					REP_start();
@@ -2315,11 +2275,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				SET_FLG_SUB(sub, eax, src);
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
-				BasicBlock *bb_sum = BB();
-				BasicBlock *bb_sub = BB();
-				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(df, CONST32(0)));
 
-				bb = bb_sum;
+				cpu->bb = vec_bb[0];
 				Value *edi_sum = ADD(edi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi_sum), EDI_idx) : ST_R32(edi_sum, EDI_idx);
 				switch (instr.rep_prefix)
@@ -2335,10 +2293,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				break;
 
 				default:
-					BR_UNCOND(bb_next, bb);
+					BR_UNCOND(vec_bb[2]);
 				}
 
-				bb = bb_sub;
+				cpu->bb = vec_bb[1];
 				Value *edi_sub = SUB(edi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi_sub), EDI_idx) : ST_R32(edi_sub, EDI_idx);
 				switch (instr.rep_prefix)
@@ -2354,10 +2312,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				break;
 
 				default:
-					BR_UNCOND(bb_next, bb);
+					BR_UNCOND(vec_bb[2]);
 				}
 
-				bb = bb_next;
+				cpu->bb = vec_bb[2];
 			}
 			break;
 
@@ -2506,7 +2464,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 			case 0xAB: {
 				Value *val, *df, *addr, *edi;
-				BasicBlock *bb_next = BB();
+				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
 
 				if (instr.rep_prefix) {
 					REP_start();
@@ -2550,11 +2508,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				}
 
 				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
-				BasicBlock *bb_sum = BB();
-				BasicBlock *bb_sub = BB();
-				BR_COND(bb_sum, bb_sub, ICMP_EQ(df, CONST32(0)), bb);
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(df, CONST32(0)));
 
-				bb = bb_sum;
+				cpu->bb = vec_bb[0];
 				Value *edi_sum = ADD(edi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi_sum), EDI_idx) : ST_R32(edi_sum, EDI_idx);
 				switch (instr.rep_prefix)
@@ -2565,10 +2521,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				break;
 
 				default:
-					BR_UNCOND(bb_next, bb);
+					BR_UNCOND(vec_bb[2]);
 				}
 
-				bb = bb_sub;
+				cpu->bb = vec_bb[1];
 				Value *edi_sub = SUB(edi, val);
 				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi_sub), EDI_idx) : ST_R32(edi_sub, EDI_idx);
 				switch (instr.rep_prefix)
@@ -2579,10 +2535,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 				break;
 
 				default:
-					BR_UNCOND(bb_next, bb);
+					BR_UNCOND(vec_bb[2]);
 				}
 
-				bb = bb_next;
+				cpu->bb = vec_bb[2];
 			}
 			break;
 
@@ -2697,13 +2653,17 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx, translated_code_t *tc)
 
 	} while ((translate_next | (disas_ctx->flags & DISAS_FLG_PAGE_CROSS)) == 1);
 
-	disas_ctx->bb = bb;
-
 	if (disas_ctx->next_pc == nullptr) {
-		disas_ctx->next_pc = calc_next_pc_emit(cpu, tc, bb, ptr_eip, bytes);
+		disas_ctx->next_pc = calc_next_pc_emit(cpu, bytes);
 	}
 
 	return LIB86CPU_SUCCESS;
+}
+
+static inline addr_t
+get_pc(cpu_ctx_t *cpu_ctx)
+{
+	return cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
 }
 
 lib86cpu_status
@@ -2733,43 +2693,44 @@ cpu_exec_tc(cpu_t *cpu)
 			if (tc->ctx == nullptr) {
 				return LIB86CPU_NO_MEMORY;
 			}
-			tc->mod = new Module(cpu->cpu_name, CTX());
+			tc->mod = new Module(cpu->cpu_name, *tc->ctx);
 			if (tc->mod == nullptr) {
 				delete tc->ctx;
 				return LIB86CPU_NO_MEMORY;
 			}
 
-			FunctionType *fntype = create_tc_fntype(cpu, tc.get());
-			Function *func = create_tc_prologue(cpu, tc.get(), fntype);
+			cpu->tc = tc.get();
+			FunctionType *fntype = create_tc_fntype(cpu);
+			Function *func = create_tc_prologue(cpu, fntype);
+			cpu->bb = BB();
 
 			// add to the module the external host functions that will be called by the translated guest code
-			get_ext_fn(cpu, tc.get(), func);
+			get_ext_fn(cpu, func);
 
 			// prepare the disas ctx
 			disas_ctx_t disas_ctx;
 			disas_ctx.flags = (cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT;
-			disas_ctx.bb = BB();
 			disas_ctx.next_pc = nullptr;
 			disas_ctx.virt_pc = get_pc(&cpu->cpu_ctx);
 			disas_ctx.pc = pc;
 			disas_ctx.instr_page_addr = disas_ctx.virt_pc & ~PAGE_MASK;
 
 			// start guest code translation
-			lib86cpu_status status = cpu_translate(cpu, &disas_ctx, tc.get());
+			lib86cpu_status status = cpu_translate(cpu, &disas_ctx);
 			if (!LIB86CPU_CHECK_SUCCESS(status)) {
 				delete tc->mod;
 				delete tc->ctx;
 				return status;
 			}
 
-			create_tc_epilogue(cpu, tc.get(), fntype, &disas_ctx);
+			create_tc_epilogue(cpu, fntype, &disas_ctx);
 
 			if (cpu->cpu_flags & CPU_PRINT_IR) {
 				tc->mod->print(errs(), nullptr);
 			}
 
 			if (cpu->cpu_flags & CPU_CODEGEN_OPTIMIZE) {
-				optimize(tc.get(), func);
+				optimize(cpu, func);
 				if (cpu->cpu_flags & CPU_PRINT_IR_OPTIMIZED) {
 					tc->mod->print(errs(), nullptr);
 				}
@@ -2808,7 +2769,10 @@ cpu_exec_tc(cpu_t *cpu)
 			tc->ctx = nullptr;
 			tc->mod = nullptr;
 
-			ptr_tc = tc.get();
+			// we are done with code generation for this block, so we null the tc and bb pointers to prevent accidental usage
+			ptr_tc = cpu->tc;
+			cpu->tc = nullptr;
+			cpu->bb = nullptr;
 
 			if (disas_ctx.flags & DISAS_FLG_PAGE_CROSS) {
 				// this will leave behind the memory of the generated code block, however tc_cache_clear will still delete it later so
