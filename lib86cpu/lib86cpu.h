@@ -33,10 +33,9 @@ using namespace llvm;
 
 // lib86cpu error flags
 enum lib86cpu_status {
-	LIB86CPU_NO_MEMORY = -5,
+	LIB86CPU_NO_MEMORY = -4,
 	LIB86CPU_INVALID_PARAMETER,
 	LIB86CPU_LLVM_ERROR,
-	LIB86CPU_UNKNOWN_INSTR,
 	LIB86CPU_OP_NOT_IMPLEMENTED,
 	LIB86CPU_SUCCESS,
 };
@@ -179,6 +178,10 @@ struct cpu_t {
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<port_t>>>, sort_by_priority<port_t>> io_out;
 	std::forward_list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
 	uint16_t num_tc;
+	/* exception specific variables */
+	uint32_t exp_idx;
+	uint32_t exp_code;
+	addr_t exp_fault_addr;
 
 	/* llvm specific variables */
 	std::unique_ptr<orc::LLJIT> jit;

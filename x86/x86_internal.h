@@ -11,12 +11,12 @@
 
 void cpu_x86_init(cpu_t *cpu);
 lib86cpu_status cpu_exec_tc(cpu_t *cpu);
-addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std::function<void(cpu_ctx_t *, uint8_t, uint32_t)> raise_fault);
+addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip);
 void tc_protect(void* addr, size_t size, bool ro);
 size_t disasm_instr(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_line, disas_ctx_t *disas_ctx);
 void decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx);
-JIT_EXTERNAL_CALL_C void cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip);
-void cpu_throw_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip);
+ void cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip);
+JIT_EXTERNAL_CALL_C void cpu_throw_exception [[noreturn]] (cpu_ctx_t *cpu_ctx, uint64_t exp_data, uint32_t eip);
 
 extern const char *mnemo[];
 
@@ -47,13 +47,15 @@ extern const char *mnemo[];
 #define SEG_DESC_S    (1ULL << 44)  // system
 #define SEG_DESC_DPL  (3ULL << 45)  // dpl
 #define SEG_DESC_P    (1ULL << 47)  // present
+#define SEG_DESC_DB   (1ULL << 54)  // default size
 #define SEG_DESC_G    (1ULL << 55)  // granularity
 #define SEG_DESC_TSS16AV  1         // system / tss, 16 bit, available
 #define SEG_DESC_LDT      2         // system / ldt
 #define SEG_DESC_TSS32AV  9         // system / tss, 32 bit, available
 
 // segment hidden flags
-#define SEG_HIDDEN_DB  (1 << 22)  // default size
+#define SEG_HIDDEN_DB      (1 << 22)  // default size
+#define SEG_HIDDEN_TSS_TY  (1 << 11)  // 16/32 tss type
 
 // reg indexes in cpu->regs_layout
 #define EAX_idx     0

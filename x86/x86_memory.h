@@ -275,7 +275,7 @@ T ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t page_cross)
 		memory_region_t<addr_t> *region;
 		check_instr_length(cpu, disas_ctx->start_pc, disas_ctx->virt_pc, sizeof(T));
 		while (i < sizeof(T)) {
-			disas_ctx->pc = mmu_translate_addr(cpu, disas_ctx->virt_pc, 0, disas_ctx->start_pc - cpu->cpu_ctx.regs.cs_hidden.base, cpu_throw_exception);
+			disas_ctx->pc = mmu_translate_addr(cpu, disas_ctx->virt_pc, 0, disas_ctx->start_pc - cpu->cpu_ctx.regs.cs_hidden.base);
 			region = as_memory_search_addr<T>(cpu, disas_ctx->pc);
 			value |= (static_cast<T>(as_ram_dispatch_read<uint8_t>(cpu, disas_ctx->pc, region)) << (i * 8));
 			disas_ctx->virt_pc++;
@@ -313,7 +313,7 @@ T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip)
 		uint8_t i = 0;
 		memory_region_t<addr_t> *region;
 		while (i < sizeof(T)) {
-			phys_addr = mmu_translate_addr(cpu, addr, 0, eip, cpu_raise_exception);
+			phys_addr = mmu_translate_addr(cpu, addr, 0, eip);
 			region = as_memory_search_addr<T>(cpu, phys_addr);
 			buffer |= (static_cast<T>(as_memory_dispatch_read<uint8_t>(cpu, phys_addr, region)) << (i * 8));
 			addr++;
@@ -325,7 +325,7 @@ T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip)
 		return buffer;
 	}
 	else {
-		phys_addr = mmu_translate_addr(cpu, addr, 0, eip, cpu_raise_exception);
+		phys_addr = mmu_translate_addr(cpu, addr, 0, eip);
 		return as_memory_dispatch_read<T>(cpu, phys_addr, as_memory_search_addr<T>(cpu, phys_addr));
 	}
 }
@@ -341,7 +341,7 @@ void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip)
 			sys::swapByteOrder<T>(value);
 		}
 		while (i >= 0) {
-			phys_addr = mmu_translate_addr(cpu, addr, 1, eip, cpu_raise_exception);
+			phys_addr = mmu_translate_addr(cpu, addr, 1, eip);
 			region = as_memory_search_addr<T>(cpu, phys_addr);
 			as_memory_dispatch_write<uint8_t>(cpu, phys_addr, value >> (i * 8), region);
 			addr++;
@@ -349,7 +349,7 @@ void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip)
 		}
 	}
 	else {
-		phys_addr = mmu_translate_addr(cpu, addr, 1, eip, cpu_raise_exception);
+		phys_addr = mmu_translate_addr(cpu, addr, 1, eip);
 		as_memory_dispatch_write<T>(cpu, phys_addr, value, as_memory_search_addr<T>(cpu, phys_addr));
 	}
 }

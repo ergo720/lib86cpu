@@ -81,7 +81,7 @@ check_page_privilege(cpu_t *cpu, uint8_t cpu_level, uint8_t pde_priv, uint8_t pt
 }
 
 addr_t
-mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std::function<void(cpu_ctx_t *, uint8_t, uint32_t)> raise_fault)
+mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip)
 {
 	if (!(cpu->cpu_ctx.regs.cr0 & CR0_PG_MASK)) {
 		return addr;
@@ -89,12 +89,12 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std:
 	else {
 		static const uint8_t cpl_to_page_priv[4] = { 0, 0, 0, 1 << CPL_PRIV_SHIFT };
 
+		uint32_t err_code = 0;
 		addr_t pte_addr = (cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK) | (addr >> PAGE_SHIFT_LARGE) * 4;
 		uint32_t pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr));
 
 		if (!(pte & PTE_PRESENT)) {
-			raise_fault(&cpu->cpu_ctx, EXP_PF, eip);
-			LIB86CPU_ABORT();
+			goto page_fault;
 		}
 
 		uint8_t cpu_lv = (is_write << 1) | ((cpl_to_page_priv[cpu->cpu_ctx.hflags & HFLG_CPL] & (cpu->cpu_ctx.hflags & HFLG_CPL_PRIV)) >> 3);
@@ -110,16 +110,15 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std:
 				}
 				return (pte & PTE_ADDR_4M) | (addr & PAGE_MASK_LARGE);
 			}
-			raise_fault(&cpu->cpu_ctx, EXP_PF, eip);
-			LIB86CPU_ABORT();
+			err_code = 1;
+			goto page_fault;
 		}
 
 		pte_addr = (pte & PTE_ADDR_4K) | ((addr >> PAGE_SHIFT) & 0x3FF) * 4;
 		pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr));
 
 		if (!(pte & PTE_PRESENT)) {
-			raise_fault(&cpu->cpu_ctx, EXP_PF, eip);
-			LIB86CPU_ABORT();
+			goto page_fault;
 		}
 
 		if (check_page_privilege(cpu, cpu_lv, pde_priv, (pte & PTE_WRITE) | (pte & PTE_USER))) {
@@ -132,8 +131,14 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip, std:
 			}
 			return (pte & PTE_ADDR_4K) | (addr & PAGE_MASK);
 		}
-		raise_fault(&cpu->cpu_ctx, EXP_PF, eip);
-		LIB86CPU_ABORT();
+		err_code = 1;
+
+	page_fault:
+		cpu->cpu_ctx.hflags |= HFLG_CPL_PRIV;
+		cpu->exp_fault_addr = addr;
+		cpu->exp_idx = EXP_PF;
+		cpu->exp_code = err_code | (is_write << 1) | (cpl_to_page_priv[cpu->cpu_ctx.hflags & HFLG_CPL] >> 3);
+		throw eip;
 	}
 }
 
@@ -142,8 +147,10 @@ check_instr_length(cpu_t *cpu, addr_t start_pc, addr_t pc, size_t size)
 {
 	pc += size;
 	if (pc - start_pc > X86_MAX_INSTR_LENGTH) {
-		volatile addr_t addr = mmu_translate_addr(cpu, pc - 1, 0, start_pc - cpu->cpu_ctx.regs.cs_hidden.base, cpu_throw_exception);
-		throw EXP_GP;
+		volatile addr_t addr = mmu_translate_addr(cpu, pc - 1, 0, start_pc - cpu->cpu_ctx.regs.cs_hidden.base);
+		cpu->exp_idx = EXP_GP;
+		cpu->exp_code = 0;
+		throw start_pc - cpu->cpu_ctx.regs.cs_hidden.base;
 	}
 }
 

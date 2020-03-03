@@ -27,7 +27,7 @@ void check_io_priv_emit(cpu_t *cpu, Value *port, Value *mask);
 void stack_push_emit(cpu_t *cpu, std::vector<Value *> &vec, uint32_t size_mode);
 std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at = 0);
 Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
-BasicBlock *raise_exception_emit(cpu_t *cpu, uint8_t expno);
+BasicBlock *raise_exception_emit(cpu_t *cpu, Value *exp_data);
 void ljmp_pe_emit(cpu_t *cpu, Value *sel, Value *eip);
 Value *iret_emit(cpu_t *cpu, uint8_t size_mode);
 std::vector<Value *> check_ss_desc_priv_emit(cpu_t *cpu, Value *sel, Value *cs = nullptr);
@@ -213,7 +213,7 @@ default: \
 #define MEM_POP_AT(n, at) stack_pop_emit(cpu, size_mode, n, at)
 
 #define LD_PARITY(idx) LD(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST8(0), idx }, "", cpu->bb))
-#define RAISE(expno) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, CONST8(expno), cpu->instr_eip }, "", cpu->bb)
+#define RAISE(exp_data) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, exp_data, cpu->instr_eip }, "", cpu->bb)
 #define SET_FLG_SUM(sum, a, b) set_flags_sum(cpu, std::vector<Value *> { sum, a , b }, size_mode)
 #define SET_FLG_SUB(sub, a, b) set_flags_sub(cpu, std::vector<Value *> { sub, a , b }, size_mode)
 #define SET_FLG(res, aux) set_flags(cpu, res, aux, size_mode)
@@ -228,7 +228,7 @@ else { \
 	ecx = LD_R32(ECX_idx); \
 	zero = CONST32(0); \
 } \
-BR_COND(vec_bb[3], vec_bb[2], ICMP_NE(ecx, zero), cpu->bb); \
+BR_COND(vec_bb[3], vec_bb[2], ICMP_NE(ecx, zero)); \
 cpu->bb = vec_bb[3];
 
 #define REP() Value *ecx, *zero, *one; \

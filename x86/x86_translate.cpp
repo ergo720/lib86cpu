@@ -17,59 +17,6 @@
 #define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
 
 
-const char *
-get_instr_name(unsigned num)
-{
-	return mnemo[num];
-}
-
-[[noreturn]] void
-cpu_throw_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip)
-{
-	cpu_ctx->hflags |= HFLG_CPL_PRIV;
-	throw expno;
-}
-
-[[noreturn]] void
-cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint8_t expno, uint32_t eip)
-{
-	cpu_t *cpu = cpu_ctx->cpu;
-
-	if (cpu_ctx->hflags & HFLG_PE_MODE) {
-		cpu_ctx->hflags |= HFLG_CPL_PRIV;
-		LIB86CPU_ABORT_msg("Exceptions are unsupported in protected mode (for now)\n");
-	}
-
-	// push to the stack eflags, cs and eip
-	addr_t stack_base = cpu_ctx->regs.ss_hidden.base + (cpu_ctx->regs.esp & 0x0000FFFF) - 2;
-	mem_write<uint16_t>(cpu, stack_base, cpu_ctx->regs.eflags |
-		((cpu_ctx->lazy_eflags.auxbits & 0x80000000) >> 31) |
-		((cpu_ctx->lazy_eflags.parity[(cpu_ctx->lazy_eflags.result & 0xFF) ^ ((cpu_ctx->lazy_eflags.auxbits & 0xFF00) >> 8)] ^ 1) << 2) |
-		((cpu_ctx->lazy_eflags.auxbits & 8) << 1) |
-		((cpu_ctx->lazy_eflags.result == 0) << 6) |
-		(((cpu_ctx->lazy_eflags.result & 0x80000000) >> 31) ^ (cpu_ctx->lazy_eflags.auxbits & 1) << 7) |
-		(((cpu_ctx->lazy_eflags.auxbits & 0x80000000) ^ ((cpu_ctx->lazy_eflags.auxbits & 0x40000000) << 1)) >> 20),
-		eip);
-	stack_base -= 2;
-	mem_write<uint16_t>(cpu, stack_base, cpu_ctx->regs.cs, eip);
-	stack_base -= 2;
-	mem_write<uint16_t>(cpu, stack_base, eip, eip);
-	cpu_ctx->regs.esp = stack_base - cpu_ctx->regs.ss_hidden.base;
-
-	// clear IF, TF, RF and AC flags
-	cpu_ctx->regs.eflags &= ~(TF_MASK | IF_MASK | RF_MASK | AC_MASK);
-
-	// transfer program control to the exception handler specified in the idt
-	addr_t vec_addr = cpu_ctx->regs.idtr_hidden.base + expno * 4;
-	uint32_t vec_entry = mem_read<uint32_t>(cpu, vec_addr, eip);
-	cpu_ctx->regs.cs = (vec_entry & 0xFFFF0000) >> 16;
-	cpu_ctx->regs.cs_hidden.base = cpu_ctx->regs.cs << 4;
-	cpu_ctx->regs.eip = vec_entry & 0x0000FFFF;
-
-	// throw an exception to forcefully transfer control to the exception handler
-	throw expno;
-}
-
 JIT_EXTERNAL_CALL_C void
 cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes)
 {
@@ -78,7 +25,7 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 	case 0:
 		if (((new_cr & CR0_PE_MASK) == 0 && (new_cr & CR0_PG_MASK) >> 31 == 1) ||
 			((new_cr & CR0_CD_MASK) == 0 && (new_cr & CR0_NW_MASK) >> 29 == 1)) {
-			cpu_raise_exception(cpu_ctx, EXP_GP, eip);
+			cpu_throw_exception(cpu_ctx, EXP_GP, eip);
 		}
 		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
 			tc_cache_clear(cpu_ctx->cpu);
@@ -99,7 +46,7 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 			// to point to the next instruction
 			cpu_ctx->regs.eip = (eip + bytes);
 			cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
-			throw static_cast<uint8_t>(0xFF);
+			throw -1;
 		}
 		cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
 		break;
@@ -114,6 +61,18 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 	case 4:
 		break;
 	}
+}
+
+const char *
+get_instr_name(unsigned num)
+{
+	return mnemo[num];
+}
+
+static inline addr_t
+get_pc(cpu_ctx_t *cpu_ctx)
+{
+	return cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
 }
 
 static lib86cpu_status
@@ -169,24 +128,21 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 #endif
 
 		}
-		catch (uint8_t expno) {
-			switch (expno)
+		catch (uint32_t eip) {
+			switch (cpu->exp_idx)
 			{
 			case EXP_PF:
 				// page fault during instruction fetch
 				disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
-				[[fallthrough]];
+				RAISE(CONST64((static_cast<uint64_t>(cpu->exp_fault_addr) << 32) | (cpu->exp_code << 16) | cpu->exp_idx));
+				disas_ctx->next_pc = CONST32(0); // unreachable
+				break;
 
 			case EXP_GP:
 				// the instruction exceeded the maximum allowed length
-				RAISE(expno);
+				RAISE(CONST64((cpu->exp_code << 16) | cpu->exp_idx));
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				return LIB86CPU_SUCCESS;
-
-			case 0xFF:
-				// TODO: actually this should raise an UD exception for illegal opcodes
-				printf("error: unable to decode opcode %x\n", instr.opcode_byte);
-				return LIB86CPU_UNKNOWN_INSTR;
 
 			default:
 				LIB86CPU_ABORT();
@@ -488,7 +444,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					ST_R32(eflags, EFLAGS_idx);
 				}
 				else {
-					RAISE(EXP_GP);
+					RAISE(CONST64(EXP_GP));
 					disas_ctx->next_pc = CONST32(0); // unreachable
 					translate_next = 0;
 				}
@@ -1093,7 +1049,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_LAR:         BAD;
 		case X86_OPC_LEA: {
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
-				RAISE(EXP_UD);
+				RAISE(CONST64(EXP_UD));
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
@@ -1128,7 +1084,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_LIDTL:
 		case X86_OPC_LIDTW: {
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
-				RAISE(EXP_UD);
+				RAISE(CONST64(EXP_UD));
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
@@ -1157,12 +1113,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			assert(instr.reg_opc == 2);
 
 			if (!(cpu_ctx->hflags & HFLG_PE_MODE)) {
-				RAISE(EXP_UD);
+				RAISE(CONST64(EXP_UD));
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
 			else if (cpu_ctx->hflags & HFLG_CPL) {
-				RAISE(EXP_GP);
+				RAISE(CONST64(EXP_GP));
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
@@ -1178,11 +1134,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *desc = read_seg_desc_emit(cpu, sel)[1];
 				Value *s = SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(40));
 				Value *ty = SHR(AND(desc, CONST64(SEG_DESC_TY)), CONST64(40));
-				BasicBlock *bb_exp = raise_exception_emit(cpu, EXP_GP);
+				BasicBlock *bb_exp = raise_exception_emit(cpu, OR(SHL(AND(ZEXT64(sel), CONST64(0xFFFC)), CONST64(16)), CONST64(EXP_GP)));
 				BR_COND(bb_exp, vec_bb[2], ICMP_NE(XOR(OR(s, ty), CONST64(SEG_DESC_LDT)), CONST64(0))); // must be ldt type
 				cpu->bb = vec_bb[2];
 				Value *p = AND(desc, CONST64(SEG_DESC_P));
-				bb_exp = raise_exception_emit(cpu, EXP_NP);
+				bb_exp = raise_exception_emit(cpu, OR(SHL(AND(ZEXT64(sel), CONST64(0xFFFC)), CONST64(16)), CONST64(EXP_NP)));
 				BR_COND(bb_exp, vec_bb[3], ICMP_EQ(p, CONST64(0))); // segment not present
 				cpu->bb = vec_bb[3];
 				write_seg_reg_emit(cpu, LDTR_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, desc),
@@ -1361,7 +1317,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_LGS:
 		case X86_OPC_LSS: {
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
-				RAISE(EXP_UD);
+				RAISE(CONST64(EXP_UD));
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
@@ -1436,12 +1392,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			assert(instr.reg_opc == 3);
 
 			if (!(cpu_ctx->hflags & HFLG_PE_MODE)) {
-				RAISE(EXP_UD);
+				RAISE(CONST64(EXP_UD));
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
 			else if (cpu_ctx->hflags & HFLG_CPL) {
-				RAISE(EXP_GP);
+				RAISE(CONST64(EXP_GP));
 				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
@@ -1458,12 +1414,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *desc = vec[1];
 				Value *s = SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(40));
 				Value *ty = SHR(AND(desc, CONST64(SEG_DESC_TY)), CONST64(40));
-				BasicBlock *bb_exp = raise_exception_emit(cpu, EXP_GP);
+				BasicBlock *bb_exp = raise_exception_emit(cpu, OR(SHL(AND(ZEXT64(sel), CONST64(0xFFFC)), CONST64(16)), CONST64(EXP_GP)));
 				Value *val = OR(ICMP_EQ(OR(s, ty), CONST64(SEG_DESC_TSS16AV)), ICMP_EQ(OR(s, ty), CONST64(SEG_DESC_TSS32AV)));
 				BR_COND(bb_exp, vec_bb[2], ICMP_EQ(val, CONSTs(1, 0))); // must be an available tss
 				cpu->bb = vec_bb[2];
 				Value *p = AND(desc, CONST64(SEG_DESC_P));
-				bb_exp = raise_exception_emit(cpu, EXP_NP);
+				bb_exp = raise_exception_emit(cpu, OR(SHL(AND(ZEXT64(sel), CONST64(0xFFFC)), CONST64(16)), CONST64(EXP_NP)));
 				BR_COND(bb_exp, vec_bb[3], ICMP_EQ(p, CONST64(0))); // segment not present
 				cpu->bb = vec_bb[3];
 				ST_MEM_PRIV(MEM_LD64_idx, vec[0], OR(desc, CONST64(SEG_DESC_BY)));
@@ -1523,7 +1479,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			case 0x8E: {
 				if (instr.operand[OPNUM_DST].reg == 1) {
-					RAISE(EXP_UD);
+					RAISE(CONST64(EXP_UD));
 					disas_ctx->next_pc = CONST32(0); // unreachable
 					translate_next = 0;
 				}
@@ -2443,7 +2399,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					ST_R32(eflags, EFLAGS_idx);
 				}
 				else {
-					RAISE(EXP_GP);
+					RAISE(CONST64(EXP_GP));
 					disas_ctx->next_pc = CONST32(0); // unreachable
 					translate_next = 0;
 				}
@@ -2684,12 +2640,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	return LIB86CPU_SUCCESS;
 }
 
-static inline addr_t
-get_pc(cpu_ctx_t *cpu_ctx)
-{
-	return cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
-}
-
 lib86cpu_status
 cpu_exec_tc(cpu_t *cpu)
 {
@@ -2700,10 +2650,11 @@ cpu_exec_tc(cpu_t *cpu)
 	while (true) {
 
 		try {
-			pc = mmu_translate_addr(cpu, get_pc(&cpu->cpu_ctx), 0, cpu->cpu_ctx.regs.eip, cpu_raise_exception);
+			pc = mmu_translate_addr(cpu, get_pc(&cpu->cpu_ctx), 0, cpu->cpu_ctx.regs.eip);
 		}
-		catch (uint8_t expno) {
+		catch (uint32_t eip) {
 			// page fault during instruction fetching
+			cpu_raise_exception(&cpu->cpu_ctx, eip);
 			prev_tc = nullptr;
 		}
 
