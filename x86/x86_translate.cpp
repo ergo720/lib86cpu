@@ -8,6 +8,7 @@
 #include "llvm/IR/Module.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/IR/Instructions.h"
+#include "llvm/IR/Intrinsics.h"
 #include "x86_internal.h"
 #include "x86_isa.h"
 #include "x86_frontend.h"
@@ -707,7 +708,19 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		break;
 
 		case X86_OPC_ENTER:       BAD;
-		case X86_OPC_HLT:         BAD;
+		case X86_OPC_HLT: {
+			if (cpu_ctx->hflags & HFLG_CPL) {
+				RAISE(CONST64(EXP_GP));
+				disas_ctx->next_pc = CONST32(0); // unreachable
+				translate_next = 0;
+			}
+			else {
+				// we don't implement interrupts yet, so if we reach here, we will just abort for now
+				INTRINSIC(trap);
+			}
+		}
+		break;
+
 		case X86_OPC_IDIV:        BAD;
 		case X86_OPC_IMUL: {
 			switch (instr.opcode_byte)
