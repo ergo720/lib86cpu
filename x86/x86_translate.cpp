@@ -2655,6 +2655,7 @@ cpu_exec_tc(cpu_t *cpu)
 		catch (uint32_t eip) {
 			// page fault during instruction fetching
 			cpu_raise_exception(&cpu->cpu_ctx, eip);
+			pc = get_pc(&cpu->cpu_ctx);
 			prev_tc = nullptr;
 		}
 

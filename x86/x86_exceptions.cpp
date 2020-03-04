@@ -13,6 +13,14 @@ mem_write<uint16_t>(cpu_ctx->cpu, stack_base + (esp & stack_mask), val, 0);
 mem_write<uint32_t>(cpu_ctx->cpu, stack_base + (esp & stack_mask), val, 0);
 
 
+static void
+set_access_flg_seg_desc(cpu_ctx_t *cpu_ctx, uint64_t desc, addr_t desc_addr)
+{
+	if ((((desc & SEG_DESC_S) >> 44) | ((desc & SEG_DESC_A) >> 39)) == 1) {
+		mem_write<uint64_t>(cpu_ctx->cpu, desc_addr, desc | SEG_DESC_A, 0);
+	}
+}
+
 static uint32_t
 read_seg_base(uint64_t desc)
 {
@@ -33,11 +41,11 @@ read_seg_limit(uint64_t desc)
 static uint32_t
 read_seg_flags(uint64_t desc)
 {
-	return (desc & 0xFFFFFFFF00000000) >> 32;;
+	return (desc & 0xFFFFFFFF00000000) >> 32;
 }
 
 static uint64_t
-read_seg_desc(cpu_ctx_t *cpu_ctx, uint16_t sel, int expno)
+read_seg_desc(cpu_ctx_t *cpu_ctx, uint16_t sel, addr_t *desc_addr, int expno)
 {
 	uint16_t sel_idx = sel & ~7;
 	uint32_t base, limit;
@@ -53,6 +61,8 @@ read_seg_desc(cpu_ctx_t *cpu_ctx, uint16_t sel, int expno)
 	if (sel_idx + 7 > limit) {
 		throw 0U;
 	}
+
+	*desc_addr = base + sel_idx;
 
 	return mem_read<uint64_t>(cpu_ctx->cpu, base + sel_idx, 0);
 }
@@ -167,7 +177,8 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip)
 				throw 0U;
 			}
 
-			desc = read_seg_desc(cpu_ctx, sel, EXP_GP);
+			addr_t desc_addr;
+			desc = read_seg_desc(cpu_ctx, sel, &desc_addr, EXP_GP);
 			uint16_t dpl = (desc & SEG_DESC_DPL) >> 45;
 			if (dpl > (cpu_ctx->hflags & HFLG_CPL)) {
 				throw 0U;
@@ -181,6 +192,7 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip)
 				dpl = cpu_ctx->hflags & HFLG_CPL;
 			}
 
+			set_access_flg_seg_desc(cpu_ctx, desc, desc_addr);
 			uint32_t seg_base = read_seg_base(desc);
 			uint32_t seg_limit = read_seg_limit(desc);
 			uint32_t seg_flags = read_seg_flags(desc);
@@ -194,7 +206,7 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip)
 					throw 0U;
 				}
 
-				desc = read_seg_desc(cpu_ctx, new_ss, EXP_TS);
+				desc = read_seg_desc(cpu_ctx, new_ss, &desc_addr, EXP_TS);
 				uint16_t p = (desc & SEG_DESC_P) >> 40;
 				uint16_t s = (desc & SEG_DESC_S) >> 44;
 				uint16_t d = (desc & SEG_DESC_DC) >> 42;
@@ -205,6 +217,7 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip)
 					throw 0U;
 				}
 
+				set_access_flg_seg_desc(cpu_ctx, desc, desc_addr);
 				stack_switch = 1;
 				stack_mask = desc & SEG_DESC_DB ? 0xFFFFFFFF : 0xFFFF;
 				stack_base = read_seg_base(desc);
