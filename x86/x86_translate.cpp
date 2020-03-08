@@ -1482,6 +1482,17 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			break;
 
+			case 0x8A:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x8B: {
+				Value *reg, *rm;
+				reg = GET_REG(OPNUM_DST);
+				GET_RM(OPNUM_SRC, ST_REG_val(LD_REG_val(rm), reg);, ST_REG_val(LD_MEM(fn_idx[size_mode], rm), reg););
+			}
+			break;
+
 			case 0x8C: {
 				Value *val, *rm;
 				val = LD_SEG(instr.operand[OPNUM_SRC].reg + SEG_offset);
