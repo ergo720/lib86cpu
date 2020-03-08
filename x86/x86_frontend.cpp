@@ -165,7 +165,7 @@ write_seg_reg_emit(cpu_t *cpu, const unsigned reg, std::vector<Value *> &vec)
 		ST(cpu->ptr_hflags, OR(SHR(AND(vec[3], CONST32(SEG_HIDDEN_DB)), CONST32(20)), AND(LD(cpu->ptr_hflags), CONST32(~HFLG_CS32))));
 	}
 	else if (reg == SS_idx) {
-		ST(cpu->ptr_hflags, OR(SHR(AND(vec[3], CONST32(SEG_HIDDEN_DB)), CONST32(19)), AND(LD(cpu->ptr_hflags), CONST32(~HFLG_SS32))));
+		ST(cpu->ptr_hflags, OR(OR(SHR(AND(vec[3], CONST32(SEG_HIDDEN_DB)), CONST32(19)), AND(ZEXT32(vec[0]), CONST32(3))), AND(LD(cpu->ptr_hflags), CONST32(~(HFLG_SS32 | HFLG_CPL)))));
 	}
 }
 

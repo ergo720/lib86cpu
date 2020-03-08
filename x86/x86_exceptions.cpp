@@ -273,7 +273,7 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip)
 			cpu_ctx->regs.cs_hidden.base = seg_base;
 			cpu_ctx->regs.cs_hidden.limit = seg_limit;
 			cpu_ctx->regs.cs_hidden.flags = seg_flags;
-			cpu_ctx->hflags = ((seg_flags & SEG_HIDDEN_DB) >> 20) | (cpu_ctx->hflags & ~HFLG_CS32);
+			cpu_ctx->hflags = (((seg_flags & SEG_HIDDEN_DB) >> 20) | dpl) | (cpu_ctx->hflags & ~(HFLG_CS32 | HFLG_CPL));
 			cpu_ctx->regs.eip = new_eip;
 			if (expno == EXP_PF) {
 				cpu_ctx->regs.cr2 = cpu_ctx->cpu->exp_fault_addr;
