@@ -1689,9 +1689,32 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case X86_OPC_MOVSX:       BAD;
-		case X86_OPC_MOVSXB:      BAD;
-		case X86_OPC_MOVSXW:      BAD;
+		case X86_OPC_MOVSX:
+		case X86_OPC_MOVSXB:
+		case X86_OPC_MOVSXW: {
+			switch (instr.opcode_byte)
+			{
+			case 0xBE: {
+				Value *rm, *val;
+				GET_RM(OPNUM_SRC, val = instr.operand[OPNUM_SRC].reg < 4 ? LD_R8L(instr.operand[OPNUM_SRC].reg) :
+					LD_R8H(instr.operand[OPNUM_SRC].reg);, val = LD_MEM(MEM_LD8_idx, rm););
+				ST_REG_val(size_mode == SIZE16 ? SEXT16(val) : SEXT32(val), GET_REG(OPNUM_DST));
+			}
+			break;
+
+			case 0xBF: {
+				Value *rm, *val;
+				GET_RM(OPNUM_SRC, val = LD_R16(instr.operand[OPNUM_SRC].reg);, val = LD_MEM(MEM_LD16_idx, rm););
+				ST_REG_val(SEXT32(val), GEP_R32(instr.operand[OPNUM_DST].reg));
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+		}
+		break;
+
 		case X86_OPC_MOVZX:       BAD;
 		case X86_OPC_MOVZXB:      BAD;
 		case X86_OPC_MOVZXW:      BAD;
