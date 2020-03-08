@@ -305,11 +305,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			switch (instr.opcode_byte)
 			{
 			case 0x9A: {
-				if (cpu_ctx->hflags & HFLG_PE_MODE) {
-					BAD_MODE;
-				}
-				addr_t ret_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes;
-				addr_t call_eip = instr.operand[OPNUM_SRC].imm;
+				uint32_t ret_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes;
+				uint32_t call_eip = instr.operand[OPNUM_SRC].imm;
 				uint16_t new_sel = instr.operand[OPNUM_SRC].seg_sel;
 				Value *cs, *eip;
 				if (size_mode == SIZE16) {
@@ -321,15 +318,18 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					cs = CONST32(cpu_ctx->regs.cs);
 					eip = CONST32(ret_eip);
 				}
-
-				std::vector<Value *> vec;
-				vec.push_back(cs);
-				vec.push_back(eip);
-				MEM_PUSH(vec);
-				ST_SEG(CONST16(new_sel), CS_idx);
-				ST_R32(CONST32(call_eip), EIP_idx);
-				ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
-				disas_ctx->next_pc = CONST32((static_cast<uint32_t>(new_sel) << 4) + call_eip);
+				if (cpu_ctx->hflags & HFLG_PE_MODE) {
+					lcall_pe_emit(cpu, std::vector<Value *> { CONST16(new_sel), cs, eip }, size_mode, ret_eip, call_eip);
+					disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), LD_R32(EIP_idx));
+					disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
+				}
+				else {
+					MEM_PUSH((std::vector<Value *> { cs, eip }));
+					ST_SEG(CONST16(new_sel), CS_idx);
+					ST_R32(CONST32(call_eip), EIP_idx);
+					ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
+					disas_ctx->next_pc = CONST32((static_cast<uint32_t>(new_sel) << 4) + call_eip);
+				}
 			}
 			break;
 
@@ -984,16 +984,15 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0xEA: {
 				addr_t new_eip = instr.operand[OPNUM_SRC].imm;
 				uint16_t new_sel = instr.operand[OPNUM_SRC].seg_sel;
-				if (size_mode == SIZE16) {
-					new_eip &= 0x0000FFFF;
-				}
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
-					ljmp_pe_emit(cpu, CONST16(new_sel), CONST32(new_eip));
-					disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), CONST32(new_eip));
+					ljmp_pe_emit(cpu, CONST16(new_sel), size_mode, new_eip);
+					disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), LD_R32(EIP_idx));
+					disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
 				}
 				else {
-					ST_R32(CONST32(new_eip), EIP_idx);
+					new_eip = size_mode == SIZE16 ? new_eip & 0xFFFF : new_eip;
 					ST_SEG(CONST16(new_sel), CS_idx);
+					ST_R32(CONST32(new_eip), EIP_idx);
 					ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
 					disas_ctx->next_pc = CONST32((static_cast<uint32_t>(new_sel) << 4) + new_eip);
 				}

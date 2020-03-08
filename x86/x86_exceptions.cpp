@@ -72,7 +72,7 @@ read_stack_ptr_from_tss(cpu_t *cpu, uint32_t dest_cpl, uint32_t *esp, uint16_t *
 {
 	uint32_t type = (cpu->cpu_ctx.regs.tr_hidden.flags & SEG_HIDDEN_TSS_TY) >> 11;
 	uint32_t idx = (2 << type) + dest_cpl * (4 << type);
-	if (idx > cpu->cpu_ctx.regs.tr_hidden.limit) {
+	if (idx + (4 << type) - 1 > cpu->cpu_ctx.regs.tr_hidden.limit) {
 		throw 0U;
 	}
 
@@ -232,6 +232,7 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip)
 			}
 
 			uint8_t has_code = exception_has_code(expno);
+			type >>= 3;
 			if (type) { // push 32
 				if (stack_switch) {
 					PUSHL(cpu_ctx->regs.ss);

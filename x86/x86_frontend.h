@@ -28,7 +28,8 @@ void stack_push_emit(cpu_t *cpu, std::vector<Value *> &vec, uint32_t size_mode);
 std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at = 0);
 Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
 BasicBlock *raise_exception_emit(cpu_t *cpu, Value *exp_data);
-void ljmp_pe_emit(cpu_t *cpu, Value *sel, Value *eip);
+void lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t ret_eip, uint32_t call_eip);
+void ljmp_pe_emit(cpu_t *cpu, Value *sel, uint8_t size_mode, uint32_t eip);
 Value *iret_emit(cpu_t *cpu, uint8_t size_mode);
 std::vector<Value *> check_ss_desc_priv_emit(cpu_t *cpu, Value *sel, Value *cs = nullptr);
 std::vector<Value *> check_seg_desc_priv_emit(cpu_t *cpu, Value *sel);
@@ -38,6 +39,7 @@ Value *read_seg_desc_base_emit(cpu_t *cpu, Value *desc);
 Value *read_seg_desc_limit_emit(cpu_t *cpu, Value *desc);
 Value *read_seg_desc_flags_emit(cpu_t *cpu, Value *desc);
 std::vector<Value *> read_tss_desc_emit(cpu_t *cpu, Value *sel);
+std::vector<Value *> read_stack_ptr_from_tss_emit(cpu_t *cpu, Value *cpl);
 void write_seg_reg_emit(cpu_t *cpu, const unsigned reg, std::vector<Value *> &vec);
 Value *get_immediate_op(cpu_t *cpu, x86_instr *instr, uint8_t idx, uint8_t size_mode);
 Value *get_register_op(cpu_t *cpu, x86_instr *instr, uint8_t idx);
@@ -104,6 +106,7 @@ default: \
 #define ALLOC8() ALLOCs(8)
 #define ALLOC16() ALLOCs(16)
 #define ALLOC32() ALLOCs(32)
+#define ALLOC64() ALLOCs(64)
 
 #define ST(ptr, v) new StoreInst(v, ptr, cpu->bb)
 #define LD(ptr) new LoadInst(ptr, "", false, cpu->bb)
@@ -149,8 +152,12 @@ default: \
 #define ICMP_EQ(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_EQ, a, b, "")
 #define ICMP_NE(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_NE, a, b, "")
 #define ICMP_UGT(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_UGT, a, b, "")
+#define ICMP_UGE(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_UGE, a, b, "")
 #define ICMP_ULT(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_ULT, a, b, "")
+#define ICMP_SGE(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_SGE, a, b, "")
 #define NOT_ZERO(s, v) AND(SHR(OR(v, SUB(CONSTs(s, 0), v)), CONSTs(s, s-1)), CONSTs(s, 1))
+#define SWITCH_new(n, v, def) SwitchInst::Create(v, def, n, cpu->bb)
+#define SWITCH_add(s, v, bb) swi->addCase(CONSTs(s, v), bb)
 
 #define GEP(ptr, idx)  get_struct_member_pointer(cpu, ptr, idx)
 #define GEP_R32(idx)   GEP(cpu->ptr_regs, idx)
