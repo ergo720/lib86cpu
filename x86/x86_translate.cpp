@@ -1610,7 +1610,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					break;
 
 				case ADDR32:
-					edi = LD_R32(ESI_idx);
+					esi = LD_R32(ESI_idx);
 					addr1 = ADD(LD_SEG_HIDDEN(SEG_offset + instr.seg, SEG_BASE_idx), esi);
 					edi = LD_R32(EDI_idx);
 					addr2 = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi);
