@@ -1794,7 +1794,28 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 		case X86_OPC_NEG:         BAD;
 		case X86_OPC_NOP:         BAD;
-		case X86_OPC_NOT:         BAD;
+		case X86_OPC_NOT: {
+			switch (instr.opcode_byte)
+			{
+			case 0xF6:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xF7: {
+				assert(instr.reg_opc == 2);
+
+				Value *val, *rm;
+				GET_RM(OPNUM_SRC, val = LD_REG_val(rm); val = NOT(val); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
+				val = NOT(val); ST_MEM(fn_idx[size_mode], rm, val););
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+		}
+		break;
+
 		case X86_OPC_OR: {
 			switch (instr.opcode_byte)
 			{
