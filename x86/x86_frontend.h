@@ -145,6 +145,7 @@ default: \
 #define XOR(a, b) BinaryOperator::Create(Instruction::Xor, a, b, "", cpu->bb)
 #define OR(a, b) BinaryOperator::Create(Instruction::Or, a, b, "", cpu->bb)
 #define NOT(a) BinaryOperator::CreateNot(a, "", cpu->bb)
+#define NEG(a) BinaryOperator::CreateNeg(a, "", cpu->bb)
 #define SHR(a, sh) BinaryOperator::Create(Instruction::LShr, a, sh, "", cpu->bb)
 #define SHL(a, sh) BinaryOperator::Create(Instruction::Shl, a, sh, "", cpu->bb)
 #define BR_COND(t, f, val) BranchInst::Create(t, f, val, cpu->bb)
