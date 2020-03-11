@@ -1827,7 +1827,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case X86_OPC_NOP:         BAD;
+		case X86_OPC_NOP:
+			// nothing to do
+			break;
+
 		case X86_OPC_NOT: {
 			switch (instr.opcode_byte)
 			{
