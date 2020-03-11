@@ -1544,6 +1544,22 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			break;
 
+			case 0xA0:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xA1:
+				ST_REG_val(LD_MEM(fn_idx[size_mode], GET_OP(OPNUM_SRC)), GET_OP(OPNUM_DST));
+				break;
+
+			case 0xA2:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xA3:
+				ST_MEM(fn_idx[size_mode], GET_OP(OPNUM_DST), LD_REG_val(GET_OP(OPNUM_SRC)));
+				break;
+
 			case 0xB0:
 			case 0xB1:
 			case 0xB2:
@@ -1551,11 +1567,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0xB4:
 			case 0xB5:
 			case 0xB6:
-			case 0xB7: {
-				Value *reg8 = GET_OP(OPNUM_DST);
-				ST_REG_val(GET_IMM8(), reg8);
-			}
-			break;
+			case 0xB7:
+				ST_REG_val(GET_IMM8(), GET_OP(OPNUM_DST));
+				break;
 
 			case 0xB8:
 			case 0xB9:
@@ -1564,11 +1578,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0xBC:
 			case 0xBD:
 			case 0xBE:
-			case 0xBF: {
-				Value *reg = GET_OP(OPNUM_DST);
-				ST_REG_val(GET_IMM(), reg);
-			}
-			break;
+			case 0xBF:
+				ST_REG_val(GET_IMM(), GET_OP(OPNUM_DST));
+				break;
 
 			case 0xC6:
 				size_mode = SIZE8;
