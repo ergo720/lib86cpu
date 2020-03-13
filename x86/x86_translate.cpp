@@ -777,6 +777,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_INC: {
 			switch (instr.opcode_byte)
 			{
+			case 0xFE:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
 			case 0x40:
 			case 0x41:
 			case 0x42:
@@ -784,36 +788,41 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0x44:
 			case 0x45:
 			case 0x46:
-			case 0x47: {
-				Value *sum, *val, *one, *cf_old, *reg = GET_OP(OPNUM_SRC);
+			case 0x47:
+			case 0xFF: {
+				Value *sum, *val, *one, *cf_old, *rm;
 				switch (size_mode)
 				{
+				case SIZE8:
+					one = CONST8(1);
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm); sum = ADD(val, one); ST_REG_val(sum, rm);,
+						val = LD_MEM(fn_idx[size_mode], rm); sum = ADD(val, one); ST_MEM(fn_idx[size_mode], rm, sum););
+					break;
+
 				case SIZE16:
-					val = LD_REG_val(reg);
 					one = CONST16(1);
-					sum = ADD(val, one);
-					cf_old = LD_CF();
-					ST_REG_val(sum, reg);
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm); sum = ADD(val, one); ST_REG_val(sum, rm);,
+						val = LD_MEM(fn_idx[size_mode], rm); sum = ADD(val, one); ST_MEM(fn_idx[size_mode], rm, sum););
 					break;
 
 				case SIZE32:
-					val = LD_REG_val(reg);
 					one = CONST32(1);
-					sum = ADD(val, one);
-					cf_old = LD_CF();
-					ST_REG_val(sum, reg);
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm); sum = ADD(val, one); ST_REG_val(sum, rm);,
+						val = LD_MEM(fn_idx[size_mode], rm); sum = ADD(val, one); ST_MEM(fn_idx[size_mode], rm, sum););
 					break;
 
 				default:
 					LIB86CPU_ABORT();
 				}
+
+				cf_old = LD_CF();
 				SET_FLG_SUM(sum, val, one);
 				ST_FLG_AUX(OR(OR(cf_old, SHR(XOR(cf_old, LD_OF()), CONST32(1))), AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF))));
 			}
 			break;
 
 			default:
-				BAD;
+				LIB86CPU_ABORT();
 			}
 		}
 		break;
