@@ -827,7 +827,34 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_IRET: {
 			assert(instr.opcode_byte == 0xCF);
 
-			disas_ctx->next_pc = iret_emit(cpu, size_mode);
+			if (cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
+				ret_pe_emit(cpu, size_mode, true);
+			}
+			else {
+				std::vector<Value *> vec = MEM_POP(3);
+				Value *eip = vec[0];
+				Value *cs = vec[1];
+				Value *eflags = vec[2];
+				Value *mask;
+
+				if (size_mode == SIZE16) {
+					eip = ZEXT32(eip);
+					eflags = ZEXT32(eflags);
+					mask = CONST32(NT_MASK | IOPL_MASK | DF_MASK | IF_MASK | TF_MASK);
+				}
+				else {
+					cs = TRUNC16(cs);
+					mask = CONST32(ID_MASK | AC_MASK | RF_MASK | NT_MASK | IOPL_MASK | DF_MASK | IF_MASK | TF_MASK);
+				}
+
+				ST_REG_val(vec[3], vec[4]);
+				ST_R32(eip, EIP_idx);
+				ST_SEG(cs, CS_idx);
+				ST_SEG_HIDDEN(SHL(ZEXT32(cs), CONST32(4)), CS_idx, SEG_BASE_idx);
+				write_eflags(cpu, eflags, mask);
+			}
+
+			disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), LD_R32(EIP_idx));
 			disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
 			translate_next = 0;
 		}
@@ -2249,24 +2276,23 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			{
 			case 0xCB: {
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
-					BAD_MODE;
-				}
-				std::vector<Value *> vec = MEM_POP(2);
-				Value *ret_eip = vec[0];
-				Value *ret_cs = vec[1];
-				if (size_mode == SIZE16) {
-					ret_eip = ZEXT32(ret_eip);
+					ret_pe_emit(cpu, size_mode, false);
 				}
 				else {
-					ret_cs = TRUNC16(ret_cs);
+					std::vector<Value *> vec = MEM_POP(2);
+					Value *eip = vec[0];
+					Value *cs = vec[1];
+					if (size_mode == SIZE16) {
+						eip = ZEXT32(eip);
+					}
+					else {
+						cs = TRUNC16(cs);
+					}
+					ST_REG_val(vec[2], vec[3]);
+					ST_R32(eip, EIP_idx);
+					ST_SEG(cs, CS_idx);
+					ST_SEG_HIDDEN(SHL(ZEXT32(cs), CONST32(4)), CS_idx, SEG_BASE_idx);
 				}
-				ST_REG_val(vec[2], vec[3]);
-				ST_R32(ret_eip, EIP_idx);
-				ST_R16(ret_cs, CS_idx);
-				Value *ret_cs_base = SHL(ZEXT32(ret_cs), CONST32(4));
-				ST_SEG_HIDDEN(ret_cs_base, CS_idx, SEG_BASE_idx);
-
-				disas_ctx->next_pc = ADD(ret_cs_base, ret_eip);
 			}
 			break;
 
@@ -2274,6 +2300,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				BAD;
 			}
 
+			disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), LD_R32(EIP_idx));
 			disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
 			translate_next = 0;
 		}

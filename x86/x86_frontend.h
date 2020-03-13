@@ -30,7 +30,7 @@ Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
 BasicBlock *raise_exception_emit(cpu_t *cpu, Value *exp_data);
 void lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t ret_eip, uint32_t call_eip);
 void ljmp_pe_emit(cpu_t *cpu, Value *sel, uint8_t size_mode, uint32_t eip);
-Value *iret_emit(cpu_t *cpu, uint8_t size_mode);
+void ret_pe_emit(cpu_t *cpu, uint8_t size_mode, bool is_iret);
 std::vector<Value *> check_ss_desc_priv_emit(cpu_t *cpu, Value *sel, Value *cs = nullptr);
 std::vector<Value *> check_seg_desc_priv_emit(cpu_t *cpu, Value *sel);
 void set_access_flg_seg_desc_emit(cpu_t *cpu, Value *desc, Value *desc_addr);
