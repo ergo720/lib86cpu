@@ -2315,7 +2315,87 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case X86_OPC_ROL:         BAD;
+		case X86_OPC_ROL: {
+			assert(instr.reg_opc == 0);
+
+			switch (instr.opcode_byte)
+			{
+			case 0xC0:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xC1: {
+				Value *val, *rm, *flg, *mask = CONST32(1 << 31);
+				switch (size_mode)
+				{
+				case SIZE8: {
+					uint8_t count = instr.operand[OPNUM_SRC].imm % 8;
+					GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					if (count != 0) {
+						std::vector<Type *> vec_types { getIntegerType(8) };
+						std::vector<Value *> vec_params { val, val, CONST8(instr.operand[OPNUM_SRC].imm) };
+						val = INTRINSIC_arg(fshl, vec_types, vec_params);
+					}
+					Value *cf = AND(val, CONST8(1));
+					flg = SHL(ZEXT32(cf), CONST32(31));
+					if (count == 1) {
+						Value *of = AND(val, CONST8(1 << 7));
+						flg = OR(SHL(ZEXT32(cf), CONST32(31)), SHL(ZEXT32(of), CONST32(24)));
+						mask = CONST32(3 << 30);
+					}
+				}
+				break;
+
+				case SIZE16: {
+					uint8_t count = instr.operand[OPNUM_SRC].imm % 16;
+					GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					if (count != 0) {
+						std::vector<Type *> vec_types { getIntegerType(16) };
+						std::vector<Value *> vec_params { val, val, CONST16(instr.operand[OPNUM_SRC].imm) };
+						val = INTRINSIC_arg(fshl, vec_types, vec_params);
+					}
+					Value *cf = AND(val, CONST16(1));
+					flg = SHL(ZEXT32(cf), CONST32(31));
+					if (count == 1) {
+						Value *of = AND(val, CONST16(1 << 15));
+						flg = OR(SHL(ZEXT32(cf), CONST32(31)), SHL(ZEXT32(of), CONST32(16)));
+						mask = CONST32(3 << 30);
+					}
+				}
+				break;
+
+				case SIZE32: {
+					uint8_t count = instr.operand[OPNUM_SRC].imm % 32;
+					GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					if (count != 0) {
+						std::vector<Type *> vec_types { getIntegerType(32) };
+						std::vector<Value *> vec_params { val, val, CONST32(instr.operand[OPNUM_SRC].imm) };
+						val = INTRINSIC_arg(fshl, vec_types, vec_params);
+					}
+					Value *cf = AND(val, CONST32(1));
+					flg = SHL(cf, CONST32(31));
+					if (count == 1) {
+						Value *of = AND(val, CONST32(1 << 31));
+						flg = OR(SHL(cf, CONST32(31)), SHR(of, CONST32(1)));
+						mask = CONST32(3 << 30);
+					}
+				}
+				break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+
+				ST_FLG_AUX(OR(AND(LD_FLG_AUX(), NOT(mask)), AND(flg, mask)));
+			}
+			break;
+
+			default:
+				BAD;
+			}
+		}
+		break;
+
 		case X86_OPC_ROR:         BAD;
 		case X86_OPC_RSM:         BAD;
 		case X86_OPC_SAHF: {

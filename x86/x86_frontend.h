@@ -113,6 +113,7 @@ default: \
 
 #define UNREACH() new UnreachableInst(CTX(), cpu->bb)
 #define INTRINSIC(id) CallInst::Create(Intrinsic::getDeclaration(cpu->tc->mod, Intrinsic::id), "", cpu->bb)
+#define INTRINSIC_arg(id, ty, arg) CallInst::Create(Intrinsic::getDeclaration(cpu->tc->mod, Intrinsic::id, ty), arg, "", cpu->bb)
 
 #define ZEXT(s, v) new ZExtInst(v, getIntegerType(s), "", cpu->bb)
 #define ZEXT8(v) ZEXT(8, v)
