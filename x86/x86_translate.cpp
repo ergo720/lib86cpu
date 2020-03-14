@@ -186,6 +186,20 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			break;
 
+			case 0x02:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x03: {
+				Value *rm, *dst, *sum, *val, *reg;
+				reg = GET_REG(OPNUM_DST);
+				dst = LD_REG_val(reg);
+				GET_RM(OPNUM_SRC, val = LD_REG_val(rm); sum = ADD(dst, val); ST_REG_val(sum, reg);,
+					val = LD_MEM(fn_idx[size_mode], rm); sum = ADD(dst, val); ST_REG_val(sum, reg););
+				SET_FLG_SUM(sum, dst, val);
+			}
+			break;
+
 			case 0x04:
 				size_mode = SIZE8;
 				[[fallthrough]];
@@ -202,14 +216,21 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 			case 0x80:
+			case 0x82:
 				size_mode = SIZE8;
 				[[fallthrough]];
 
+			case 0x81:
 			case 0x83: {
 				assert(instr.reg_opc == 0);
 
-				Value *rm, *dst, *sum, *val = GET_IMM8();
-				val = size_mode == SIZE16 ? SEXT16(val) : size_mode == SIZE32 ? SEXT32(val) : val;
+				Value *rm, *dst, *sum, *val;
+				if (instr.opcode_byte == 0x83) {
+					val = size_mode == SIZE16 ? SEXT16(GET_IMM8()) : SEXT32(GET_IMM8());
+				}
+				else {
+					val = GET_IMM();
+				}
 				GET_RM(OPNUM_DST, dst = LD_REG_val(rm); sum = ADD(dst, val); ST_REG_val(sum, rm);,
 					dst = LD_MEM(fn_idx[size_mode], rm); sum = ADD(dst, val); ST_MEM(fn_idx[size_mode], rm, sum););
 				SET_FLG_SUM(sum, dst, val);
@@ -217,7 +238,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 			default:
-				BAD;
+				LIB86CPU_ABORT();
 			}
 		}
 		break;
