@@ -1240,20 +1240,25 @@ tc_link_indirect(translated_code_t *tc, translated_code_t *tc1, translated_code_
 
 	static uint16_t cmp_instr = 0xf981;
 	static uint16_t je_instr = 0x840f;
-	static uint8_t nop_instr = 0x90;
+	static uint8_t nop_instr[3] = { 0x90, 0x90, 0x90 };
 	int32_t tc_offset1 = reinterpret_cast<uintptr_t>(tc1->jmp_offset[2]) -
 		reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(tc->jmp_offset[0]) + 6 /*sizeof(cmp)*/ + 6 /*sizeof(je)*/);
-	int32_t tc_offset2 = reinterpret_cast<uintptr_t>(tc2->jmp_offset[2]) -
-		reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(tc->jmp_offset[0]) + (6 /*sizeof(cmp)*/ + 6 /*sizeof(je)*/) * 2);
 	memcpy(tc->jmp_offset[0], &cmp_instr, 2);
 	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 2, &tc1->pc, 4);              // cmp ecx, pc1
 	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 6, &je_instr, 2);
 	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 8, &tc_offset1, 4);           // je tc_offset1
-	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 12, &cmp_instr, 2);
-	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 14, &tc2->pc, 4);             // cmp ecx, pc2
-	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 18, &je_instr, 2);
-	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 20, &tc_offset2, 4);          // je tc_offset2
-	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 24, &nop_instr, 1);           // nop
+	if (tc2 != nullptr) {
+		int32_t tc_offset2 = reinterpret_cast<uintptr_t>(tc2->jmp_offset[2]) -
+			reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(tc->jmp_offset[0]) + (6 /*sizeof(cmp)*/ + 6 /*sizeof(je)*/) * 2);
+		memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 12, &cmp_instr, 2);
+		memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 14, &tc2->pc, 4);            // cmp ecx, pc2
+		memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 18, &je_instr, 2);
+		memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 20, &tc_offset2, 4);         // je tc_offset2
+		memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 24, nop_instr, 1);           // nop
+	}
+	else {
+		memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 12, nop_instr, 3);           // nop
+	}
 
 #else
 #error don't know how to patch tc on this platform
@@ -1275,19 +1280,25 @@ tc_profile_indirect(cpu_ctx_t *cpu_ctx, translated_code_t *tc, addr_t pc)
 				++pc_count_hit[*it];
 			}
 
-			auto pc1 = std::max_element(pc_count_hit.begin(), pc_count_hit.end(), [](const auto &a, const auto &b)
+			addr_t pc1 = std::max_element(pc_count_hit.begin(), pc_count_hit.end(), [](const auto &a, const auto &b)
 				{
 					return a.second < b.second;
 				})->first;
 
 			pc_count_hit.erase(pc_count_hit.find(pc1));
 
-			auto pc2 = std::max_element(pc_count_hit.begin(), pc_count_hit.end(), [](const auto &a, const auto &b)
-				{
-					return a.second < b.second;
-				})->first;
+			// this can happen if the code jumped to the same address all the times
+			if (pc_count_hit.size() != 0) {
+				addr_t pc2 = std::max_element(pc_count_hit.begin(), pc_count_hit.end(), [](const auto &a, const auto &b)
+					{
+						return a.second < b.second;
+					})->first;
+				tc_link_indirect(tc, tc_cache_search(cpu, pc1), tc_cache_search(cpu, pc2));
+			}
+			else {
+				tc_link_indirect(tc, tc_cache_search(cpu, pc1), nullptr);
+			}
 
-			tc_link_indirect(tc, tc_cache_search(cpu, pc1), tc_cache_search(cpu, pc2));
 			tc->profiling_vec.clear();
 			tc->jmp_offset[1] = reinterpret_cast<void *>(1);
 		}
