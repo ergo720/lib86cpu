@@ -129,7 +129,18 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 	}
 	cpu->tc->flags |= (n & TC_FLG_NUM_JMP);
 
+	// BUG!!! If optimizations are turned off, the below code works correctly. However, after enabling transform passes, the generated code seems to assume
+	// that the function pointer members of the tc struct are 8 bytes large, instead of 4 (their real size), thus causing GEP to calculate wrong addresses,
+	// and the generated code will then perform out of bounds memory accesses at runtime. Why is this so?
 	Value *tc_ptr = new IntToPtrInst(INTPTR(cpu->tc), cpu->bb->getParent()->getReturnType(), "", cpu->bb);
+	Value *ld0 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(0) }), "", true, cpu->bb);
+	Value *ld1 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(1) }), "", true, cpu->bb);
+	Value *ld2 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(2) }), "", true, cpu->bb);
+	Value *ld3 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(3)}), "", true, cpu->bb);
+	Value *ld4 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(0) }), "", true, cpu->bb);
+	Value *ld5 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(1) }), "", true, cpu->bb);
+	Value *ld6 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(2) }), "", true, cpu->bb);
+	Value *ld7 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(5) }), "", true, cpu->bb);
 
 	switch (n)
 	{
