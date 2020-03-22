@@ -118,20 +118,21 @@ struct sort_by_priority
 	}
 };
 
+// forward declare
+struct translated_code_t;
+struct cpu_ctx_t;
+using entry_t = translated_code_t *(*)(cpu_ctx_t *cpu_ctx);
+
 struct translated_code_t {
-	LLVMContext *ctx;
-	Module *mod;
 	addr_t cs_base;
 	addr_t pc;
+	uint32_t cpu_flags;
+	entry_t ptr_code;
+	entry_t jmp_offset[3];
 	uint32_t flags;
-	void *ptr_code;
-	void *jmp_offset[3];
-	size_t jmp_code_size;
-	std::vector<addr_t> profiling_vec;
 };
 
 struct disas_ctx_t {
-	Value *next_pc;
 	uint8_t flags;
 	addr_t virt_pc, start_pc, pc;
 	addr_t instr_page_addr;
@@ -156,7 +157,6 @@ struct lazy_eflags_t {
 
 // forward declare
 struct cpu_t;
-
 struct cpu_ctx_t {
 	cpu_t *cpu;
 	regs_t regs;
@@ -186,6 +186,8 @@ struct cpu_t {
 	/* llvm specific variables */
 	std::unique_ptr<orc::LLJIT> jit;
 	DataLayout *dl;
+	LLVMContext *ctx;
+	Module *mod;
 	Value *ptr_cpu_ctx;
 	Value *ptr_regs;
 	Value *ptr_eflags;

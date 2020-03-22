@@ -10,18 +10,14 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
 #include "llvm/IR/DataLayout.h"
+#include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/InlineAsm.h"
-#include "llvm/IR/Verifier.h"
-#include "llvm/IR/LegacyPassManager.h"
-#include "llvm/LinkAllPasses.h"
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "lib86cpu.h"
 #include "x86_internal.h"
 #include "x86_frontend.h"
 #include "x86_memory.h"
 
-#define PROFILE_NUM_TIMES 30
-using entry_t = translated_code_t * (*)(uint32_t dummy, cpu_ctx_t * cpu_ctx);
 
 Value *
 get_struct_member_pointer(cpu_t *cpu, Value *gep_start, const unsigned gep_index)
@@ -33,6 +29,12 @@ get_struct_member_pointer(cpu_t *cpu, Value *gep_start, const unsigned gep_index
 }
 
 Value *
+gep_emit(cpu_t *cpu, Value *gep_start, std::vector<Value *> &vec_idx, Type *pointee_type)
+{
+	return GetElementPtrInst::CreateInBounds(pointee_type, gep_start, vec_idx, "", cpu->bb);
+}
+
+Value *
 get_r8h_pointer(cpu_t *cpu, Value *gep_start)
 {
 	std::vector<Value *> ptr_11_indices;
@@ -40,7 +42,7 @@ get_r8h_pointer(cpu_t *cpu, Value *gep_start)
 	return GetElementPtrInst::CreateInBounds(getIntegerType(8) , gep_start, ptr_11_indices, "", cpu->bb);
 }
 
-static StructType *
+StructType *
 get_struct_reg(cpu_t *cpu)
 {
 	std::vector<Type *>type_struct_reg_t_fields;
@@ -68,10 +70,9 @@ get_struct_reg(cpu_t *cpu)
 		case IDTR_idx:
 		case GDTR_idx:
 		case LDTR_idx:
-		case TR_idx: {
+		case TR_idx:
 			type_struct_reg_t_fields.push_back(type_struct_seg_t);
-		}
-		break;
+			break;
 
 		default:
 			type_struct_reg_t_fields.push_back(getIntegerType(cpu->regs_layout[n].bits_size));
@@ -81,14 +82,14 @@ get_struct_reg(cpu_t *cpu)
 	return StructType::create(CTX(), type_struct_reg_t_fields, "struct.regs_t", false);
 }
 
-static StructType *
+StructType *
 get_struct_eflags(cpu_t *cpu)
 {
 	std::vector<Type *>type_struct_eflags_t_fields;
 
 	type_struct_eflags_t_fields.push_back(getIntegerType(32));
 	type_struct_eflags_t_fields.push_back(getIntegerType(32));
-	type_struct_eflags_t_fields.push_back(getArrayIntegerType(8, 256));
+	type_struct_eflags_t_fields.push_back(getArrayType(getIntegerType(8), 256));
 
 	return StructType::create(CTX(), type_struct_eflags_t_fields, "struct.eflags_t", false);
 }
@@ -110,6 +111,95 @@ calc_next_pc_emit(cpu_t *cpu, size_t instr_size)
 	Value *next_eip = BinaryOperator::Create(Instruction::Add, cpu->instr_eip, CONST32(instr_size), "", cpu->bb);
 	ST(GEP_EIP(), next_eip);
 	return BinaryOperator::Create(Instruction::Add, CONST32(cpu->cpu_ctx.regs.cs_hidden.base), next_eip, "", cpu->bb);
+}
+
+void
+link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
+{
+	// vec_addr: instr_pc, dst_pc, next_pc
+
+	addr_t page_addr = vec_addr[0] & ~PAGE_MASK;
+	uint32_t n, dst = (vec_addr[1] & ~PAGE_MASK) == page_addr;
+	if (vec_addr.size() == 3) {
+		n = dst + ((vec_addr[2] & ~PAGE_MASK) == page_addr);
+	}
+	else {
+		assert(vec_addr.size() == 2);
+		n = dst;
+	}
+	cpu->tc->flags |= (n & TC_FLG_NUM_JMP);
+
+	Value *tc_ptr = new IntToPtrInst(INTPTR(cpu->tc), cpu->bb->getParent()->getReturnType(), "", cpu->bb);
+
+	switch (n)
+	{
+	case 0:
+		break;
+
+	case 1: {
+		if (vec_addr.size() == 3) { // if(dst_pc) -> cond jmp dst_pc; if(next_pc) -> cond jmp next_pc
+			if (dst) {
+				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[1])));
+				cpu->bb = vec_bb[0];
+				CallInst *ci = CallInst::Create(LD(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(0) })),
+					std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+				ci->setCallingConv(CallingConv::C);
+				ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+				ReturnInst::Create(CTX(), ci, cpu->bb);
+				cpu->bb = vec_bb[1];
+			}
+			else {
+				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[2])));
+				cpu->bb = vec_bb[0];
+				Value *tc_flg_ptr = gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(5) });
+				ST(tc_flg_ptr, OR(LD(tc_flg_ptr), CONST32(TC_FLG_NEXT_PC)));
+				CallInst *ci = CallInst::Create(LD(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(1) })),
+					std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+				ci->setCallingConv(CallingConv::C);
+				ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+				ReturnInst::Create(CTX(), ci, cpu->bb);
+				cpu->bb = vec_bb[1];
+			}
+		}
+		else { // uncond jmp dst_pc
+			CallInst *ci = CallInst::Create(LD(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(0) })),
+				std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+			ci->setCallingConv(CallingConv::C);
+			ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+			ReturnInst::Create(CTX(), ci, cpu->bb);
+			cpu->bb = BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0);
+			INTRINSIC(trap);
+		}
+	}
+	break;
+
+	case 2: { // cond jmp next_pc + uncond jmp dst_pc
+		std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+		BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[2])));
+		cpu->bb = vec_bb[0];
+		Value *tc_flg_ptr = gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(5) });
+		ST(tc_flg_ptr, OR(LD(tc_flg_ptr), CONST32(TC_FLG_NEXT_PC)));
+		CallInst *ci1 = CallInst::Create(LD(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(1) })),
+			std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+		ci1->setCallingConv(CallingConv::C);
+		ci1->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		ReturnInst::Create(CTX(), ci1, cpu->bb);
+		cpu->bb = vec_bb[1];
+		CallInst *ci2 = CallInst::Create(LD(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(0) })),
+			std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+		ci2->setCallingConv(CallingConv::C);
+		ci2->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		ReturnInst::Create(CTX(), ci2, cpu->bb);
+		cpu->bb = vec_bb[2];
+		INTRINSIC(trap);
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
 }
 
 BasicBlock *
@@ -1048,401 +1138,6 @@ set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode)
 {
 	size_mode == SIZE32 ? ST_FLG_RES(res) : ST_FLG_RES_ext(res);
 	ST_FLG_AUX(aux);
-}
-
-void
-optimize(cpu_t *cpu, Function *func)
-{
-	legacy::FunctionPassManager pm = legacy::FunctionPassManager(cpu->tc->mod);
-
-	pm.add(createPromoteMemoryToRegisterPass());
-	pm.add(createInstructionCombiningPass());
-	pm.add(createConstantPropagationPass());
-	pm.add(createDeadStoreEliminationPass());
-	pm.add(createDeadCodeEliminationPass());
-	pm.run(*func);
-}
-
-void
-get_ext_fn(cpu_t *cpu, Function *func)
-{
-	static size_t bit_size[7] = { 8, 16, 32, 64, 8, 16, 32 };
-	static size_t arg_size[7] = { 32, 32, 32, 32, 16, 16, 16 };
-	static const char *func_name_ld[7] = { "mem_read8", "mem_read16", "mem_read32", "mem_read64", "io_read8", "io_read16", "io_read32" };
-	static const char *func_name_st[7] = { "mem_write8", "mem_write16", "mem_write32", "mem_write64", "io_write8", "io_write16", "io_write32" };
-	Function::arg_iterator args_start = func->arg_begin();
-	args_start++;
-
-	for (uint8_t i = 0; i < 7; i++) {
-		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->tc->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), args_start->getType(),
-			getIntegerType(arg_size[i]), getIntegerType(32)));
-	}
-
-	for (uint8_t i = 0; i < 7; i++) {
-		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->tc->mod->getOrInsertFunction(func_name_st[i], getVoidType(), args_start->getType(),
-			getIntegerType(arg_size[i]), getIntegerType(bit_size[i]), getIntegerType(32)));
-	}
-
-	cpu->exp_fn = cast<Function>(cpu->tc->mod->getOrInsertFunction("cpu_throw_exception", getVoidType(), args_start->getType(), getIntegerType(64), getIntegerType(32)));
-	cpu->crN_fn = cast<Function>(cpu->tc->mod->getOrInsertFunction("cpu_update_crN", getVoidType(), args_start->getType(), getIntegerType(32), getIntegerType(8), getIntegerType(32),
-		getIntegerType(32)));
-}
-
-translated_code_t *
-tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
-{
-	try {
-		// run the translated code
-		entry_t entry = static_cast<entry_t>(tc->ptr_code);
-		return entry(0, cpu_ctx);
-	}
-	catch (uint32_t eip) {
-		// don't link the previous code block if we returned with an exception
-		cpu_raise_exception(cpu_ctx, eip);
-		return nullptr;
-	}
-	catch (int err) {
-		// currently used by mov cr0, reg when it switches cpu mode
-		return nullptr;
-	}
-}
-
-static inline uint32_t
-tc_hash(addr_t pc)
-{
-	return pc & (CODE_CACHE_MAX_SIZE - 1);
-}
-
-translated_code_t *
-tc_cache_search(cpu_t *cpu, addr_t pc)
-{
-	uint32_t flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
-	uint32_t idx = tc_hash(pc);
-	auto it = cpu->code_cache[idx].begin();
-	while (it != cpu->code_cache[idx].end()) {
-		translated_code_t *tc = it->get();
-		if (tc->cs_base == cpu->cpu_ctx.regs.cs_hidden.base &&
-			tc->pc == pc &&
-			tc->flags == flags) {
-			return tc;
-		}
-		it++;
-	}
-
-	return nullptr;
-}
-
-void
-tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc)
-{
-	cpu->num_tc++;
-	cpu->code_cache[tc_hash(pc)].push_front(std::move(tc));
-}
-
-void
-tc_cache_clear(cpu_t *cpu)
-{
-	cpu->num_tc = 0;
-	for (auto &bucket : cpu->code_cache) {
-		bucket.clear();
-	}
-
-	// annoyingly, llvm doesn't implement module removal, which means we have to destroy the entire jit object to delete the memory of the
-	// generated code blocks. This is documented at https://llvm.org/docs/ORCv2.html and in particular "Module removal is not yet supported.
-	// There is no equivalent of the layer concept removeModule/removeObject methods. Work on resource tracking and removal in ORCv2 is ongoing."
-
-	delete cpu->dl;
-	auto jtmb = orc::JITTargetMachineBuilder::detectHost();
-	if (!jtmb) {
-		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
-	}
-	SubtargetFeatures features;
-	StringMap<bool> host_features;
-	if (sys::getHostCPUFeatures(host_features))
-		for (auto &F : host_features) {
-			features.AddFeature(F.first(), F.second);
-		}
-	jtmb->setCPU(sys::getHostCPUName())
-		.addFeatures(features.getFeatures())
-		.setRelocationModel(None)
-		.setCodeModel(None);
-	auto dl = jtmb->getDefaultDataLayoutForTarget();
-	if (!dl) {
-		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
-	}
-	cpu->dl = new DataLayout(*dl);
-	if (cpu->dl == nullptr) {
-		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
-	}
-	auto jit = orc::LLJIT::Create(std::move(*jtmb), *dl, std::thread::hardware_concurrency());
-	if (!jit) {
-		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
-	}
-	cpu->jit = std::move(*jit);
-	cpu->jit->getMainJITDylib().setGenerator(
-		*orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(*dl));
-#ifdef _WIN32
-	cpu->jit->getObjLinkingLayer().setOverrideObjectFlagsWithResponsibilityFlags(true);
-#endif
-}
-
-void
-tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc, addr_t pc)
-{
-	// llvm marks the generated code memory as read/execute (it's done by Memory::protectMappedMemory), which triggers an access violation when
-	// we try to write to it during the tc linking phase. So, we temporarily mark it as writable and then restore the write protection.
-	// NOTE: perhaps we can use the llvm SectionMemoryManager to do this somehow...
-
-	tc_protect(prev_tc->jmp_offset[0], prev_tc->jmp_code_size, false);
-
-#if defined __i386 || defined _M_IX86
-
-	static uint16_t cmp_instr = 0xf981;
-	static uint16_t je_instr = 0x840f;
-	static uint8_t jmp_instr = 0xe9;
-	static uint8_t nop_instr = 0x90;
-	if (prev_tc->jmp_offset[1] == nullptr) {
-		int32_t tc_offset = reinterpret_cast<uintptr_t>(ptr_tc->jmp_offset[2]) -
-			reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 6 /*sizeof(cmp)*/ + 6 /*sizeof(je)*/);
-		memcpy(prev_tc->jmp_offset[0], &cmp_instr, 2);
-		memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 2, &pc, 4);                  // cmp ecx, pc
-		memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 6, &je_instr, 2);
-		memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 8, &tc_offset, 4);           // je tc_offset
-		for (uint8_t i = 0; i < 3; i++) {
-			memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 12 + i, &nop_instr, 1);  // nop
-		}
-		prev_tc->jmp_offset[1] = static_cast<uint8_t *>(prev_tc->jmp_offset[0]) + 15;
-	}
-	else {
-		int32_t tc_offset = reinterpret_cast<uintptr_t>(ptr_tc->jmp_offset[2]) -
-			reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(prev_tc->jmp_offset[1]) + 5 /*sizeof(jmp)*/);
-		memcpy(prev_tc->jmp_offset[1], &jmp_instr, 1);
-		memcpy(static_cast<uint8_t *>(prev_tc->jmp_offset[1]) + 1, &tc_offset, 4);  // jmp tc_offset
-	}
-
-#else
-#error don't know how to patch tc on this platform
-#endif
-
-	tc_protect(prev_tc->jmp_offset[0], prev_tc->jmp_code_size, true);
-}
-
-static void
-tc_link_indirect(translated_code_t *tc, translated_code_t *tc1, translated_code_t *tc2)
-{
-	// llvm marks the generated code memory as read/execute (it's done by Memory::protectMappedMemory), which triggers an access violation when
-	// we try to write to it during the tc linking phase. So, we temporarily mark it as writable and then restore the write protection.
-	// NOTE: perhaps we can use the llvm SectionMemoryManager to do this somehow...
-
-	tc_protect(tc->jmp_offset[0], tc->jmp_code_size, false);
-
-#if defined __i386 || defined _M_IX86
-
-	static uint16_t cmp_instr = 0xf981;
-	static uint16_t je_instr = 0x840f;
-	static uint8_t nop_instr[3] = { 0x90, 0x90, 0x90 };
-	int32_t tc_offset1 = reinterpret_cast<uintptr_t>(tc1->jmp_offset[2]) -
-		reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(tc->jmp_offset[0]) + 6 /*sizeof(cmp)*/ + 6 /*sizeof(je)*/);
-	memcpy(tc->jmp_offset[0], &cmp_instr, 2);
-	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 2, &tc1->pc, 4);              // cmp ecx, pc1
-	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 6, &je_instr, 2);
-	memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 8, &tc_offset1, 4);           // je tc_offset1
-	if (tc2 != nullptr) {
-		int32_t tc_offset2 = reinterpret_cast<uintptr_t>(tc2->jmp_offset[2]) -
-			reinterpret_cast<uintptr_t>(static_cast<uint8_t *>(tc->jmp_offset[0]) + (6 /*sizeof(cmp)*/ + 6 /*sizeof(je)*/) * 2);
-		memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 12, &cmp_instr, 2);
-		memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 14, &tc2->pc, 4);            // cmp ecx, pc2
-		memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 18, &je_instr, 2);
-		memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 20, &tc_offset2, 4);         // je tc_offset2
-		memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 24, nop_instr, 1);           // nop
-	}
-	else {
-		memcpy(static_cast<uint8_t *>(tc->jmp_offset[0]) + 12, nop_instr, 3);           // nop
-	}
-
-#else
-#error don't know how to patch tc on this platform
-#endif
-
-	tc_protect(tc->jmp_offset[0], tc->jmp_code_size, true);
-}
-
-JIT_EXTERNAL_CALL_C uint8_t *
-tc_profile_indirect(cpu_ctx_t *cpu_ctx, translated_code_t *tc, addr_t pc)
-{
-	cpu_t *cpu = cpu_ctx->cpu;
-
-	if (tc->jmp_offset[1] == 0) {
-		if (tc->profiling_vec.size() == PROFILE_NUM_TIMES) {
-
-			std::map<addr_t, size_t> pc_count_hit;
-			for (auto it = tc->profiling_vec.begin(); it != tc->profiling_vec.end(); it++) {
-				++pc_count_hit[*it];
-			}
-
-			addr_t pc1 = std::max_element(pc_count_hit.begin(), pc_count_hit.end(), [](const auto &a, const auto &b)
-				{
-					return a.second < b.second;
-				})->first;
-
-			pc_count_hit.erase(pc_count_hit.find(pc1));
-
-			// this can happen if the code jumped to the same address all the times
-			if (pc_count_hit.size() != 0) {
-				addr_t pc2 = std::max_element(pc_count_hit.begin(), pc_count_hit.end(), [](const auto &a, const auto &b)
-					{
-						return a.second < b.second;
-					})->first;
-				tc_link_indirect(tc, tc_cache_search(cpu, pc1), tc_cache_search(cpu, pc2));
-			}
-			else {
-				tc_link_indirect(tc, tc_cache_search(cpu, pc1), nullptr);
-			}
-
-			tc->profiling_vec.clear();
-			tc->jmp_offset[1] = reinterpret_cast<void *>(1);
-		}
-		else {
-			tc->profiling_vec.push_back(pc);
-		}
-	}
-
-	tc = tc_cache_search(cpu, pc);
-	return reinterpret_cast<uint8_t *>(tc == nullptr ? 0 : tc->jmp_offset[2]);
-}
-
-FunctionType *
-create_tc_fntype(cpu_t *cpu)
-{
-	std::vector<Type *>type_struct_cpu_ctx_t_fields;
-	type_struct_cpu_ctx_t_fields.push_back(getPointerType(StructType::create(CTX(), "struct.cpu_t")));  // NOTE: opaque struct
-	type_struct_cpu_ctx_t_fields.push_back(get_struct_reg(cpu));
-	type_struct_cpu_ctx_t_fields.push_back(get_struct_eflags(cpu));
-	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(32));
-
-	IntegerType *type_i32 = getIntegerType(32);                                      // eip/pc ptr
-	PointerType *type_pstruct = getPointerType(StructType::create(CTX(),
-		type_struct_cpu_ctx_t_fields, "struct.cpu_ctx_t", false));                   // cpu_ctx ptr
-
-	std::vector<Type *> type_func_args;
-	type_func_args.push_back(type_i32);
-	type_func_args.push_back(type_pstruct);
-
-	FunctionType *type_func = FunctionType::get(
-		getPointerType(StructType::create(CTX(), "struct.tc_t")),  // ret, as opaque tc struct
-		type_func_args,                                            // args
-		false);
-
-	return type_func;
-}
-
-Function *
-create_tc_prologue(cpu_t *cpu, FunctionType *fntype)
-{
-	// create the function which calls the translation function
-	Function *start = Function::Create(
-		fntype,                               // func type
-		GlobalValue::ExternalLinkage,         // linkage
-		"start",                              // name
-		cpu->tc->mod);
-	start->setCallingConv(CallingConv::C);
-
-	// create the bb of the start function
-	BasicBlock *bb = BasicBlock::Create(CTX(), "", start, 0);
-
-	Function::arg_iterator args_start = start->arg_begin();
-	Value *dummy = args_start++;
-	Value *ptr_cpu_ctx = args_start++;
-
-	// create the translation function, it will hold all the translated code
-	Function *func = Function::Create(
-		fntype,                              // func type
-		GlobalValue::ExternalLinkage,        // linkage
-		"main",                              // name
-		cpu->tc->mod);
-	func->setCallingConv(CallingConv::Fast);
-
-	// insert a call to the translation function and a ret for the start function
-	CallInst *ci = CallInst::Create(func, std::vector<Value *> { dummy, ptr_cpu_ctx }, "", bb);
-	ci->setCallingConv(CallingConv::Fast);
-	ReturnInst::Create(CTX(), ci, bb);
-
-#if DEBUG_LOG
-	verifyFunction(*start, &errs());
-#endif
-
-	return func;
-}
-
-void
-create_tc_epilogue(cpu_t *cpu, FunctionType *fntype, disas_ctx_t *disas_ctx)
-{
-	// create the tail function
-	Function *tail = Function::Create(
-		fntype,                              // func type
-		GlobalValue::ExternalLinkage,        // linkage
-		"tail",                              // name
-		cpu->tc->mod);
-	tail->setCallingConv(CallingConv::Fast);
-
-	// create the bb of the tail function
-	BasicBlock *bb = BasicBlock::Create(CTX(), "", tail, 0);
-
-	FunctionType *type_func_asm = FunctionType::get(
-		getVoidType(),  // void ret
-		// no args
-		false);
-
-	if (disas_ctx->flags & DISAS_FLG_TC_INDIRECT) {
-		// emit some dummy instructions, a call to tc_profile_indirect and a conditional jump. We do this ourselves to avoid llvm messing with the stack,
-		// which would lead to a crash when a jump is taken
-
-		Function::arg_iterator args_start = cpu->bb->getParent()->arg_begin();
-		args_start++;
-
-		cpu->tc->mod->getOrInsertFunction("tc_profile_indirect", getPointerType(getIntegerType(8)), args_start->getType(),
-			getPointerType(StructType::create(CTX(), "struct.tc_t")), getIntegerType(32));
-		uintptr_t addr = cpu->jit->lookup("tc_profile_indirect")->getAddress();
-
-#if defined __i386 || defined _M_IX86
-
-		std::string asm_str = std::string("mov eax, $$-1\n\tmov eax, $$-2\n\tmov eax, $$-3\n\tmov eax, $$-4\n\tmov eax, $$-5\n\tsub esp, $$12\n\tmov [esp], edx\n\tmov dword ptr [esp+$$4], $$")
-		+ std::to_string(reinterpret_cast<uintptr_t>(cpu->tc)) + std::string("\n\tmov [esp+$$8], ecx\n\tmov eax, $$") + std::to_string(addr) + std::string("\n\tcall eax\n\tadd esp, $$12\n\tmov edx, $$")
-		+ std::to_string(reinterpret_cast<uintptr_t>(&cpu->cpu_ctx)) + std::string("\n\tcmp eax, $$0\n\tje skip_next\n\tjmp eax\n\tskip_next:");
-		InlineAsm *ia = InlineAsm::get(type_func_asm, asm_str, "~{eax},~{ecx},~{edx}", true, false, InlineAsm::AsmDialect::AD_Intel);
-		CallInst::Create(ia, "", bb);
-		cpu->tc->jmp_code_size = 25;
-
-#else
-#error don't know how to construct the tc epilogue on this platform
-#endif
-	}
-	else {
-		// emit some dummy instructions, these will be replaced by jumps when we link this tc to another
-
-#if defined __i386 || defined _M_IX86
-
-		InlineAsm *ia = InlineAsm::get(type_func_asm, "mov ecx, $$-1\n\tmov ecx, $$-2\n\tmov ecx, $$-3\n\tmov ecx, $$-4", "~{ecx}", true, false, InlineAsm::AsmDialect::AD_Intel);
-		CallInst::Create(ia, "", bb);
-		cpu->tc->jmp_code_size = 20;
-
-#else
-#error don't know how to construct the tc epilogue on this platform
-#endif
-	}
-
-	ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(cpu->tc), tail->getReturnType()), bb);
-
-	// insert a call to the tail function and a ret for the main function
-	CallInst *ci = CallInst::Create(tail, std::vector<Value *> { disas_ctx->next_pc, cpu->ptr_cpu_ctx }, "", cpu->bb);
-	ci->setCallingConv(CallingConv::Fast);
-	ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
-	ReturnInst::Create(CTX(), ci, cpu->bb);
-
-#if DEBUG_LOG
-	verifyFunction(*cpu->bb->getParent(), &errs());
-	verifyFunction(*tail, &errs());
-#endif
 }
 
 Value *

@@ -12,7 +12,6 @@
 void cpu_x86_init(cpu_t *cpu);
 lib86cpu_status cpu_exec_tc(cpu_t *cpu);
 addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip);
-void tc_protect(void* addr, size_t size, bool ro);
 size_t disasm_instr(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_line, disas_ctx_t *disas_ctx);
 void decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx);
  void cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip);
@@ -32,9 +31,14 @@ extern const char *mnemo[];
 
 // disassembly context flags
 #define DISAS_FLG_CS32         (1 << 0)
-#define DISAS_FLG_TC_INDIRECT  (1 << 1)
-#define DISAS_FLG_PAGE_CROSS   (1 << 2)
+#define DISAS_FLG_PAGE_CROSS   (1 << 1)
 #define DISAS_FLG_FETCH_FAULT  DISAS_FLG_PAGE_CROSS
+
+// tc struct flags
+#define TC_FLG_NUM_JMP   (3 << 0)
+#define TC_FLG_INDIRECT  (1 << 2)
+#define TC_FLG_DIRECT    (1 << 3)
+#define TC_FLG_NEXT_PC   (1 << 4)
 
 // segment descriptor flags
 #define SEG_DESC_TY   (15ULL << 40) // type

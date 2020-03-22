@@ -7,25 +7,19 @@
 #pragma once
 
 
-FunctionType * create_tc_fntype(cpu_t *cpu);
-Function *create_tc_prologue(cpu_t *cpu, FunctionType *fntype);
-void create_tc_epilogue(cpu_t *cpu, FunctionType *fntype, disas_ctx_t *disas_ctx);
-translated_code_t *tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc);
-void tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc, addr_t pc);
-translated_code_t *tc_cache_search(cpu_t *cpu, addr_t pc);
-void tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc);
-void tc_cache_clear(cpu_t *cpu);
-void optimize(cpu_t *cpu, Function *func);
 std::vector<BasicBlock *> gen_bbs(cpu_t *cpu, Function *func, const unsigned num);
+StructType *get_struct_reg(cpu_t *cpu);
+StructType *get_struct_eflags(cpu_t *cpu);
 Value *get_struct_member_pointer(cpu_t *cpu, Value *gep_start, const unsigned gep_index);
+Value *gep_emit(cpu_t *cpu, Value *gep_start, std::vector<Value *> &vec_idx, Type *pointee_type = nullptr);
 Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
-void get_ext_fn(cpu_t *cpu, Function *func);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, const unsigned opnum);
 Value *mem_read_no_cpl_emit(cpu_t *cpu, Value *addr, const unsigned idx);
 void mem_write_no_cpl_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx);
 void check_io_priv_emit(cpu_t *cpu, Value *port, Value *mask);
 void stack_push_emit(cpu_t *cpu, std::vector<Value *> &vec, uint32_t size_mode);
 std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at = 0);
+void link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr);
 Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
 BasicBlock *raise_exception_emit(cpu_t *cpu, Value *exp_data);
 void lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t ret_eip, uint32_t call_eip);
@@ -49,13 +43,13 @@ void set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode);
 void write_eflags(cpu_t *cpu, Value *eflags, Value *mask);
 
 
-#define CTX() (*cpu->tc->ctx)
+#define CTX() (*cpu->ctx)
 #define BB() BasicBlock::Create(CTX(), "", func, 0)
 #define getIntegerType(x) (IntegerType::get(CTX(), x))
 #define getPointerType(x) (PointerType::getUnqual(x))
 #define getIntegerPointerType() (cpu->dl->getIntPtrType(CTX()))
 #define getVoidType() (Type::getVoidTy(CTX()))
-#define getArrayIntegerType(x, n) (ArrayType::get(getIntegerType(x), n))
+#define getArrayType(x, n) (ArrayType::get(x, n))
 
 #define MEM_LD8_idx  0
 #define MEM_LD16_idx 1
@@ -112,8 +106,8 @@ default: \
 #define LD(ptr) new LoadInst(ptr, "", false, cpu->bb)
 
 #define UNREACH() new UnreachableInst(CTX(), cpu->bb)
-#define INTRINSIC(id) CallInst::Create(Intrinsic::getDeclaration(cpu->tc->mod, Intrinsic::id), "", cpu->bb)
-#define INTRINSIC_arg(id, ty, arg) CallInst::Create(Intrinsic::getDeclaration(cpu->tc->mod, Intrinsic::id, ty), arg, "", cpu->bb)
+#define INTRINSIC(id) CallInst::Create(Intrinsic::getDeclaration(cpu->mod, Intrinsic::id), "", cpu->bb)
+#define INTRINSIC_ty(id, ty, arg) CallInst::Create(Intrinsic::getDeclaration(cpu->mod, Intrinsic::id, ty), arg, "", cpu->bb)
 
 #define ZEXT(s, v) new ZExtInst(v, getIntegerType(s), "", cpu->bb)
 #define ZEXT8(v) ZEXT(8, v)

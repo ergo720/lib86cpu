@@ -9,6 +9,9 @@
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
+#include "llvm/LinkAllPasses.h"
+#include "llvm/IR/InlineAsm.h"
+#include "llvm/IR/Verifier.h"
 #include "x86_internal.h"
 #include "x86_isa.h"
 #include "x86_frontend.h"
@@ -17,6 +20,226 @@
 #define BAD       printf("%s: encountered unimplemented instruction %s\n", __func__, get_instr_name(instr.opcode)); return LIB86CPU_OP_NOT_IMPLEMENTED
 #define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
 
+
+static void
+optimize(cpu_t *cpu)
+{
+	legacy::FunctionPassManager pm = legacy::FunctionPassManager(cpu->mod);
+
+	pm.add(createPromoteMemoryToRegisterPass());
+	pm.add(createInstructionCombiningPass());
+	pm.add(createConstantPropagationPass());
+	pm.add(createDeadStoreEliminationPass());
+	pm.add(createDeadCodeEliminationPass());
+	pm.run(*cpu->bb->getParent());
+}
+
+static void
+get_ext_fn(cpu_t *cpu)
+{
+	static size_t bit_size[7] = { 8, 16, 32, 64, 8, 16, 32 };
+	static size_t arg_size[7] = { 32, 32, 32, 32, 16, 16, 16 };
+	static const char *func_name_ld[7] = { "mem_read8", "mem_read16", "mem_read32", "mem_read64", "io_read8", "io_read16", "io_read32" };
+	static const char *func_name_st[7] = { "mem_write8", "mem_write16", "mem_write32", "mem_write64", "io_write8", "io_write16", "io_write32" };
+	Function::arg_iterator args_start = cpu->bb->getParent()->arg_begin();
+
+	for (uint8_t i = 0; i < 7; i++) {
+		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), args_start->getType(),
+			getIntegerType(arg_size[i]), getIntegerType(32)));
+	}
+
+	for (uint8_t i = 0; i < 7; i++) {
+		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), args_start->getType(),
+			getIntegerType(arg_size[i]), getIntegerType(bit_size[i]), getIntegerType(32)));
+	}
+
+	cpu->exp_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_throw_exception", getVoidType(), args_start->getType(), getIntegerType(64), getIntegerType(32)));
+	cpu->crN_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_update_crN", getVoidType(), args_start->getType(), getIntegerType(32), getIntegerType(8), getIntegerType(32),
+		getIntegerType(32)));
+}
+
+static translated_code_t *
+tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
+{
+	try {
+		// run the translated code
+		entry_t entry = static_cast<entry_t>(tc->ptr_code);
+		return entry(cpu_ctx);
+	}
+	catch (uint32_t eip) {
+		// don't link the previous code block if we returned with an exception
+		cpu_raise_exception(cpu_ctx, eip);
+		return nullptr;
+	}
+	catch (int err) {
+		// currently used by mov cr0, reg when it switches cpu mode
+		return nullptr;
+	}
+}
+
+static inline uint32_t
+tc_hash(addr_t pc)
+{
+	return pc & (CODE_CACHE_MAX_SIZE - 1);
+}
+
+static translated_code_t *
+tc_cache_search(cpu_t *cpu, addr_t pc)
+{
+	uint32_t flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
+	uint32_t idx = tc_hash(pc);
+	auto it = cpu->code_cache[idx].begin();
+	while (it != cpu->code_cache[idx].end()) {
+		translated_code_t *tc = it->get();
+		if (tc->cs_base == cpu->cpu_ctx.regs.cs_hidden.base &&
+			tc->pc == pc &&
+			tc->cpu_flags == flags) {
+			return tc;
+		}
+		it++;
+	}
+
+	return nullptr;
+}
+
+static void
+tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc)
+{
+	cpu->num_tc++;
+	cpu->code_cache[tc_hash(pc)].push_front(std::move(tc));
+}
+
+static void
+tc_cache_clear(cpu_t *cpu)
+{
+	cpu->num_tc = 0;
+	for (auto &bucket : cpu->code_cache) {
+		bucket.clear();
+	}
+
+	// annoyingly, llvm doesn't implement module removal, which means we have to destroy the entire jit object to delete the memory of the
+	// generated code blocks. This is documented at https://llvm.org/docs/ORCv2.html and in particular "Module removal is not yet supported.
+	// There is no equivalent of the layer concept removeModule/removeObject methods. Work on resource tracking and removal in ORCv2 is ongoing."
+
+	delete cpu->dl;
+	auto jtmb = orc::JITTargetMachineBuilder::detectHost();
+	if (!jtmb) {
+		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
+	}
+	SubtargetFeatures features;
+	StringMap<bool> host_features;
+	if (sys::getHostCPUFeatures(host_features))
+		for (auto &F : host_features) {
+			features.AddFeature(F.first(), F.second);
+		}
+	jtmb->setCPU(sys::getHostCPUName())
+		.addFeatures(features.getFeatures())
+		.setRelocationModel(None)
+		.setCodeModel(None);
+	auto dl = jtmb->getDefaultDataLayoutForTarget();
+	if (!dl) {
+		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
+	}
+	cpu->dl = new DataLayout(*dl);
+	if (cpu->dl == nullptr) {
+		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
+	}
+	auto jit = orc::LLJIT::Create(std::move(*jtmb), *dl, std::thread::hardware_concurrency());
+	if (!jit) {
+		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
+	}
+	cpu->jit = std::move(*jit);
+	cpu->jit->getMainJITDylib().setGenerator(
+		*orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(*dl));
+#ifdef _WIN32
+	cpu->jit->getObjLinkingLayer().setOverrideObjectFlagsWithResponsibilityFlags(true);
+#endif
+}
+
+static void
+tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc)
+{
+	switch (prev_tc->flags & TC_FLG_NUM_JMP)
+	{
+	case 0:
+		break;
+
+	case 1:
+	case 2:
+		if (prev_tc->flags & TC_FLG_NEXT_PC) {
+			prev_tc->jmp_offset[1] = ptr_tc->ptr_code;
+		}
+		else {
+			prev_tc->jmp_offset[0] = ptr_tc->ptr_code;
+		}
+		break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+static void
+create_tc_prologue(cpu_t *cpu)
+{
+	// create the translation function, it will hold all the translated code
+	std::vector<Type *> type_struct_cpu_ctx_t_fields;
+	type_struct_cpu_ctx_t_fields.push_back(getPointerType(StructType::create(CTX(), "struct.cpu_t")));  // NOTE: opaque cpu struct
+	type_struct_cpu_ctx_t_fields.push_back(get_struct_reg(cpu));
+	type_struct_cpu_ctx_t_fields.push_back(get_struct_eflags(cpu));
+	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(32));
+	PointerType *type_pcpu_ctx_t = getPointerType(StructType::create(CTX(),
+		type_struct_cpu_ctx_t_fields, "struct.cpu_ctx_t", false));
+
+	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");
+	std::vector<Type *> type_func_args { type_pcpu_ctx_t };
+	FunctionType *type_entry_t = FunctionType::get(
+		getPointerType(tc_struct_type),  // tc ret
+		type_func_args,                  // cpu_ctx arg
+		false);
+
+	std::vector<Type *> type_struct_tc_t_fields;
+	type_struct_tc_t_fields.push_back(getIntegerType(32));
+	type_struct_tc_t_fields.push_back(getIntegerType(32));
+	type_struct_tc_t_fields.push_back(getIntegerType(32));
+	type_struct_tc_t_fields.push_back(getPointerType(type_entry_t));
+	type_struct_tc_t_fields.push_back(getArrayType(getPointerType(type_entry_t), 3));
+	type_struct_tc_t_fields.push_back(getIntegerType(32));
+	tc_struct_type->setBody(type_struct_tc_t_fields, false);
+
+	Function *func = Function::Create(
+		type_entry_t,                        // func type
+		GlobalValue::ExternalLinkage,        // linkage
+		"main",                              // name
+		cpu->mod);
+	func->setCallingConv(CallingConv::C);
+
+	cpu->bb = BB();
+}
+
+static void
+create_tc_epilogue(cpu_t *cpu)
+{
+	Value *tc_ptr1 = new IntToPtrInst(INTPTR(cpu->tc), cpu->bb->getParent()->getReturnType(), "", cpu->bb);
+	ReturnInst::Create(CTX(), tc_ptr1, cpu->bb);
+
+	// create the function that returns to the translator
+	Function *exit = Function::Create(
+		cpu->bb->getParent()->getFunctionType(),  // func type
+		GlobalValue::ExternalLinkage,             // linkage
+		"exit",                                   // name
+		cpu->mod);
+	exit->setCallingConv(CallingConv::C);
+
+	BasicBlock *bb = BasicBlock::Create(CTX(), "", exit, 0);
+	Value *tc_ptr2 = new IntToPtrInst(INTPTR(cpu->tc), exit->getReturnType(), "", bb);
+	ReturnInst::Create(CTX(), tc_ptr2, bb);
+
+#if DEBUG_LOG
+	verifyFunction(*cpu->bb->getParent(), &errs());
+	verifyFunction(*exit, &errs());
+#endif
+}
 
 JIT_EXTERNAL_CALL_C void
 cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes)
@@ -83,14 +306,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	uint8_t size_mode;
 	uint8_t addr_mode;
 	cpu_ctx_t *cpu_ctx = &cpu->cpu_ctx;
-	addr_t pc = disas_ctx->virt_pc;
 	size_t bytes;
+	addr_t pc = disas_ctx->virt_pc;
 	// we can use the same indexes for both loads and stores because they have the same order in cpu->ptr_mem_xxfn
 	static const uint8_t fn_idx[3] = { MEM_LD32_idx, MEM_LD16_idx, MEM_LD8_idx };
 
-	Function::arg_iterator args_func = cpu->bb->getParent()->arg_begin();
-	args_func++;
-	cpu->ptr_cpu_ctx = args_func++;
+	cpu->ptr_cpu_ctx = cpu->bb->getParent()->arg_begin();
 	cpu->ptr_cpu_ctx->setName("cpu_ctx");
 	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, 1);
 	cpu->ptr_regs->setName("regs");
@@ -136,18 +357,18 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				// page fault during instruction fetch
 				disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
 				RAISE(CONST64((static_cast<uint64_t>(cpu->exp_fault_addr) << 32) | (cpu->exp_code << 16) | cpu->exp_idx));
-				disas_ctx->next_pc = CONST32(0); // unreachable
 				break;
 
 			case EXP_GP:
 				// the instruction exceeded the maximum allowed length
 				RAISE(CONST64((cpu->exp_code << 16) | cpu->exp_idx));
-				disas_ctx->next_pc = CONST32(0); // unreachable
-				return LIB86CPU_SUCCESS;
+				break;
 
 			default:
 				LIB86CPU_ABORT();
 			}
+
+			return LIB86CPU_SUCCESS;
 		}
 
 		if ((disas_ctx->flags & DISAS_FLG_CS32) ^ instr.op_size_override) {
@@ -341,15 +562,16 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					lcall_pe_emit(cpu, std::vector<Value *> { CONST16(new_sel), cs, eip }, size_mode, ret_eip, call_eip);
-					disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), LD_R32(EIP_idx));
-					disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
+					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else {
 					MEM_PUSH((std::vector<Value *> { cs, eip }));
 					ST_SEG(CONST16(new_sel), CS_idx);
 					ST_R32(CONST32(call_eip), EIP_idx);
 					ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
-					disas_ctx->next_pc = CONST32((static_cast<uint32_t>(new_sel) << 4) + call_eip);
+					link_direct_emit(cpu, std::vector <addr_t> { pc, (static_cast<uint32_t>(new_sel) << 4) + call_eip },
+						CONST32((static_cast<uint32_t>(new_sel) << 4) + call_eip));
+					cpu->tc->flags |= TC_FLG_DIRECT;
 				}
 			}
 			break;
@@ -365,7 +587,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				vec.push_back(size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
 				MEM_PUSH(vec);
 				ST_R32(CONST32(call_eip), EIP_idx);
-				disas_ctx->next_pc = CONST32(cpu_ctx->regs.cs_hidden.base + call_eip);
+				link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + call_eip, pc + bytes },
+					CONST32(cpu_ctx->regs.cs_hidden.base + call_eip));
+				cpu->tc->flags |= TC_FLG_DIRECT;
 			}
 			break;
 
@@ -381,8 +605,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						call_eip = ZEXT32(call_eip);
 					}
 					ST_R32(call_eip, EIP_idx);
-					disas_ctx->next_pc = ADD(CONST32(cpu_ctx->regs.cs_hidden.base), call_eip);
-					disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
+					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else if (instr.reg_opc == 3) {
 					if (cpu_ctx->hflags & HFLG_PE_MODE) {
@@ -415,10 +638,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					MEM_PUSH(vec);
 					ST_SEG(call_cs, CS_idx);
 					ST_R32(call_eip, EIP_idx);
-					Value *call_cs_base = SHL(ZEXT32(call_cs), CONST32(4));
-					ST_SEG_HIDDEN(call_cs_base, CS_idx, SEG_BASE_idx);
-					disas_ctx->next_pc = ADD(call_cs_base, call_eip);
-					disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
+					ST_SEG_HIDDEN(SHL(ZEXT32(call_cs), CONST32(4)), CS_idx, SEG_BASE_idx);
+					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else {
 					LIB86CPU_ABORT();
@@ -467,7 +688,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 				else {
 					RAISE(CONST64(EXP_GP));
-					disas_ctx->next_pc = CONST32(0); // unreachable
 					translate_next = 0;
 				}
 			}
@@ -732,7 +952,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_HLT: {
 			if (cpu_ctx->hflags & HFLG_CPL) {
 				RAISE(CONST64(EXP_GP));
-				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
 			else {
@@ -884,8 +1103,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				write_eflags(cpu, eflags, mask);
 			}
 
-			disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), LD_R32(EIP_idx));
-			disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
+			cpu->tc->flags |= TC_FLG_INDIRECT;
 			translate_next = 0;
 		}
 		break;
@@ -1017,8 +1235,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			BR_UNCOND(vec_bb[2]);
 
 			cpu->bb = vec_bb[2];
-			disas_ctx->next_pc = LD(dst_pc);
-
+			link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + jump_eip, pc + bytes }, LD(dst_pc));
+			cpu->tc->flags |= TC_FLG_DIRECT;
 			translate_next = 0;
 		}
 		break;
@@ -1034,7 +1252,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					new_eip &= 0x0000FFFF;
 				}
 				ST_R32(CONST32(new_eip), EIP_idx);
-				disas_ctx->next_pc = CONST32(cpu_ctx->regs.cs_hidden.base + new_eip);
+				link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + new_eip }, CONST32(cpu_ctx->regs.cs_hidden.base + new_eip));
+				cpu->tc->flags |= TC_FLG_DIRECT;
 			}
 			break;
 
@@ -1043,15 +1262,15 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				uint16_t new_sel = instr.operand[OPNUM_SRC].seg_sel;
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					ljmp_pe_emit(cpu, CONST16(new_sel), size_mode, new_eip);
-					disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), LD_R32(EIP_idx));
-					disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
+					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else {
 					new_eip = size_mode == SIZE16 ? new_eip & 0xFFFF : new_eip;
 					ST_SEG(CONST16(new_sel), CS_idx);
 					ST_R32(CONST32(new_eip), EIP_idx);
 					ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
-					disas_ctx->next_pc = CONST32((static_cast<uint32_t>(new_sel) << 4) + new_eip);
+					link_direct_emit(cpu, std::vector <addr_t> { pc, (static_cast<uint32_t>(new_sel) << 4) + new_eip }, CONST32((static_cast<uint32_t>(new_sel) << 4) + new_eip));
+					cpu->tc->flags |= TC_FLG_DIRECT;
 				}
 			}
 			break;
@@ -1082,7 +1301,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					ST_R32(new_eip, EIP_idx);
 					ST_SEG(new_sel, CS_idx);
 					ST_SEG_HIDDEN(SHL(ZEXT32(new_sel), CONST32(4)), CS_idx, SEG_BASE_idx);
-					disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), new_eip);
+					cpu->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), new_eip);
 #endif
 				}
 				else if (instr.reg_opc == 4) {
@@ -1119,7 +1338,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_LEA: {
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
 				RAISE(CONST64(EXP_UD));
-				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
 			else {
@@ -1154,7 +1372,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_LIDTW: {
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
 				RAISE(CONST64(EXP_UD));
-				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
 			else {
@@ -1183,12 +1400,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			if (!(cpu_ctx->hflags & HFLG_PE_MODE)) {
 				RAISE(CONST64(EXP_UD));
-				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
 			else if (cpu_ctx->hflags & HFLG_CPL) {
 				RAISE(CONST64(EXP_GP));
-				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
 			else {
@@ -1373,8 +1588,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			BR_UNCOND(vec_bb[2]);
 
 			cpu->bb = vec_bb[2];
-			disas_ctx->next_pc = LD(dst_pc);
-
+			link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + loop_eip, pc + bytes }, LD(dst_pc));
+			cpu->tc->flags |= TC_FLG_DIRECT;
 			translate_next = 0;
 		}
 		break;
@@ -1387,7 +1602,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_LSS: {
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
 				RAISE(CONST64(EXP_UD));
-				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
 			else {
@@ -1462,12 +1676,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			if (!(cpu_ctx->hflags & HFLG_PE_MODE)) {
 				RAISE(CONST64(EXP_UD));
-				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
 			else if (cpu_ctx->hflags & HFLG_CPL) {
 				RAISE(CONST64(EXP_GP));
-				disas_ctx->next_pc = CONST32(0); // unreachable
 				translate_next = 0;
 			}
 			else {
@@ -1513,6 +1725,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				switch (instr.operand[OPNUM_DST].reg)
 				{
 				case 0:
+					translate_next = 0;
+					[[fallthrough]];
+
 				case 3:
 					CallInst::Create(cpu->crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(instr.operand[OPNUM_DST].reg), cpu->instr_eip, CONST32(bytes) }, "", cpu->bb);
 					break;
@@ -1523,8 +1738,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				default:
 					LIB86CPU_ABORT();
 				}
-
-				translate_next = 0;
 			}
 			break;
 
@@ -1560,7 +1773,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0x8E: {
 				if (instr.operand[OPNUM_DST].reg == 1) {
 					RAISE(CONST64(EXP_UD));
-					disas_ctx->next_pc = CONST32(0); // unreachable
 					translate_next = 0;
 				}
 				else {
@@ -2286,8 +2498,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 				ST_REG_val(vec[1], vec[2]);
 				ST_R32(ret_eip, EIP_idx);
-
-				disas_ctx->next_pc = ADD(CONST32(cpu_ctx->regs.cs_hidden.base), ret_eip);
 			}
 			break;
 
@@ -2295,7 +2505,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				BAD;
 			}
 
-			disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
+			cpu->tc->flags |= TC_FLG_INDIRECT;
 			translate_next = 0;
 		}
 		break;
@@ -2330,8 +2540,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				BAD;
 			}
 
-			disas_ctx->next_pc = ADD(LD_SEG_HIDDEN(CS_idx, SEG_BASE_idx), LD_R32(EIP_idx));
-			disas_ctx->flags |= DISAS_FLG_TC_INDIRECT;
+			cpu->tc->flags |= TC_FLG_INDIRECT;
 			translate_next = 0;
 		}
 		break;
@@ -2355,7 +2564,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					if (count != 0) {
 						std::vector<Type *> vec_types { getIntegerType(8) };
 						std::vector<Value *> vec_params { val, val, CONST8(instr.operand[OPNUM_SRC].imm) };
-						val = INTRINSIC_arg(fshl, vec_types, vec_params);
+						val = INTRINSIC_ty(fshl, vec_types, vec_params);
 					}
 					Value *cf = AND(val, CONST8(1));
 					flg = SHL(ZEXT32(cf), CONST32(31));
@@ -2373,7 +2582,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					if (count != 0) {
 						std::vector<Type *> vec_types { getIntegerType(16) };
 						std::vector<Value *> vec_params { val, val, CONST16(instr.operand[OPNUM_SRC].imm) };
-						val = INTRINSIC_arg(fshl, vec_types, vec_params);
+						val = INTRINSIC_ty(fshl, vec_types, vec_params);
 					}
 					Value *cf = AND(val, CONST16(1));
 					flg = SHL(ZEXT32(cf), CONST32(31));
@@ -2391,7 +2600,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					if (count != 0) {
 						std::vector<Type *> vec_types { getIntegerType(32) };
 						std::vector<Value *> vec_params { val, val, CONST32(instr.operand[OPNUM_SRC].imm) };
-						val = INTRINSIC_arg(fshl, vec_types, vec_params);
+						val = INTRINSIC_ty(fshl, vec_types, vec_params);
 					}
 					Value *cf = AND(val, CONST32(1));
 					flg = SHL(cf, CONST32(31));
@@ -2717,7 +2926,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 				else {
 					RAISE(CONST64(EXP_GP));
-					disas_ctx->next_pc = CONST32(0); // unreachable
 					translate_next = 0;
 				}
 			}
@@ -2950,10 +3158,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 	} while ((translate_next | (disas_ctx->flags & DISAS_FLG_PAGE_CROSS)) == 1);
 
-	if (disas_ctx->next_pc == nullptr) {
-		disas_ctx->next_pc = calc_next_pc_emit(cpu, bytes);
-	}
-
 	return LIB86CPU_SUCCESS;
 }
 
@@ -2982,28 +3186,27 @@ cpu_exec_tc(cpu_t *cpu)
 
 			// code block for this pc not present, we need to translate new code
 			std::unique_ptr<translated_code_t> tc(new translated_code_t);
-			tc->ctx = new LLVMContext();
-			if (tc->ctx == nullptr) {
+			cpu->ctx = new LLVMContext();
+			if (cpu->ctx == nullptr) {
 				return LIB86CPU_NO_MEMORY;
 			}
-			tc->mod = new Module(cpu->cpu_name, *tc->ctx);
-			if (tc->mod == nullptr) {
-				delete tc->ctx;
+			cpu->mod = new Module(cpu->cpu_name, *cpu->ctx);
+			if (cpu->mod == nullptr) {
+				delete cpu->ctx;
+				cpu->ctx = nullptr;
 				return LIB86CPU_NO_MEMORY;
 			}
 
 			cpu->tc = tc.get();
-			FunctionType *fntype = create_tc_fntype(cpu);
-			Function *func = create_tc_prologue(cpu, fntype);
-			cpu->bb = BB();
+			cpu->tc->flags = 0;
+			create_tc_prologue(cpu);
 
 			// add to the module the external host functions that will be called by the translated guest code
-			get_ext_fn(cpu, func);
+			get_ext_fn(cpu);
 
 			// prepare the disas ctx
 			disas_ctx_t disas_ctx;
 			disas_ctx.flags = (cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT;
-			disas_ctx.next_pc = nullptr;
 			disas_ctx.virt_pc = get_pc(&cpu->cpu_ctx);
 			disas_ctx.pc = pc;
 			disas_ctx.instr_page_addr = disas_ctx.virt_pc & ~PAGE_MASK;
@@ -3011,56 +3214,59 @@ cpu_exec_tc(cpu_t *cpu)
 			// start guest code translation
 			lib86cpu_status status = cpu_translate(cpu, &disas_ctx);
 			if (!LIB86CPU_CHECK_SUCCESS(status)) {
-				delete tc->mod;
-				delete tc->ctx;
+				delete cpu->mod;
+				delete cpu->ctx;
+				cpu->mod = nullptr;
+				cpu->ctx = nullptr;
 				return status;
 			}
 
-			create_tc_epilogue(cpu, fntype, &disas_ctx);
+			create_tc_epilogue(cpu);
 
 			if (cpu->cpu_flags & CPU_PRINT_IR) {
-				tc->mod->print(errs(), nullptr);
+				cpu->mod->print(errs(), nullptr);
 			}
 
 			if (cpu->cpu_flags & CPU_CODEGEN_OPTIMIZE) {
-				optimize(cpu, func);
+				optimize(cpu);
 				if (cpu->cpu_flags & CPU_PRINT_IR_OPTIMIZED) {
-					tc->mod->print(errs(), nullptr);
+					cpu->mod->print(errs(), nullptr);
 				}
 			}
 
-			orc::ThreadSafeContext tsc(std::unique_ptr<LLVMContext>(tc->ctx));
-			orc::ThreadSafeModule tsm(std::unique_ptr<Module>(tc->mod), tsc);
+			orc::ThreadSafeContext tsc(std::unique_ptr<LLVMContext>(cpu->ctx));
+			orc::ThreadSafeModule tsm(std::unique_ptr<Module>(cpu->mod), tsc);
 			if (cpu->jit->addIRModule(std::move(tsm))) {
-				delete tc->mod;
-				delete tc->ctx;
+				delete cpu->mod;
+				delete cpu->ctx;
+				cpu->mod = nullptr;
+				cpu->ctx = nullptr;
 				return LIB86CPU_LLVM_ERROR;
 			}
 
 			tc->pc = pc;
 			tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
-			tc->flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
+			tc->cpu_flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
 
-			tc->ptr_code = reinterpret_cast<void *>(cpu->jit->lookup("start")->getAddress());
+			tc->ptr_code = reinterpret_cast<entry_t>(cpu->jit->lookup("main")->getAddress());
 			assert(tc->ptr_code);
-			tc->jmp_offset[0] = reinterpret_cast<void *>(cpu->jit->lookup("tail")->getAddress());
-			tc->jmp_offset[1] = nullptr;
-			tc->jmp_offset[2] = reinterpret_cast<void *>(cpu->jit->lookup("main")->getAddress());
-			assert(tc->jmp_offset[0] && tc->jmp_offset[2]);
+			tc->jmp_offset[0] = reinterpret_cast<entry_t>(cpu->jit->lookup("exit")->getAddress());
+			tc->jmp_offset[1] = tc->jmp_offset[2] = tc->jmp_offset[0];
+			assert(tc->jmp_offset[0]);
 
 			{
 				// now remove the function symbol names so that we can reuse them for other modules
 				// NOTE: the mangle object must be destroyed when tc_cache_clear is called or else some symbols won't be removed when the jit
 				// object is destroyed and llvm will assert
 				orc::MangleAndInterner mangle(cpu->jit->getExecutionSession(), *cpu->dl);
-				orc::SymbolNameSet module_symbol_names({ mangle("start"), mangle("tail"), mangle("main") });
+				orc::SymbolNameSet module_symbol_names({ mangle("main"), mangle("exit") });
 				[[maybe_unused]] auto err = cpu->jit->getMainJITDylib().remove(module_symbol_names);
 				assert(!err);
 			}
 
 			// llvm will delete the context and the module by itself, so we just null both the pointers now to prevent accidental usage
-			tc->ctx = nullptr;
-			tc->mod = nullptr;
+			cpu->ctx = nullptr;
+			cpu->mod = nullptr;
 
 			// we are done with code generation for this block, so we null the tc and bb pointers to prevent accidental usage
 			ptr_tc = cpu->tc;
@@ -3085,13 +3291,20 @@ cpu_exec_tc(cpu_t *cpu)
 		}
 
 		// see if we can link the previous tc with the current one
-		if (prev_tc != nullptr &&
-#if defined __i386 || defined _M_IX86
-			(prev_tc->jmp_code_size == 20)) {
-#else
-#error don't know the size of the direct jump code of the tc on this platform
-#endif
-			tc_link_direct(prev_tc, ptr_tc, pc);
+		if (prev_tc != nullptr) {
+			switch (prev_tc->flags & ~TC_FLG_NUM_JMP)
+			{
+			case 0:
+			case TC_FLG_INDIRECT:
+				break;
+
+			case TC_FLG_DIRECT:
+				tc_link_direct(prev_tc, ptr_tc);
+				break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
 		}
 
 		prev_tc = tc_run_code(&cpu->cpu_ctx, ptr_tc);
