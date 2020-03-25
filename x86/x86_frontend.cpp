@@ -29,12 +29,6 @@ get_struct_member_pointer(cpu_t *cpu, Value *gep_start, const unsigned gep_index
 }
 
 Value *
-gep_emit(cpu_t *cpu, Value *gep_start, std::vector<Value *> &vec_idx, Type *pointee_type)
-{
-	return GetElementPtrInst::CreateInBounds(pointee_type, gep_start, vec_idx, "", cpu->bb);
-}
-
-Value *
 get_r8h_pointer(cpu_t *cpu, Value *gep_start)
 {
 	std::vector<Value *> ptr_11_indices;
@@ -129,18 +123,12 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 	}
 	cpu->tc->flags |= (n & TC_FLG_NUM_JMP);
 
-	// BUG!!! If optimizations are turned off, the below code works correctly. However, after enabling transform passes, the generated code seems to assume
-	// that the function pointer members of the tc struct are 8 bytes large, instead of 4 (their real size), thus causing GEP to calculate wrong addresses,
-	// and the generated code will then perform out of bounds memory accesses at runtime. Why is this so?
-	Value *tc_ptr = new IntToPtrInst(INTPTR(cpu->tc), cpu->bb->getParent()->getReturnType(), "", cpu->bb);
-	Value *ld0 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(0) }), "", true, cpu->bb);
-	Value *ld1 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(1) }), "", true, cpu->bb);
-	Value *ld2 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(2) }), "", true, cpu->bb);
-	Value *ld3 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(3)}), "", true, cpu->bb);
-	Value *ld4 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(0) }), "", true, cpu->bb);
-	Value *ld5 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(1) }), "", true, cpu->bb);
-	Value *ld6 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(2) }), "", true, cpu->bb);
-	Value *ld7 = new LoadInst(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(5) }), "", true, cpu->bb);
+	// NOTE: WHY??? Trying to use GEP to calculate the struct member offsets from the tc base address only works if optimizations are turned off. Unfortunately, after enabling the transform passes,
+	// the generated code seems to assume that the function pointer members of the tc struct are 8 bytes large, instead of 4 (their real size), thus causing GEP to calculate wrong addresses,
+	// and the generated code will then perform out of bounds memory accesses at runtime. As a workaround, we calculate the addresses ourselves and inject them in the IR as constant pointers.
+	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->jmp_offset[0]), getPointerType(cast<PointerType>(cpu->bb->getParent()->getReturnType())->getElementType()->getStructElementType(3)));
+	Value *tc_jmp1_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->jmp_offset[1]), getPointerType(cast<PointerType>(cpu->bb->getParent()->getReturnType())->getElementType()->getStructElementType(3)));
+	Value *tc_flg_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->flags), getPointerType(cast<PointerType>(cpu->bb->getParent()->getReturnType())->getElementType()->getStructElementType(5)));
 
 	switch (n)
 	{
@@ -153,8 +141,7 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
 				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[1])));
 				cpu->bb = vec_bb[0];
-				CallInst *ci = CallInst::Create(LD(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(0) })),
-					std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+				CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
 				ci->setCallingConv(CallingConv::C);
 				ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 				ReturnInst::Create(CTX(), ci, cpu->bb);
@@ -164,10 +151,8 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
 				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[2])));
 				cpu->bb = vec_bb[0];
-				Value *tc_flg_ptr = gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(5) });
 				ST(tc_flg_ptr, OR(LD(tc_flg_ptr), CONST32(TC_FLG_NEXT_PC)));
-				CallInst *ci = CallInst::Create(LD(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(1) })),
-					std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+				CallInst *ci = CallInst::Create(LD(tc_jmp1_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
 				ci->setCallingConv(CallingConv::C);
 				ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 				ReturnInst::Create(CTX(), ci, cpu->bb);
@@ -175,8 +160,7 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 			}
 		}
 		else { // uncond jmp dst_pc
-			CallInst *ci = CallInst::Create(LD(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(0) })),
-				std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+			CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
 			ci->setCallingConv(CallingConv::C);
 			ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 			ReturnInst::Create(CTX(), ci, cpu->bb);
@@ -190,16 +174,13 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 		std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
 		BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[2])));
 		cpu->bb = vec_bb[0];
-		Value *tc_flg_ptr = gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(5) });
 		ST(tc_flg_ptr, OR(LD(tc_flg_ptr), CONST32(TC_FLG_NEXT_PC)));
-		CallInst *ci1 = CallInst::Create(LD(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(1) })),
-			std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+		CallInst *ci1 = CallInst::Create(LD(tc_jmp1_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
 		ci1->setCallingConv(CallingConv::C);
 		ci1->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 		ReturnInst::Create(CTX(), ci1, cpu->bb);
 		cpu->bb = vec_bb[1];
-		CallInst *ci2 = CallInst::Create(LD(gep_emit(cpu, tc_ptr, std::vector<Value *> { CONST32(0), CONST32(4), CONST32(0) })),
-			std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+		CallInst *ci2 = CallInst::Create(LD(tc_jmp0_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
 		ci2->setCallingConv(CallingConv::C);
 		ci2->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 		ReturnInst::Create(CTX(), ci2, cpu->bb);

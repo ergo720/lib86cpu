@@ -266,12 +266,13 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 				cpu_ctx->hflags &= ~(HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE);
 			}
 
-			// since tc_cache_clear has deleted the calling code block, we must return to the translator with an exception. We also have to setup the eip
-			// to point to the next instruction
-			cpu_ctx->regs.eip = (eip + bytes);
+			// since tc_cache_clear has deleted the calling code block, we must return to the translator with an exception
 			cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
 			throw -1;
 		}
+
+		// mov cr0, reg always terminates the tc, so we must update the eip here
+		cpu_ctx->regs.eip = (eip + bytes);
 		cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
 		break;
 
@@ -1641,11 +1642,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					std::vector<Value *> vec;
 
 					if (sel_idx == SS_idx) {
-						translate_next = 0;
 						vec = check_ss_desc_priv_emit(cpu, sel);
 						set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
 						write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, vec[1]),
 							read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
+						ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
+						translate_next = 0;
 					}
 					else {
 						std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
@@ -1731,6 +1733,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				case 3:
 					CallInst::Create(cpu->crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(instr.operand[OPNUM_DST].reg), cpu->instr_eip, CONST32(bytes) }, "", cpu->bb);
 					break;
+
 				case 2:
 				case 4:
 					BAD;
@@ -1784,11 +1787,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						std::vector<Value *> vec;
 
 						if (sel_idx == SS_idx) {
-							translate_next = 0;
 							vec = check_ss_desc_priv_emit(cpu, sel);
 							set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
 							write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, vec[1]),
 								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
+							ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
+							translate_next = 0;
 						}
 						else {
 							std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
@@ -2245,11 +2249,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						std::vector<Value *> vec;
 
 						if (sel_idx == SS_idx) {
-							translate_next = 0;
 							vec = check_ss_desc_priv_emit(cpu, sel);
 							set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
 							write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, vec[1]),
 								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
+							ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
+							translate_next = 0;
 						}
 						else {
 							std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
@@ -2364,6 +2369,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			write_eflags(cpu, eflags, mask);
 			ST_REG_val(vec[1], vec[2]);
+			ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
 			translate_next = 0;
 		}
 		break;
@@ -3292,7 +3298,7 @@ cpu_exec_tc(cpu_t *cpu)
 
 		// see if we can link the previous tc with the current one
 		if (prev_tc != nullptr) {
-			switch (prev_tc->flags & ~TC_FLG_NUM_JMP)
+			switch (prev_tc->flags & ~(TC_FLG_NUM_JMP | TC_FLG_NEXT_PC))
 			{
 			case 0:
 			case TC_FLG_INDIRECT:

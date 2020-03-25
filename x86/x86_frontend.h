@@ -11,7 +11,6 @@ std::vector<BasicBlock *> gen_bbs(cpu_t *cpu, Function *func, const unsigned num
 StructType *get_struct_reg(cpu_t *cpu);
 StructType *get_struct_eflags(cpu_t *cpu);
 Value *get_struct_member_pointer(cpu_t *cpu, Value *gep_start, const unsigned gep_index);
-Value *gep_emit(cpu_t *cpu, Value *gep_start, std::vector<Value *> &vec_idx, Type *pointee_type = nullptr);
 Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, const unsigned opnum);
 Value *mem_read_no_cpl_emit(cpu_t *cpu, Value *addr, const unsigned idx);
