@@ -3176,14 +3176,16 @@ cpu_exec_tc(cpu_t *cpu)
 	// main cpu loop
 	while (true) {
 
+		retry:
 		try {
 			pc = mmu_translate_addr(cpu, get_pc(&cpu->cpu_ctx), 0, cpu->cpu_ctx.regs.eip);
 		}
 		catch (uint32_t eip) {
 			// page fault during instruction fetching
+			// NOTE: can't use get_pc here because it returns a virtual address, while code blocks are indexed by physical addresses instead
 			cpu_raise_exception(&cpu->cpu_ctx, eip);
-			pc = get_pc(&cpu->cpu_ctx);
 			prev_tc = nullptr;
+			goto retry;
 		}
 
 		ptr_tc = tc_cache_search(cpu, pc);
