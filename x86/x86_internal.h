@@ -35,10 +35,14 @@ extern const char *mnemo[];
 #define DISAS_FLG_FETCH_FAULT  DISAS_FLG_PAGE_CROSS
 
 // tc struct flags
-#define TC_FLG_NUM_JMP   (3 << 0)
-#define TC_FLG_INDIRECT  (1 << 2)
-#define TC_FLG_DIRECT    (1 << 3)
-#define TC_FLG_NEXT_PC   (1 << 4)
+#define TC_FLG_DST_PC     0
+#define TC_FLG_NEXT_PC    1
+#define TC_FLG_RET        2
+#define TC_FLG_NUM_JMP    (3 << 0)
+#define TC_FLG_INDIRECT   (1 << 2)
+#define TC_FLG_DIRECT     (1 << 3)
+#define TC_FLG_JMP_TAKEN  (3 << 4)
+#define TC_FLG_LINK_MASK  (TC_FLG_INDIRECT | TC_FLG_DIRECT)
 
 // segment descriptor flags
 #define SEG_DESC_TY   (15ULL << 40) // type

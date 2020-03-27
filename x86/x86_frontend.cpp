@@ -141,22 +141,25 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
 				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[1])));
 				cpu->bb = vec_bb[0];
+				ST(tc_flg_ptr, AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)));
 				CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
 				ci->setCallingConv(CallingConv::C);
 				ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 				ReturnInst::Create(CTX(), ci, cpu->bb);
 				cpu->bb = vec_bb[1];
+				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_RET << 4)));
 			}
 			else {
 				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
 				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[2])));
 				cpu->bb = vec_bb[0];
-				ST(tc_flg_ptr, OR(LD(tc_flg_ptr), CONST32(TC_FLG_NEXT_PC)));
+				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_NEXT_PC << 4)));
 				CallInst *ci = CallInst::Create(LD(tc_jmp1_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
 				ci->setCallingConv(CallingConv::C);
 				ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 				ReturnInst::Create(CTX(), ci, cpu->bb);
 				cpu->bb = vec_bb[1];
+				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_RET << 4)));
 			}
 		}
 		else { // uncond jmp dst_pc
@@ -174,12 +177,13 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 		std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
 		BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[2])));
 		cpu->bb = vec_bb[0];
-		ST(tc_flg_ptr, OR(LD(tc_flg_ptr), CONST32(TC_FLG_NEXT_PC)));
+		ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_NEXT_PC << 4)));
 		CallInst *ci1 = CallInst::Create(LD(tc_jmp1_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
 		ci1->setCallingConv(CallingConv::C);
 		ci1->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 		ReturnInst::Create(CTX(), ci1, cpu->bb);
 		cpu->bb = vec_bb[1];
+		ST(tc_flg_ptr, AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)));
 		CallInst *ci2 = CallInst::Create(LD(tc_jmp0_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
 		ci2->setCallingConv(CallingConv::C);
 		ci2->setTailCallKind(CallInst::TailCallKind::TCK_Tail);

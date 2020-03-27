@@ -165,12 +165,38 @@ tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc)
 		break;
 
 	case 1:
-	case 2:
-		if (prev_tc->flags & TC_FLG_NEXT_PC) {
-			prev_tc->jmp_offset[1] = ptr_tc->ptr_code;
-		}
-		else {
+		switch ((prev_tc->flags & TC_FLG_JMP_TAKEN) >> 4)
+		{
+		case TC_FLG_DST_PC:
 			prev_tc->jmp_offset[0] = ptr_tc->ptr_code;
+			break;
+
+		case TC_FLG_NEXT_PC:
+			prev_tc->jmp_offset[1] = ptr_tc->ptr_code;
+			break;
+
+		case TC_FLG_RET:
+			break;
+
+		default:
+			LIB86CPU_ABORT();
+		}
+		break;
+
+	case 2:
+		switch ((prev_tc->flags & TC_FLG_JMP_TAKEN) >> 4)
+		{
+		case TC_FLG_DST_PC:
+			prev_tc->jmp_offset[0] = ptr_tc->ptr_code;
+			break;
+
+		case TC_FLG_NEXT_PC:
+			prev_tc->jmp_offset[1] = ptr_tc->ptr_code;
+			break;
+
+		case TC_FLG_RET:
+		default:
+			LIB86CPU_ABORT();
 		}
 		break;
 
@@ -3300,7 +3326,7 @@ cpu_exec_tc(cpu_t *cpu)
 
 		// see if we can link the previous tc with the current one
 		if (prev_tc != nullptr) {
-			switch (prev_tc->flags & ~(TC_FLG_NUM_JMP | TC_FLG_NEXT_PC))
+			switch (prev_tc->flags & TC_FLG_LINK_MASK)
 			{
 			case 0:
 			case TC_FLG_INDIRECT:
