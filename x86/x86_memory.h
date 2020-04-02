@@ -15,24 +15,32 @@ while (region->aliased_region) { \
 	alias_offset += region->alias_offset; \
 }
 
+void tlb_flush(cpu_t *cpu);
+void tlb_flush(cpu_t * cpu, [[maybe_unused]] uint8_t dummy);
 inline void *get_ram_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *ram, addr_t pc);
+addr_t get_code_addr(cpu_t * cpu, addr_t addr, uint32_t eip);
 void check_instr_length(cpu_t *cpu, addr_t start_pc, addr_t pc, size_t size);
-JIT_EXTERNAL_CALL_C uint8_t mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip);
-JIT_EXTERNAL_CALL_C uint16_t mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip);
-JIT_EXTERNAL_CALL_C uint32_t mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip);
-JIT_EXTERNAL_CALL_C uint64_t mem_read64(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip);
-JIT_EXTERNAL_CALL_C void mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip);
-JIT_EXTERNAL_CALL_C void mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip);
-JIT_EXTERNAL_CALL_C void mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip);
-JIT_EXTERNAL_CALL_C void mem_write64(cpu_ctx_t * cpu_ctx, addr_t addr, uint64_t value, uint32_t eip);
-JIT_EXTERNAL_CALL_C uint8_t io_read8(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip);
-JIT_EXTERNAL_CALL_C uint16_t io_read16(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip);
-JIT_EXTERNAL_CALL_C uint32_t io_read32(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip);
-JIT_EXTERNAL_CALL_C void io_write8(cpu_ctx_t *cpu_ctx, port_t port, uint8_t value, uint32_t eip);
-JIT_EXTERNAL_CALL_C void io_write16(cpu_ctx_t *cpu_ctx, port_t port, uint16_t value, uint32_t eip);
-JIT_EXTERNAL_CALL_C void io_write32(cpu_ctx_t *cpu_ctx, port_t port, uint32_t value, uint32_t eip);
+JIT_EXTERNAL_CALL_C uint8_t mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
+JIT_EXTERNAL_CALL_C uint16_t mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
+JIT_EXTERNAL_CALL_C uint32_t mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
+JIT_EXTERNAL_CALL_C uint64_t mem_read64(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
+JIT_EXTERNAL_CALL_C void mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip, uint8_t is_phys);
+JIT_EXTERNAL_CALL_C void mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip, uint8_t is_phys);
+JIT_EXTERNAL_CALL_C void mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip, uint8_t is_phys);
+JIT_EXTERNAL_CALL_C void mem_write64(cpu_ctx_t * cpu_ctx, addr_t addr, uint64_t value, uint32_t eip, uint8_t is_phys);
+JIT_EXTERNAL_CALL_C uint8_t io_read8(cpu_ctx_t *cpu_ctx, port_t port);
+JIT_EXTERNAL_CALL_C uint16_t io_read16(cpu_ctx_t *cpu_ctx, port_t port);
+JIT_EXTERNAL_CALL_C uint32_t io_read32(cpu_ctx_t *cpu_ctx, port_t port);
+JIT_EXTERNAL_CALL_C void io_write8(cpu_ctx_t *cpu_ctx, port_t port, uint8_t value);
+JIT_EXTERNAL_CALL_C void io_write16(cpu_ctx_t *cpu_ctx, port_t port, uint16_t value);
+JIT_EXTERNAL_CALL_C void io_write32(cpu_ctx_t *cpu_ctx, port_t port, uint32_t value);
 template<typename T> T ram_read(cpu_t *cpu, void *ram_ptr);
 template<typename T> void ram_write(cpu_t *cpu, void *ram_ptr, T value);
+
+inline const uint8_t tlb_access[2][4] = {
+	{ TLB_SUP_READ, TLB_SUP_READ, TLB_SUP_READ, TLB_USER_READ },
+	{ TLB_SUP_WRITE, TLB_SUP_WRITE, TLB_SUP_WRITE, TLB_USER_WRITE }
+};
 
 
 /*
@@ -199,7 +207,7 @@ void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, memory_region_t<port
 void *
 get_ram_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *ram, addr_t pc)
 {
-	return &cpu->ram[pc - ram->start];
+	return &cpu->cpu_ctx.ram[pc - ram->start];
 }
 
 template<typename T>
@@ -271,12 +279,11 @@ T ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t page_cross)
 	T value = 0;
 
 	if (page_cross) {
-		uint8_t i = 0;
-		memory_region_t<addr_t> *region;
 		check_instr_length(cpu, disas_ctx->start_pc, disas_ctx->virt_pc, sizeof(T));
+		uint8_t i = 0;
 		while (i < sizeof(T)) {
-			disas_ctx->pc = mmu_translate_addr(cpu, disas_ctx->virt_pc, 0, disas_ctx->start_pc - cpu->cpu_ctx.regs.cs_hidden.base);
-			region = as_memory_search_addr<T>(cpu, disas_ctx->pc);
+			disas_ctx->pc = get_code_addr(cpu, disas_ctx->virt_pc, disas_ctx->start_pc - cpu->cpu_ctx.regs.cs_hidden.base);
+			memory_region_t<addr_t> *region = as_memory_search_addr<T>(cpu, disas_ctx->pc);
 			value |= (static_cast<T>(as_ram_dispatch_read<uint8_t>(cpu, disas_ctx->pc, region)) << (i * 8));
 			disas_ctx->virt_pc++;
 			i++;
@@ -305,53 +312,95 @@ T ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t page_cross)
  * generic memory accessors
  */
 template<typename T>
-T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip)
+T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t is_phys)
 {
-	addr_t phys_addr;
-	if ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK)) {
-		T buffer = 0;
-		uint8_t i = 0;
-		memory_region_t<addr_t> *region;
-		while (i < sizeof(T)) {
-			phys_addr = mmu_translate_addr(cpu, addr, 0, eip);
-			region = as_memory_search_addr<T>(cpu, phys_addr);
-			buffer |= (static_cast<T>(as_memory_dispatch_read<uint8_t>(cpu, phys_addr, region)) << (i * 8));
-			addr++;
-			i++;
+	if (!is_phys) {
+		if ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK)) {
+			T value = 0;
+			uint8_t i = 0;
+			while (i < sizeof(T)) {
+				addr_t phys_addr = mmu_translate_addr(cpu, addr, 0, eip);
+				memory_region_t<addr_t> *region = as_memory_search_addr<T>(cpu, phys_addr);
+				value |= (static_cast<T>(as_memory_dispatch_read<uint8_t>(cpu, phys_addr, region)) << (i * 8));
+				addr++;
+				i++;
+			}
+			if (cpu->cpu_flags & CPU_FLAG_SWAPMEM) {
+				sys::swapByteOrder<T>(value);
+			}
+			return value;
 		}
-		if (cpu->cpu_flags & CPU_FLAG_SWAPMEM) {
-			sys::swapByteOrder<T>(buffer);
+		else {
+			addr_t phys_addr = mmu_translate_addr(cpu, addr, 0, eip);
+			return as_memory_dispatch_read<T>(cpu, phys_addr, as_memory_search_addr<T>(cpu, phys_addr));
 		}
-		return buffer;
 	}
 	else {
-		phys_addr = mmu_translate_addr(cpu, addr, 0, eip);
-		return as_memory_dispatch_read<T>(cpu, phys_addr, as_memory_search_addr<T>(cpu, phys_addr));
+		return as_memory_dispatch_read<T>(cpu, addr, as_memory_search_addr<T>(cpu, addr));
 	}
 }
 
 template<typename T>
-void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip)
+void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t is_phys)
 {
-	addr_t phys_addr;
-	if ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK)) {
-		int8_t i = sizeof(T) - 1;
-		memory_region_t<addr_t> *region;
-		if (cpu->cpu_flags & CPU_FLAG_SWAPMEM) {
-			sys::swapByteOrder<T>(value);
+	if (!is_phys) {
+		if ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK)) {
+			int8_t i = sizeof(T) - 1;
+			if (cpu->cpu_flags & CPU_FLAG_SWAPMEM) {
+				sys::swapByteOrder<T>(value);
+			}
+			while (i >= 0) {
+				addr_t phys_addr = mmu_translate_addr(cpu, addr, 1, eip);
+				memory_region_t<addr_t> *region = as_memory_search_addr<T>(cpu, phys_addr);
+				as_memory_dispatch_write<uint8_t>(cpu, phys_addr, value >> (i * 8), region);
+				addr++;
+				i--;
+			}
 		}
-		while (i >= 0) {
-			phys_addr = mmu_translate_addr(cpu, addr, 1, eip);
-			region = as_memory_search_addr<T>(cpu, phys_addr);
-			as_memory_dispatch_write<uint8_t>(cpu, phys_addr, value >> (i * 8), region);
-			addr++;
-			i--;
+		else {
+			addr_t phys_addr = mmu_translate_addr(cpu, addr, 1, eip);
+			as_memory_dispatch_write<T>(cpu, phys_addr, value, as_memory_search_addr<T>(cpu, phys_addr));
 		}
 	}
 	else {
-		phys_addr = mmu_translate_addr(cpu, addr, 1, eip);
-		as_memory_dispatch_write<T>(cpu, phys_addr, value, as_memory_search_addr<T>(cpu, phys_addr));
+		as_memory_dispatch_write<T>(cpu, addr, value, as_memory_search_addr<T>(cpu, addr));
 	}
+}
+
+template<typename T>
+T mem_read_tlb(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t is_priv)
+{
+	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
+	if ((((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv) | (addr & ~PAGE_MASK)) ^
+		((tlb_entry & ((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv)) | ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
+		return mem_read<T>(cpu, addr, eip, 0);
+	}
+
+	addr_t phys_addr = (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
+	if (tlb_entry & TLB_RAM) {
+		return ram_read<T>(cpu, &cpu->cpu_ctx.ram[phys_addr]);
+	}
+
+	return mem_read<T>(cpu, phys_addr, eip, 1);
+}
+
+template<typename T>
+void mem_write_tlb(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t is_priv)
+{
+	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
+	if ((((tlb_access[1][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv) | (addr & ~PAGE_MASK)) ^
+		((tlb_entry & ((tlb_access[1][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv)) | ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
+		mem_write<T>(cpu, addr, value, eip, 0);
+		return;
+	}
+
+	addr_t phys_addr = (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
+	if (tlb_entry & TLB_RAM) {
+		ram_write<T>(cpu, &cpu->cpu_ctx.ram[phys_addr], value);
+		return;
+	}
+
+	mem_write<T>(cpu, phys_addr, value, eip, 1);
 }
 
 /*

@@ -8,16 +8,16 @@
 #include "x86_memory.h"
 
 #define PUSHW(val) esp -= 2; \
-mem_write<uint16_t>(cpu_ctx->cpu, stack_base + (esp & stack_mask), val, 0);
+mem_write_tlb<uint16_t>(cpu_ctx->cpu, stack_base + (esp & stack_mask), val, 0, stack_switch ? 2 : 0);
 #define PUSHL(val) esp -= 4; \
-mem_write<uint32_t>(cpu_ctx->cpu, stack_base + (esp & stack_mask), val, 0);
+mem_write_tlb<uint32_t>(cpu_ctx->cpu, stack_base + (esp & stack_mask), val, 0, stack_switch ? 2 : 0);
 
 
 static void
 set_access_flg_seg_desc(cpu_ctx_t *cpu_ctx, uint64_t desc, addr_t desc_addr)
 {
 	if ((((desc & SEG_DESC_S) >> 44) | ((desc & SEG_DESC_A) >> 39)) == 1) {
-		mem_write<uint64_t>(cpu_ctx->cpu, desc_addr, desc | SEG_DESC_A, 0);
+		mem_write_tlb<uint64_t>(cpu_ctx->cpu, desc_addr, desc | SEG_DESC_A, 0, 2);
 	}
 }
 
@@ -64,7 +64,7 @@ read_seg_desc(cpu_ctx_t *cpu_ctx, uint16_t sel, addr_t *desc_addr, int expno)
 
 	*desc_addr = base + sel_idx;
 
-	return mem_read<uint64_t>(cpu_ctx->cpu, base + sel_idx, 0);
+	return mem_read_tlb<uint64_t>(cpu_ctx->cpu, base + sel_idx, 0, 2);
 }
 
 static void
@@ -78,12 +78,12 @@ read_stack_ptr_from_tss(cpu_t *cpu, uint32_t dest_cpl, uint32_t *esp, uint16_t *
 
 	cpu->cpu_ctx.hflags |= HFLG_CPL_PRIV;
 	if (type) {
-		*esp = mem_read<uint32_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx, 0);
-		*ss = mem_read<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx + 4, 0);
+		*esp = mem_read_tlb<uint32_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx, 0, 0);
+		*ss = mem_read_tlb<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx + 4, 0, 0);
 	}
 	else {
-		*esp = mem_read<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx, 0);
-		*ss = mem_read<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx + 2, 0);
+		*esp = mem_read_tlb<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx, 0, 0);
+		*ss = mem_read_tlb<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx + 2, 0, 0);
 	}
 
 	cpu->cpu_ctx.hflags &= ~HFLG_CPL_PRIV;
@@ -142,7 +142,7 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip)
 				throw 0U;
 			}
 
-			uint64_t desc = mem_read<uint64_t>(cpu, cpu_ctx->regs.idtr_hidden.base + expno * 8, eip);
+			uint64_t desc = mem_read_tlb<uint64_t>(cpu, cpu_ctx->regs.idtr_hidden.base + expno * 8, eip, 2);
 			uint16_t type = (desc >> 40) & 0x1F;
 			uint32_t new_eip, eflags;
 			switch (type)
@@ -284,7 +284,8 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip)
 				throw 0U;
 			}
 
-			uint32_t vec_entry = mem_read<uint32_t>(cpu, cpu_ctx->regs.idtr_hidden.base + expno * 4, eip);
+			uint32_t vec_entry = mem_read_tlb<uint32_t>(cpu, cpu_ctx->regs.idtr_hidden.base + expno * 4, eip, 0);
+			uint32_t stack_switch = 0;
 			uint32_t stack_mask = 0xFFFF;
 			uint32_t stack_base = cpu_ctx->regs.ss_hidden.base;
 			uint32_t esp = cpu_ctx->regs.esp;
@@ -300,7 +301,6 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip)
 		}
 
 		cpu_ctx->hflags |= HFLG_CPL_PRIV;
-		return;
 	}
 	catch (uint32_t dummy) {
 		LIB86CPU_ABORT_msg("An exception was raised while trying to deliver another exception\n");

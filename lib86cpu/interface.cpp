@@ -32,6 +32,7 @@ lib86cpu_status
 cpu_new(size_t ramsize, cpu_t *&out)
 {
 	cpu_t *cpu;
+	lib86cpu_status status;
 	out = nullptr;
 
 	printf("Creating new cpu...\n");
@@ -41,8 +42,13 @@ cpu_new(size_t ramsize, cpu_t *&out)
 		return LIB86CPU_NO_MEMORY;
 	}
 
-	cpu->ram = new uint8_t[ramsize];
-	if (cpu->ram == nullptr) {
+	if ((ramsize % PAGE_SIZE) != 0) {
+		cpu_free(cpu);
+		return LIB86CPU_INVALID_PARAMETER;
+	}
+
+	cpu->cpu_ctx.ram = new uint8_t[ramsize];
+	if (cpu->cpu_ctx.ram == nullptr) {
 		cpu_free(cpu);
 		return LIB86CPU_NO_MEMORY;
 	}
@@ -127,8 +133,8 @@ cpu_free(cpu_t *cpu)
 	if (cpu->dl) {
 		delete cpu->dl;
 	}
-	if (cpu->ram) {
-		delete[] cpu->ram;
+	if (cpu->cpu_ctx.ram) {
+		delete[] cpu->cpu_ctx.ram;
 	}
 
 	for (auto &bucket : cpu->code_cache) {
@@ -180,6 +186,10 @@ memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 	std::unique_ptr<memory_region_t<addr_t>> ram(new memory_region_t<addr_t>);
 
 	if (size == 0) {
+		return LIB86CPU_INVALID_PARAMETER;
+	}
+
+	if ((start % PAGE_SIZE) != 0 || ((size % PAGE_SIZE) != 0)) {
 		return LIB86CPU_INVALID_PARAMETER;
 	}
 

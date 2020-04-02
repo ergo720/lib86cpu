@@ -54,6 +54,7 @@ enum lib86cpu_status {
 #define CPU_NUM_REGS 33
 
 #define CODE_CACHE_MAX_SIZE (1 << 15)
+#define TLB_MAX_SIZE (1 << 20)
 
 #ifdef DEBUG_LOG
 #define LOG(...) do { printf(__VA_ARGS__); } while(0)
@@ -162,6 +163,8 @@ struct cpu_ctx_t {
 	regs_t regs;
 	lazy_eflags_t lazy_eflags;
 	uint32_t hflags;
+	uint32_t tlb[TLB_MAX_SIZE];
+	uint8_t *ram;
 };
 
 struct cpu_t {
@@ -169,7 +172,6 @@ struct cpu_t {
 	const char *cpu_name;
 	const regs_layout_t *regs_layout;
 	cpu_ctx_t cpu_ctx;
-	uint8_t *ram;
 	memory_region_t<addr_t> *pt_mr;
 	translated_code_t *tc; // tc for which we are currently generating code
 	std::unique_ptr<interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>> memory_space_tree;
@@ -192,6 +194,8 @@ struct cpu_t {
 	Value *ptr_regs;
 	Value *ptr_eflags;
 	Value *ptr_hflags;
+	Value *ptr_tlb;
+	Value *ptr_ram;
 	Value *instr_eip;
 	BasicBlock *bb; // bb to which we are currently adding llvm instructions
 	Function *ptr_mem_ldfn[7];

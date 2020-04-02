@@ -20,15 +20,6 @@
 
 
 Value *
-get_struct_member_pointer(cpu_t *cpu, Value *gep_start, const unsigned gep_index)
-{
-	std::vector<Value *> ptr_11_indices;
-	ptr_11_indices.push_back(CONST32(0));
-	ptr_11_indices.push_back(CONST32(gep_index));
-	return GetElementPtrInst::CreateInBounds(gep_start, ptr_11_indices, "", cpu->bb);
-}
-
-Value *
 get_r8h_pointer(cpu_t *cpu, Value *gep_start)
 {
 	std::vector<Value *> ptr_11_indices;
@@ -97,6 +88,30 @@ gen_bbs(cpu_t *cpu, Function *func, const unsigned num)
 	}
 
 	return vec;
+}
+
+Value *
+gep_emit(cpu_t *cpu, Value *gep_start, const int gep_index)
+{
+	std::vector<Value *> ptr_11_indices;
+	ptr_11_indices.push_back(CONST32(0));
+	ptr_11_indices.push_back(CONST32(gep_index));
+	return GetElementPtrInst::CreateInBounds(gep_start, ptr_11_indices, "", cpu->bb);
+}
+
+Value *
+gep_emit(cpu_t *cpu, Value *gep_start, Value *gep_index)
+{
+	std::vector<Value *> ptr_11_indices;
+	ptr_11_indices.push_back(CONST32(0));
+	ptr_11_indices.push_back(gep_index);
+	return GetElementPtrInst::CreateInBounds(gep_start, ptr_11_indices, "", cpu->bb);
+}
+
+Value *
+gep_emit(cpu_t *cpu, Value *gep_start, std::vector<Value *> vec_index)
+{
+	return GetElementPtrInst::CreateInBounds(gep_start, vec_index, "", cpu->bb);
 }
 
 Value *
@@ -356,12 +371,16 @@ read_stack_ptr_from_tss_emit(cpu_t *cpu, Value *cpl)
 	cpu->bb = vec_bb[0];
 	BR_COND(vec_bb[1], vec_bb[2], ICMP_NE(type, CONST32(0)));
 	cpu->bb = vec_bb[1];
-	ST(esp, LD_MEM(MEM_LD32_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), idx)));
-	ST(ss, LD_MEM(MEM_LD16_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), ADD(idx, CONST32(4)))));
+	Value *temp1 = LD_MEM(MEM_LD32_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), idx));
+	ST(esp, temp1);
+	temp1 = LD_MEM(MEM_LD16_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), ADD(idx, CONST32(4))));
+	ST(ss, temp1);
 	BR_UNCOND(vec_bb[3]);
 	cpu->bb = vec_bb[2];
-	ST(esp, ZEXT32(LD_MEM(MEM_LD16_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), idx))));
-	ST(ss, LD_MEM(MEM_LD16_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), ADD(idx, CONST32(2)))));
+	Value *temp2 = LD_MEM(MEM_LD16_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), idx));
+	ST(esp, ZEXT32(temp2));
+	temp2 = LD_MEM(MEM_LD16_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), ADD(idx, CONST32(2))));
+	ST(ss, temp2);
 	BR_UNCOND(vec_bb[3]);
 	cpu->bb = vec_bb[3];
 	vec.push_back(LD(esp));
@@ -888,28 +907,121 @@ ret_pe_emit(cpu_t *cpu, uint8_t size_mode, bool is_iret)
 }
 
 Value *
-mem_read_no_cpl_emit(cpu_t *cpu, Value *addr, const unsigned idx)
+mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned shift)
 {
-	Value *hflags = LD(cpu->ptr_hflags);
-	hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
-	ST(cpu->ptr_hflags, hflags);
-	Value *value = LD_MEM(idx, addr);
-	hflags = LD(cpu->ptr_hflags);
-	hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
-	ST(cpu->ptr_hflags, hflags);
-	return value;
+	static const uint8_t idx_to_size[4] = { 8, 16, 32, 64 };
+	uint8_t mem_size = idx_to_size[idx];
+
+	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 5);
+	Value *ret = ALLOCs(mem_size);
+	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
+	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
+	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
+	Value *mem_access = CONST32((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) >> shift);
+
+	// interrogate the tlb
+	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(tlb_entry, mem_access), SHL(tlb_idx1, CONST32(PAGE_SHIFT))),
+		OR(mem_access, SHL(tlb_idx2, CONST32(PAGE_SHIFT)))), CONST32(0)));
+
+	// tlb hit, check if it's ram
+	cpu->bb = vec_bb[0];
+	Value *ram_offset = ALLOC32();
+	ST(ram_offset, OR(AND(tlb_entry, CONST32(~PAGE_MASK)), AND(addr, CONST32(PAGE_MASK))));
+	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM)), vec_bb[4]);
+	SWITCH_add(32, TLB_RAM, vec_bb[3]);
+
+	// no, acccess the memory region with is_phys flag=1
+	cpu->bb = vec_bb[4];
+	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(ram_offset), cpu->instr_eip, CONST8(1) }, "", cpu->bb));
+	BR_UNCOND(vec_bb[2]);
+
+	// yes, access ram directly
+	cpu->bb = vec_bb[3];
+	ST(ret, LD(IBITCASTs(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(ram_offset) }))));
+	if ((cpu->cpu_flags & CPU_FLAG_SWAPMEM) && (mem_size != 8)) {
+		std::vector<Type *> vec_types { getIntegerType(mem_size) };
+		std::vector<Value *> vec_params { LD(ret) };
+		ST(ret, INTRINSIC_ty(bswap, vec_types, vec_params));
+	}
+	BR_UNCOND(vec_bb[2]);
+
+	// tlb miss, acccess the memory region with is_phys flag=0
+	cpu->bb = vec_bb[1];
+	if (shift) {
+		Value *hflags = LD(cpu->ptr_hflags);
+		hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
+		ST(cpu->ptr_hflags, hflags);
+		ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, cpu->instr_eip, CONST8(0) }, "", cpu->bb));
+		hflags = LD(cpu->ptr_hflags);
+		hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
+		ST(cpu->ptr_hflags, hflags);
+	}
+	else {
+		ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, cpu->instr_eip, CONST8(0) }, "", cpu->bb));
+	}
+	BR_UNCOND(vec_bb[2]);
+
+	cpu->bb = vec_bb[2];
+	return LD(ret);
 }
 
 void
-mem_write_no_cpl_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx)
+mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const unsigned shift)
 {
-	Value *hflags = LD(cpu->ptr_hflags);
-	hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
-	ST(cpu->ptr_hflags, hflags);
-	ST_MEM(idx, addr, value);
-	hflags = LD(cpu->ptr_hflags);
-	hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
-	ST(cpu->ptr_hflags, hflags);
+	static const uint8_t idx_to_size[4] = { 8, 16, 32, 64 };
+	uint8_t mem_size = idx_to_size[idx];
+
+	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 5);
+	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
+	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
+	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
+	Value *mem_access = CONST32((tlb_access[1][cpu->cpu_ctx.hflags & HFLG_CPL]) >> shift);
+
+	// interrogate the tlb
+	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(tlb_entry, mem_access), SHL(tlb_idx1, CONST32(PAGE_SHIFT))),
+		OR(mem_access, SHL(tlb_idx2, CONST32(PAGE_SHIFT)))), CONST32(0)));
+
+	// tlb hit, check if it's ram
+	cpu->bb = vec_bb[0];
+	Value *ram_offset = ALLOC32();
+	ST(ram_offset, OR(AND(tlb_entry, CONST32(~PAGE_MASK)), AND(addr, CONST32(PAGE_MASK))));
+	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM)), vec_bb[4]);
+	SWITCH_add(32, TLB_RAM, vec_bb[3]);
+
+	// no, acccess the memory region with is_phys flag=1
+	cpu->bb = vec_bb[4];
+	CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(ram_offset), value, cpu->instr_eip, CONST8(1) }, "", cpu->bb);
+	BR_UNCOND(vec_bb[2]);
+
+	// yes, access ram directly
+	cpu->bb = vec_bb[3];
+	Value *val_ptr = ALLOCs(mem_size);
+	ST(val_ptr, value);
+	if ((cpu->cpu_flags & CPU_FLAG_SWAPMEM) && (mem_size != 8)) {
+		std::vector<Type *> vec_types { getIntegerType(mem_size) };
+		std::vector<Value *> vec_params { LD(val_ptr) };
+		ST(val_ptr, INTRINSIC_ty(bswap, vec_types, vec_params));
+	}
+	ST(IBITCASTs(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(ram_offset) })), LD(val_ptr));
+	BR_UNCOND(vec_bb[2]);
+
+	// tlb miss, acccess the memory region with is_phys flag=0
+	cpu->bb = vec_bb[1];
+	if (shift) {
+		Value *hflags = LD(cpu->ptr_hflags);
+		hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
+		ST(cpu->ptr_hflags, hflags);
+		CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(0) }, "", cpu->bb);
+		hflags = LD(cpu->ptr_hflags);
+		hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
+		ST(cpu->ptr_hflags, hflags);
+	}
+	else {
+		CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(0) }, "", cpu->bb);
+	}
+	BR_UNCOND(vec_bb[2]);
+
+	cpu->bb = vec_bb[2];
 }
 
 void
@@ -922,12 +1034,13 @@ check_io_priv_emit(cpu_t *cpu, Value *port, Value *mask)
 		Value *limit = LD_SEG_HIDDEN(TR_idx, SEG_LIMIT_idx);
 		BR_COND(bb_exp, vec_bb[0], ICMP_ULT(limit, CONST32(103)));
 		cpu->bb = vec_bb[0];
-		Value *io_map_offset = ZEXT32(LD_MEM(MEM_LD16_idx, ADD(base, CONST32(102))));
-		Value *io_port_offset = ADD(io_map_offset, SHR(port, CONST32(3)));
+		Value *io_map_offset = LD_MEM(MEM_LD16_idx, ADD(base, CONST32(102)));
+		Value *io_port_offset = ADD(ZEXT32(io_map_offset), SHR(port, CONST32(3)));
 		BR_COND(bb_exp, vec_bb[1], ICMP_UGT(ADD(io_port_offset, CONST32(1)), limit));
 		cpu->bb = vec_bb[1];
-		Value *value = ALLOC32();
-		ST(value, ZEXT32(LD_MEM(MEM_LD16_idx, ADD(base, io_port_offset))));
+		Value *temp, *value = ALLOC32();
+		temp = LD_MEM(MEM_LD16_idx, ADD(base, io_port_offset));
+		ST(value, ZEXT32(temp));
 		ST(value, SHR(LD(value), AND(port, CONST32(7))));
 		BR_COND(bb_exp, vec_bb[2], ICMP_NE(AND(LD(value), mask), CONST32(0)));
 		cpu->bb = vec_bb[2];

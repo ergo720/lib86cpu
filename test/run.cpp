@@ -164,7 +164,7 @@ main(int argc, char **argv)
 		return 1;
 	}
 
-	ifs.read((char *)&cpu->ram[code_start], length);
+	ifs.read((char *)&cpu->cpu_ctx.ram[code_start], length);
 	ifs.close();
 
 	cpu->cpu_flags |= (print_ir ? (CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED) : 0) |

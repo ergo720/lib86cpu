@@ -9,8 +9,63 @@
 #include <assert.h>
 
 
+static uint32_t
+tlb_gen_access_mask(cpu_t *cpu, uint8_t user, uint8_t is_write)
+{
+	uint32_t mask;
+
+	switch (user)
+	{
+	case 0:
+		mask = is_write ? (TLB_SUP_READ | TLB_SUP_WRITE) : TLB_SUP_READ;
+		break;
+
+	case 1:
+		mask = is_write ? (TLB_SUP_READ | TLB_SUP_WRITE | TLB_USER_READ | TLB_USER_WRITE) :
+			(cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK) != 0 ? (TLB_SUP_READ | TLB_USER_READ) : (TLB_SUP_READ | TLB_SUP_WRITE | TLB_USER_READ);
+		break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+
+	return mask;
+}
+
+static void
+tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
+{
+	assert((prot & ~PAGE_MASK) == 0);
+
+	memory_region_t<addr_t> *region = as_memory_search_addr<uint8_t>(cpu, phys_addr);
+	if (region->type == MEM_RAM) {
+		phys_addr -= region->start;
+		prot |= TLB_RAM;
+	}
+
+	cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] = (phys_addr & ~PAGE_MASK) | prot;
+}
+
+void
+tlb_flush(cpu_t *cpu)
+{
+	for (uint32_t &tlb_entry : cpu->cpu_ctx.tlb) {
+		tlb_entry = 0;
+	}
+}
+
+void
+tlb_flush(cpu_t *cpu, uint8_t dummy)
+{
+	for (uint32_t &tlb_entry : cpu->cpu_ctx.tlb) {
+		if (!(tlb_entry & TLB_GLOBAL)) {
+			tlb_entry = 0;
+		}
+	}
+}
+
 int8_t
-check_page_access(cpu_t *cpu, uint8_t access_level, uint8_t cpu_level)
+check_page_access(cpu_t *cpu, uint8_t access_level, uint8_t mem_access)
 {
 	// 0 = access denied, 1 = access granted, -1 = error
 	static const int8_t level_zero[7] = {
@@ -36,19 +91,19 @@ check_page_access(cpu_t *cpu, uint8_t access_level, uint8_t cpu_level)
 	switch (access_level)
 	{
 	case 0:
-		access = level_zero[cpu_level];
+		access = level_zero[mem_access];
 		break;
 
 	case 2:
-		access = level_two[cpu_level];
+		access = level_two[mem_access];
 		break;
 
 	case 4:
-		access = level_four[(cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK) >> 16][cpu_level];
+		access = level_four[(cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK) >> 16][mem_access];
 		break;
 
 	case 6:
-		access = level_six[cpu_level];
+		access = level_six[mem_access];
 		break;
 
 	default:
@@ -61,7 +116,7 @@ check_page_access(cpu_t *cpu, uint8_t access_level, uint8_t cpu_level)
 }
 
 int8_t
-check_page_privilege(cpu_t *cpu, uint8_t cpu_level, uint8_t pde_priv, uint8_t pte_priv)
+check_page_privilege(cpu_t *cpu, uint8_t mem_access, uint8_t pde_priv, uint8_t pte_priv)
 {
 	// 0 = sup,ro; 2 = sup,r/w; 4 = user,ro; 6 = user,r/w; -1 = error
 	static const int8_t access_table[7][7] = {
@@ -77,30 +132,35 @@ check_page_privilege(cpu_t *cpu, uint8_t cpu_level, uint8_t pde_priv, uint8_t pt
 	int8_t access_lv = access_table[pde_priv][pte_priv];
 	assert(access_lv != -1);
 
-	return check_page_access(cpu, access_lv, cpu_level);
+	return check_page_access(cpu, access_lv, mem_access);
 }
 
 addr_t
 mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip)
 {
+	uint8_t is_code = is_write & TLB_CODE;
+
 	if (!(cpu->cpu_ctx.regs.cr0 & CR0_PG_MASK)) {
+		tlb_fill(cpu, addr, addr, TLB_SUP_READ | TLB_SUP_WRITE | TLB_USER_READ | TLB_USER_WRITE | is_code);
 		return addr;
 	}
 	else {
 		static const uint8_t cpl_to_page_priv[4] = { 0, 0, 0, 1 << CPL_PRIV_SHIFT };
 
+		is_write &= ~TLB_CODE;
 		uint32_t err_code = 0;
+		uint8_t cpu_lv = cpl_to_page_priv[cpu->cpu_ctx.hflags & HFLG_CPL];
 		addr_t pte_addr = (cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK) | (addr >> PAGE_SHIFT_LARGE) * 4;
 		uint32_t pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr));
 
 		if (!(pte & PTE_PRESENT)) {
 			goto page_fault;
 		}
-
-		uint8_t cpu_lv = (is_write << 1) | ((cpl_to_page_priv[cpu->cpu_ctx.hflags & HFLG_CPL] & (cpu->cpu_ctx.hflags & HFLG_CPL_PRIV)) >> 3);
+		
+		uint8_t mem_access = (is_write << 1) | ((cpu_lv & (cpu->cpu_ctx.hflags & HFLG_CPL_PRIV)) >> 3);
 		uint8_t pde_priv = (pte & PTE_WRITE) | (pte & PTE_USER);
 		if ((pte & PTE_LARGE) && (cpu->cpu_ctx.regs.cr4 & CR4_PSE_MASK)) {
-			if (check_page_access(cpu, pde_priv, cpu_lv)) {
+			if (check_page_access(cpu, pde_priv, mem_access)) {
 				if (!(pte & PTE_ACCESSED) || is_write) {
 					pte |= PTE_ACCESSED;
 					if (is_write) {
@@ -108,7 +168,10 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip)
 					}
 					ram_write<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr), pte);
 				}
-				return (pte & PTE_ADDR_4M) | (addr & PAGE_MASK_LARGE);
+				addr_t phys_addr = (pte & PTE_ADDR_4M) | (addr & PAGE_MASK_LARGE);
+				tlb_fill(cpu, addr, phys_addr,
+					tlb_gen_access_mask(cpu, cpu_lv >> 5, is_write) | is_code | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
+				return phys_addr;
 			}
 			err_code = 1;
 			goto page_fault;
@@ -121,7 +184,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip)
 			goto page_fault;
 		}
 
-		if (check_page_privilege(cpu, cpu_lv, pde_priv, (pte & PTE_WRITE) | (pte & PTE_USER))) {
+		if (check_page_privilege(cpu, mem_access, pde_priv, (pte & PTE_WRITE) | (pte & PTE_USER))) {
 			if (!(pte & PTE_ACCESSED) || is_write) {
 				pte |= PTE_ACCESSED;
 				if (is_write) {
@@ -129,7 +192,10 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip)
 				}
 				ram_write<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr), pte);
 			}
-			return (pte & PTE_ADDR_4K) | (addr & PAGE_MASK);
+			addr_t phys_addr = (pte & PTE_ADDR_4K) | (addr & PAGE_MASK);
+			tlb_fill(cpu, addr, phys_addr,
+				tlb_gen_access_mask(cpu, cpu_lv >> 5, is_write) | is_code | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
+			return phys_addr;
 		}
 		err_code = 1;
 
@@ -137,9 +203,23 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip)
 		cpu->cpu_ctx.hflags |= HFLG_CPL_PRIV;
 		cpu->exp_fault_addr = addr;
 		cpu->exp_idx = EXP_PF;
-		cpu->exp_code = err_code | (is_write << 1) | (cpl_to_page_priv[cpu->cpu_ctx.hflags & HFLG_CPL] >> 3);
+		cpu->exp_code = err_code | (is_write << 1) | (cpu_lv >> 3);
 		throw eip;
 	}
+}
+
+addr_t
+get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip)
+{
+	// this is only used for ram fetching, so we don't need to check for HFLG_CPL_PRIV, is_write and the size of the access
+
+	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
+	if ((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) ^ (tlb_entry & (tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]))) {
+		return mmu_translate_addr(cpu, addr, TLB_CODE, eip);
+	}
+
+	cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] = tlb_entry | TLB_CODE;
+	return (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
 }
 
 void
@@ -155,85 +235,85 @@ check_instr_length(cpu_t *cpu, addr_t start_pc, addr_t pc, size_t size)
 }
 
 uint8_t
-mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip)
+mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys)
 {
-	return mem_read<uint8_t>(cpu_ctx->cpu, addr, eip);
+	return mem_read<uint8_t>(cpu_ctx->cpu, addr, eip, is_phys);
 }
 
 uint16_t
-mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip)
+mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys)
 {
-	return mem_read<uint16_t>(cpu_ctx->cpu, addr, eip);
+	return mem_read<uint16_t>(cpu_ctx->cpu, addr, eip, is_phys);
 }
 
 uint32_t
-mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip)
+mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys)
 {
-	return mem_read<uint32_t>(cpu_ctx->cpu, addr, eip);
+	return mem_read<uint32_t>(cpu_ctx->cpu, addr, eip, is_phys);
 }
 
 uint64_t
-mem_read64(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip)
+mem_read64(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys)
 {
-	return mem_read<uint64_t>(cpu_ctx->cpu, addr, eip);
+	return mem_read<uint64_t>(cpu_ctx->cpu, addr, eip, is_phys);
 }
 
 void
-mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip)
+mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip, uint8_t is_phys)
 {
-	mem_write<uint8_t>(cpu_ctx->cpu, addr, value, eip);
+	mem_write<uint8_t>(cpu_ctx->cpu, addr, value, eip, is_phys);
 }
 
 void
-mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip)
+mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip, uint8_t is_phys)
 {
-	mem_write<uint16_t>(cpu_ctx->cpu, addr, value, eip);
+	mem_write<uint16_t>(cpu_ctx->cpu, addr, value, eip, is_phys);
 }
 
 void
-mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip)
+mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip, uint8_t is_phys)
 {
-	mem_write<uint32_t>(cpu_ctx->cpu, addr, value, eip);
+	mem_write<uint32_t>(cpu_ctx->cpu, addr, value, eip, is_phys);
 }
 
 void
-mem_write64(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t value, uint32_t eip)
+mem_write64(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t value, uint32_t eip, uint8_t is_phys)
 {
-	mem_write<uint64_t>(cpu_ctx->cpu, addr, value, eip);
+	mem_write<uint64_t>(cpu_ctx->cpu, addr, value, eip, is_phys);
 }
 
 uint8_t
-io_read8(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip)
+io_read8(cpu_ctx_t *cpu_ctx, port_t port)
 {
 	return io_read<uint8_t>(cpu_ctx->cpu, port);
 }
 
 uint16_t
-io_read16(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip)
+io_read16(cpu_ctx_t *cpu_ctx, port_t port)
 {
 	return io_read<uint16_t>(cpu_ctx->cpu, port);
 }
 
 uint32_t
-io_read32(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip)
+io_read32(cpu_ctx_t *cpu_ctx, port_t port)
 {
 	return io_read<uint32_t>(cpu_ctx->cpu, port);
 }
 
 void
-io_write8(cpu_ctx_t *cpu_ctx, port_t port, uint8_t value, uint32_t eip)
+io_write8(cpu_ctx_t *cpu_ctx, port_t port, uint8_t value)
 {
 	io_write<uint8_t>(cpu_ctx->cpu, port, value);
 }
 
 void
-io_write16(cpu_ctx_t *cpu_ctx, port_t port, uint16_t value, uint32_t eip)
+io_write16(cpu_ctx_t *cpu_ctx, port_t port, uint16_t value)
 {
 	io_write<uint16_t>(cpu_ctx->cpu, port, value);
 }
 
 void
-io_write32(cpu_ctx_t *cpu_ctx, port_t port, uint32_t value, uint32_t eip)
+io_write32(cpu_ctx_t *cpu_ctx, port_t port, uint32_t value)
 {
 	io_write<uint32_t>(cpu_ctx->cpu, port, value);
 }

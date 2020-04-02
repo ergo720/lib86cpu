@@ -10,11 +10,12 @@
 std::vector<BasicBlock *> gen_bbs(cpu_t *cpu, Function *func, const unsigned num);
 StructType *get_struct_reg(cpu_t *cpu);
 StructType *get_struct_eflags(cpu_t *cpu);
-Value *get_struct_member_pointer(cpu_t *cpu, Value *gep_start, const unsigned gep_index);
+Value *gep_emit(cpu_t *cpu, Value *gep_start, const int gep_index);
+Value *gep_emit(cpu_t *cpu, Value *gep_start, Value *gep_index);
 Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, const unsigned opnum);
-Value *mem_read_no_cpl_emit(cpu_t *cpu, Value *addr, const unsigned idx);
-void mem_write_no_cpl_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx);
+Value *mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned shift);
+void mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const unsigned shift);
 void check_io_priv_emit(cpu_t *cpu, Value *port, Value *mask);
 void stack_push_emit(cpu_t *cpu, std::vector<Value *> &vec, uint32_t size_mode);
 std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at = 0);
@@ -154,7 +155,7 @@ default: \
 #define SWITCH_new(n, v, def) SwitchInst::Create(v, def, n, cpu->bb)
 #define SWITCH_add(s, v, bb) swi->addCase(CONSTs(s, v), bb)
 
-#define GEP(ptr, idx)  get_struct_member_pointer(cpu, ptr, idx)
+#define GEP(ptr, idx)  gep_emit(cpu, ptr, idx)
 #define GEP_R32(idx)   GEP(cpu->ptr_regs, idx)
 #define GEP_R16(idx)   IBITCAST16(GEP(cpu->ptr_regs, idx))
 #define GEP_R8L(idx)   IBITCAST8(GEP(cpu->ptr_regs, idx))
@@ -206,13 +207,15 @@ default: \
 #define LD_SEG(seg) LD(GEP_SEL(seg))
 #define LD_SEG_HIDDEN(seg, idx) LD(GEP(GEP(GEP(cpu->ptr_regs, seg), SEG_HIDDEN_idx), idx))
 
-#define LD_MEM(idx, addr) CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, cpu->instr_eip }, "", cpu->bb)
-#define ST_MEM(idx, addr, val) CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, val, cpu->instr_eip }, "", cpu->bb)
-#define LD_MEM_PRIV(idx, addr) mem_read_no_cpl_emit(cpu, addr, idx)
-#define ST_MEM_PRIV(idx, addr, val) mem_write_no_cpl_emit(cpu, addr, val, idx)
+#define LD_MEM(idx, addr) mem_read_emit(cpu, addr, idx, 0)
+#define ST_MEM(idx, addr, val) mem_write_emit(cpu, addr, val, idx, 0)
+#define LD_MEM_PRIV(idx, addr) mem_read_emit(cpu, addr, idx, 2)
+#define ST_MEM_PRIV(idx, addr, val) mem_write_emit(cpu, addr, val, idx, 2)
 #define MEM_PUSH(vec) stack_push_emit(cpu, vec, size_mode)
 #define MEM_POP(n) stack_pop_emit(cpu, size_mode, n)
 #define MEM_POP_AT(n, at) stack_pop_emit(cpu, size_mode, n, at)
+#define LD_IO(idx, port) CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, port }, "", cpu->bb)
+#define ST_IO(idx, port, val) CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, port, val }, "", cpu->bb)
 
 #define LD_PARITY(idx) LD(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST8(0), idx }, "", cpu->bb))
 #define RAISE(exp_data) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, exp_data, cpu->instr_eip }, "", cpu->bb)

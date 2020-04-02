@@ -149,6 +149,7 @@ extern const char *mnemo[];
 #define PTE_ACCESSED  (1 << 5)
 #define PTE_DIRTY     (1 << 6)
 #define PTE_LARGE     (1 << 7)
+#define PTE_GLOBAL    (1 << 8)
 #define PTE_ADDR_4K   0xFFFFF000
 #define PTE_ADDR_4M   0xFFC00000
 
@@ -159,6 +160,15 @@ extern const char *mnemo[];
 #define PAGE_SIZE_LARGE   (1 << PAGE_SHIFT_LARGE)
 #define PAGE_MASK         (PAGE_SIZE - 1)
 #define PAGE_MASK_LARGE   (PAGE_SIZE_LARGE - 1)
+
+// tlb macros
+#define TLB_SUP_READ    (1 << 0)
+#define TLB_SUP_WRITE   (1 << 1)
+#define TLB_USER_READ   (1 << 2)
+#define TLB_USER_WRITE  (1 << 3)
+#define TLB_CODE        (1 << 4)
+#define TLB_RAM         (1 << 5)
+#define TLB_GLOBAL      (1 << 8)
 
 // control register flags
 #define CR0_PG_MASK (1 << 31)
@@ -179,5 +189,6 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define CR3_PWT_MASK (1 << 3)
 #define CR3_FLG_MASK (CR3_PD_MASK | CR3_PCD_MASK | CR3_PWT_MASK)
 #define CR4_PSE_MASK (1 << 4)
+#define CR4_PGE_MASK (1 << 7)
 
 #define X86_MAX_INSTR_LENGTH 15

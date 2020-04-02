@@ -43,14 +43,22 @@ get_ext_fn(cpu_t *cpu)
 	static const char *func_name_st[7] = { "mem_write8", "mem_write16", "mem_write32", "mem_write64", "io_write8", "io_write16", "io_write32" };
 	Function::arg_iterator args_start = cpu->bb->getParent()->arg_begin();
 
-	for (uint8_t i = 0; i < 7; i++) {
+	for (uint8_t i = 0; i < 4; i++) {
 		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), args_start->getType(),
-			getIntegerType(arg_size[i]), getIntegerType(32)));
+			getIntegerType(arg_size[i]), getIntegerType(32), getIntegerType(8)));
+	}
+	for (uint8_t i = 4; i < 7; i++) {
+		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), args_start->getType(),
+			getIntegerType(arg_size[i])));
 	}
 
-	for (uint8_t i = 0; i < 7; i++) {
+	for (uint8_t i = 0; i < 4; i++) {
 		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), args_start->getType(),
-			getIntegerType(arg_size[i]), getIntegerType(bit_size[i]), getIntegerType(32)));
+			getIntegerType(arg_size[i]), getIntegerType(bit_size[i]), getIntegerType(32), getIntegerType(8)));
+	}
+	for (uint8_t i = 4; i < 7; i++) {
+		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), args_start->getType(),
+			getIntegerType(arg_size[i]), getIntegerType(bit_size[i])));
 	}
 
 	cpu->exp_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_throw_exception", getVoidType(), args_start->getType(), getIntegerType(64), getIntegerType(32)));
@@ -63,8 +71,7 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 {
 	try {
 		// run the translated code
-		entry_t entry = static_cast<entry_t>(tc->ptr_code);
-		return entry(cpu_ctx);
+		return tc->ptr_code(cpu_ctx);
 	}
 	catch (uint32_t eip) {
 		// don't link the previous code block if we returned with an exception
@@ -214,6 +221,8 @@ create_tc_prologue(cpu_t *cpu)
 	type_struct_cpu_ctx_t_fields.push_back(get_struct_reg(cpu));
 	type_struct_cpu_ctx_t_fields.push_back(get_struct_eflags(cpu));
 	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(32));
+	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(32), TLB_MAX_SIZE));
+	type_struct_cpu_ctx_t_fields.push_back(getPointerType(getIntegerType(8)));
 	PointerType *type_pcpu_ctx_t = getPointerType(StructType::create(CTX(),
 		type_struct_cpu_ctx_t_fields, "struct.cpu_ctx_t", false));
 
@@ -277,6 +286,11 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 			((new_cr & CR0_CD_MASK) == 0 && (new_cr & CR0_NW_MASK) >> 29 == 1)) {
 			cpu_throw_exception(cpu_ctx, EXP_GP, eip);
 		}
+
+		if ((cpu_ctx->regs.cr0 & (CR0_WP_MASK | CR0_PE_MASK | CR0_PG_MASK)) != (new_cr & (CR0_WP_MASK | CR0_PE_MASK | CR0_PG_MASK))) {
+			tlb_flush(cpu_ctx->cpu);
+		}
+
 		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
 			tc_cache_clear(cpu_ctx->cpu);
 			if (new_cr & CR0_PE_MASK) {
@@ -292,7 +306,9 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 				cpu_ctx->hflags &= ~(HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE);
 			}
 
-			// since tc_cache_clear has deleted the calling code block, we must return to the translator with an exception
+			// since tc_cache_clear has deleted the calling code block, we must return to the translator with an exception. We also have to setup the eip
+			// to point to the next instruction
+			cpu_ctx->regs.eip = (eip + bytes);
 			cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
 			throw -1;
 		}
@@ -303,6 +319,10 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 		break;
 
 	case 3:
+		if (cpu_ctx->regs.cr0 & CR0_PG_MASK) {
+			tlb_flush(cpu_ctx->cpu, 0);
+		}
+
 		cpu_ctx->regs.cr3 = (new_cr & CR3_FLG_MASK);
 		cpu_ctx->cpu->pt_mr = as_memory_search_addr<uint8_t>(cpu_ctx->cpu, cpu_ctx->regs.cr3 & CR3_PD_MASK);
 		assert(cpu_ctx->cpu->pt_mr->type == MEM_RAM);
@@ -346,6 +366,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	cpu->ptr_eflags->setName("eflags");
 	cpu->ptr_hflags = GEP(cpu->ptr_cpu_ctx, 3);
 	cpu->ptr_hflags->setName("hflags");
+	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, 4);
+	cpu->ptr_tlb->setName("tlb");
+	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 5));
+	cpu->ptr_ram->setName("ram");
 
 	do {
 
@@ -643,10 +667,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_MEM ||
 						instr.operand[OPNUM_SRC].type == OPTYPE_SIB_DISP);
 
-					Value *cs, *eip , *call_eip, *call_cs, *cs_addr, *offset_addr = GET_OP(OPNUM_SRC);
+					Value *temp, *cs, *eip , *call_eip, *call_cs, *cs_addr, *offset_addr = GET_OP(OPNUM_SRC);
 					addr_t ret_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes;
 					if (size_mode == SIZE16) {
-						call_eip = ZEXT32(LD_MEM(MEM_LD16_idx, offset_addr));
+						temp = LD_MEM(MEM_LD16_idx, offset_addr);
+						call_eip = ZEXT32(temp);
 						cs_addr = ADD(offset_addr, CONST32(2));
 						cs = CONST16(cpu_ctx->regs.cs);
 						eip = CONST16(ret_eip);
@@ -1786,9 +1811,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				[[fallthrough]];
 
 			case 0x8B: {
-				Value *reg, *rm;
+				Value *reg, *rm, *temp;
 				reg = GET_REG(OPNUM_DST);
-				GET_RM(OPNUM_SRC, ST_REG_val(LD_REG_val(rm), reg);, ST_REG_val(LD_MEM(fn_idx[size_mode], rm), reg););
+				GET_RM(OPNUM_SRC, ST_REG_val(LD_REG_val(rm), reg);, temp = LD_MEM(fn_idx[size_mode], rm); ST_REG_val(temp, reg););
 			}
 			break;
 
@@ -1847,9 +1872,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				size_mode = SIZE8;
 				[[fallthrough]];
 
-			case 0xA1:
-				ST_REG_val(LD_MEM(fn_idx[size_mode], GET_OP(OPNUM_SRC)), GET_OP(OPNUM_DST));
-				break;
+			case 0xA1: {
+				Value *temp = LD_MEM(fn_idx[size_mode], GET_OP(OPNUM_SRC));
+				ST_REG_val(temp, GET_OP(OPNUM_DST));
+			}
+			break;
 
 			case 0xA2:
 				size_mode = SIZE8;
@@ -2114,7 +2141,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				assert(instr.reg_opc == 3);
 
 				Value *val, *neg, *rm, *zero = size_mode == SIZE16 ? CONST16(0) : size_mode == SIZE32 ? CONST32(0) : CONST8(0);
-				GET_RM(OPNUM_SRC, val = LD_REG_val(rm); neg = NEG(val); ST_REG_val(neg, rm); , val = LD_MEM(fn_idx[size_mode], rm);
+				GET_RM(OPNUM_SRC, val = LD_REG_val(rm); neg = NEG(val); ST_REG_val(neg, rm);, val = LD_MEM(fn_idx[size_mode], rm);
 				neg = NEG(val); ST_MEM(fn_idx[size_mode], rm, neg););
 				SET_FLG_SUB(neg, zero, val);
 			}
@@ -2208,7 +2235,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0xEE: {
 				Value *port = LD_R16(EDX_idx);
 				check_io_priv_emit(cpu, ZEXT32(port), CONST32(1));
-				ST_MEM(IO_ST8_idx, port, LD_R8L(EAX_idx));
+				ST_IO(IO_ST8_idx, port, LD_R8L(EAX_idx));
 			}
 			break;
 
@@ -2817,14 +2844,15 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0xC1: {
 				uint8_t count = instr.operand[OPNUM_SRC].imm & 0x1F;
 				if (count != 0) {
-					Value *val, *rm, *cf, *of, *of_mask, *cf_mask;
+					Value *val, *rm, *cf, *of, *of_mask, *cf_mask, *temp;
 					switch (size_mode)
 					{
 					case SIZE8:
 						cf_mask = CONST32(1 << (8 - count));
 						of_mask = CONST8(1 << 7);
 						GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = SHL(AND(val, cf_mask), CONST32(count + 23)); val = TRUNC8(SHL(val, CONST32(count)));
-						of = SHL(ZEXT32(AND(val, of_mask)), CONST32(23)); ST_REG_val(val, rm);, val = ZEXT32(LD_MEM(fn_idx[size_mode], rm)); cf = SHL(AND(val, cf_mask), CONST32(count + 23));
+						of = SHL(ZEXT32(AND(val, of_mask)), CONST32(23)); ST_REG_val(val, rm);,
+						temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = SHL(AND(val, cf_mask), CONST32(count + 23));
 						val = TRUNC8(SHL(val, CONST32(count))); of = SHL(ZEXT32(AND(val, of_mask)), CONST32(23)); ST_MEM(fn_idx[size_mode], rm, val););
 						break;
 
@@ -2832,7 +2860,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						cf_mask = CONST32(1 << (16 - count));
 						of_mask = CONST16(1 << 15);
 						GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = SHL(AND(val, cf_mask), CONST32(count + 15)); val = TRUNC16(SHL(val, CONST32(count)));
-						of = SHL(ZEXT32(AND(val, of_mask)), CONST32(15)); ST_REG_val(val, rm);, val = ZEXT32(LD_MEM(fn_idx[size_mode], rm)); cf = SHL(AND(val, cf_mask), CONST32(count + 15));
+						of = SHL(ZEXT32(AND(val, of_mask)), CONST32(15)); ST_REG_val(val, rm);,
+						temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = SHL(AND(val, cf_mask), CONST32(count + 15));
 						val = TRUNC16(SHL(val, CONST32(count))); of = SHL(ZEXT32(AND(val, of_mask)), CONST32(15)); ST_MEM(fn_idx[size_mode], rm, val););
 						break;
 
@@ -2858,7 +2887,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *val, *rm, *cf;
 				size_mode = SIZE8;
 				GET_RM(OPNUM_SRC, val = LD_REG_val(rm); cf = AND(val, CONST8(0xC0)); val = SHL(val, CONST8(1)); ST_REG_val(val, rm);,
-					val = LD_MEM(fn_idx[size_mode], rm); cf = AND(val, CONST8(0xC0)); val = SHL(val, CONST8(1)); ST_MEM(fn_idx[size_mode], rm, val););
+				val = LD_MEM(fn_idx[size_mode], rm); cf = AND(val, CONST8(0xC0)); val = SHL(val, CONST8(1)); ST_MEM(fn_idx[size_mode], rm, val););
 				SET_FLG(val, SHL(ZEXT32(cf), CONST32(24)));
 			}
 			break;
@@ -2882,20 +2911,22 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0xC1: {
 				uint8_t count = instr.operand[OPNUM_SRC].imm & 0x1F;
 				if (count != 0) {
-					Value *val, *rm, *cf, *of, *of_mask, *cf_mask = CONST32(1 << (count - 1));
+					Value *val, *rm, *temp, *cf, *of, *of_mask, *cf_mask = CONST32(1 << (count - 1));
 					switch (size_mode)
 					{
 					case SIZE8:
 						of_mask = CONST32(1 << 7);
 						GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(7)); val = TRUNC8(SHR(val, CONST32(count)));
-						ST_REG_val(val, rm);, val = ZEXT32(LD_MEM(fn_idx[size_mode], rm)); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(7));
+						ST_REG_val(val, rm);,
+						temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(7));
 						val = TRUNC8(SHR(val, CONST32(count))); ST_MEM(fn_idx[size_mode], rm, val););
 						break;
 
 					case SIZE16:
 						of_mask = CONST32(1 << 15);
 						GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(15)); val = TRUNC16(SHR(val, CONST32(count)));
-						ST_REG_val(val, rm);, val = ZEXT32(LD_MEM(fn_idx[size_mode], rm)); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(15));
+						ST_REG_val(val, rm);,
+						temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(15));
 						val = TRUNC16(SHR(val, CONST32(count))); ST_MEM(fn_idx[size_mode], rm, val););
 						break;
 
@@ -3075,7 +3106,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *rm, *dst, *sub, *val = GET_IMM8();
 				val = size_mode == SIZE16 ? SEXT16(val) : size_mode == SIZE32 ? SEXT32(val) : val;
 				GET_RM(OPNUM_DST, dst = LD_REG_val(rm); sub = SUB(dst, val); ST_REG_val(sub, rm);,
-					dst = LD_MEM(fn_idx[size_mode], rm); sub = SUB(dst, val); ST_MEM(fn_idx[size_mode], rm, sub););
+				dst = LD_MEM(fn_idx[size_mode], rm); sub = SUB(dst, val); ST_MEM(fn_idx[size_mode], rm, sub););
 				SET_FLG_SUB(sub, dst, val);
 			}
 			break;
@@ -3150,7 +3181,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				rm_src = rm = GET_REG(OPNUM_SRC);
 				reg = LD_REG_val(rm);
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm); ST_REG_val(reg, rm); ST_REG_val(val, rm_src);,
-					val = LD_MEM(fn_idx[size_mode], rm); ST_MEM(fn_idx[size_mode], rm, reg); ST_REG_val(val, rm_src););
+				val = LD_MEM(fn_idx[size_mode], rm); ST_MEM(fn_idx[size_mode], rm, reg); ST_REG_val(val, rm_src););
 			}
 			break;
 
@@ -3172,7 +3203,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *reg = GET_OP(OPNUM_SRC);
 				Value *val, *rm;
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = XOR(val, LD_REG_val(reg)); ST_REG_val(val, rm);,
-					val = LD_MEM(fn_idx[size_mode], rm); val = XOR(val, LD_REG_val(reg)); ST_MEM(fn_idx[size_mode], rm, val););
+				val = LD_MEM(fn_idx[size_mode], rm); val = XOR(val, LD_REG_val(reg)); ST_MEM(fn_idx[size_mode], rm, val););
 				SET_FLG(val, CONST32(0));
 			}
 			break;
@@ -3204,7 +3235,7 @@ cpu_exec_tc(cpu_t *cpu)
 
 		retry:
 		try {
-			pc = mmu_translate_addr(cpu, get_pc(&cpu->cpu_ctx), 0, cpu->cpu_ctx.regs.eip);
+			pc = get_code_addr(cpu, get_pc(&cpu->cpu_ctx), cpu->cpu_ctx.regs.eip);
 		}
 		catch (uint32_t eip) {
 			// page fault during instruction fetching
