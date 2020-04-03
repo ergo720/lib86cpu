@@ -135,19 +135,21 @@ check_page_privilege(cpu_t *cpu, uint8_t mem_access, uint8_t pde_priv, uint8_t p
 	return check_page_access(cpu, access_lv, mem_access);
 }
 
+// NOTE: flags: bit 0 -> is_write, bit 1 -> is_priv, bit 4 -> is_code
 addr_t
-mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip)
+mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 {
-	uint8_t is_code = is_write & TLB_CODE;
+	uint8_t is_code = flags & TLB_CODE;
 
 	if (!(cpu->cpu_ctx.regs.cr0 & CR0_PG_MASK)) {
 		tlb_fill(cpu, addr, addr, TLB_SUP_READ | TLB_SUP_WRITE | TLB_USER_READ | TLB_USER_WRITE | is_code);
 		return addr;
 	}
 	else {
-		static const uint8_t cpl_to_page_priv[4] = { 0, 0, 0, 1 << CPL_PRIV_SHIFT };
+		static const uint8_t cpl_to_page_priv[4] = { 0, 0, 0, 4 };
 
-		is_write &= ~TLB_CODE;
+		uint8_t is_write = flags & 1;
+		uint8_t is_priv = flags & 2;
 		uint32_t err_code = 0;
 		uint8_t cpu_lv = cpl_to_page_priv[cpu->cpu_ctx.hflags & HFLG_CPL];
 		addr_t pte_addr = (cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK) | (addr >> PAGE_SHIFT_LARGE) * 4;
@@ -157,7 +159,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip)
 			goto page_fault;
 		}
 		
-		uint8_t mem_access = (is_write << 1) | ((cpu_lv & (cpu->cpu_ctx.hflags & HFLG_CPL_PRIV)) >> 3);
+		uint8_t mem_access = (is_write << 1) | ((cpu_lv >> is_priv) & 4);
 		uint8_t pde_priv = (pte & PTE_WRITE) | (pte & PTE_USER);
 		if ((pte & PTE_LARGE) && (cpu->cpu_ctx.regs.cr4 & CR4_PSE_MASK)) {
 			if (check_page_access(cpu, pde_priv, mem_access)) {
@@ -170,7 +172,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip)
 				}
 				addr_t phys_addr = (pte & PTE_ADDR_4M) | (addr & PAGE_MASK_LARGE);
 				tlb_fill(cpu, addr, phys_addr,
-					tlb_gen_access_mask(cpu, cpu_lv >> 5, is_write) | is_code | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
+					tlb_gen_access_mask(cpu, cpu_lv >> 2, is_write) | is_code | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
 				return phys_addr;
 			}
 			err_code = 1;
@@ -194,13 +196,12 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip)
 			}
 			addr_t phys_addr = (pte & PTE_ADDR_4K) | (addr & PAGE_MASK);
 			tlb_fill(cpu, addr, phys_addr,
-				tlb_gen_access_mask(cpu, cpu_lv >> 5, is_write) | is_code | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
+				tlb_gen_access_mask(cpu, cpu_lv >> 2, is_write) | is_code | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
 			return phys_addr;
 		}
 		err_code = 1;
 
 	page_fault:
-		cpu->cpu_ctx.hflags |= HFLG_CPL_PRIV;
 		cpu->exp_fault_addr = addr;
 		cpu->exp_idx = EXP_PF;
 		cpu->exp_code = err_code | (is_write << 1) | (cpu_lv >> 3);
@@ -211,7 +212,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip)
 addr_t
 get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip)
 {
-	// this is only used for ram fetching, so we don't need to check for HFLG_CPL_PRIV, is_write and the size of the access
+	// this is only used for ram fetching, so we don't need to check for privileged accesses, is_write and the size of the access
 
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
 	if ((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) ^ (tlb_entry & (tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]))) {

@@ -16,7 +16,6 @@ static void
 sync_hflags(cpu_t *cpu)
 {
 	uint16_t cs = cpu->cpu_ctx.regs.cs;
-	cpu->cpu_ctx.hflags |= HFLG_CPL_PRIV;
 	if (cpu->cpu_ctx.regs.cr0 & CR0_PE_MASK) {
 		cpu->cpu_ctx.hflags |= ((cpu->cpu_ctx.regs.cs & HFLG_CPL) | HFLG_PE_MODE);
 		if (cpu->cpu_ctx.regs.cs_hidden.flags & SEG_HIDDEN_DB) {
@@ -32,7 +31,6 @@ lib86cpu_status
 cpu_new(size_t ramsize, cpu_t *&out)
 {
 	cpu_t *cpu;
-	lib86cpu_status status;
 	out = nullptr;
 
 	printf("Creating new cpu...\n");

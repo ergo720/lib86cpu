@@ -311,15 +311,16 @@ T ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t page_cross)
 /*
  * generic memory accessors
  */
+// NOTE: flags: bit 0 -> is_phys, bit 1 -> is_priv 
 template<typename T>
-T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t is_phys)
+T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t flags)
 {
-	if (!is_phys) {
+	if (!(flags & 1)) {
 		if ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK)) {
 			T value = 0;
 			uint8_t i = 0;
 			while (i < sizeof(T)) {
-				addr_t phys_addr = mmu_translate_addr(cpu, addr, 0, eip);
+				addr_t phys_addr = mmu_translate_addr(cpu, addr, flags, eip);
 				memory_region_t<addr_t> *region = as_memory_search_addr<T>(cpu, phys_addr);
 				value |= (static_cast<T>(as_memory_dispatch_read<uint8_t>(cpu, phys_addr, region)) << (i * 8));
 				addr++;
@@ -331,7 +332,7 @@ T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t is_phys)
 			return value;
 		}
 		else {
-			addr_t phys_addr = mmu_translate_addr(cpu, addr, 0, eip);
+			addr_t phys_addr = mmu_translate_addr(cpu, addr, flags, eip);
 			return as_memory_dispatch_read<T>(cpu, phys_addr, as_memory_search_addr<T>(cpu, phys_addr));
 		}
 	}
@@ -341,16 +342,16 @@ T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t is_phys)
 }
 
 template<typename T>
-void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t is_phys)
+void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t flags)
 {
-	if (!is_phys) {
+	if (!(flags & 1)) {
 		if ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK)) {
 			int8_t i = sizeof(T) - 1;
 			if (cpu->cpu_flags & CPU_FLAG_SWAPMEM) {
 				sys::swapByteOrder<T>(value);
 			}
 			while (i >= 0) {
-				addr_t phys_addr = mmu_translate_addr(cpu, addr, 1, eip);
+				addr_t phys_addr = mmu_translate_addr(cpu, addr, 1 | flags, eip);
 				memory_region_t<addr_t> *region = as_memory_search_addr<T>(cpu, phys_addr);
 				as_memory_dispatch_write<uint8_t>(cpu, phys_addr, value >> (i * 8), region);
 				addr++;
@@ -358,7 +359,7 @@ void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t is_phys)
 			}
 		}
 		else {
-			addr_t phys_addr = mmu_translate_addr(cpu, addr, 1, eip);
+			addr_t phys_addr = mmu_translate_addr(cpu, addr, 1 | flags, eip);
 			as_memory_dispatch_write<T>(cpu, phys_addr, value, as_memory_search_addr<T>(cpu, phys_addr));
 		}
 	}
@@ -373,7 +374,7 @@ T mem_read_tlb(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t is_priv)
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
 	if ((((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv) | (addr & ~PAGE_MASK)) ^
 		((tlb_entry & ((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv)) | ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
-		return mem_read<T>(cpu, addr, eip, 0);
+		return mem_read<T>(cpu, addr, eip, is_priv);
 	}
 
 	addr_t phys_addr = (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
@@ -381,7 +382,7 @@ T mem_read_tlb(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t is_priv)
 		return ram_read<T>(cpu, &cpu->cpu_ctx.ram[phys_addr]);
 	}
 
-	return mem_read<T>(cpu, phys_addr, eip, 1);
+	return mem_read<T>(cpu, phys_addr, eip, 1 | is_priv);
 }
 
 template<typename T>
@@ -390,7 +391,7 @@ void mem_write_tlb(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t is_pr
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
 	if ((((tlb_access[1][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv) | (addr & ~PAGE_MASK)) ^
 		((tlb_entry & ((tlb_access[1][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv)) | ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
-		mem_write<T>(cpu, addr, value, eip, 0);
+		mem_write<T>(cpu, addr, value, eip, is_priv);
 		return;
 	}
 
@@ -400,7 +401,7 @@ void mem_write_tlb(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t is_pr
 		return;
 	}
 
-	mem_write<T>(cpu, phys_addr, value, eip, 1);
+	mem_write<T>(cpu, phys_addr, value, eip, 1 | is_priv);
 }
 
 /*

@@ -453,7 +453,7 @@ check_seg_desc_priv_emit(cpu_t *cpu, Value *sel)
 void
 lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t ret_eip, uint32_t call_eip)
 {
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 37);
+	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 38);
 	BasicBlock *bb_exp = raise_exception_emit(cpu, CONST64(EXP_GP));
 	Value *sel = vec[0];
 	vec.erase(vec.begin());
@@ -502,7 +502,7 @@ lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t
 	write_seg_reg_emit(cpu, CS_idx, std::vector<Value *> { OR(AND(sel, CONST16(0xFFFC)), cpl), read_seg_desc_base_emit(cpu, LD(desc)),
 		read_seg_desc_limit_emit(cpu, LD(desc)), read_seg_desc_flags_emit(cpu, LD(desc))});
 	ST_R32(CONST32(call_eip), EIP_idx);
-	BR_UNCOND(vec_bb[36]);
+	BR_UNCOND(vec_bb[37]);
 
 	// system desc
 	cpu->bb = vec_bb[1];
@@ -546,7 +546,7 @@ lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t
 	bb_exp = raise_exception_emit(cpu, OR(SHL(AND(ZEXT64(code_sel), CONST64(0xFFFC)), CONST64(16)), CONST64(EXP_NP)));
 	BR_COND(bb_exp, vec_bb[14], ICMP_EQ(AND(cs_desc, CONST64(SEG_DESC_P)), CONST64(0))); // p == 0
 	cpu->bb = vec_bb[14];
-	BR_COND(vec_bb[15], vec_bb[33], AND(ICMP_EQ(AND(cs_desc, CONST64(SEG_DESC_C)), CONST64(0)), ICMP_ULT(LD(dpl), cpl)));
+	BR_COND(vec_bb[15], vec_bb[30], AND(ICMP_EQ(AND(cs_desc, CONST64(SEG_DESC_C)), CONST64(0)), ICMP_ULT(LD(dpl), cpl)));
 
 	// more privileged
 	cpu->bb = vec_bb[15];
@@ -610,58 +610,64 @@ lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t
 	ST(i, SUB(LD(i), CONST32(1)));
 	BR_COND(vec_bb[25], vec_bb[26], ICMP_SGE(LD(i), CONST32(0)));
 	cpu->bb = vec_bb[26];
-	Value *hflags = LD(cpu->ptr_hflags);
-	hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV))); // set cpl override for push cs and push (e)ip
-	ST(cpu->ptr_hflags, hflags);
-	BR_UNCOND(vec_bb[27]);
+	BR_COND(vec_bb[27], vec_bb[28], ICMP_NE(LD(sys_ty), CONST8(0)));
+	// 32 bit pushes
+	cpu->bb = vec_bb[27];
+	ST(esp, SUB(LD(esp), CONST32(4)));
+	ST_MEM_PRIV(MEM_ST32_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), CONST32(cpu->cpu_ctx.regs.cs)); // push cs
+	ST(esp, SUB(LD(esp), CONST32(4)));
+	ST_MEM_PRIV(MEM_ST32_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), CONST32(ret_eip)); // push eip
+	BR_UNCOND(vec_bb[29]);
+	// 16 bit pushes
+	cpu->bb = vec_bb[28];
+	ST(esp, SUB(LD(esp), CONST32(2)));
+	ST_MEM_PRIV(MEM_ST16_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), CONST16(cpu->cpu_ctx.regs.cs)); // push cs
+	ST(esp, SUB(LD(esp), CONST32(2)));
+	ST_MEM_PRIV(MEM_ST16_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), CONST16(ret_eip)); // push ip
+	BR_UNCOND(vec_bb[29]);
 
 	// same privilege
-	cpu->bb = vec_bb[33];
+	cpu->bb = vec_bb[30];
 	ST(stack_switch, CONST8(0));
 	ST(esp, LD_R32(ESP_idx));
-	BR_COND(vec_bb[34], vec_bb[35], ICMP_NE(AND(LD_SEG_HIDDEN(SS_idx, SEG_FLG_idx), CONST32(SEG_HIDDEN_DB)), CONST32(0)));
-	cpu->bb = vec_bb[34];
+	BR_COND(vec_bb[31], vec_bb[32], ICMP_NE(AND(LD_SEG_HIDDEN(SS_idx, SEG_FLG_idx), CONST32(SEG_HIDDEN_DB)), CONST32(0)));
+	cpu->bb = vec_bb[31];
 	ST(stack_mask, CONST32(0xFFFFFFFF));
-	BR_UNCOND(vec_bb[27]);
-	cpu->bb = vec_bb[35];
+	BR_UNCOND(vec_bb[33]);
+	cpu->bb = vec_bb[32];
 	ST(stack_mask, CONST32(0xFFFF));
-	BR_UNCOND(vec_bb[27]);
-
-	// commmon path for call gates
-	cpu->bb = vec_bb[27];
-	BR_COND(vec_bb[28], vec_bb[29], ICMP_NE(LD(sys_ty), CONST8(0)));
+	BR_UNCOND(vec_bb[33]);
+	cpu->bb = vec_bb[33];
+	BR_COND(vec_bb[34], vec_bb[35], ICMP_NE(LD(sys_ty), CONST8(0)));
 	// 32 bit pushes
-	cpu->bb = vec_bb[28];
+	cpu->bb = vec_bb[34];
 	ST(esp, SUB(LD(esp), CONST32(4)));
 	ST_MEM(MEM_ST32_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), CONST32(cpu->cpu_ctx.regs.cs)); // push cs
 	ST(esp, SUB(LD(esp), CONST32(4)));
 	ST_MEM(MEM_ST32_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), CONST32(ret_eip)); // push eip
-	BR_UNCOND(vec_bb[30]);
+	BR_UNCOND(vec_bb[36]);
 	// 16 bit pushes
-	cpu->bb = vec_bb[29];
+	cpu->bb = vec_bb[35];
 	ST(esp, SUB(LD(esp), CONST32(2)));
 	ST_MEM(MEM_ST16_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), CONST16(cpu->cpu_ctx.regs.cs)); // push cs
 	ST(esp, SUB(LD(esp), CONST32(2)));
 	ST_MEM(MEM_ST16_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), CONST16(ret_eip)); // push ip
-	BR_UNCOND(vec_bb[30]);
-	cpu->bb = vec_bb[30];
-	hflags = LD(cpu->ptr_hflags);
-	hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
-	ST(cpu->ptr_hflags, hflags);
-	BR_COND(vec_bb[31], vec_bb[32], ICMP_NE(LD(stack_switch), CONST8(0)));
-	cpu->bb = vec_bb[31];
+	BR_UNCOND(vec_bb[36]);
+
+	// commmon path for call gates
+	cpu->bb = vec_bb[29];
 	set_access_flg_seg_desc_emit(cpu, LD(desc), LD(desc_addr));
 	write_seg_reg_emit(cpu, SS_idx, std::vector<Value *> { OR(AND(LD(ss), CONST16(0xFFFC)), LD(dpl)), LD(stack_base), // load ss
 		read_seg_desc_limit_emit(cpu, LD(desc)), read_seg_desc_flags_emit(cpu, LD(desc))});
-	BR_UNCOND(vec_bb[32]);
-	cpu->bb = vec_bb[32];
+	BR_UNCOND(vec_bb[36]);
+	cpu->bb = vec_bb[36];
 	set_access_flg_seg_desc_emit(cpu, cs_desc, cs_desc_addr);
 	write_seg_reg_emit(cpu, CS_idx, std::vector<Value *> { OR(AND(code_sel, CONST16(0xFFFC)), LD(dpl)), read_seg_desc_base_emit(cpu, cs_desc), // load cs
 		read_seg_desc_limit_emit(cpu, cs_desc), read_seg_desc_flags_emit(cpu, cs_desc)});
 	ST_R32(OR(AND(LD_R32(ESP_idx), NOT(LD(stack_mask))), AND(LD(esp), LD(stack_mask))), ESP_idx);
 	ST_R32(new_eip, EIP_idx);
-	BR_UNCOND(vec_bb[36]);
-	cpu->bb = vec_bb[36];
+	BR_UNCOND(vec_bb[37]);
+	cpu->bb = vec_bb[37];
 }
 
 void
@@ -907,7 +913,7 @@ ret_pe_emit(cpu_t *cpu, uint8_t size_mode, bool is_iret)
 }
 
 Value *
-mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned shift)
+mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_priv)
 {
 	static const uint8_t idx_to_size[4] = { 8, 16, 32, 64 };
 	uint8_t mem_size = idx_to_size[idx];
@@ -917,7 +923,7 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned shift)
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
 	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
-	Value *mem_access = CONST32((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) >> shift);
+	Value *mem_access = CONST32((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv);
 
 	// interrogate the tlb
 	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(tlb_entry, mem_access), SHL(tlb_idx1, CONST32(PAGE_SHIFT))),
@@ -932,7 +938,7 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned shift)
 
 	// no, acccess the memory region with is_phys flag=1
 	cpu->bb = vec_bb[4];
-	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(ram_offset), cpu->instr_eip, CONST8(1) }, "", cpu->bb));
+	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(ram_offset), cpu->instr_eip, CONST8(1 | is_priv) }, "", cpu->bb));
 	BR_UNCOND(vec_bb[2]);
 
 	// yes, access ram directly
@@ -947,18 +953,7 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned shift)
 
 	// tlb miss, acccess the memory region with is_phys flag=0
 	cpu->bb = vec_bb[1];
-	if (shift) {
-		Value *hflags = LD(cpu->ptr_hflags);
-		hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
-		ST(cpu->ptr_hflags, hflags);
-		ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, cpu->instr_eip, CONST8(0) }, "", cpu->bb));
-		hflags = LD(cpu->ptr_hflags);
-		hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
-		ST(cpu->ptr_hflags, hflags);
-	}
-	else {
-		ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, cpu->instr_eip, CONST8(0) }, "", cpu->bb));
-	}
+	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, cpu->instr_eip, CONST8(is_priv) }, "", cpu->bb));
 	BR_UNCOND(vec_bb[2]);
 
 	cpu->bb = vec_bb[2];
@@ -966,7 +961,7 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned shift)
 }
 
 void
-mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const unsigned shift)
+mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const unsigned is_priv)
 {
 	static const uint8_t idx_to_size[4] = { 8, 16, 32, 64 };
 	uint8_t mem_size = idx_to_size[idx];
@@ -975,7 +970,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
 	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
-	Value *mem_access = CONST32((tlb_access[1][cpu->cpu_ctx.hflags & HFLG_CPL]) >> shift);
+	Value *mem_access = CONST32((tlb_access[1][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv);
 
 	// interrogate the tlb
 	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(tlb_entry, mem_access), SHL(tlb_idx1, CONST32(PAGE_SHIFT))),
@@ -990,7 +985,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 
 	// no, acccess the memory region with is_phys flag=1
 	cpu->bb = vec_bb[4];
-	CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(ram_offset), value, cpu->instr_eip, CONST8(1) }, "", cpu->bb);
+	CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(ram_offset), value, cpu->instr_eip, CONST8(1 | is_priv) }, "", cpu->bb);
 	BR_UNCOND(vec_bb[2]);
 
 	// yes, access ram directly
@@ -1007,18 +1002,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 
 	// tlb miss, acccess the memory region with is_phys flag=0
 	cpu->bb = vec_bb[1];
-	if (shift) {
-		Value *hflags = LD(cpu->ptr_hflags);
-		hflags = AND(hflags, NOT(CONST32(HFLG_CPL_PRIV)));
-		ST(cpu->ptr_hflags, hflags);
-		CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(0) }, "", cpu->bb);
-		hflags = LD(cpu->ptr_hflags);
-		hflags = OR(hflags, CONST32(HFLG_CPL_PRIV));
-		ST(cpu->ptr_hflags, hflags);
-	}
-	else {
-		CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(0) }, "", cpu->bb);
-	}
+	CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv) }, "", cpu->bb);
 	BR_UNCOND(vec_bb[2]);
 
 	cpu->bb = vec_bb[2];

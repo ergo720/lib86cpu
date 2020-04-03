@@ -76,7 +76,6 @@ read_stack_ptr_from_tss(cpu_t *cpu, uint32_t dest_cpl, uint32_t *esp, uint16_t *
 		throw 0U;
 	}
 
-	cpu->cpu_ctx.hflags |= HFLG_CPL_PRIV;
 	if (type) {
 		*esp = mem_read_tlb<uint32_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx, 0, 0);
 		*ss = mem_read_tlb<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx + 4, 0, 0);
@@ -85,8 +84,6 @@ read_stack_ptr_from_tss(cpu_t *cpu, uint32_t dest_cpl, uint32_t *esp, uint16_t *
 		*esp = mem_read_tlb<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx, 0, 0);
 		*ss = mem_read_tlb<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx + 2, 0, 0);
 	}
-
-	cpu->cpu_ctx.hflags &= ~HFLG_CPL_PRIV;
 }
 
 static uint8_t
@@ -127,7 +124,6 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip)
 	try {
 		cpu_t *cpu = cpu_ctx->cpu;
 		uint8_t expno = cpu->exp_idx;
-		cpu_ctx->hflags &= ~HFLG_CPL_PRIV;
 
 		uint32_t old_eflags = cpu_ctx->regs.eflags |
 			((cpu_ctx->lazy_eflags.auxbits & 0x80000000) >> 31) |
@@ -224,7 +220,6 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip)
 				esp = new_esp;
 			}
 			else { // same privilege
-				cpu_ctx->hflags |= HFLG_CPL_PRIV;
 				stack_switch = 0;
 				stack_mask = cpu_ctx->regs.ss_hidden.flags & SEG_HIDDEN_DB ? 0xFFFFFFFF : 0xFFFF;
 				stack_base = cpu_ctx->regs.ss_hidden.base;
@@ -299,8 +294,6 @@ cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip)
 			cpu_ctx->regs.cs_hidden.base = cpu_ctx->regs.cs << 4;
 			cpu_ctx->regs.eip = vec_entry & 0xFFFF;
 		}
-
-		cpu_ctx->hflags |= HFLG_CPL_PRIV;
 	}
 	catch (uint32_t dummy) {
 		LIB86CPU_ABORT_msg("An exception was raised while trying to deliver another exception\n");

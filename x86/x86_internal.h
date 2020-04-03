@@ -11,7 +11,7 @@
 
 void cpu_x86_init(cpu_t *cpu);
 lib86cpu_status cpu_exec_tc(cpu_t *cpu);
-addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t is_write, uint32_t eip);
+addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip);
 size_t disasm_instr(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_line, disas_ctx_t *disas_ctx);
 void decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx);
  void cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip);
@@ -24,10 +24,8 @@ extern const char *mnemo[];
 #define HFLG_CS32       (1 << 2)
 #define HFLG_SS32       (1 << 3)
 #define HFLG_PE_MODE    (1 << 4)
-#define HFLG_CPL_PRIV   (1 << 5)
 #define CS32_SHIFT      2
 #define SS32_SHIFT      3
-#define CPL_PRIV_SHIFT  5
 
 // disassembly context flags
 #define DISAS_FLG_CS32         (1 << 0)
