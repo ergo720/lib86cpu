@@ -20,7 +20,7 @@ tlb_gen_access_mask(cpu_t *cpu, uint8_t user, uint8_t is_write)
 		mask = is_write ? (TLB_SUP_READ | TLB_SUP_WRITE) : TLB_SUP_READ;
 		break;
 
-	case 1:
+	case 4:
 		mask = is_write ? (TLB_SUP_READ | TLB_SUP_WRITE | TLB_USER_READ | TLB_USER_WRITE) :
 			(cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK) != 0 ? (TLB_SUP_READ | TLB_USER_READ) : (TLB_SUP_READ | TLB_SUP_WRITE | TLB_USER_READ);
 		break;
@@ -116,7 +116,7 @@ check_page_access(cpu_t *cpu, uint8_t access_level, uint8_t mem_access)
 }
 
 int8_t
-check_page_privilege(cpu_t *cpu, uint8_t mem_access, uint8_t pde_priv, uint8_t pte_priv)
+check_page_privilege(cpu_t *cpu, uint8_t pde_priv, uint8_t pte_priv)
 {
 	// 0 = sup,ro; 2 = sup,r/w; 4 = user,ro; 6 = user,r/w; -1 = error
 	static const int8_t access_table[7][7] = {
@@ -132,7 +132,7 @@ check_page_privilege(cpu_t *cpu, uint8_t mem_access, uint8_t pde_priv, uint8_t p
 	int8_t access_lv = access_table[pde_priv][pte_priv];
 	assert(access_lv != -1);
 
-	return check_page_access(cpu, access_lv, mem_access);
+	return access_lv;
 }
 
 // NOTE: flags: bit 0 -> is_write, bit 1 -> is_priv, bit 4 -> is_code
@@ -172,7 +172,8 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 				}
 				addr_t phys_addr = (pte & PTE_ADDR_4M) | (addr & PAGE_MASK_LARGE);
 				tlb_fill(cpu, addr, phys_addr,
-					tlb_gen_access_mask(cpu, cpu_lv >> 2, is_write) | is_code | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
+					tlb_gen_access_mask(cpu, pde_priv & PTE_USER, pde_priv & PTE_WRITE)
+					| is_code | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
 				return phys_addr;
 			}
 			err_code = 1;
@@ -186,7 +187,8 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 			goto page_fault;
 		}
 
-		if (check_page_privilege(cpu, mem_access, pde_priv, (pte & PTE_WRITE) | (pte & PTE_USER))) {
+		int8_t access_lv = check_page_privilege(cpu, pde_priv, (pte & PTE_WRITE) | (pte & PTE_USER));
+		if (check_page_access(cpu, access_lv, mem_access)) {
 			if (!(pte & PTE_ACCESSED) || is_write) {
 				pte |= PTE_ACCESSED;
 				if (is_write) {
@@ -196,7 +198,8 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 			}
 			addr_t phys_addr = (pte & PTE_ADDR_4K) | (addr & PAGE_MASK);
 			tlb_fill(cpu, addr, phys_addr,
-				tlb_gen_access_mask(cpu, cpu_lv >> 2, is_write) | is_code | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
+				tlb_gen_access_mask(cpu, access_lv & PTE_USER, access_lv & PTE_WRITE)
+				| is_code | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
 			return phys_addr;
 		}
 		err_code = 1;
