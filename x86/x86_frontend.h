@@ -8,6 +8,9 @@
 
 
 std::vector<BasicBlock *> gen_bbs(cpu_t *cpu, Function *func, const unsigned num);
+void gen_exp_fn(cpu_t *cpu);
+void optimize(cpu_t *cpu);
+void get_ext_fn(cpu_t *cpu);
 StructType *get_struct_reg(cpu_t *cpu);
 StructType *get_struct_eflags(cpu_t *cpu);
 Value *gep_emit(cpu_t *cpu, Value *gep_start, const int gep_index);
@@ -21,19 +24,20 @@ void stack_push_emit(cpu_t *cpu, std::vector<Value *> &vec, uint32_t size_mode);
 std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at = 0);
 void link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr);
 Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
-BasicBlock *raise_exception_emit(cpu_t *cpu, Value *exp_data);
+void raise_exp_inline_emit(cpu_t *cpu, std::vector<Value *> &exp_data);
+BasicBlock *raise_exception_emit(cpu_t *cpu, std::vector<Value *> &exp_data);
 void lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t ret_eip, uint32_t call_eip);
 void ljmp_pe_emit(cpu_t *cpu, Value *sel, uint8_t size_mode, uint32_t eip);
 void ret_pe_emit(cpu_t *cpu, uint8_t size_mode, bool is_iret);
-std::vector<Value *> check_ss_desc_priv_emit(cpu_t *cpu, Value *sel, Value *cs = nullptr);
+std::vector<Value *> check_ss_desc_priv_emit(cpu_t *cpu, Value *sel, Value *cs = nullptr, Value *cpl = nullptr, BasicBlock *bb_exp = nullptr);
 std::vector<Value *> check_seg_desc_priv_emit(cpu_t *cpu, Value *sel);
 void set_access_flg_seg_desc_emit(cpu_t *cpu, Value *desc, Value *desc_addr);
-std::vector<Value *> read_seg_desc_emit(cpu_t *cpu, Value *sel);
+std::vector<Value *> read_seg_desc_emit(cpu_t *cpu, Value *sel, BasicBlock *bb_exp = nullptr);
 Value *read_seg_desc_base_emit(cpu_t *cpu, Value *desc);
 Value *read_seg_desc_limit_emit(cpu_t *cpu, Value *desc);
 Value *read_seg_desc_flags_emit(cpu_t *cpu, Value *desc);
 std::vector<Value *> read_tss_desc_emit(cpu_t *cpu, Value *sel);
-std::vector<Value *> read_stack_ptr_from_tss_emit(cpu_t *cpu, Value *cpl);
+std::vector<Value *> read_stack_ptr_from_tss_emit(cpu_t *cpu, Value *cpl, BasicBlock *bb_exp = nullptr);
 void write_seg_reg_emit(cpu_t *cpu, const unsigned reg, std::vector<Value *> &vec);
 Value *get_immediate_op(cpu_t *cpu, x86_instr *instr, uint8_t idx, uint8_t size_mode);
 Value *get_register_op(cpu_t *cpu, x86_instr *instr, uint8_t idx);
@@ -153,7 +157,7 @@ default: \
 #define ICMP_SGE(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_SGE, a, b, "")
 #define NOT_ZERO(s, v) AND(SHR(OR(v, SUB(CONSTs(s, 0), v)), CONSTs(s, s-1)), CONSTs(s, 1))
 #define SWITCH_new(n, v, def) SwitchInst::Create(v, def, n, cpu->bb)
-#define SWITCH_add(s, v, bb) swi->addCase(CONSTs(s, v), bb)
+#define SWITCH_add(s, v, bb) addCase(CONSTs(s, v), bb)
 
 #define GEP(ptr, idx)  gep_emit(cpu, ptr, idx)
 #define GEP_R32(idx)   GEP(cpu->ptr_regs, idx)
@@ -218,7 +222,12 @@ default: \
 #define ST_IO(idx, port, val) CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, port, val }, "", cpu->bb)
 
 #define LD_PARITY(idx) LD(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST8(0), idx }, "", cpu->bb))
-#define RAISE(exp_data) CallInst::Create(cpu->exp_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, exp_data, cpu->instr_eip }, "", cpu->bb)
+#define RAISE(code, idx) raise_exception_emit(cpu, std::vector<Value *> { CONST32(0), code, CONST16(idx), cpu->instr_eip })
+#define RAISE0(idx) raise_exception_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(idx), cpu->instr_eip })
+#define RAISEin(addr, code, idx, eip) raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(addr), CONST16(code), CONST16(idx), CONST32(eip) }); \
+cpu->bb = gen_bbs(cpu, cpu->bb->getParent(), 1)[0]
+#define RAISEin0(idx) raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(idx), cpu->instr_eip }); \
+cpu->bb = gen_bbs(cpu, cpu->bb->getParent(), 1)[0]
 #define SET_FLG_SUM(sum, a, b) set_flags_sum(cpu, std::vector<Value *> { sum, a , b }, size_mode)
 #define SET_FLG_SUB(sub, a, b) set_flags_sub(cpu, std::vector<Value *> { sub, a , b }, size_mode)
 #define SET_FLG(res, aux) set_flags(cpu, res, aux, size_mode)

@@ -97,6 +97,7 @@ cpu_x86_init(cpu_t *cpu)
 {
 	cpu->cpu_name = "Intel Pentium III";
 	cpu->regs_layout = regs_layout;
+	cpu->cpu_ctx.ptr_exp_info = &cpu->exp_info;
 
 	// init regs to their reset state
 	cpu->cpu_ctx.regs.eip = 0x0000FFF0;

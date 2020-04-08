@@ -10,5 +10,4 @@ ADD_LIBRARY(x86 STATIC
 			x86_disasm_intel.cpp
 			x86_translate.cpp
 			x86_frontend.cpp
-			x86_memory.cpp
-			x86_exceptions.cpp)
+			x86_memory.cpp)

@@ -368,42 +368,6 @@ void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t flags)
 	}
 }
 
-template<typename T>
-T mem_read_tlb(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t is_priv)
-{
-	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
-	if ((((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv) | (addr & ~PAGE_MASK)) ^
-		((tlb_entry & ((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv)) | ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
-		return mem_read<T>(cpu, addr, eip, is_priv);
-	}
-
-	addr_t phys_addr = (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
-	if (tlb_entry & TLB_RAM) {
-		return ram_read<T>(cpu, &cpu->cpu_ctx.ram[phys_addr]);
-	}
-
-	return mem_read<T>(cpu, phys_addr, eip, 1 | is_priv);
-}
-
-template<typename T>
-void mem_write_tlb(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t is_priv)
-{
-	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
-	if ((((tlb_access[1][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv) | (addr & ~PAGE_MASK)) ^
-		((tlb_entry & ((tlb_access[1][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv)) | ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
-		mem_write<T>(cpu, addr, value, eip, is_priv);
-		return;
-	}
-
-	addr_t phys_addr = (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
-	if (tlb_entry & TLB_RAM) {
-		ram_write<T>(cpu, &cpu->cpu_ctx.ram[phys_addr], value);
-		return;
-	}
-
-	mem_write<T>(cpu, phys_addr, value, eip, 1 | is_priv);
-}
-
 /*
  * pmio specific accessors
  */

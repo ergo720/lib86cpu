@@ -24,6 +24,7 @@ namespace llvm {
 	class StructType;
 	class Value;
 	class DataLayout;
+	class GlobalVariable;
 	namespace orc {
 		class LLJIT;
 	}
@@ -119,10 +120,23 @@ struct sort_by_priority
 	}
 };
 
+struct exp_data_t {
+	uint32_t fault_addr;    // only used during page faults
+	uint16_t code;          // error code used by the exception (if any)
+	uint16_t idx;           // index number of the exception
+	uint32_t eip;           // eip of the instr that generated the exception
+};
+
+struct exp_info_t {
+	exp_data_t exp_data;
+	uint8_t exp_in_flight;  // one when servicing an exception, zero otherwise
+};
+
 // forward declare
 struct translated_code_t;
 struct cpu_ctx_t;
 using entry_t = translated_code_t *(*)(cpu_ctx_t *cpu_ctx);
+using raise_exp_t = void(*)(cpu_ctx_t *cpu_ctx, exp_data_t *exp_data);
 
 struct translated_code_t {
 	addr_t cs_base;
@@ -158,6 +172,7 @@ struct lazy_eflags_t {
 
 // forward declare
 struct cpu_t;
+// this struct should contain all cpu variables which need to be visible from the llvm generated code
 struct cpu_ctx_t {
 	cpu_t *cpu;
 	regs_t regs;
@@ -165,6 +180,8 @@ struct cpu_ctx_t {
 	uint32_t hflags;
 	uint32_t tlb[TLB_MAX_SIZE];
 	uint8_t *ram;
+	raise_exp_t exp_fn;
+	exp_info_t *ptr_exp_info;
 };
 
 struct cpu_t {
@@ -180,12 +197,9 @@ struct cpu_t {
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<port_t>>>, sort_by_priority<port_t>> io_out;
 	std::forward_list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
 	uint16_t num_tc;
-	/* exception specific variables */
-	uint32_t exp_idx;
-	uint32_t exp_code;
-	addr_t exp_fault_addr;
+	exp_info_t exp_info;
 
-	/* llvm specific variables */
+	// llvm specific variables
 	std::unique_ptr<orc::LLJIT> jit;
 	DataLayout *dl;
 	LLVMContext *ctx;
@@ -196,12 +210,12 @@ struct cpu_t {
 	Value *ptr_hflags;
 	Value *ptr_tlb;
 	Value *ptr_ram;
+	Value *ptr_exp_fn;
 	Value *instr_eip;
 	BasicBlock *bb; // bb to which we are currently adding llvm instructions
 	Function *ptr_mem_ldfn[7];
 	Function *ptr_mem_stfn[7];
-	Function *exp_fn;
-	Function *crN_fn;
+	GlobalVariable *exp_data;
 };
 
 // cpu api

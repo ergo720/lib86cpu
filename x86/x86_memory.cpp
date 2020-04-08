@@ -205,10 +205,8 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 		err_code = 1;
 
 	page_fault:
-		cpu->exp_fault_addr = addr;
-		cpu->exp_idx = EXP_PF;
-		cpu->exp_code = err_code | (is_write << 1) | (cpu_lv >> 3);
-		throw eip;
+		exp_data_t exp_data { addr, err_code | (is_write << 1) | (cpu_lv >> 3), EXP_PF, eip };
+		throw exp_data;
 	}
 }
 
@@ -232,9 +230,8 @@ check_instr_length(cpu_t *cpu, addr_t start_pc, addr_t pc, size_t size)
 	pc += size;
 	if (pc - start_pc > X86_MAX_INSTR_LENGTH) {
 		volatile addr_t addr = mmu_translate_addr(cpu, pc - 1, 0, start_pc - cpu->cpu_ctx.regs.cs_hidden.base);
-		cpu->exp_idx = EXP_GP;
-		cpu->exp_code = 0;
-		throw start_pc - cpu->cpu_ctx.regs.cs_hidden.base;
+		exp_data_t exp_data { 0, 0, EXP_GP, start_pc - cpu->cpu_ctx.regs.cs_hidden.base };
+		throw exp_data;
 	}
 }
 

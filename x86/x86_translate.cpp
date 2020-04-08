@@ -9,8 +9,6 @@
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
-#include "llvm/LinkAllPasses.h"
-#include "llvm/IR/InlineAsm.h"
 #include "llvm/IR/Verifier.h"
 #include "x86_internal.h"
 #include "x86_isa.h"
@@ -21,51 +19,6 @@
 #define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
 
 
-static void
-optimize(cpu_t *cpu)
-{
-	legacy::FunctionPassManager pm = legacy::FunctionPassManager(cpu->mod);
-
-	pm.add(createPromoteMemoryToRegisterPass());
-	pm.add(createInstructionCombiningPass());
-	pm.add(createConstantPropagationPass());
-	pm.add(createDeadStoreEliminationPass());
-	pm.add(createDeadCodeEliminationPass());
-	pm.run(*cpu->bb->getParent());
-}
-
-static void
-get_ext_fn(cpu_t *cpu)
-{
-	static size_t bit_size[7] = { 8, 16, 32, 64, 8, 16, 32 };
-	static size_t arg_size[7] = { 32, 32, 32, 32, 16, 16, 16 };
-	static const char *func_name_ld[7] = { "mem_read8", "mem_read16", "mem_read32", "mem_read64", "io_read8", "io_read16", "io_read32" };
-	static const char *func_name_st[7] = { "mem_write8", "mem_write16", "mem_write32", "mem_write64", "io_write8", "io_write16", "io_write32" };
-	Function::arg_iterator args_start = cpu->bb->getParent()->arg_begin();
-
-	for (uint8_t i = 0; i < 4; i++) {
-		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), args_start->getType(),
-			getIntegerType(arg_size[i]), getIntegerType(32), getIntegerType(8)));
-	}
-	for (uint8_t i = 4; i < 7; i++) {
-		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), args_start->getType(),
-			getIntegerType(arg_size[i])));
-	}
-
-	for (uint8_t i = 0; i < 4; i++) {
-		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), args_start->getType(),
-			getIntegerType(arg_size[i]), getIntegerType(bit_size[i]), getIntegerType(32), getIntegerType(8)));
-	}
-	for (uint8_t i = 4; i < 7; i++) {
-		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), args_start->getType(),
-			getIntegerType(arg_size[i]), getIntegerType(bit_size[i])));
-	}
-
-	cpu->exp_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_throw_exception", getVoidType(), args_start->getType(), getIntegerType(64), getIntegerType(32)));
-	cpu->crN_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_update_crN", getVoidType(), args_start->getType(), getIntegerType(32), getIntegerType(8), getIntegerType(32),
-		getIntegerType(32)));
-}
-
 static translated_code_t *
 tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 {
@@ -73,9 +26,18 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 		// run the translated code
 		return tc->ptr_code(cpu_ctx);
 	}
-	catch (uint32_t eip) {
+	catch (exp_data_t exp_data) {
+		// page fault while excecuting the translated code
+		try {
+			cpu_ctx->exp_fn(cpu_ctx, &exp_data);
+		}
+		catch (exp_data_t exp_data) {
+			// page fault while delivering another exception
+			// NOTE: we abort because we don't support double/triple faults yet
+			LIB86CPU_ABORT();
+		}
+
 		// don't link the previous code block if we returned with an exception
-		cpu_raise_exception(cpu_ctx, eip);
 		return nullptr;
 	}
 	catch (int err) {
@@ -216,6 +178,20 @@ static void
 create_tc_prologue(cpu_t *cpu)
 {
 	// create the translation function, it will hold all the translated code
+	StructType *cpu_ctx_struct_type = StructType::create(CTX(), "struct.cpu_ctx_t");
+	std::vector<Type *> type_struct_exp_data_t_fields;
+	type_struct_exp_data_t_fields.push_back(getIntegerType(32));
+	type_struct_exp_data_t_fields.push_back(getIntegerType(16));
+	type_struct_exp_data_t_fields.push_back(getIntegerType(16));
+	type_struct_exp_data_t_fields.push_back(getIntegerType(32));
+	StructType *type_exp_data_t = StructType::create(CTX(),
+		type_struct_exp_data_t_fields, "struct.exp_data_t", false);
+
+	FunctionType *type_exp_t = FunctionType::get(
+		getVoidType(),                                                                                 // void ret
+		std::vector<Type *> { getPointerType(cpu_ctx_struct_type), getPointerType(type_exp_data_t) },  // cpu_ctx, exp_data arg
+		false);
+
 	std::vector<Type *> type_struct_cpu_ctx_t_fields;
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(StructType::create(CTX(), "struct.cpu_t")));  // NOTE: opaque cpu struct
 	type_struct_cpu_ctx_t_fields.push_back(get_struct_reg(cpu));
@@ -223,14 +199,15 @@ create_tc_prologue(cpu_t *cpu)
 	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(32));
 	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(32), TLB_MAX_SIZE));
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(getIntegerType(8)));
-	PointerType *type_pcpu_ctx_t = getPointerType(StructType::create(CTX(),
-		type_struct_cpu_ctx_t_fields, "struct.cpu_ctx_t", false));
+	type_struct_cpu_ctx_t_fields.push_back(getPointerType(type_exp_t));
+	type_struct_cpu_ctx_t_fields.push_back(getPointerType(StructType::create(CTX(), ""))); // opaque exp_info struct since we never need to access it
+	cpu_ctx_struct_type->setBody(type_struct_cpu_ctx_t_fields, false);
+	PointerType *type_pcpu_ctx_t = getPointerType(cpu_ctx_struct_type);
 
 	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");
-	std::vector<Type *> type_func_args { type_pcpu_ctx_t };
 	FunctionType *type_entry_t = FunctionType::get(
-		getPointerType(tc_struct_type),  // tc ret
-		type_func_args,                  // cpu_ctx arg
+		getPointerType(tc_struct_type),   // tc ret
+		type_pcpu_ctx_t,                  // cpu_ctx arg
 		false);
 
 	std::vector<Type *> type_struct_tc_t_fields;
@@ -250,6 +227,8 @@ create_tc_prologue(cpu_t *cpu)
 	func->setCallingConv(CallingConv::C);
 
 	cpu->bb = BB();
+	cpu->exp_data = new GlobalVariable(*cpu->mod, type_exp_data_t, false, GlobalValue::InternalLinkage,
+		ConstantStruct::get(type_exp_data_t, std::vector<Constant *> { CONST32(0), CONST16(0), CONST16(0), CONST32(0) }), "global.exp_data");
 }
 
 static void
@@ -276,7 +255,7 @@ create_tc_epilogue(cpu_t *cpu)
 #endif
 }
 
-JIT_EXTERNAL_CALL_C void
+JIT_EXTERNAL_CALL_C uint8_t
 cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes)
 {
 	switch (idx)
@@ -284,7 +263,7 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 	case 0:
 		if (((new_cr & CR0_PE_MASK) == 0 && (new_cr & CR0_PG_MASK) >> 31 == 1) ||
 			((new_cr & CR0_CD_MASK) == 0 && (new_cr & CR0_NW_MASK) >> 29 == 1)) {
-			cpu_throw_exception(cpu_ctx, EXP_GP, eip);
+			return 1;
 		}
 
 		if ((cpu_ctx->regs.cr0 & (CR0_WP_MASK | CR0_PE_MASK | CR0_PG_MASK)) != (new_cr & (CR0_WP_MASK | CR0_PE_MASK | CR0_PG_MASK))) {
@@ -310,6 +289,7 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 			// to point to the next instruction
 			cpu_ctx->regs.eip = (eip + bytes);
 			cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
+			gen_exp_fn(cpu_ctx->cpu);
 			throw -1;
 		}
 
@@ -331,7 +311,12 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 	case 2:
 	case 4:
 		break;
+
+	default:
+		LIB86CPU_ABORT();
 	}
+
+	return 0;
 }
 
 const char *
@@ -370,6 +355,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	cpu->ptr_tlb->setName("tlb");
 	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 5));
 	cpu->ptr_ram->setName("ram");
+	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 6));
+	cpu->ptr_exp_fn->setName("exp_fn");
 
 	do {
 
@@ -401,24 +388,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 #endif
 
 		}
-		catch (uint32_t eip) {
-			switch (cpu->exp_idx)
-			{
-			case EXP_PF:
-				// page fault during instruction fetch
+		catch (exp_data_t exp_data) {
+			if (exp_data.idx == EXP_PF) {
 				disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
-				RAISE(CONST64((static_cast<uint64_t>(cpu->exp_fault_addr) << 32) | (cpu->exp_code << 16) | cpu->exp_idx));
-				break;
-
-			case EXP_GP:
-				// the instruction exceeded the maximum allowed length
-				RAISE(CONST64((cpu->exp_code << 16) | cpu->exp_idx));
-				break;
-
-			default:
-				LIB86CPU_ABORT();
 			}
 
+			RAISEin(exp_data.fault_addr, exp_data.code, exp_data.idx, exp_data.eip);
 			return LIB86CPU_SUCCESS;
 		}
 
@@ -739,7 +714,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					ST_R32(eflags, EFLAGS_idx);
 				}
 				else {
-					RAISE(CONST64(EXP_GP));
+					RAISEin0(EXP_GP);
 					translate_next = 0;
 				}
 			}
@@ -1003,7 +978,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_ENTER:       BAD;
 		case X86_OPC_HLT: {
 			if (cpu_ctx->hflags & HFLG_CPL) {
-				RAISE(CONST64(EXP_GP));
+				RAISEin0(EXP_GP);
 				translate_next = 0;
 			}
 			else {
@@ -1389,7 +1364,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_LAR:         BAD;
 		case X86_OPC_LEA: {
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
-				RAISE(CONST64(EXP_UD));
+				RAISEin0(EXP_UD);
 				translate_next = 0;
 			}
 			else {
@@ -1423,7 +1398,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_LIDTL:
 		case X86_OPC_LIDTW: {
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
-				RAISE(CONST64(EXP_UD));
+				RAISEin0(EXP_UD);
 				translate_next = 0;
 			}
 			else {
@@ -1451,11 +1426,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			assert(instr.reg_opc == 2);
 
 			if (!(cpu_ctx->hflags & HFLG_PE_MODE)) {
-				RAISE(CONST64(EXP_UD));
+				RAISEin0(EXP_UD);
 				translate_next = 0;
 			}
 			else if (cpu_ctx->hflags & HFLG_CPL) {
-				RAISE(CONST64(EXP_GP));
+				RAISEin0(EXP_GP);
 				translate_next = 0;
 			}
 			else {
@@ -1470,11 +1445,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *desc = read_seg_desc_emit(cpu, sel)[1];
 				Value *s = SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(40));
 				Value *ty = SHR(AND(desc, CONST64(SEG_DESC_TY)), CONST64(40));
-				BasicBlock *bb_exp = raise_exception_emit(cpu, OR(SHL(AND(ZEXT64(sel), CONST64(0xFFFC)), CONST64(16)), CONST64(EXP_GP)));
+				BasicBlock *bb_exp = RAISE(AND(sel, CONST16(0xFFFC)), EXP_GP);
 				BR_COND(bb_exp, vec_bb[2], ICMP_NE(XOR(OR(s, ty), CONST64(SEG_DESC_LDT)), CONST64(0))); // must be ldt type
 				cpu->bb = vec_bb[2];
 				Value *p = AND(desc, CONST64(SEG_DESC_P));
-				bb_exp = raise_exception_emit(cpu, OR(SHL(AND(ZEXT64(sel), CONST64(0xFFFC)), CONST64(16)), CONST64(EXP_NP)));
+				bb_exp = RAISE(AND(sel, CONST16(0xFFFC)), EXP_NP);
 				BR_COND(bb_exp, vec_bb[3], ICMP_EQ(p, CONST64(0))); // segment not present
 				cpu->bb = vec_bb[3];
 				write_seg_reg_emit(cpu, LDTR_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, desc),
@@ -1653,7 +1628,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_LGS:
 		case X86_OPC_LSS: {
 			if (instr.operand[OPNUM_SRC].type == OPTYPE_REG) {
-				RAISE(CONST64(EXP_UD));
+				RAISEin0(EXP_UD);
 				translate_next = 0;
 			}
 			else {
@@ -1728,11 +1703,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			assert(instr.reg_opc == 3);
 
 			if (!(cpu_ctx->hflags & HFLG_PE_MODE)) {
-				RAISE(CONST64(EXP_UD));
+				RAISEin0(EXP_UD);
 				translate_next = 0;
 			}
 			else if (cpu_ctx->hflags & HFLG_CPL) {
-				RAISE(CONST64(EXP_GP));
+				RAISEin0(EXP_GP);
 				translate_next = 0;
 			}
 			else {
@@ -1748,12 +1723,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *desc = vec[1];
 				Value *s = SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(40));
 				Value *ty = SHR(AND(desc, CONST64(SEG_DESC_TY)), CONST64(40));
-				BasicBlock *bb_exp = raise_exception_emit(cpu, OR(SHL(AND(ZEXT64(sel), CONST64(0xFFFC)), CONST64(16)), CONST64(EXP_GP)));
+				BasicBlock *bb_exp = RAISE(AND(sel, CONST16(0xFFFC)), EXP_GP);
 				Value *val = OR(ICMP_EQ(OR(s, ty), CONST64(SEG_DESC_TSS16AV)), ICMP_EQ(OR(s, ty), CONST64(SEG_DESC_TSS32AV)));
 				BR_COND(bb_exp, vec_bb[2], ICMP_EQ(val, CONSTs(1, 0))); // must be an available tss
 				cpu->bb = vec_bb[2];
 				Value *p = AND(desc, CONST64(SEG_DESC_P));
-				bb_exp = raise_exception_emit(cpu, OR(SHL(AND(ZEXT64(sel), CONST64(0xFFFC)), CONST64(16)), CONST64(EXP_NP)));
+				bb_exp = RAISE(AND(sel, CONST16(0xFFFC)), EXP_NP);
 				BR_COND(bb_exp, vec_bb[3], ICMP_EQ(p, CONST64(0))); // segment not present
 				cpu->bb = vec_bb[3];
 				ST_MEM_PRIV(MEM_LD64_idx, vec[0], OR(desc, CONST64(SEG_DESC_BY)));
@@ -1769,28 +1744,47 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			switch (instr.opcode_byte)
 			{
 			case 0x20: {
-				ST_R32(LD_REG_val(GET_REG(OPNUM_SRC)), instr.operand[OPNUM_DST].reg);
+				if (cpu_ctx->hflags & HFLG_CPL) {
+					RAISEin0(EXP_GP);
+					translate_next = 0;
+				}
+				else {
+					ST_R32(LD_REG_val(GET_REG(OPNUM_SRC)), instr.operand[OPNUM_DST].reg);
+				}
 			}
 			break;
 
 			case 0x22: {
-				Value *val = LD_REG_val(GET_REG(OPNUM_SRC));
-				switch (instr.operand[OPNUM_DST].reg)
-				{
-				case 0:
+				if (cpu_ctx->hflags & HFLG_CPL) {
+					RAISEin0(EXP_GP);
 					translate_next = 0;
-					[[fallthrough]];
+				}
+				else {
+					Function *crN_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_update_crN", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
+						getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)));
+					Value *val = LD_REG_val(GET_REG(OPNUM_SRC));
+					CallInst *ci;
+					switch (instr.operand[OPNUM_DST].reg)
+					{
+					case 0:
+						translate_next = 0;
+						[[fallthrough]];
 
-				case 3:
-					CallInst::Create(cpu->crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(instr.operand[OPNUM_DST].reg), cpu->instr_eip, CONST32(bytes) }, "", cpu->bb);
-					break;
+					case 3:
+						ci = CallInst::Create(crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(instr.operand[OPNUM_DST].reg), cpu->instr_eip, CONST32(bytes) }, "", cpu->bb);
+						break;
 
-				case 2:
-				case 4:
-					BAD;
+					case 2:
+					case 4:
+						BAD;
 
-				default:
-					LIB86CPU_ABORT();
+					default:
+						LIB86CPU_ABORT();
+					}
+
+					std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 1);
+					BR_COND(RAISE(CONST16(0), EXP_GP), vec_bb[0], ICMP_NE(ci, CONST8(0)));
+					cpu->bb = vec_bb[0];
 				}
 			}
 			break;
@@ -1826,7 +1820,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			case 0x8E: {
 				if (instr.operand[OPNUM_DST].reg == 1) {
-					RAISE(CONST64(EXP_UD));
+					RAISEin0(EXP_UD);
 					translate_next = 0;
 				}
 				else {
@@ -2988,7 +2982,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					ST_R32(eflags, EFLAGS_idx);
 				}
 				else {
-					RAISE(CONST64(EXP_GP));
+					RAISEin0(EXP_GP);
 					translate_next = 0;
 				}
 			}
@@ -3230,6 +3224,8 @@ cpu_exec_tc(cpu_t *cpu)
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
 	addr_t pc;
 
+	gen_exp_fn(cpu);
+
 	// main cpu loop
 	while (true) {
 
@@ -3237,10 +3233,18 @@ cpu_exec_tc(cpu_t *cpu)
 		try {
 			pc = get_code_addr(cpu, get_pc(&cpu->cpu_ctx), cpu->cpu_ctx.regs.eip);
 		}
-		catch (uint32_t eip) {
+		catch (exp_data_t exp_data) {
 			// page fault during instruction fetching
-			// NOTE: can't use get_pc here because it returns a virtual address, while code blocks are indexed by physical addresses instead
-			cpu_raise_exception(&cpu->cpu_ctx, eip);
+			// NOTE: can't use get_pc here because it returns a virtual address, while code blocks are indexed by physical address instead
+			try {
+				cpu->cpu_ctx.exp_fn(&cpu->cpu_ctx, &exp_data);
+			}
+			catch (exp_data_t exp_data) {
+				// page fault while delivering another exception
+				// NOTE: we abort because we don't support double/triple faults yet
+				LIB86CPU_ABORT();
+			}
+
 			prev_tc = nullptr;
 			goto retry;
 		}
@@ -3349,6 +3353,9 @@ cpu_exec_tc(cpu_t *cpu)
 			else {
 				if (cpu->num_tc == CODE_CACHE_MAX_SIZE) {
 					tc_cache_clear(cpu);
+					// NOTE: actually we wouldn't need to regenerate the exception function but because clearing the code cache also destroys it,
+					// we must recreate it for now
+					gen_exp_fn(cpu);
 					prev_tc = nullptr;
 				}
 				tc_cache_insert(cpu, pc, std::move(tc));

@@ -14,8 +14,6 @@ lib86cpu_status cpu_exec_tc(cpu_t *cpu);
 addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip);
 size_t disasm_instr(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_line, disas_ctx_t *disas_ctx);
 void decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx);
- void cpu_raise_exception(cpu_ctx_t *cpu_ctx, uint32_t eip);
-JIT_EXTERNAL_CALL_C void cpu_throw_exception [[noreturn]] (cpu_ctx_t *cpu_ctx, uint64_t exp_data, uint32_t eip);
 
 extern const char *mnemo[];
 
