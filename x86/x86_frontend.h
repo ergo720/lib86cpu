@@ -15,6 +15,7 @@ StructType *get_struct_reg(cpu_t *cpu);
 StructType *get_struct_eflags(cpu_t *cpu);
 Value *gep_emit(cpu_t *cpu, Value *gep_start, const int gep_index);
 Value *gep_emit(cpu_t *cpu, Value *gep_start, Value *gep_index);
+Value *gep_emit(cpu_t *cpu, Value *gep_start, std::vector<Value *> &vec_index);
 Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, const unsigned opnum);
 Value *mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_priv);

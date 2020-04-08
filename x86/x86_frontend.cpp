@@ -135,23 +135,17 @@ get_ext_fn(cpu_t *cpu)
 Value *
 gep_emit(cpu_t *cpu, Value *gep_start, const int gep_index)
 {
-	std::vector<Value *> ptr_11_indices;
-	ptr_11_indices.push_back(CONST32(0));
-	ptr_11_indices.push_back(CONST32(gep_index));
-	return GetElementPtrInst::CreateInBounds(gep_start, ptr_11_indices, "", cpu->bb);
+	return gep_emit(cpu, gep_start, std::vector<Value *> { CONST32(0), CONST32(gep_index) });
 }
 
 Value *
 gep_emit(cpu_t *cpu, Value *gep_start, Value *gep_index)
 {
-	std::vector<Value *> ptr_11_indices;
-	ptr_11_indices.push_back(CONST32(0));
-	ptr_11_indices.push_back(gep_index);
-	return GetElementPtrInst::CreateInBounds(gep_start, ptr_11_indices, "", cpu->bb);
+	return gep_emit(cpu, gep_start, std::vector<Value *> { CONST32(0), gep_index });
 }
 
 Value *
-gep_emit(cpu_t *cpu, Value *gep_start, std::vector<Value *> vec_index)
+gep_emit(cpu_t *cpu, Value *gep_start, std::vector<Value *> &vec_index)
 {
 	return GetElementPtrInst::CreateInBounds(gep_start, vec_index, "", cpu->bb);
 }
