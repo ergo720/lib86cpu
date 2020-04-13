@@ -14,6 +14,7 @@ lib86cpu_status cpu_exec_tc(cpu_t *cpu);
 addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip);
 size_t disasm_instr(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_line, disas_ctx_t *disas_ctx);
 void decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx);
+JIT_EXTERNAL_CALL_C uint8_t tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t size);
 
 extern const char *mnemo[];
 
@@ -22,6 +23,7 @@ extern const char *mnemo[];
 #define HFLG_CS32       (1 << 2)
 #define HFLG_SS32       (1 << 3)
 #define HFLG_PE_MODE    (1 << 4)
+#define HFLG_DISAS_ONE  (1 << 5)
 #define CS32_SHIFT      2
 #define SS32_SHIFT      3
 
@@ -29,6 +31,7 @@ extern const char *mnemo[];
 #define DISAS_FLG_CS32         (1 << 0)
 #define DISAS_FLG_PAGE_CROSS   (1 << 1)
 #define DISAS_FLG_FETCH_FAULT  DISAS_FLG_PAGE_CROSS
+#define DISAS_FLG_ONE_INSTR    HFLG_DISAS_ONE
 
 // tc struct flags
 #define TC_FLG_DST_PC     0

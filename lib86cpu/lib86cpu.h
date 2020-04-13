@@ -13,6 +13,7 @@
 #include <forward_list>
 #include "types.h"
 #include "interval_tree.h"
+#include <unordered_set>
 
 
 namespace llvm {
@@ -136,15 +137,21 @@ struct exp_info_t {
 struct translated_code_t;
 struct cpu_ctx_t;
 using entry_t = translated_code_t *(*)(cpu_ctx_t *cpu_ctx);
-using raise_exp_t = void(*)(cpu_ctx_t *cpu_ctx, exp_data_t *exp_data);
+using raise_exp_t = translated_code_t *(*)(cpu_ctx_t *cpu_ctx, exp_data_t *exp_data);
 
-struct translated_code_t {
+struct translated_code_ctx_t {
 	addr_t cs_base;
 	addr_t pc;
 	uint32_t cpu_flags;
 	entry_t ptr_code;
 	entry_t jmp_offset[3];
 	uint32_t flags;
+	uint32_t size;
+};
+
+struct translated_code_t {
+	std::forward_list<translated_code_t *> linked_tc;
+	translated_code_ctx_t tc_ctx;
 };
 
 struct disas_ctx_t {
@@ -196,6 +203,7 @@ struct cpu_t {
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<addr_t>>>, sort_by_priority<addr_t>> memory_out;
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<port_t>>>, sort_by_priority<port_t>> io_out;
 	std::forward_list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
+	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
 	uint16_t num_tc;
 	exp_info_t exp_info;
 
@@ -211,6 +219,7 @@ struct cpu_t {
 	Value *ptr_tlb;
 	Value *ptr_ram;
 	Value *ptr_exp_fn;
+	Value *ptr_invtc_fn;
 	Value *instr_eip;
 	BasicBlock *bb; // bb to which we are currently adding llvm instructions
 	Function *ptr_mem_ldfn[7];

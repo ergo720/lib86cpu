@@ -24,24 +24,22 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 {
 	try {
 		// run the translated code
-		return tc->ptr_code(cpu_ctx);
+		return tc->tc_ctx.ptr_code(cpu_ctx);
 	}
 	catch (exp_data_t exp_data) {
 		// page fault while excecuting the translated code
 		try {
-			cpu_ctx->exp_fn(cpu_ctx, &exp_data);
+			// the exception handler always returns nullptr
+			return cpu_ctx->exp_fn(cpu_ctx, &exp_data);
 		}
 		catch (exp_data_t exp_data) {
 			// page fault while delivering another exception
 			// NOTE: we abort because we don't support double/triple faults yet
 			LIB86CPU_ABORT();
 		}
-
-		// don't link the previous code block if we returned with an exception
-		return nullptr;
 	}
 	catch (int err) {
-		// currently used by mov cr0, reg when it switches cpu mode
+		// used by mov cr0, reg when it switches cpu mode and by mem_write when it invalidates the current tc with a page crossing write
 		return nullptr;
 	}
 }
@@ -52,6 +50,82 @@ tc_hash(addr_t pc)
 	return pc & (CODE_CACHE_MAX_SIZE - 1);
 }
 
+uint8_t
+tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t size)
+{
+	uint8_t halt_tc = 0;
+	std::vector<std::unordered_set<translated_code_t *>::iterator> tc_to_delete;
+
+	if ((tc != nullptr) && !(std::min(addr + size - 1, tc->tc_ctx.pc + tc->tc_ctx.size - 1) < std::max(addr, tc->tc_ctx.pc))) {
+		// worst case: the write overlaps with the tc we are currently executing
+		halt_tc = 1;
+		cpu_ctx->hflags |= HFLG_DISAS_ONE;
+	}
+
+	// find all tc's in the page addr belongs to
+	auto it_map = cpu_ctx->cpu->tc_page_map.find(addr >> PAGE_SHIFT);
+	if (it_map != cpu_ctx->cpu->tc_page_map.end()) {
+		auto it_set = it_map->second.begin();
+		// iterate over all tc's found in the page
+		while (it_set != it_map->second.end()) {
+			translated_code_t *tc_in_page = *it_set;
+			// only invalidate the tc if addr is included in the translated address range of the tc
+			if (!(std::min(addr + size - 1, tc_in_page->tc_ctx.pc + tc_in_page->tc_ctx.size - 1) < std::max(addr, tc_in_page->tc_ctx.pc))) {
+				auto it_list = tc_in_page->linked_tc.begin();
+				// now unlink all other tc's which jump to this tc
+				while (it_list != tc_in_page->linked_tc.end()) {
+					if ((*it_list)->tc_ctx.jmp_offset[0] == tc_in_page->tc_ctx.ptr_code) {
+						(*it_list)->tc_ctx.jmp_offset[0] = (*it_list)->tc_ctx.jmp_offset[2];
+					}
+					if ((*it_list)->tc_ctx.jmp_offset[1] == tc_in_page->tc_ctx.ptr_code) {
+						(*it_list)->tc_ctx.jmp_offset[1] = (*it_list)->tc_ctx.jmp_offset[2];
+					}
+					it_list++;
+				}
+
+				// delete the found tc from the code cache
+				uint32_t idx = tc_hash(tc_in_page->tc_ctx.pc);
+				auto it = cpu_ctx->cpu->code_cache[idx].begin();
+				auto it_prev = it;
+				uint8_t found = 0;
+				while (it != cpu_ctx->cpu->code_cache[idx].end()) {
+					translated_code_t *tc = it->get();
+					if (tc == tc_in_page) {
+						found = 1;
+						// this will leak the memory of the removed block!
+						(it == cpu_ctx->cpu->code_cache[idx].begin()) ?
+							cpu_ctx->cpu->code_cache[idx].pop_front() :
+							cpu_ctx->cpu->code_cache[idx].erase_after(it_prev);
+						cpu_ctx->cpu->num_tc--;
+						break;
+					}
+					it_prev = it;
+					it++;
+				}
+
+				assert(found);
+				// we can't delete the tc in tc_page_map right now because it would invalidate its iterator, which is still needed below
+				tc_to_delete.push_back(it_set);
+			}
+			it_set++;
+		}
+
+		// delete the found tc's from the tc_page_map
+		for (auto &it : tc_to_delete) {
+			it_map->second.erase(it);
+		}
+
+		// if the tc_page_map for addr is now empty, also clear TLB_CODE and its key in the map
+		if (it_map->second.empty()) {
+			cpu_ctx->tlb[addr >> PAGE_SHIFT] &= ~TLB_CODE;
+			cpu_ctx->cpu->tc_page_map.erase(it_map);
+		}
+	}
+
+	return halt_tc;
+}
+
+
 static translated_code_t *
 tc_cache_search(cpu_t *cpu, addr_t pc)
 {
@@ -60,9 +134,9 @@ tc_cache_search(cpu_t *cpu, addr_t pc)
 	auto it = cpu->code_cache[idx].begin();
 	while (it != cpu->code_cache[idx].end()) {
 		translated_code_t *tc = it->get();
-		if (tc->cs_base == cpu->cpu_ctx.regs.cs_hidden.base &&
-			tc->pc == pc &&
-			tc->cpu_flags == flags) {
+		if (tc->tc_ctx.cs_base == cpu->cpu_ctx.regs.cs_hidden.base &&
+			tc->tc_ctx.pc == pc &&
+			tc->tc_ctx.cpu_flags == flags) {
 			return tc;
 		}
 		it++;
@@ -75,6 +149,7 @@ static void
 tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc)
 {
 	cpu->num_tc++;
+	cpu->tc_page_map[pc >> PAGE_SHIFT].insert(tc.get());
 	cpu->code_cache[tc_hash(pc)].push_front(std::move(tc));
 }
 
@@ -82,6 +157,7 @@ static void
 tc_cache_clear(cpu_t *cpu)
 {
 	cpu->num_tc = 0;
+	cpu->tc_page_map.clear();
 	for (auto &bucket : cpu->code_cache) {
 		bucket.clear();
 	}
@@ -128,42 +204,33 @@ tc_cache_clear(cpu_t *cpu)
 static void
 tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc)
 {
-	switch (prev_tc->flags & TC_FLG_NUM_JMP)
+	uint32_t num_jmp = prev_tc->tc_ctx.flags & TC_FLG_NUM_JMP;
+
+	switch (num_jmp)
 	{
 	case 0:
 		break;
 
 	case 1:
-		switch ((prev_tc->flags & TC_FLG_JMP_TAKEN) >> 4)
-		{
-		case TC_FLG_DST_PC:
-			prev_tc->jmp_offset[0] = ptr_tc->ptr_code;
-			break;
-
-		case TC_FLG_NEXT_PC:
-			prev_tc->jmp_offset[1] = ptr_tc->ptr_code;
-			break;
-
-		case TC_FLG_RET:
-			break;
-
-		default:
-			LIB86CPU_ABORT();
-		}
-		break;
-
 	case 2:
-		switch ((prev_tc->flags & TC_FLG_JMP_TAKEN) >> 4)
+		switch ((prev_tc->tc_ctx.flags & TC_FLG_JMP_TAKEN) >> 4)
 		{
 		case TC_FLG_DST_PC:
-			prev_tc->jmp_offset[0] = ptr_tc->ptr_code;
+			prev_tc->tc_ctx.jmp_offset[0] = ptr_tc->tc_ctx.ptr_code;
+			ptr_tc->linked_tc.push_front(prev_tc);
 			break;
 
 		case TC_FLG_NEXT_PC:
-			prev_tc->jmp_offset[1] = ptr_tc->ptr_code;
+			prev_tc->tc_ctx.jmp_offset[1] = ptr_tc->tc_ctx.ptr_code;
+			ptr_tc->linked_tc.push_front(prev_tc);
 			break;
 
 		case TC_FLG_RET:
+			if (num_jmp == 1) {
+				break;
+			}
+			[[fallthrough]];
+
 		default:
 			LIB86CPU_ABORT();
 		}
@@ -187,8 +254,9 @@ create_tc_prologue(cpu_t *cpu)
 	StructType *type_exp_data_t = StructType::create(CTX(),
 		type_struct_exp_data_t_fields, "struct.exp_data_t", false);
 
+	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");  // NOTE: opaque tc struct
 	FunctionType *type_exp_t = FunctionType::get(
-		getVoidType(),                                                                                 // void ret
+		getPointerType(tc_struct_type),                                                                // tc ret
 		std::vector<Type *> { getPointerType(cpu_ctx_struct_type), getPointerType(type_exp_data_t) },  // cpu_ctx, exp_data arg
 		false);
 
@@ -204,20 +272,10 @@ create_tc_prologue(cpu_t *cpu)
 	cpu_ctx_struct_type->setBody(type_struct_cpu_ctx_t_fields, false);
 	PointerType *type_pcpu_ctx_t = getPointerType(cpu_ctx_struct_type);
 
-	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");
 	FunctionType *type_entry_t = FunctionType::get(
 		getPointerType(tc_struct_type),   // tc ret
 		type_pcpu_ctx_t,                  // cpu_ctx arg
 		false);
-
-	std::vector<Type *> type_struct_tc_t_fields;
-	type_struct_tc_t_fields.push_back(getIntegerType(32));
-	type_struct_tc_t_fields.push_back(getIntegerType(32));
-	type_struct_tc_t_fields.push_back(getIntegerType(32));
-	type_struct_tc_t_fields.push_back(getPointerType(type_entry_t));
-	type_struct_tc_t_fields.push_back(getArrayType(getPointerType(type_entry_t), 3));
-	type_struct_tc_t_fields.push_back(getIntegerType(32));
-	tc_struct_type->setBody(type_struct_tc_t_fields, false);
 
 	Function *func = Function::Create(
 		type_entry_t,                        // func type
@@ -393,6 +451,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
 			}
 
+			cpu->cpu_ctx.hflags &= ~HFLG_DISAS_ONE;
 			RAISEin(exp_data.fault_addr, exp_data.code, exp_data.idx, exp_data.eip);
 			return LIB86CPU_SUCCESS;
 		}
@@ -588,7 +647,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					lcall_pe_emit(cpu, std::vector<Value *> { CONST16(new_sel), cs, eip }, size_mode, ret_eip, call_eip);
-					cpu->tc->flags |= TC_FLG_INDIRECT;
+					cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
 				}
 				else {
 					MEM_PUSH((std::vector<Value *> { cs, eip }));
@@ -597,7 +656,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
 					link_direct_emit(cpu, std::vector <addr_t> { pc, (static_cast<uint32_t>(new_sel) << 4) + call_eip },
 						CONST32((static_cast<uint32_t>(new_sel) << 4) + call_eip));
-					cpu->tc->flags |= TC_FLG_DIRECT;
+					cpu->tc->tc_ctx.flags |= TC_FLG_DIRECT;
 				}
 			}
 			break;
@@ -615,7 +674,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				ST_R32(CONST32(call_eip), EIP_idx);
 				link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + call_eip, pc + bytes },
 					CONST32(cpu_ctx->regs.cs_hidden.base + call_eip));
-				cpu->tc->flags |= TC_FLG_DIRECT;
+				cpu->tc->tc_ctx.flags |= TC_FLG_DIRECT;
 			}
 			break;
 
@@ -631,7 +690,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						call_eip = ZEXT32(call_eip);
 					}
 					ST_R32(call_eip, EIP_idx);
-					cpu->tc->flags |= TC_FLG_INDIRECT;
+					cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
 				}
 				else if (instr.reg_opc == 3) {
 					if (cpu_ctx->hflags & HFLG_PE_MODE) {
@@ -666,7 +725,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					ST_SEG(call_cs, CS_idx);
 					ST_R32(call_eip, EIP_idx);
 					ST_SEG_HIDDEN(SHL(ZEXT32(call_cs), CONST32(4)), CS_idx, SEG_BASE_idx);
-					cpu->tc->flags |= TC_FLG_INDIRECT;
+					cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
 				}
 				else {
 					LIB86CPU_ABORT();
@@ -1130,7 +1189,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				write_eflags(cpu, eflags, mask);
 			}
 
-			cpu->tc->flags |= TC_FLG_INDIRECT;
+			cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
 			translate_next = 0;
 		}
 		break;
@@ -1263,7 +1322,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			cpu->bb = vec_bb[2];
 			link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + jump_eip, pc + bytes }, LD(dst_pc));
-			cpu->tc->flags |= TC_FLG_DIRECT;
+			cpu->tc->tc_ctx.flags |= TC_FLG_DIRECT;
 			translate_next = 0;
 		}
 		break;
@@ -1280,7 +1339,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 				ST_R32(CONST32(new_eip), EIP_idx);
 				link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + new_eip }, CONST32(cpu_ctx->regs.cs_hidden.base + new_eip));
-				cpu->tc->flags |= TC_FLG_DIRECT;
+				cpu->tc->tc_ctx.flags |= TC_FLG_DIRECT;
 			}
 			break;
 
@@ -1289,7 +1348,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				uint16_t new_sel = instr.operand[OPNUM_SRC].seg_sel;
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					ljmp_pe_emit(cpu, CONST16(new_sel), size_mode, new_eip);
-					cpu->tc->flags |= TC_FLG_INDIRECT;
+					cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
 				}
 				else {
 					new_eip = size_mode == SIZE16 ? new_eip & 0xFFFF : new_eip;
@@ -1297,7 +1356,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					ST_R32(CONST32(new_eip), EIP_idx);
 					ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
 					link_direct_emit(cpu, std::vector <addr_t> { pc, (static_cast<uint32_t>(new_sel) << 4) + new_eip }, CONST32((static_cast<uint32_t>(new_sel) << 4) + new_eip));
-					cpu->tc->flags |= TC_FLG_DIRECT;
+					cpu->tc->tc_ctx.flags |= TC_FLG_DIRECT;
 				}
 			}
 			break;
@@ -1616,7 +1675,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			cpu->bb = vec_bb[2];
 			link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + loop_eip, pc + bytes }, LD(dst_pc));
-			cpu->tc->flags |= TC_FLG_DIRECT;
+			cpu->tc->tc_ctx.flags |= TC_FLG_DIRECT;
 			translate_next = 0;
 		}
 		break;
@@ -2558,7 +2617,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				BAD;
 			}
 
-			cpu->tc->flags |= TC_FLG_INDIRECT;
+			cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
 			translate_next = 0;
 		}
 		break;
@@ -2593,7 +2652,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				BAD;
 			}
 
-			cpu->tc->flags |= TC_FLG_INDIRECT;
+			cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
 			translate_next = 0;
 		}
 		break;
@@ -3212,8 +3271,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 
 		pc += bytes;
+		cpu->tc->tc_ctx.size += bytes;
 
-	} while ((translate_next | (disas_ctx->flags & DISAS_FLG_PAGE_CROSS)) == 1);
+	} while ((translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR))) == 1);
 
 	return LIB86CPU_SUCCESS;
 }
@@ -3235,9 +3295,9 @@ cpu_exec_tc(cpu_t *cpu)
 		}
 		catch (exp_data_t exp_data) {
 			// page fault during instruction fetching
-			// NOTE: can't use get_pc here because it returns a virtual address, while code blocks are indexed by physical address instead
 			try {
-				cpu->cpu_ctx.exp_fn(&cpu->cpu_ctx, &exp_data);
+				// the exception handler always returns nullptr
+				prev_tc = cpu->cpu_ctx.exp_fn(&cpu->cpu_ctx, &exp_data);
 			}
 			catch (exp_data_t exp_data) {
 				// page fault while delivering another exception
@@ -3245,7 +3305,6 @@ cpu_exec_tc(cpu_t *cpu)
 				LIB86CPU_ABORT();
 			}
 
-			prev_tc = nullptr;
 			goto retry;
 		}
 
@@ -3267,7 +3326,8 @@ cpu_exec_tc(cpu_t *cpu)
 			}
 
 			cpu->tc = tc.get();
-			cpu->tc->flags = 0;
+			cpu->tc->tc_ctx.size = 0;
+			cpu->tc->tc_ctx.flags = 0;
 			create_tc_prologue(cpu);
 
 			// add to the module the external host functions that will be called by the translated guest code
@@ -3275,7 +3335,7 @@ cpu_exec_tc(cpu_t *cpu)
 
 			// prepare the disas ctx
 			disas_ctx_t disas_ctx;
-			disas_ctx.flags = (cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT;
+			disas_ctx.flags = ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT) | (cpu->cpu_ctx.hflags & HFLG_DISAS_ONE);
 			disas_ctx.virt_pc = get_pc(&cpu->cpu_ctx);
 			disas_ctx.pc = pc;
 			disas_ctx.instr_page_addr = disas_ctx.virt_pc & ~PAGE_MASK;
@@ -3313,15 +3373,15 @@ cpu_exec_tc(cpu_t *cpu)
 				return LIB86CPU_LLVM_ERROR;
 			}
 
-			tc->pc = pc;
-			tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
-			tc->cpu_flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
+			tc->tc_ctx.pc = pc;
+			tc->tc_ctx.cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
+			tc->tc_ctx.cpu_flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
 
-			tc->ptr_code = reinterpret_cast<entry_t>(cpu->jit->lookup("main")->getAddress());
-			assert(tc->ptr_code);
-			tc->jmp_offset[0] = reinterpret_cast<entry_t>(cpu->jit->lookup("exit")->getAddress());
-			tc->jmp_offset[1] = tc->jmp_offset[2] = tc->jmp_offset[0];
-			assert(tc->jmp_offset[0]);
+			tc->tc_ctx.ptr_code = reinterpret_cast<entry_t>(cpu->jit->lookup("main")->getAddress());
+			assert(tc->tc_ctx.ptr_code);
+			tc->tc_ctx.jmp_offset[0] = reinterpret_cast<entry_t>(cpu->jit->lookup("exit")->getAddress());
+			tc->tc_ctx.jmp_offset[1] = tc->tc_ctx.jmp_offset[2] = tc->tc_ctx.jmp_offset[0];
+			assert(tc->tc_ctx.jmp_offset[0]);
 
 			{
 				// now remove the function symbol names so that we can reuse them for other modules
@@ -3342,10 +3402,11 @@ cpu_exec_tc(cpu_t *cpu)
 			cpu->tc = nullptr;
 			cpu->bb = nullptr;
 
-			if (disas_ctx.flags & DISAS_FLG_PAGE_CROSS) {
+			if (disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR)) {
 				// this will leave behind the memory of the generated code block, however tc_cache_clear will still delete it later so
 				// this is probably acceptable for now
 
+				cpu->cpu_ctx.hflags &= ~HFLG_DISAS_ONE;
 				tc_run_code(&cpu->cpu_ctx, ptr_tc);
 				prev_tc = nullptr;
 				continue;
@@ -3364,7 +3425,7 @@ cpu_exec_tc(cpu_t *cpu)
 
 		// see if we can link the previous tc with the current one
 		if (prev_tc != nullptr) {
-			switch (prev_tc->flags & TC_FLG_LINK_MASK)
+			switch (prev_tc->tc_ctx.flags & TC_FLG_LINK_MASK)
 			{
 			case 0:
 			case TC_FLG_INDIRECT:

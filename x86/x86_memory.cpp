@@ -150,7 +150,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 
 		uint8_t is_write = flags & 1;
 		uint8_t is_priv = flags & 2;
-		uint32_t err_code = 0;
+		uint8_t err_code = 0;
 		uint8_t cpu_lv = cpl_to_page_priv[cpu->cpu_ctx.hflags & HFLG_CPL];
 		addr_t pte_addr = (cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK) | (addr >> PAGE_SHIFT_LARGE) * 4;
 		uint32_t pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr));
@@ -211,9 +211,33 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 }
 
 addr_t
+get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip)
+{
+	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
+	if ((tlb_access[0][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) ^ (tlb_entry & (tlb_access[0][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]))) {
+		return mmu_translate_addr(cpu, addr, is_priv, eip);
+	}
+
+	return (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
+}
+
+addr_t
+get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *is_code)
+{
+	*is_code = 0;
+	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
+	if ((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) ^ (tlb_entry & (tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]))) {
+		return mmu_translate_addr(cpu, addr, 1 | is_priv, eip);
+	}
+
+	*is_code = tlb_entry & TLB_CODE;
+	return (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
+}
+
+addr_t
 get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip)
 {
-	// this is only used for ram fetching, so we don't need to check for privileged accesses, is_write and the size of the access
+	// this is only used for ram fetching, so we don't need to check for privileged accesses and is_write
 
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
 	if ((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) ^ (tlb_entry & (tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]))) {
@@ -229,7 +253,7 @@ check_instr_length(cpu_t *cpu, addr_t start_pc, addr_t pc, size_t size)
 {
 	pc += size;
 	if (pc - start_pc > X86_MAX_INSTR_LENGTH) {
-		volatile addr_t addr = mmu_translate_addr(cpu, pc - 1, 0, start_pc - cpu->cpu_ctx.regs.cs_hidden.base);
+		volatile addr_t addr = get_code_addr(cpu, pc - 1, start_pc - cpu->cpu_ctx.regs.cs_hidden.base);
 		exp_data_t exp_data { 0, 0, EXP_GP, start_pc - cpu->cpu_ctx.regs.cs_hidden.base };
 		throw exp_data;
 	}
@@ -260,27 +284,27 @@ mem_read64(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys)
 }
 
 void
-mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip, uint8_t is_phys)
+mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip, uint8_t is_phys, translated_code_t *tc)
 {
-	mem_write<uint8_t>(cpu_ctx->cpu, addr, value, eip, is_phys);
+	mem_write<uint8_t>(cpu_ctx->cpu, addr, value, eip, is_phys, tc);
 }
 
 void
-mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip, uint8_t is_phys)
+mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip, uint8_t is_phys, translated_code_t *tc)
 {
-	mem_write<uint16_t>(cpu_ctx->cpu, addr, value, eip, is_phys);
+	mem_write<uint16_t>(cpu_ctx->cpu, addr, value, eip, is_phys, tc);
 }
 
 void
-mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip, uint8_t is_phys)
+mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip, uint8_t is_phys, translated_code_t *tc)
 {
-	mem_write<uint32_t>(cpu_ctx->cpu, addr, value, eip, is_phys);
+	mem_write<uint32_t>(cpu_ctx->cpu, addr, value, eip, is_phys, tc);
 }
 
 void
-mem_write64(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t value, uint32_t eip, uint8_t is_phys)
+mem_write64(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t value, uint32_t eip, uint8_t is_phys, translated_code_t *tc)
 {
-	mem_write<uint64_t>(cpu_ctx->cpu, addr, value, eip, is_phys);
+	mem_write<uint64_t>(cpu_ctx->cpu, addr, value, eip, is_phys, tc);
 }
 
 uint8_t

@@ -108,28 +108,31 @@ void
 get_ext_fn(cpu_t *cpu)
 {
 	static size_t bit_size[7] = { 8, 16, 32, 64, 8, 16, 32 };
-	static size_t arg_size[7] = { 32, 32, 32, 32, 16, 16, 16 };
 	static const char *func_name_ld[7] = { "mem_read8", "mem_read16", "mem_read32", "mem_read64", "io_read8", "io_read16", "io_read32" };
 	static const char *func_name_st[7] = { "mem_write8", "mem_write16", "mem_write32", "mem_write64", "io_write8", "io_write16", "io_write32" };
-	Function::arg_iterator args_start = cpu->bb->getParent()->arg_begin();
+	Type *cpu_ctx_ty = cpu->bb->getParent()->arg_begin()->getType();
+	Type *tc_ty = cpu->bb->getParent()->getReturnType();
 
 	for (uint8_t i = 0; i < 4; i++) {
-		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), args_start->getType(),
-			getIntegerType(arg_size[i]), getIntegerType(32), getIntegerType(8)));
+		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), cpu_ctx_ty,
+			getIntegerType(32), getIntegerType(32), getIntegerType(8)));
 	}
 	for (uint8_t i = 4; i < 7; i++) {
-		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), args_start->getType(),
-			getIntegerType(arg_size[i])));
+		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), cpu_ctx_ty,
+			getIntegerType(16)));
 	}
 
 	for (uint8_t i = 0; i < 4; i++) {
-		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), args_start->getType(),
-			getIntegerType(arg_size[i]), getIntegerType(bit_size[i]), getIntegerType(32), getIntegerType(8)));
+		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), cpu_ctx_ty,
+			getIntegerType(32), getIntegerType(bit_size[i]), getIntegerType(32), getIntegerType(8), tc_ty));
 	}
 	for (uint8_t i = 4; i < 7; i++) {
-		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), args_start->getType(),
-			getIntegerType(arg_size[i]), getIntegerType(bit_size[i])));
+		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), cpu_ctx_ty,
+			getIntegerType(16), getIntegerType(bit_size[i])));
 	}
+
+	cpu->ptr_invtc_fn = cast<Function>(cpu->mod->getOrInsertFunction("tc_invalidate", getIntegerType(8), cpu_ctx_ty,
+		tc_ty, getIntegerType(32), getIntegerType(8)));
 }
 
 Value *
@@ -172,20 +175,31 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 		assert(vec_addr.size() == 2);
 		n = dst;
 	}
-	cpu->tc->flags |= (n & TC_FLG_NUM_JMP);
+	cpu->tc->tc_ctx.flags |= (n & TC_FLG_NUM_JMP);
+
+	if (n == 0) {
+		return;
+	}
+
+	std::vector<Type *> type_struct_tc_t_fields;
+	type_struct_tc_t_fields.push_back(getIntegerType(32));
+	type_struct_tc_t_fields.push_back(getIntegerType(32));
+	type_struct_tc_t_fields.push_back(getIntegerType(32));
+	type_struct_tc_t_fields.push_back(getPointerType(cpu->bb->getParent()->getFunctionType()));
+	type_struct_tc_t_fields.push_back(getArrayType(getPointerType(cpu->bb->getParent()->getFunctionType()), 3));
+	type_struct_tc_t_fields.push_back(getIntegerType(32));
+	type_struct_tc_t_fields.push_back(getIntegerType(32));
+	PointerType *tc_pstruct_type = getPointerType(StructType::create(CTX(), type_struct_tc_t_fields, "struct.tc_ctx_t", false));
 
 	// NOTE: WHY??? Trying to use GEP to calculate the struct member offsets from the tc base address only works if optimizations are turned off. Unfortunately, after enabling the transform passes,
 	// the generated code seems to assume that the function pointer members of the tc struct are 8 bytes large, instead of 4 (their real size), thus causing GEP to calculate wrong addresses,
 	// and the generated code will then perform out of bounds memory accesses at runtime. As a workaround, we calculate the addresses ourselves and inject them in the IR as constant pointers.
-	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->jmp_offset[0]), getPointerType(cast<PointerType>(cpu->bb->getParent()->getReturnType())->getElementType()->getStructElementType(3)));
-	Value *tc_jmp1_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->jmp_offset[1]), getPointerType(cast<PointerType>(cpu->bb->getParent()->getReturnType())->getElementType()->getStructElementType(3)));
-	Value *tc_flg_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->flags), getPointerType(cast<PointerType>(cpu->bb->getParent()->getReturnType())->getElementType()->getStructElementType(5)));
+	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->tc_ctx.jmp_offset[0]), getPointerType(tc_pstruct_type->getElementType()->getStructElementType(3)));
+	Value *tc_jmp1_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->tc_ctx.jmp_offset[1]), getPointerType(tc_pstruct_type->getElementType()->getStructElementType(3)));
+	Value *tc_flg_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->tc_ctx.flags), getPointerType(tc_pstruct_type->getElementType()->getStructElementType(5)));
 
 	switch (n)
 	{
-	case 0:
-		break;
-
 	case 1: {
 		if (vec_addr.size() == 3) { // if(dst_pc) -> cond jmp dst_pc; if(next_pc) -> cond jmp next_pc
 			if (dst) {
@@ -270,8 +284,9 @@ gen_exp_fn(cpu_t *cpu)
 	StructType *type_exp_data_t = StructType::create(CTX(),
 		type_struct_exp_data_t_fields, "struct.exp_data_t", false);
 
+	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");  // NOTE: opaque tc struct
 	FunctionType *type_exp_t = FunctionType::get(
-		getVoidType(),                                                                                 // void ret
+		getPointerType(tc_struct_type),                                                                // tc ret
 		std::vector<Type *> { getPointerType(cpu_ctx_struct_type), getPointerType(type_exp_data_t) },  // cpu_ctx, exp_data arg
 		false);
 
@@ -300,6 +315,7 @@ gen_exp_fn(cpu_t *cpu)
 	func->setCallingConv(CallingConv::C);
 
 	cpu->bb = BB();
+	cpu->tc = nullptr;
 	cpu->instr_eip = CONST32(0);
 	Function::arg_iterator args = func->arg_begin();
 	cpu->ptr_cpu_ctx = args++;
@@ -555,7 +571,7 @@ gen_exp_fn(cpu_t *cpu)
 		BR_UNCOND(vec_bb[38]);
 		cpu->bb = vec_bb[38];
 		ST(GEP(ptr_exp_info, 1), CONST8(0));
-		ReturnInst::Create(CTX(), cpu->bb);
+		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
 		// we don't handle double and triple faults yet, so just abort
 		INTRINSIC(trap);
@@ -583,7 +599,7 @@ gen_exp_fn(cpu_t *cpu)
 		ST_SEG_HIDDEN(SHL(ZEXT32(LD_SEG(CS_idx)), CONST32(4)), CS_idx, SEG_BASE_idx);
 		ST_R32(AND(vec_entry, CONST32(0xFFFF)), EIP_idx);
 		ST(GEP(ptr_exp_info, 1), CONST8(0));
-		ReturnInst::Create(CTX(), cpu->bb);
+		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
 		// we don't handle double and triple faults yet, so just abort
 		INTRINSIC(trap);
@@ -625,8 +641,7 @@ raise_exp_inline_emit(cpu_t *cpu, std::vector<Value *> &exp_data)
 	ST(GEP(cpu->exp_data, 3), exp_data[3]);
 	CallInst *ci = CallInst::Create(cpu->ptr_exp_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, cpu->exp_data }, "", cpu->bb);
 	ci->setCallingConv(CallingConv::C);
-	Value *tc_null = new IntToPtrInst(INTPTR(nullptr), cpu->bb->getParent()->getReturnType(), "", cpu->bb);
-	ReturnInst::Create(CTX(), tc_null, cpu->bb);
+	ReturnInst::Create(CTX(), ci, cpu->bb);
 }
 
 BasicBlock *
@@ -1338,7 +1353,7 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_pri
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
 	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
-	Value *mem_access = CONST32((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv);
+	Value *mem_access = CONST32((tlb_access[0][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]));
 
 	// interrogate the tlb
 	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(tlb_entry, mem_access), SHL(tlb_idx1, CONST32(PAGE_SHIFT))),
@@ -1381,11 +1396,12 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	static const uint8_t idx_to_size[4] = { 8, 16, 32, 64 };
 	uint8_t mem_size = idx_to_size[idx];
 
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 5);
+	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), (cpu->cpu_ctx.hflags & HFLG_DISAS_ONE) ? 5 : 7);
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
 	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
-	Value *mem_access = CONST32((tlb_access[1][cpu->cpu_ctx.hflags & HFLG_CPL]) >> is_priv);
+	Value *mem_access = CONST32((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]));
+	Value *tc_ptr = ConstantExpr::getIntToPtr(INTPTR(cpu->tc), cpu->bb->getParent()->getReturnType());
 
 	// interrogate the tlb
 	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(tlb_entry, mem_access), SHL(tlb_idx1, CONST32(PAGE_SHIFT))),
@@ -1395,12 +1411,15 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	cpu->bb = vec_bb[0];
 	Value *ram_offset = ALLOC32();
 	ST(ram_offset, OR(AND(tlb_entry, CONST32(~PAGE_MASK)), AND(addr, CONST32(PAGE_MASK))));
-	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM)), vec_bb[4]);
+	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM | TLB_CODE)), vec_bb[4]);
 	swi->SWITCH_add(32, TLB_RAM, vec_bb[3]);
+	if (!(cpu->cpu_ctx.hflags & HFLG_DISAS_ONE)) {
+		swi->SWITCH_add(32, TLB_RAM | TLB_CODE, vec_bb[5]);
+	}
 
 	// no, acccess the memory region with is_phys flag=1
 	cpu->bb = vec_bb[4];
-	CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(ram_offset), value, cpu->instr_eip, CONST8(1 | is_priv) }, "", cpu->bb);
+	CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(ram_offset), value, cpu->instr_eip, CONST8(1 | is_priv), tc_ptr }, "", cpu->bb);
 	BR_UNCOND(vec_bb[2]);
 
 	// yes, access ram directly
@@ -1415,9 +1434,21 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	ST(IBITCASTs(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(ram_offset) })), LD(val_ptr));
 	BR_UNCOND(vec_bb[2]);
 
+	if (!(cpu->cpu_ctx.hflags & HFLG_DISAS_ONE)) {
+		// yes, but we are writing to a page which holds translated code, check for self-modifying code
+		cpu->bb = vec_bb[5];
+		CallInst *ci = CallInst::Create(cpu->ptr_invtc_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, tc_ptr, addr, CONST8(mem_size / 8) }, "", cpu->bb);
+		BR_COND(vec_bb[6], vec_bb[3], ICMP_NE(ci, CONST8(0)));
+
+		// we have been asked to exit the current tc, so we simply return from main
+		cpu->bb = vec_bb[6];
+		ST_R32(cpu->instr_eip, EIP_idx);
+		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
+	}
+
 	// tlb miss, acccess the memory region with is_phys flag=0
 	cpu->bb = vec_bb[1];
-	CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv) }, "", cpu->bb);
+	CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv), tc_ptr }, "", cpu->bb);
 	BR_UNCOND(vec_bb[2]);
 
 	cpu->bb = vec_bb[2];
