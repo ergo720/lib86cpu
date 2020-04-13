@@ -205,6 +205,7 @@ struct cpu_t {
 	std::forward_list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
 	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
 	uint16_t num_tc;
+	uint32_t num_leaked_tc;
 	exp_info_t exp_info;
 
 	// llvm specific variables

@@ -97,6 +97,7 @@ tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t 
 							cpu_ctx->cpu->code_cache[idx].pop_front() :
 							cpu_ctx->cpu->code_cache[idx].erase_after(it_prev);
 						cpu_ctx->cpu->num_tc--;
+						cpu_ctx->cpu->num_leaked_tc++;
 						break;
 					}
 					it_prev = it;
@@ -157,6 +158,7 @@ static void
 tc_cache_clear(cpu_t *cpu)
 {
 	cpu->num_tc = 0;
+	cpu->num_leaked_tc = 0;
 	cpu->tc_page_map.clear();
 	for (auto &bucket : cpu->code_cache) {
 		bucket.clear();
@@ -3406,13 +3408,14 @@ cpu_exec_tc(cpu_t *cpu)
 				// this will leave behind the memory of the generated code block, however tc_cache_clear will still delete it later so
 				// this is probably acceptable for now
 
+				cpu->num_leaked_tc++;
 				cpu->cpu_ctx.hflags &= ~HFLG_DISAS_ONE;
 				tc_run_code(&cpu->cpu_ctx, ptr_tc);
 				prev_tc = nullptr;
 				continue;
 			}
 			else {
-				if (cpu->num_tc == CODE_CACHE_MAX_SIZE) {
+				if ((cpu->num_tc + cpu->num_leaked_tc) == CODE_CACHE_MAX_SIZE) {
 					tc_cache_clear(cpu);
 					// NOTE: actually we wouldn't need to regenerate the exception function but because clearing the code cache also destroys it,
 					// we must recreate it for now
