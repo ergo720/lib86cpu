@@ -47,21 +47,34 @@ tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 }
 
 void
-tlb_flush(cpu_t *cpu)
+tlb_flush(cpu_t *cpu, int n)
 {
-	for (uint32_t &tlb_entry : cpu->cpu_ctx.tlb) {
-		tlb_entry = 0;
-	}
-}
-
-void
-tlb_flush(cpu_t *cpu, uint8_t dummy)
-{
-	for (uint32_t &tlb_entry : cpu->cpu_ctx.tlb) {
-		if (!(tlb_entry & TLB_GLOBAL)) {
+	switch (n)
+	{
+	case TLB_zero:
+		for (uint32_t &tlb_entry : cpu->cpu_ctx.tlb) {
 			tlb_entry = 0;
 		}
+		break;
+
+	case TLB_keep_rc:
+		for (uint32_t &tlb_entry : cpu->cpu_ctx.tlb) {
+			tlb_entry = (tlb_entry & (TLB_RAM | TLB_CODE));
+		}
+		break;
+
+	case TLB_no_g:
+		for (uint32_t &tlb_entry : cpu->cpu_ctx.tlb) {
+			if (!(tlb_entry & TLB_GLOBAL)) {
+				tlb_entry = (tlb_entry & (TLB_RAM | TLB_CODE));
+			}
+		}
+		break;
+
+	default:
+		LIB86CPU_ABORT();
 	}
+
 }
 
 int8_t
@@ -142,7 +155,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 	uint8_t is_code = flags & TLB_CODE;
 
 	if (!(cpu->cpu_ctx.regs.cr0 & CR0_PG_MASK)) {
-		tlb_fill(cpu, addr, addr, TLB_SUP_READ | TLB_SUP_WRITE | TLB_USER_READ | TLB_USER_WRITE | is_code);
+		tlb_fill(cpu, addr, addr, TLB_SUP_READ | TLB_SUP_WRITE | TLB_USER_READ | TLB_USER_WRITE | TLB_DIRTY | is_code);
 		return addr;
 	}
 	else {
@@ -173,7 +186,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 				addr_t phys_addr = (pte & PTE_ADDR_4M) | (addr & PAGE_MASK_LARGE);
 				tlb_fill(cpu, addr, phys_addr,
 					tlb_gen_access_mask(cpu, pde_priv & PTE_USER, pde_priv & PTE_WRITE)
-					| is_code | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
+					| is_code | (is_write << 9) | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
 				return phys_addr;
 			}
 			err_code = 1;
@@ -199,7 +212,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 			addr_t phys_addr = (pte & PTE_ADDR_4K) | (addr & PAGE_MASK);
 			tlb_fill(cpu, addr, phys_addr,
 				tlb_gen_access_mask(cpu, access_lv & PTE_USER, access_lv & PTE_WRITE)
-				| is_code | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
+				| is_code | (is_write << 9) | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
 			return phys_addr;
 		}
 		err_code = 1;
@@ -226,7 +239,7 @@ get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *
 {
 	*is_code = 0;
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
-	if ((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) ^ (tlb_entry & (tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]))) {
+	if (((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) | TLB_DIRTY) ^ (tlb_entry & ((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) | TLB_DIRTY))) {
 		return mmu_translate_addr(cpu, addr, 1 | is_priv, eip);
 	}
 

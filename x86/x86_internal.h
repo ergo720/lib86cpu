@@ -168,6 +168,10 @@ extern const char *mnemo[];
 #define TLB_CODE        (1 << 4)
 #define TLB_RAM         (1 << 5)
 #define TLB_GLOBAL      (1 << 8)
+#define TLB_DIRTY       (1 << 9)
+#define TLB_zero        0
+#define TLB_keep_rc     1
+#define TLB_no_g        2
 
 // control register flags
 #define CR0_PG_MASK (1 << 31)

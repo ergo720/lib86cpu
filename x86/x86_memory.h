@@ -15,11 +15,10 @@ while (region->aliased_region) { \
 	alias_offset += region->alias_offset; \
 }
 
-void tlb_flush(cpu_t *cpu);
-void tlb_flush(cpu_t * cpu, [[maybe_unused]] uint8_t dummy);
+void tlb_flush(cpu_t *cpu, int n);
 inline void *get_ram_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *ram, addr_t pc);
 addr_t get_read_addr(cpu_t * cpu, addr_t addr, uint8_t is_priv, uint32_t eip);
-addr_t get_write_addr(cpu_t * cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t * is_code);
+addr_t get_write_addr(cpu_t * cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *is_code);
 addr_t get_code_addr(cpu_t * cpu, addr_t addr, uint32_t eip);
 void check_instr_length(cpu_t *cpu, addr_t start_pc, addr_t pc, size_t size);
 JIT_EXTERNAL_CALL_C uint8_t mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);

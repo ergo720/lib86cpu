@@ -326,12 +326,9 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 			return 1;
 		}
 
-		if ((cpu_ctx->regs.cr0 & (CR0_WP_MASK | CR0_PE_MASK | CR0_PG_MASK)) != (new_cr & (CR0_WP_MASK | CR0_PE_MASK | CR0_PG_MASK))) {
-			tlb_flush(cpu_ctx->cpu);
-		}
-
 		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
 			tc_cache_clear(cpu_ctx->cpu);
+			tlb_flush(cpu_ctx->cpu, TLB_zero);
 			if (new_cr & CR0_PE_MASK) {
 				if (cpu_ctx->regs.cs_hidden.flags & SEG_HIDDEN_DB) {
 					cpu_ctx->hflags |= HFLG_CS32;
@@ -353,6 +350,10 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 			throw -1;
 		}
 
+		if ((cpu_ctx->regs.cr0 & (CR0_WP_MASK | CR0_PG_MASK)) != (new_cr & (CR0_WP_MASK | CR0_PG_MASK))) {
+			tlb_flush(cpu_ctx->cpu, TLB_keep_rc);
+		}
+
 		// mov cr0, reg always terminates the tc, so we must update the eip here
 		cpu_ctx->regs.eip = (eip + bytes);
 		cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
@@ -360,7 +361,7 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 
 	case 3:
 		if (cpu_ctx->regs.cr0 & CR0_PG_MASK) {
-			tlb_flush(cpu_ctx->cpu, 0);
+			tlb_flush(cpu_ctx->cpu, TLB_no_g);
 		}
 
 		cpu_ctx->regs.cr3 = (new_cr & CR3_FLG_MASK);

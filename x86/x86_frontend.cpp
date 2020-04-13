@@ -1400,7 +1400,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
 	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
-	Value *mem_access = CONST32((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]));
+	Value *mem_access = CONST32((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) | TLB_DIRTY);
 	Value *tc_ptr = ConstantExpr::getIntToPtr(INTPTR(cpu->tc), cpu->bb->getParent()->getReturnType());
 
 	// interrogate the tlb
