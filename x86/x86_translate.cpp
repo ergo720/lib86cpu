@@ -3264,8 +3264,55 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			break;
 
+			case 0x32:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x33: {
+				Value *reg = GET_REG(OPNUM_DST);
+				Value *val, *rm;
+				GET_RM(OPNUM_SRC, val = LD_REG_val(rm); val = XOR(val, LD_REG_val(reg)); ST_REG_val(val, reg);,
+					val = LD_MEM(fn_idx[size_mode], rm); val = XOR(val, LD_REG_val(reg)); ST_REG_val(val, reg););
+				SET_FLG(val, CONST32(0));
+			}
+			break;
+
+			case 0x34:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x35: {
+				Value *val = GET_IMM();
+				Value *reg = GET_REG(OPNUM_DST);
+				val = XOR(val, LD_REG_val(reg));
+				ST_REG_val(val, reg);
+				SET_FLG(val, CONST32(0));
+			}
+			break;
+
+			case 0x80:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x81: {
+				Value *rm, *val, *imm = GET_IMM();
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = XOR(val, imm); ST_REG_val(val, rm);,
+					val = LD_MEM(fn_idx[size_mode], rm); val = XOR(val, imm); ST_MEM(fn_idx[size_mode], rm, val););
+				SET_FLG(val, CONST32(0));
+			}
+			break;
+
+			case 0x83: {
+				Value *rm, *val, *imm = GET_IMM();
+				imm = size_mode == SIZE16 ? SEXT16(imm) : SEXT32(imm);
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = XOR(val, imm); ST_REG_val(val, rm);,
+					val = LD_MEM(fn_idx[size_mode], rm); val = XOR(val, imm); ST_MEM(fn_idx[size_mode], rm, val););
+				SET_FLG(val, CONST32(0));
+			}
+			break;
+
 			default:
-				BAD;
+				LIB86CPU_ABORT();
 			}
 			break;
 
