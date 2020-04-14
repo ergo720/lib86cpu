@@ -16,7 +16,8 @@ while (region->aliased_region) { \
 }
 
 void tlb_flush(cpu_t *cpu, int n);
-inline void *get_ram_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *ram, addr_t pc);
+inline void *get_rom_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *rom, addr_t addr);
+inline void *get_ram_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *ram, addr_t addr);
 addr_t get_read_addr(cpu_t * cpu, addr_t addr, uint8_t is_priv, uint32_t eip);
 addr_t get_write_addr(cpu_t * cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *is_code);
 addr_t get_code_addr(cpu_t * cpu, addr_t addr, uint32_t eip);
@@ -72,6 +73,9 @@ T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *regi
 		case MEM_RAM:
 			return ram_read<T>(cpu, get_ram_host_ptr(cpu, region, addr));
 
+		case MEM_ROM:
+			return ram_read<T>(cpu, get_rom_host_ptr(cpu, region, addr));
+
 		case MEM_MMIO:
 			return region->read_handler(addr, sizeof(T), region->opaque);
 
@@ -105,6 +109,9 @@ T as_ram_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *region)
 		case MEM_RAM:
 			return ram_read<T>(cpu, get_ram_host_ptr(cpu, region, addr));
 
+		case MEM_ROM:
+			return ram_read<T>(cpu, get_rom_host_ptr(cpu, region, addr));
+
 		case MEM_ALIAS: {
 			memory_region_t<addr_t> *alias = region;
 			AS_RESOLVE_ALIAS();
@@ -113,7 +120,7 @@ T as_ram_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *region)
 		break;
 
 		default:
-			LIB86CPU_ABORT_msg("Attempted to execute code outside of ram!\n");
+			LIB86CPU_ABORT_msg("Attempted to execute code outside of ram/rom!\n");
 		}
 	}
 	else {
@@ -130,6 +137,9 @@ void as_memory_dispatch_write(cpu_t *cpu, addr_t addr, T value, memory_region_t<
 		{
 		case MEM_RAM:
 			ram_write<T>(cpu, get_ram_host_ptr(cpu, region, addr), value);
+			break;
+
+		case MEM_ROM:
 			break;
 
 		case MEM_MMIO:
@@ -203,12 +213,18 @@ void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, memory_region_t<port
 }
 
 /*
- * ram specific accessors
+ * ram/rom specific accessors
  */
 void *
-get_ram_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *ram, addr_t pc)
+get_rom_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *rom, addr_t addr)
 {
-	return &cpu->cpu_ctx.ram[pc - ram->start];
+	return &cpu->vec_rom[rom->rom_idx].first[addr - rom->start];
+}
+
+void *
+get_ram_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *ram, addr_t addr)
+{
+	return &cpu->cpu_ctx.ram[addr - ram->start];
 }
 
 template<typename T>

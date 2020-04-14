@@ -95,6 +95,7 @@ enum mem_type_t {
 	MEM_MMIO,
 	MEM_PMIO,
 	MEM_ALIAS,
+	MEM_ROM,
 };
 
 template<typename T>
@@ -108,8 +109,9 @@ struct memory_region_t {
 	void *opaque;
 	addr_t alias_offset;
 	memory_region_t<T> *aliased_region;
+	int rom_idx;
 	memory_region_t() : start(0), end(0), alias_offset(0), type(MEM_UNMAPPED), priority(0), read_handler(nullptr), write_handler(nullptr),
-		opaque(nullptr), aliased_region(nullptr) {};
+		opaque(nullptr), aliased_region(nullptr), rom_idx(-1) {};
 };
 
 template<typename T>
@@ -207,6 +209,7 @@ struct cpu_t {
 	uint16_t num_tc;
 	uint32_t num_leaked_tc;
 	exp_info_t exp_info;
+	std::vector<std::pair<std::unique_ptr<uint8_t[]>, int>> vec_rom;
 
 	// llvm specific variables
 	std::unique_ptr<orc::LLJIT> jit;
@@ -237,4 +240,5 @@ API_FUNC lib86cpu_status cpu_run(cpu_t *cpu);
 API_FUNC lib86cpu_status memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority);
 API_FUNC lib86cpu_status memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read read_func, fp_write write_func, void *opaque, int priority);
 API_FUNC lib86cpu_status memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority);
+API_FUNC lib86cpu_status memory_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int priority, const char *rom_path, uint8_t *&out);
 API_FUNC lib86cpu_status memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space);

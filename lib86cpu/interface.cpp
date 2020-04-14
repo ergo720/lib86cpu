@@ -10,6 +10,7 @@
 #include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "lib86cpu.h"
 #include "x86_internal.h"
+#include <fstream>
 
 
 static void
@@ -357,9 +358,79 @@ memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_
 }
 
 lib86cpu_status
+memory_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int priority, const char *rom_path, uint8_t *&out)
+{
+	std::unique_ptr<memory_region_t<addr_t>> rom(new memory_region_t<addr_t>);
+
+	if (out == nullptr) {
+		std::ifstream ifs(rom_path, std::ios_base::in | std::ios_base::binary);
+		if (!ifs.is_open()) {
+			return LIB86CPU_INVALID_PARAMETER;
+		}
+		ifs.seekg(0, ifs.end);
+		size_t length = ifs.tellg();
+		ifs.seekg(0, ifs.beg);
+
+		if (length == 0) {
+			return LIB86CPU_INVALID_PARAMETER;
+		}
+		else if (offset + size > length) {
+			return LIB86CPU_INVALID_PARAMETER;
+		}
+
+		std::unique_ptr<uint8_t[]> rom_ptr(new uint8_t[size]);
+		ifs.seekg(offset);
+		ifs.read(reinterpret_cast<char *>(&rom_ptr[0]), size);
+		ifs.close();
+		cpu->vec_rom.push_back(std::make_pair(std::move(rom_ptr), 0));
+		rom->rom_idx = cpu->vec_rom.size() - 1;
+	}
+	else {
+		for (int i = 0; i < cpu->vec_rom.size(); i++) {
+			if (cpu->vec_rom[i].first.get() == out) {
+				rom->rom_idx = i;
+				break;
+			}
+		}
+
+		if (rom->rom_idx == -1) {
+			return LIB86CPU_INVALID_PARAMETER;
+		}
+	}
+
+	addr_t end = start + size - 1;
+	cpu->memory_space_tree->search(start, end, cpu->memory_out);
+
+	for (auto &region : cpu->memory_out) {
+		if (region.get()->priority == priority) {
+			goto fail;
+		}
+	}
+
+	rom->start = start;
+	rom->end = end;
+	rom->type = MEM_ROM;
+	rom->priority = priority;
+
+	auto &rom_ref = cpu->vec_rom[rom->rom_idx];
+	if (cpu->memory_space_tree->insert(start, end, std::move(rom))) {
+		out = rom_ref.first.get();
+		rom_ref.second++;
+		return LIB86CPU_SUCCESS;
+	}
+
+	fail:
+	if (out == nullptr) {
+		cpu->vec_rom.pop_back();
+	}
+	return LIB86CPU_INVALID_PARAMETER;
+}
+
+lib86cpu_status
 memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 {
 	bool deleted;
+	int rom_idx = -1;
 
 	if (io_space) {
 		port_t start_io = static_cast<port_t>(start);
@@ -367,11 +438,33 @@ memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 		deleted = cpu->io_space_tree->erase(start_io, end);
 	}
 	else {
+		bool found = false;
 		addr_t end = start + size - 1;
+		cpu->memory_space_tree->search(start, end, cpu->memory_out);
+		for (auto &region : cpu->memory_out) {
+			if ((region.get().get()->start == start) && (region.get().get()->end == end)) {
+				if (region.get().get()->type == MEM_ROM) {
+					rom_idx = region.get().get()->rom_idx;
+				}
+				found = true;
+				break;
+			}
+		}
+
+		if (!found) {
+			return LIB86CPU_INVALID_PARAMETER;
+		}
+
 		deleted = cpu->memory_space_tree->erase(start, end);
 	}
 
 	if (deleted) {
+		if (rom_idx != -1) {
+			cpu->vec_rom[rom_idx].second--;
+			if (cpu->vec_rom[rom_idx].second == 0) {
+				cpu->vec_rom.erase(cpu->vec_rom.begin() + rom_idx);
+			}
+		}
 		return LIB86CPU_SUCCESS;
 	}
 	else {
