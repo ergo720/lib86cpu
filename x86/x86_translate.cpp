@@ -2252,6 +2252,18 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			break;
 
+			case 0x0A:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x0B: {
+				Value *val, *rm, *reg = GET_REG(OPNUM_DST);
+				GET_RM(OPNUM_SRC, val = LD_REG_val(rm); val = OR(val, LD_REG_val(reg)); ST_REG_val(val, reg);,
+				val = LD_MEM(fn_idx[size_mode], rm); val = OR(val, LD_REG_val(reg)); ST_REG_val(val, reg););
+				SET_FLG(val, CONST32(0));
+			}
+			break;
+
 			case 0x0C:
 				size_mode = SIZE8;
 				[[fallthrough]];
@@ -2267,6 +2279,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 			case 0x80:
+			case 0x82:
 				size_mode = SIZE8;
 				[[fallthrough]];
 
@@ -2280,8 +2293,18 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			break;
 
+			case 0x83: {
+				assert(instr.reg_opc == 1);
+
+				Value *val, *rm, *src = size_mode == SIZE16 ? SEXT16(GET_IMM8()) : SEXT32(GET_IMM8());
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = OR(val, src); ST_REG_val(val, rm);,
+				val = LD_MEM(fn_idx[size_mode], rm); val = OR(val, src); ST_MEM(fn_idx[size_mode], rm, val););
+				SET_FLG(val, CONST32(0));
+			}
+			break;
+
 			default:
-				BAD;
+				LIB86CPU_ABORT();
 			}
 		}
 		break;
