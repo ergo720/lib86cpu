@@ -813,13 +813,24 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			{
 			case 0x38:
 				size_mode = SIZE8;
-				val = LD_REG_val(GET_REG(OPNUM_SRC));
-				GET_RM(OPNUM_DST, cmp = LD_REG_val(rm);, cmp = LD_MEM(fn_idx[size_mode], rm););
+				cmp = LD_REG_val(GET_REG(OPNUM_SRC));
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
 				break;
 
 			case 0x39:
-				val = LD_REG_val(GET_REG(OPNUM_SRC));
-				GET_RM(OPNUM_DST, cmp = LD_REG_val(rm);, cmp = LD_MEM(fn_idx[size_mode], rm););
+				cmp = LD_REG_val(GET_REG(OPNUM_SRC));
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				break;
+
+			case 0x3A:
+				size_mode = SIZE8;
+				val = LD_REG_val(GET_REG(OPNUM_DST));
+				GET_RM(OPNUM_SRC, cmp = LD_REG_val(rm);, cmp = LD_MEM(fn_idx[size_mode], rm););
+				break;
+
+			case 0x3B:
+				val = LD_REG_val(GET_REG(OPNUM_DST));
+				GET_RM(OPNUM_SRC, cmp = LD_REG_val(rm);, cmp = LD_MEM(fn_idx[size_mode], rm););
 				break;
 
 			case 0x3C:
@@ -854,7 +865,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				break;
 
 			default:
-				BAD;
+				LIB86CPU_ABORT();
 			}
 
 			sub = SUB(val, cmp);
