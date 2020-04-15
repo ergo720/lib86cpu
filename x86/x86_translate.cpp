@@ -1114,7 +1114,39 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case X86_OPC_IN:          BAD;
+		case X86_OPC_IN: {
+			switch (instr.opcode_byte)
+			{
+			case 0xE4:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xE5: {
+				Value *port = GET_IMM8();
+				check_io_priv_emit(cpu, ZEXT32(port), size_mode);
+				Value *val = LD_IO(fn_io_idx[size_mode], ZEXT16(port));
+				size_mode == SIZE16 ? ST_R16(val, EAX_idx) : size_mode == SIZE32 ? ST_R32(val, EAX_idx) : ST_R8L(val, EAX_idx);
+			}
+			break;
+
+			case 0xEC:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xED: {
+				Value *port = LD_R16(EDX_idx);
+				check_io_priv_emit(cpu, ZEXT32(port), size_mode);
+				Value *val = LD_IO(fn_io_idx[size_mode], port);
+				size_mode == SIZE16 ? ST_R16(val, EAX_idx) : size_mode == SIZE32 ? ST_R32(val, EAX_idx) : ST_R8L(val, EAX_idx);
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+		}
+		break;
+
 		case X86_OPC_INC: {
 			switch (instr.opcode_byte)
 			{
