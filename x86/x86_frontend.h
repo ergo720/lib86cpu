@@ -20,7 +20,7 @@ Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
 Value *get_operand(cpu_t *cpu, x86_instr *instr, const unsigned opnum);
 Value *mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_priv);
 void mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const unsigned is_priv);
-void check_io_priv_emit(cpu_t *cpu, Value *port, Value *mask);
+void check_io_priv_emit(cpu_t *cpu, Value *port, uint8_t size_mode);
 void stack_push_emit(cpu_t *cpu, std::vector<Value *> &vec, uint32_t size_mode);
 std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at = 0);
 void link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr);

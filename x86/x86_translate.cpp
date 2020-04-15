@@ -403,6 +403,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	addr_t pc = disas_ctx->virt_pc;
 	// we can use the same indexes for both loads and stores because they have the same order in cpu->ptr_mem_xxfn
 	static const uint8_t fn_idx[3] = { MEM_LD32_idx, MEM_LD16_idx, MEM_LD8_idx };
+	static const uint8_t fn_io_idx[3] = { IO_LD32_idx, IO_LD16_idx, IO_LD8_idx };
 
 	cpu->ptr_cpu_ctx = cpu->bb->getParent()->arg_begin();
 	cpu->ptr_cpu_ctx->setName("cpu_ctx");
@@ -2288,15 +2289,30 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_OUT:
 			switch (instr.opcode_byte)
 			{
-			case 0xEE: {
+			case 0xE6:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xE7: {
+				Value *port = GET_IMM8();
+				check_io_priv_emit(cpu, ZEXT32(port), size_mode);
+				ST_IO(fn_io_idx[size_mode], ZEXT16(port), size_mode == SIZE16 ? LD_R16(EAX_idx) : size_mode == SIZE32 ? LD_R32(EAX_idx) : LD_R8L(EAX_idx));
+			}
+			break;
+
+			case 0xEE:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xEF: {
 				Value *port = LD_R16(EDX_idx);
-				check_io_priv_emit(cpu, ZEXT32(port), CONST32(1));
-				ST_IO(IO_ST8_idx, port, LD_R8L(EAX_idx));
+				check_io_priv_emit(cpu, ZEXT32(port), size_mode);
+				ST_IO(fn_io_idx[size_mode], port, size_mode == SIZE16 ? LD_R16(EAX_idx) : size_mode == SIZE32 ? LD_R32(EAX_idx) : LD_R8L(EAX_idx));
 			}
 			break;
 
 			default:
-				BAD;
+				LIB86CPU_ABORT();
 			}
 			break;
 

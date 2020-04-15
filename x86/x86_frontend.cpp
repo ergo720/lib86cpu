@@ -1455,8 +1455,10 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 }
 
 void
-check_io_priv_emit(cpu_t *cpu, Value *port, Value *mask)
+check_io_priv_emit(cpu_t *cpu, Value *port, uint8_t size_mode)
 {
+	static const uint8_t op_size_to_mem_size[3] = { 4, 2, 1 };
+
 	if ((cpu->cpu_ctx.hflags & HFLG_PE_MODE) && ((cpu->cpu_ctx.hflags & HFLG_CPL) > ((cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12))) {
 		std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
 		BasicBlock *bb_exp = RAISE0(EXP_GP);
@@ -1472,7 +1474,7 @@ check_io_priv_emit(cpu_t *cpu, Value *port, Value *mask)
 		temp = LD_MEM(MEM_LD16_idx, ADD(base, io_port_offset));
 		ST(value, ZEXT32(temp));
 		ST(value, SHR(LD(value), AND(port, CONST32(7))));
-		BR_COND(bb_exp, vec_bb[2], ICMP_NE(AND(LD(value), mask), CONST32(0)));
+		BR_COND(bb_exp, vec_bb[2], ICMP_NE(AND(LD(value), CONST32((1 << op_size_to_mem_size[size_mode]) - 1)), CONST32(0)));
 		cpu->bb = vec_bb[2];
 	}
 }
