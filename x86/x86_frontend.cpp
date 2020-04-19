@@ -13,8 +13,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/LinkAllPasses.h"
 #include "llvm/IR/Verifier.h"
-#include "llvm/ExecutionEngine/Orc/LLJIT.h"
-#include "lib86cpu.h"
+#include "jit.h"
 #include "x86_internal.h"
 #include "x86_frontend.h"
 #include "x86_memory.h"
@@ -619,17 +618,12 @@ gen_exp_fn(cpu_t *cpu)
 
 	orc::ThreadSafeContext tsc(std::unique_ptr<LLVMContext>(cpu->ctx));
 	orc::ThreadSafeModule tsm(std::unique_ptr<Module>(cpu->mod), tsc);
-	if (cpu->jit->addIRModule(std::move(tsm))) {
-		LIB86CPU_ABORT();
-	}
+	cpu->jit->add_ir_module(std::move(tsm));
 
 	cpu->cpu_ctx.exp_fn = reinterpret_cast<raise_exp_t>(cpu->jit->lookup("cpu_raise_exception")->getAddress());
 	assert(cpu->cpu_ctx.exp_fn);
 
-	orc::MangleAndInterner mangle(cpu->jit->getExecutionSession(), *cpu->dl);
-	orc::SymbolNameSet module_symbol_names({ mangle("cpu_raise_exception") });
-	[[maybe_unused]] auto err = cpu->jit->getMainJITDylib().remove(module_symbol_names);
-	assert(!err);
+	cpu->jit->remove_symbols(std::vector<std::string> { "cpu_raise_exception" });
 }
 
 void

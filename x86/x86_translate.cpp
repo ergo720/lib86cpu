@@ -14,6 +14,7 @@
 #include "x86_isa.h"
 #include "x86_frontend.h"
 #include "x86_memory.h"
+#include "jit.h"
 
 #define BAD       printf("%s: encountered unimplemented instruction %s\n", __func__, get_instr_name(instr.opcode)); return LIB86CPU_OP_NOT_IMPLEMENTED
 #define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
@@ -164,43 +165,8 @@ tc_cache_clear(cpu_t *cpu)
 		bucket.clear();
 	}
 
-	// annoyingly, llvm doesn't implement module removal, which means we have to destroy the entire jit object to delete the memory of the
-	// generated code blocks. This is documented at https://llvm.org/docs/ORCv2.html and in particular "Module removal is not yet supported.
-	// There is no equivalent of the layer concept removeModule/removeObject methods. Work on resource tracking and removal in ORCv2 is ongoing."
-
 	delete cpu->dl;
-	auto jtmb = orc::JITTargetMachineBuilder::detectHost();
-	if (!jtmb) {
-		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
-	}
-	SubtargetFeatures features;
-	StringMap<bool> host_features;
-	if (sys::getHostCPUFeatures(host_features))
-		for (auto &F : host_features) {
-			features.AddFeature(F.first(), F.second);
-		}
-	jtmb->setCPU(sys::getHostCPUName())
-		.addFeatures(features.getFeatures())
-		.setRelocationModel(None)
-		.setCodeModel(None);
-	auto dl = jtmb->getDefaultDataLayoutForTarget();
-	if (!dl) {
-		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
-	}
-	cpu->dl = new DataLayout(*dl);
-	if (cpu->dl == nullptr) {
-		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
-	}
-	auto jit = orc::LLJIT::Create(std::move(*jtmb), *dl, std::thread::hardware_concurrency());
-	if (!jit) {
-		LIB86CPU_ABORT_msg("Couldn't recreate jit object! (failed at line %d)\n", __LINE__);
-	}
-	cpu->jit = std::move(*jit);
-	cpu->jit->getMainJITDylib().setGenerator(
-		*orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(*dl));
-#ifdef _WIN32
-	cpu->jit->getObjLinkingLayer().setOverrideObjectFlagsWithResponsibilityFlags(true);
-#endif
+	cpu->jit = std::move(lib86cpu_jit::create(cpu));
 }
 
 static void
@@ -3497,13 +3463,7 @@ cpu_exec_tc(cpu_t *cpu)
 
 			orc::ThreadSafeContext tsc(std::unique_ptr<LLVMContext>(cpu->ctx));
 			orc::ThreadSafeModule tsm(std::unique_ptr<Module>(cpu->mod), tsc);
-			if (cpu->jit->addIRModule(std::move(tsm))) {
-				delete cpu->mod;
-				delete cpu->ctx;
-				cpu->mod = nullptr;
-				cpu->ctx = nullptr;
-				return LIB86CPU_LLVM_ERROR;
-			}
+			cpu->jit->add_ir_module(std::move(tsm));
 
 			tc->tc_ctx.pc = pc;
 			tc->tc_ctx.cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
@@ -3515,15 +3475,8 @@ cpu_exec_tc(cpu_t *cpu)
 			tc->tc_ctx.jmp_offset[1] = tc->tc_ctx.jmp_offset[2] = tc->tc_ctx.jmp_offset[0];
 			assert(tc->tc_ctx.jmp_offset[0]);
 
-			{
-				// now remove the function symbol names so that we can reuse them for other modules
-				// NOTE: the mangle object must be destroyed when tc_cache_clear is called or else some symbols won't be removed when the jit
-				// object is destroyed and llvm will assert
-				orc::MangleAndInterner mangle(cpu->jit->getExecutionSession(), *cpu->dl);
-				orc::SymbolNameSet module_symbol_names({ mangle("main"), mangle("exit") });
-				[[maybe_unused]] auto err = cpu->jit->getMainJITDylib().remove(module_symbol_names);
-				assert(!err);
-			}
+			// now remove the function symbol names so that we can reuse them for other modules
+			cpu->jit->remove_symbols(std::vector<std::string> { "main", "exit" });
 
 			// llvm will delete the context and the module by itself, so we just null both the pointers now to prevent accidental usage
 			cpu->ctx = nullptr;

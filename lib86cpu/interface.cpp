@@ -5,13 +5,10 @@
  * the libcpu developers  Copyright (c) 2009-2010
  */
 
-#include "llvm/IR/Module.h"
 #include "llvm/Support/TargetSelect.h"
-#include "llvm/ExecutionEngine/Orc/LLJIT.h"
-#include "lib86cpu.h"
+#include "jit.h"
 #include "x86_internal.h"
 #include <fstream>
-
 
 static void
 sync_hflags(cpu_t *cpu)
@@ -69,44 +66,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 	InitializeNativeTarget();
 	InitializeNativeTargetAsmParser();
 	InitializeNativeTargetAsmPrinter();
-	auto jtmb = orc::JITTargetMachineBuilder::detectHost();
-	if (!jtmb) {
-		cpu_free(cpu);
-		return LIB86CPU_LLVM_ERROR;
-	}
-	SubtargetFeatures features;
-	StringMap<bool> host_features;
-	if (sys::getHostCPUFeatures(host_features))
-		for (auto &F : host_features) {
-			features.AddFeature(F.first(), F.second);
-		}
-	jtmb->setCPU(sys::getHostCPUName())
-		.addFeatures(features.getFeatures())
-		.setRelocationModel(None)
-		.setCodeModel(None);
-	auto dl = jtmb->getDefaultDataLayoutForTarget();
-	if (!dl) {
-		cpu_free(cpu);
-		return LIB86CPU_LLVM_ERROR;
-	}
-	cpu->dl = new DataLayout(*dl);
-	if (cpu->dl == nullptr) {
-		cpu_free(cpu);
-		return LIB86CPU_NO_MEMORY;
-	}
-	// XXX use sys::getHostNumPhysicalCores from llvm to exclude logical cores?
-	auto jit = orc::LLJIT::Create(std::move(*jtmb), *dl, std::thread::hardware_concurrency());
-	if (!jit) {
-		cpu_free(cpu);
-		return LIB86CPU_LLVM_ERROR;
-	}
-	cpu->jit = std::move(*jit);
-	cpu->jit->getMainJITDylib().setGenerator(
-		*orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(*dl));
-#ifdef _WIN32
-	// workaround for llvm bug D65548
-	cpu->jit->getObjLinkingLayer().setOverrideObjectFlagsWithResponsibilityFlags(true);
-#endif
+	cpu->jit = std::move(lib86cpu_jit::create(cpu));
 
 	// check if FP80 and FP128 are supported by this architecture
 	std::string data_layout = cpu->dl->getStringRepresentation();

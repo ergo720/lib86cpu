@@ -26,18 +26,14 @@ namespace llvm {
 	class Value;
 	class DataLayout;
 	class GlobalVariable;
-	namespace orc {
-		class LLJIT;
-	}
 }
 
 using namespace llvm;
 
 // lib86cpu error flags
 enum lib86cpu_status {
-	LIB86CPU_NO_MEMORY = -4,
+	LIB86CPU_NO_MEMORY = -3,
 	LIB86CPU_INVALID_PARAMETER,
-	LIB86CPU_LLVM_ERROR,
 	LIB86CPU_OP_NOT_IMPLEMENTED,
 	LIB86CPU_SUCCESS,
 };
@@ -193,6 +189,8 @@ struct cpu_ctx_t {
 	exp_info_t *ptr_exp_info;
 };
 
+// forward declare
+class lib86cpu_jit;
 struct cpu_t {
 	uint32_t cpu_flags;
 	const char *cpu_name;
@@ -212,7 +210,7 @@ struct cpu_t {
 	std::vector<std::pair<std::unique_ptr<uint8_t[]>, int>> vec_rom;
 
 	// llvm specific variables
-	std::unique_ptr<orc::LLJIT> jit;
+	std::unique_ptr<lib86cpu_jit> jit;
 	DataLayout *dl;
 	LLVMContext *ctx;
 	Module *mod;
