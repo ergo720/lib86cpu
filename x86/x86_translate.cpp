@@ -6,7 +6,6 @@
 
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
-#include "llvm/ExecutionEngine/Orc/LLJIT.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Verifier.h"
@@ -19,6 +18,19 @@
 #define BAD       printf("%s: encountered unimplemented instruction %s\n", __func__, get_instr_name(instr.opcode)); return LIB86CPU_OP_NOT_IMPLEMENTED
 #define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
 
+
+translated_code_t::translated_code_t(cpu_t *cpu) noexcept
+{
+	this->cpu = cpu;
+	this->tc_ctx.size = 0;
+	this->tc_ctx.flags = 0;
+	this->tc_ctx.ptr_code = nullptr;
+}
+
+translated_code_t::~translated_code_t()
+{
+	this->cpu->jit->free_code_block(this->tc_ctx.ptr_code);
+}
 
 static translated_code_t *
 tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
@@ -93,12 +105,10 @@ tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t 
 					translated_code_t *tc = it->get();
 					if (tc == tc_in_page) {
 						found = 1;
-						// this will leak the memory of the removed block!
 						(it == cpu_ctx->cpu->code_cache[idx].begin()) ?
 							cpu_ctx->cpu->code_cache[idx].pop_front() :
 							cpu_ctx->cpu->code_cache[idx].erase_after(it_prev);
 						cpu_ctx->cpu->num_tc--;
-						cpu_ctx->cpu->num_leaked_tc++;
 						break;
 					}
 					it_prev = it;
@@ -159,14 +169,10 @@ static void
 tc_cache_clear(cpu_t *cpu)
 {
 	cpu->num_tc = 0;
-	cpu->num_leaked_tc = 0;
 	cpu->tc_page_map.clear();
 	for (auto &bucket : cpu->code_cache) {
 		bucket.clear();
 	}
-
-	delete cpu->dl;
-	cpu->jit = std::move(lib86cpu_jit::create(cpu));
 }
 
 static void
@@ -308,10 +314,10 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 				cpu_ctx->hflags &= ~(HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE);
 			}
 
-			// since tc_cache_clear has deleted the calling code block, we must return to the translator with an exception. We also have to setup the eip
-			// to point to the next instruction
+			// since tc_cache_clear has deleted the calling code block, we must return to the translator with an exception
 			cpu_ctx->regs.eip = (eip + bytes);
 			cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
+			cpu_ctx->cpu->jit->free_code_block(cpu_ctx->exp_fn);
 			gen_exp_fn(cpu_ctx->cpu);
 			throw -1;
 		}
@@ -3411,7 +3417,7 @@ cpu_exec_tc(cpu_t *cpu)
 		if (ptr_tc == nullptr) {
 
 			// code block for this pc not present, we need to translate new code
-			std::unique_ptr<translated_code_t> tc(new translated_code_t);
+			std::unique_ptr<translated_code_t> tc(new translated_code_t(cpu));
 			cpu->ctx = new LLVMContext();
 			if (cpu->ctx == nullptr) {
 				return LIB86CPU_NO_MEMORY;
@@ -3424,8 +3430,6 @@ cpu_exec_tc(cpu_t *cpu)
 			}
 
 			cpu->tc = tc.get();
-			cpu->tc->tc_ctx.size = 0;
-			cpu->tc->tc_ctx.flags = 0;
 			create_tc_prologue(cpu);
 
 			// add to the module the external host functions that will be called by the translated guest code
@@ -3468,7 +3472,6 @@ cpu_exec_tc(cpu_t *cpu)
 			tc->tc_ctx.pc = pc;
 			tc->tc_ctx.cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
 			tc->tc_ctx.cpu_flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
-
 			tc->tc_ctx.ptr_code = reinterpret_cast<entry_t>(cpu->jit->lookup("main")->getAddress());
 			assert(tc->tc_ctx.ptr_code);
 			tc->tc_ctx.jmp_offset[0] = reinterpret_cast<entry_t>(cpu->jit->lookup("exit")->getAddress());
@@ -3488,21 +3491,14 @@ cpu_exec_tc(cpu_t *cpu)
 			cpu->bb = nullptr;
 
 			if (disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR)) {
-				// this will leave behind the memory of the generated code block, however tc_cache_clear will still delete it later so
-				// this is probably acceptable for now
-
-				cpu->num_leaked_tc++;
 				cpu->cpu_ctx.hflags &= ~HFLG_DISAS_ONE;
 				tc_run_code(&cpu->cpu_ctx, ptr_tc);
 				prev_tc = nullptr;
 				continue;
 			}
 			else {
-				if ((cpu->num_tc + cpu->num_leaked_tc) == CODE_CACHE_MAX_SIZE) {
+				if ((cpu->num_tc) == CODE_CACHE_MAX_SIZE) {
 					tc_cache_clear(cpu);
-					// NOTE: actually we wouldn't need to regenerate the exception function but because clearing the code cache also destroys it,
-					// we must recreate it for now
-					gen_exp_fn(cpu);
 					prev_tc = nullptr;
 				}
 				tc_cache_insert(cpu, pc, std::move(tc));

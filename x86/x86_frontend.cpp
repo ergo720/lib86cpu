@@ -619,10 +619,8 @@ gen_exp_fn(cpu_t *cpu)
 	orc::ThreadSafeContext tsc(std::unique_ptr<LLVMContext>(cpu->ctx));
 	orc::ThreadSafeModule tsm(std::unique_ptr<Module>(cpu->mod), tsc);
 	cpu->jit->add_ir_module(std::move(tsm));
-
 	cpu->cpu_ctx.exp_fn = reinterpret_cast<raise_exp_t>(cpu->jit->lookup("cpu_raise_exception")->getAddress());
 	assert(cpu->cpu_ctx.exp_fn);
-
 	cpu->jit->remove_symbols(std::vector<std::string> { "cpu_raise_exception" });
 }
 

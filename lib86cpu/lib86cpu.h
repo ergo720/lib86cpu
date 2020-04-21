@@ -134,6 +134,7 @@ struct exp_info_t {
 // forward declare
 struct translated_code_t;
 struct cpu_ctx_t;
+struct cpu_t;
 using entry_t = translated_code_t *(*)(cpu_ctx_t *cpu_ctx);
 using raise_exp_t = translated_code_t *(*)(cpu_ctx_t *cpu_ctx, exp_data_t *exp_data);
 
@@ -149,7 +150,10 @@ struct translated_code_ctx_t {
 
 struct translated_code_t {
 	std::forward_list<translated_code_t *> linked_tc;
+	cpu_t *cpu;
 	translated_code_ctx_t tc_ctx;
+	explicit translated_code_t(cpu_t *cpu) noexcept;
+	~translated_code_t();
 };
 
 struct disas_ctx_t {
@@ -175,8 +179,6 @@ struct lazy_eflags_t {
 	uint8_t parity[256] = { GEN_TABLE };
 };
 
-// forward declare
-struct cpu_t;
 // this struct should contain all cpu variables which need to be visible from the llvm generated code
 struct cpu_ctx_t {
 	cpu_t *cpu;
@@ -205,7 +207,6 @@ struct cpu_t {
 	std::forward_list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
 	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
 	uint16_t num_tc;
-	uint32_t num_leaked_tc;
 	exp_info_t exp_info;
 	std::vector<std::pair<std::unique_ptr<uint8_t[]>, int>> vec_rom;
 

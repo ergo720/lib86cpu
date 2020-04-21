@@ -5,7 +5,7 @@
  */
 
 #include "jit.h"
-#include "llvm/ExecutionEngine/SectionMemoryManager.h"
+#include "allocator.h"
 
 
 class tm_owning_simple_compiler : public SimpleCompiler {
@@ -54,7 +54,7 @@ lib86cpu_jit::lib86cpu_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr
     m_dl(std::move(dl)),
     m_obj_linking_layer(
         *this->m_es,
-        []() { return std::make_unique<SectionMemoryManager>(); }),
+        [this]() { return std::make_unique<SectionMemoryManager>(&g_mem_manager); }),
     m_compile_layer(*this->m_es, m_obj_linking_layer, tm_owning_simple_compiler(std::move(tm))),
     m_ctor_runner(m_sym_table),
     m_dtor_runner(m_sym_table)
@@ -121,4 +121,13 @@ lib86cpu_jit::remove_symbols(std::vector<std::string> &names)
     }
     [[maybe_unused]] auto err = m_sym_table.remove(module_symbol_names);
     assert(!err);
+}
+
+void
+lib86cpu_jit::free_code_block(void *addr)
+{
+    // based on the llvm sources and observed behaviour, the ptr_code of the tc is exactly the same addr that was initially allocated
+    // by allocateMappedMemory, so this will work in practice. Also note that our custom pool allocator uses a fixed block size, and thus
+    // it implicitly knows the size of the allocation
+    g_mem_manager.releaseMappedMemory(sys::MemoryBlock(addr, 1));
 }

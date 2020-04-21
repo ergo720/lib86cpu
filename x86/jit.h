@@ -16,6 +16,7 @@
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
 #include "lib86cpu.h"
+#include "allocator.h"
 
 
 using namespace orc;
@@ -33,6 +34,7 @@ public:
 	Error run_destructors() { return m_dtor_runner.run(); }
 	RTDyldObjectLinkingLayer &get_obj_linking_layer() { return m_obj_linking_layer; }
 	void remove_symbols(std::vector<std::string> &names);
+	void free_code_block(void *addr);
 
 private:
 	lib86cpu_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetMachine> tm, DataLayout dl);

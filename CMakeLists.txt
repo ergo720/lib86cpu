@@ -31,7 +31,6 @@ IF(MSVC)
 	add_definitions(-wd4146) # unary minus operator applied to unsigned type, result still unsigned
 	add_definitions(-wd4800) # forcing value to bool 'true' or 'false' (performance warning)
 	add_definitions(-wd4355) # 'this' : used in base member initializer list
-	#include_directories(libcpu/win32/msvc)
 ENDIF()
 
 SET(LIB86CPU_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lib86cpu)
@@ -39,7 +38,11 @@ SET(LIB86CPU_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lib86cpu)
 #
 #
 #
-INCLUDE_DIRECTORIES(${LLVM_INCLUDE_DIR} ${PROJECT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/lib86cpu)
+if (WIN32)
+include_directories(${LLVM_INCLUDE_DIR} ${PROJECT_SOURCE_DIR} ${PROJECT_SOURCE_DIR}/lib86cpu ${PROJECT_SOURCE_DIR}/x86/windows)
+else (WIN32)
+message(FATAL_ERROR "Only Windows builds are supported for now")
+endif(WIN32)
 LINK_DIRECTORIES(${LLVM_LIB_DIR})
 
 MACRO(TARGET_LINK_LLVM TARGET)
