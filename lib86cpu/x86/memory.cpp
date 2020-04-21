@@ -4,8 +4,8 @@
  * ergo720                Copyright (c) 2019
  */
 
-#include "x86_internal.h"
-#include "x86_memory.h"
+#include "internal.h"
+#include "memory.h"
 #include <assert.h>
 
 

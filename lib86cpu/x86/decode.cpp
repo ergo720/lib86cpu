@@ -7,10 +7,10 @@
  */
 
 #include "lib86cpu.h"
-#include "x86_isa.h"
-#include "x86_internal.h"
-#include "x86_decode.h"
-#include "x86_memory.h"
+#include "isa.h"
+#include "internal.h"
+#include "decode.h"
+#include "memory.h"
 
 
 // Macro's to select either side of a tuple expressed as (left:right)

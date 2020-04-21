@@ -5,12 +5,12 @@
  * the libcpu developers  Copyright (c) 2009-2010
  */
 
-#include "x86_decode.h"
+#include "decode.h"
 
 const char *mnemo[] = {
 	"illegal",
 #define DECLARE_OPC(name,str) str,
-#include "x86_instr.h"
+#include "instr.h"
 #undef DECLARE_OPC
 };
 

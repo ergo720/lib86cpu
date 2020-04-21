@@ -5,7 +5,7 @@
  */
 
 #include "lib86cpu.h"
-#include "x86_internal.h"
+#include "internal.h"
 
 
 // These registers must have the same order they have in struct regs_t

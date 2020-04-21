@@ -7,7 +7,7 @@
 
 #include "llvm/Support/TargetSelect.h"
 #include "jit.h"
-#include "x86_internal.h"
+#include "internal.h"
 #include <fstream>
 
 static void

@@ -9,8 +9,8 @@
 #include <stdio.h>
 #include <assert.h>
 
-#include "x86_isa.h"
-#include "x86_internal.h"
+#include "isa.h"
+#include "internal.h"
 
 static const char *to_mnemonic(struct x86_instr *instr)
 {

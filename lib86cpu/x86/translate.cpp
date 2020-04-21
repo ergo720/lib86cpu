@@ -9,10 +9,10 @@
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/Verifier.h"
-#include "x86_internal.h"
-#include "x86_isa.h"
-#include "x86_frontend.h"
-#include "x86_memory.h"
+#include "internal.h"
+#include "isa.h"
+#include "frontend.h"
+#include "memory.h"
 #include "jit.h"
 
 #define BAD       printf("%s: encountered unimplemented instruction %s\n", __func__, get_instr_name(instr.opcode)); return LIB86CPU_OP_NOT_IMPLEMENTED

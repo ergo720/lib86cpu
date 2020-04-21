@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "x86_decode.h"
+#include "decode.h"
 
 
 void cpu_x86_init(cpu_t *cpu);

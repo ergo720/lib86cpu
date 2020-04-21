@@ -14,9 +14,9 @@
 #include "llvm/LinkAllPasses.h"
 #include "llvm/IR/Verifier.h"
 #include "jit.h"
-#include "x86_internal.h"
-#include "x86_frontend.h"
-#include "x86_memory.h"
+#include "internal.h"
+#include "frontend.h"
+#include "memory.h"
 
 
 Value *

@@ -5,7 +5,6 @@
  */
 
 #include "jit.h"
-#include "allocator.h"
 
 
 class tm_owning_simple_compiler : public SimpleCompiler {
