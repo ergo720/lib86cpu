@@ -128,5 +128,5 @@ lib86cpu_jit::free_code_block(void *addr)
 	// based on the llvm sources and observed behaviour, the ptr_code of the tc is exactly the same addr that was initially allocated
 	// by allocateMappedMemory, so this will work in practice. Also note that our custom pool allocator uses a fixed block size, and thus
 	// it implicitly knows the size of the allocation
-	g_mem_manager.releaseMappedMemory(sys::MemoryBlock(addr, 1));
+	g_mem_manager.free_block(sys::MemoryBlock(addr, 0));
 }

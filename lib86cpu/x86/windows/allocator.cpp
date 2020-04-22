@@ -159,7 +159,8 @@ mem_manager::protectMappedMemory(const sys::MemoryBlock &block, unsigned flags)
 }
 
 std::error_code
-mem_manager::releaseMappedMemory(sys::MemoryBlock &block) {
+mem_manager::releaseMappedMemory(sys::MemoryBlock &block)
+{
 	void *addr = block.base();
 	size_t size = block.size();
 
@@ -167,7 +168,7 @@ mem_manager::releaseMappedMemory(sys::MemoryBlock &block) {
 		return std::error_code();
 	}
 
-	if (!big_blocks.empty()) {
+	if (size > BLOCK_SIZE) {
 		auto it = big_blocks.find(addr);
 		if (it != big_blocks.end()) {
 			if (!VirtualFree(it->first, 0, MEM_RELEASE)) {
@@ -175,12 +176,36 @@ mem_manager::releaseMappedMemory(sys::MemoryBlock &block) {
 			}
 
 			big_blocks.erase(addr);
-			block = std::move(sys::MemoryBlock());
-			return std::error_code();
 		}
+
+		// this can happen when this is called from ~SectionMemoryManager. If the iterator is end(), it means the block was
+		// already freed with a previous call of free_block(), and thus we don't need to do anything
+		block = std::move(sys::MemoryBlock());
+		return std::error_code();
 	}
 
 	free(addr);
 	block = std::move(sys::MemoryBlock());
 	return std::error_code();
+}
+
+void
+mem_manager::free_block(sys::MemoryBlock &block)
+{
+	void *addr = block.base();
+	assert(block.size() == 0);
+
+	if (addr == 0) {
+		return;
+	}
+
+	auto it = big_blocks.find(addr);
+	if (it != big_blocks.end()) {
+		[[maybe_unused]] BOOL ret = VirtualFree(it->first, 0, MEM_RELEASE);
+		assert(ret);
+		big_blocks.erase(addr);
+		return;
+	}
+
+	free(addr);
 }
