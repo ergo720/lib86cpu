@@ -5,7 +5,6 @@
  * the libcpu developers  Copyright (c) 2009-2010
  */
 
-#include "llvm/Support/TargetSelect.h"
 #include "jit.h"
 #include "internal.h"
 #include <fstream>
@@ -62,10 +61,6 @@ cpu_new(size_t ramsize, cpu_t *&out)
 	io_region->end = UINT16_MAX;
 	cpu->io_space_tree->insert(io_region->start, io_region->end, std::move(io_region));
 
-	// init llvm
-	InitializeNativeTarget();
-	InitializeNativeTargetAsmParser();
-	InitializeNativeTargetAsmPrinter();
 	cpu->jit = std::move(lib86cpu_jit::create(cpu));
 
 	// check if FP80 and FP128 are supported by this architecture

@@ -4,6 +4,7 @@
  * ergo720                Copyright (c) 2020
  */
 
+#include "llvm/Support/TargetSelect.h"
 #include "jit.h"
 
 
@@ -16,7 +17,12 @@ private:
 };
 
 std::unique_ptr<lib86cpu_jit>
-lib86cpu_jit::create(cpu_t *cpu) {
+lib86cpu_jit::create(cpu_t *cpu)
+{
+	// init llvm
+	InitializeNativeTarget();
+	InitializeNativeTargetAsmParser();
+	InitializeNativeTargetAsmPrinter();
 	auto jtmb = orc::JITTargetMachineBuilder::detectHost();
 	if (!jtmb) {
 		LIB86CPU_ABORT();
@@ -67,7 +73,8 @@ lib86cpu_jit::lib86cpu_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr
 }
 
 void
-lib86cpu_jit::add_ir_module(ThreadSafeModule tsm) {
+lib86cpu_jit::add_ir_module(ThreadSafeModule tsm)
+{
 	assert(tsm && "Can not add null module");
 
 	if (apply_data_layout(*tsm.getModule())) {
@@ -80,12 +87,14 @@ lib86cpu_jit::add_ir_module(ThreadSafeModule tsm) {
 }
 
 Expected<JITEvaluatedSymbol>
-lib86cpu_jit::lookup_mangled(StringRef name) {
+lib86cpu_jit::lookup_mangled(StringRef name)
+{
 	return m_es->lookup(JITDylibSearchList({ {&m_sym_table, true} }), m_es->intern(name));
 }
 
 std::string
-lib86cpu_jit::mangle(StringRef unmangled_name) {
+lib86cpu_jit::mangle(StringRef unmangled_name)
+{
 	std::string mangled_name;
 	{
 		raw_string_ostream mangled_name_stream(mangled_name);
@@ -96,7 +105,8 @@ lib86cpu_jit::mangle(StringRef unmangled_name) {
 }
 
 Error
-lib86cpu_jit::apply_data_layout(Module &m) {
+lib86cpu_jit::apply_data_layout(Module &m)
+{
 	if (m.getDataLayout().isDefault()) {
 		m.setDataLayout(m_dl);
 	}
