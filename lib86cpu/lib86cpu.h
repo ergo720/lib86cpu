@@ -14,6 +14,7 @@
 #include "types.h"
 #include "interval_tree.h"
 #include <unordered_set>
+#include <string>
 
 
 namespace llvm {
@@ -32,10 +33,38 @@ using namespace llvm;
 
 // lib86cpu error flags
 enum lib86cpu_status {
-	LIB86CPU_NO_MEMORY = -3,
+	LIB86CPU_NO_MEMORY = -4,
 	LIB86CPU_INVALID_PARAMETER,
 	LIB86CPU_OP_NOT_IMPLEMENTED,
+	LIB86CPU_ALREADY_EXIST,
 	LIB86CPU_SUCCESS,
+};
+
+enum class call_conv {
+	X86_STDCALL,
+	X86_FASTCALL,
+	UNDEFINED,
+};
+
+enum class arg_types {
+	I8,
+	I16,
+	I32,
+	I64,
+	VOID,
+	PTR,
+};
+
+struct hook_info {
+	std::vector<arg_types> args;
+	std::string name;
+	void *addr;
+};
+
+struct hook {
+	call_conv d_conv;
+	call_conv o_conv;
+	hook_info info;
 };
 
 #define LIB86CPU_CHECK_SUCCESS(status) (static_cast<lib86cpu_status>(status) == 0)
@@ -209,6 +238,7 @@ struct cpu_t {
 	uint16_t num_tc;
 	exp_info_t exp_info;
 	std::vector<std::pair<std::unique_ptr<uint8_t[]>, int>> vec_rom;
+	std::unordered_map<addr_t, std::unique_ptr<hook>> hook_map;
 
 	// llvm specific variables
 	std::unique_ptr<lib86cpu_jit> jit;
@@ -241,3 +271,6 @@ API_FUNC lib86cpu_status memory_init_region_io(cpu_t *cpu, addr_t start, size_t 
 API_FUNC lib86cpu_status memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority);
 API_FUNC lib86cpu_status memory_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int priority, const char *rom_path, uint8_t *&out);
 API_FUNC lib86cpu_status memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space);
+
+// hook api
+API_FUNC lib86cpu_status hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj);

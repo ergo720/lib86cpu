@@ -15,6 +15,7 @@
 #include "llvm/ExecutionEngine/Orc/ObjectTransformLayer.h"
 #include "llvm/ExecutionEngine/Orc/RTDyldObjectLinkingLayer.h"
 #include "llvm/ExecutionEngine/Orc/ThreadSafeModule.h"
+#include "llvm/IR/Mangler.h"
 #include "lib86cpu.h"
 #include "allocator.h"
 
@@ -34,6 +35,8 @@ public:
 	Error run_destructors() { return m_dtor_runner.run(); }
 	RTDyldObjectLinkingLayer &get_obj_linking_layer() { return m_obj_linking_layer; }
 	void remove_symbols(std::vector<std::string> &names);
+	Error define_absolute(StringRef name, JITEvaluatedSymbol sym);
+	std::string mangle(Function *func);
 	void free_code_block(void *addr);
 
 private:
@@ -47,4 +50,5 @@ private:
 	RTDyldObjectLinkingLayer m_obj_linking_layer;
 	IRCompileLayer m_compile_layer;
 	CtorDtorRunner m_ctor_runner, m_dtor_runner;
+	Mangler m_mangler;
 };

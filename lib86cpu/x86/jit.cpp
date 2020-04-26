@@ -23,21 +23,34 @@ lib86cpu_jit::create(cpu_t *cpu)
 	InitializeNativeTarget();
 	InitializeNativeTargetAsmParser();
 	InitializeNativeTargetAsmPrinter();
-	auto jtmb = orc::JITTargetMachineBuilder::detectHost();
-	if (!jtmb) {
+
+#if defined(_WIN32) && defined(_MSC_VER)
+	// using detectHost on win32 will select a default "i686-pc-windows-msvc" triple, which is wrong since this will use
+	// MM_WinCOFF mangling mode, while we want MM_WinCOFFX86 for 32 bit targets. This, in turn, will cause a function
+	// name mangling failure later when we try to mangle functions which use fastcall or stdcall calling conventions in the hooks.
+	// Because of this, we construct the triple ourselves instead of using the default one.
+	// NOTE: I'm not sure if non-msvc compilers are affected as well.
+
+	auto jtmb = orc::JITTargetMachineBuilder(Triple("i686-pc-windows-msvc-coff"));
+#else
+	auto ret = orc::JITTargetMachineBuilder::detectHost();
+	if (!ret) {
 		LIB86CPU_ABORT();
 	}
+	auto jtmp = *ret;
+#endif
+
 	SubtargetFeatures features;
 	StringMap<bool> host_features;
 	if (sys::getHostCPUFeatures(host_features))
 		for (auto &F : host_features) {
 			features.AddFeature(F.first(), F.second);
 		}
-	jtmb->setCPU(sys::getHostCPUName())
+	jtmb.setCPU(sys::getHostCPUName())
 		.addFeatures(features.getFeatures())
 		.setRelocationModel(None)
 		.setCodeModel(None);
-	auto dl = jtmb->getDefaultDataLayoutForTarget();
+	auto dl = jtmb.getDefaultDataLayoutForTarget();
 	if (!dl) {
 		LIB86CPU_ABORT();
 	}
@@ -45,7 +58,7 @@ lib86cpu_jit::create(cpu_t *cpu)
 	if (cpu->dl == nullptr) {
 		LIB86CPU_ABORT();
 	}
-	auto tm = jtmb->createTargetMachine();
+	auto tm = jtmb.createTargetMachine();
 	if (!tm) {
 		LIB86CPU_ABORT();
 	}
@@ -130,6 +143,24 @@ lib86cpu_jit::remove_symbols(std::vector<std::string> &names)
 	}
 	[[maybe_unused]] auto err = m_sym_table.remove(module_symbol_names);
 	assert(!err);
+}
+
+Error
+lib86cpu_jit::define_absolute(StringRef name, JITEvaluatedSymbol sym)
+{
+	auto interned_name = m_es->intern(name);
+	SymbolMap symbols({ {interned_name, sym} });
+	return m_sym_table.define(absoluteSymbols(std::move(symbols)));
+}
+
+std::string
+lib86cpu_jit::mangle(Function *func)
+{
+	std::string mangled;
+	raw_string_ostream ss(mangled);
+	m_mangler.getNameWithPrefix(ss, func, false);
+	ss.flush();
+	return mangled;
 }
 
 void

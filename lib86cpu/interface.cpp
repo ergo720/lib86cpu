@@ -426,3 +426,35 @@ memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 		return LIB86CPU_INVALID_PARAMETER;
 	}
 }
+
+lib86cpu_status
+hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
+{
+	// NOTE: this hooks will only work as expected when they are added before cpu execution starts (becasue
+	// we don't flush the code cache here) and only when addr points to the first instruction of the hooked
+	// function (because we only check for hooks at the start of the translation of a new code block)
+
+	if (cpu->hook_map.find(addr) != cpu->hook_map.end()) {
+		return LIB86CPU_ALREADY_EXIST;
+	}
+
+	if (obj.get() == nullptr) {
+		return LIB86CPU_INVALID_PARAMETER;
+	}
+
+	if (obj->info.args.size() == 0) {
+		return LIB86CPU_INVALID_PARAMETER;
+	}
+
+	if (obj->info.args.size() > 1) {
+		for (unsigned i = 1; i < obj->info.args.size(); i++) {
+			if (obj->info.args[i] == arg_types::VOID) {
+				return LIB86CPU_INVALID_PARAMETER;
+			}
+		}
+	}
+
+	cpu->hook_map.emplace(addr, std::move(obj));
+
+	return LIB86CPU_SUCCESS;
+}

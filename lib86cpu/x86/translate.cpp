@@ -161,7 +161,9 @@ static void
 tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc)
 {
 	cpu->num_tc++;
-	cpu->tc_page_map[pc >> PAGE_SHIFT].insert(tc.get());
+	if (!(tc->tc_ctx.flags & TC_FLG_HOOK)) {
+		cpu->tc_page_map[pc >> PAGE_SHIFT].insert(tc.get());
+	}
 	cpu->code_cache[tc_hash(pc)].push_front(std::move(tc));
 }
 
@@ -259,6 +261,20 @@ create_tc_prologue(cpu_t *cpu)
 	func->setCallingConv(CallingConv::C);
 
 	cpu->bb = BB();
+	cpu->ptr_cpu_ctx = cpu->bb->getParent()->arg_begin();
+	cpu->ptr_cpu_ctx->setName("cpu_ctx");
+	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, 1);
+	cpu->ptr_regs->setName("regs");
+	cpu->ptr_eflags = GEP(cpu->ptr_cpu_ctx, 2);
+	cpu->ptr_eflags->setName("eflags");
+	cpu->ptr_hflags = GEP(cpu->ptr_cpu_ctx, 3);
+	cpu->ptr_hflags->setName("hflags");
+	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, 4);
+	cpu->ptr_tlb->setName("tlb");
+	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 5));
+	cpu->ptr_ram->setName("ram");
+	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 6));
+	cpu->ptr_exp_fn->setName("exp_fn");
 	cpu->exp_data = new GlobalVariable(*cpu->mod, type_exp_data_t, false, GlobalValue::InternalLinkage,
 		ConstantStruct::get(type_exp_data_t, std::vector<Constant *> { CONST32(0), CONST16(0), CONST16(0), CONST32(0) }), "global.exp_data");
 }
@@ -376,21 +392,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	// we can use the same indexes for both loads and stores because they have the same order in cpu->ptr_mem_xxfn
 	static const uint8_t fn_idx[3] = { MEM_LD32_idx, MEM_LD16_idx, MEM_LD8_idx };
 	static const uint8_t fn_io_idx[3] = { IO_LD32_idx, IO_LD16_idx, IO_LD8_idx };
-
-	cpu->ptr_cpu_ctx = cpu->bb->getParent()->arg_begin();
-	cpu->ptr_cpu_ctx->setName("cpu_ctx");
-	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, 1);
-	cpu->ptr_regs->setName("regs");
-	cpu->ptr_eflags = GEP(cpu->ptr_cpu_ctx, 2);
-	cpu->ptr_eflags->setName("eflags");
-	cpu->ptr_hflags = GEP(cpu->ptr_cpu_ctx, 3);
-	cpu->ptr_hflags->setName("hflags");
-	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, 4);
-	cpu->ptr_tlb->setName("tlb");
-	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 5));
-	cpu->ptr_ram->setName("ram");
-	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 6));
-	cpu->ptr_exp_fn->setName("exp_fn");
 
 	do {
 
@@ -2657,8 +2658,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case X86_OPC_RDPMC:       BAD;
 		case X86_OPC_RDTSC:       BAD;
 		case X86_OPC_RET: {
+			bool has_imm_op = false;
 			switch (instr.opcode_byte)
 			{
+			case 0xC2: {
+				has_imm_op = true;
+			}
+			[[fallthrough]];
+
 			case 0xC3: {
 				std::vector<Value *> vec = MEM_POP(1);
 				Value *ret_eip = vec[0];
@@ -2667,11 +2674,21 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 				ST_REG_val(vec[1], vec[2]);
 				ST_R32(ret_eip, EIP_idx);
+				if (has_imm_op) {
+					if (cpu->cpu_ctx.hflags & HFLG_SS32) {
+						Value *esp_ptr = GEP_R32(ESP_idx);
+						ST_REG_val(ADD(LD_REG_val(esp_ptr), CONST32(instr.operand[OPNUM_SRC].imm)), esp_ptr);
+					}
+					else {
+						Value *esp_ptr = GEP_R16(ESP_idx);
+						ST_REG_val(ADD(LD_REG_val(esp_ptr), CONST16(instr.operand[OPNUM_SRC].imm)), esp_ptr);
+					}
+				}
 			}
 			break;
 
 			default:
-				BAD;
+				LIB86CPU_ABORT();
 			}
 
 			cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
@@ -3423,6 +3440,7 @@ cpu_exec_tc(cpu_t *cpu)
 				return LIB86CPU_NO_MEMORY;
 			}
 			cpu->mod = new Module(cpu->cpu_name, *cpu->ctx);
+			cpu->mod->setDataLayout(*cpu->dl);
 			if (cpu->mod == nullptr) {
 				delete cpu->ctx;
 				cpu->ctx = nullptr;
@@ -3442,14 +3460,22 @@ cpu_exec_tc(cpu_t *cpu)
 			disas_ctx.pc = pc;
 			disas_ctx.instr_page_addr = disas_ctx.virt_pc & ~PAGE_MASK;
 
-			// start guest code translation
-			lib86cpu_status status = cpu_translate(cpu, &disas_ctx);
-			if (!LIB86CPU_CHECK_SUCCESS(status)) {
-				delete cpu->mod;
-				delete cpu->ctx;
-				cpu->mod = nullptr;
-				cpu->ctx = nullptr;
-				return status;
+			auto it = cpu->hook_map.find(disas_ctx.virt_pc);
+			if (it != cpu->hook_map.end()) {
+				cpu->instr_eip = CONST32(disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
+				hook_emit(cpu, it->second.get());
+				cpu->tc->tc_ctx.flags |= TC_FLG_HOOK;
+			}
+			else {
+				// start guest code translation
+				lib86cpu_status status = cpu_translate(cpu, &disas_ctx);
+				if (!LIB86CPU_CHECK_SUCCESS(status)) {
+					delete cpu->mod;
+					delete cpu->ctx;
+					cpu->mod = nullptr;
+					cpu->ctx = nullptr;
+					return status;
+				}
 			}
 
 			create_tc_epilogue(cpu);

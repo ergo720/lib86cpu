@@ -46,6 +46,7 @@ void set_flags_sum(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode);
 void set_flags_sub(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode);
 void set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode);
 void write_eflags(cpu_t *cpu, Value *eflags, Value *mask);
+void hook_emit(cpu_t *cpu, hook *obj);
 
 
 #define CTX() (*cpu->ctx)
