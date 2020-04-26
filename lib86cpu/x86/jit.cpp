@@ -37,7 +37,7 @@ lib86cpu_jit::create(cpu_t *cpu)
 	if (!ret) {
 		LIB86CPU_ABORT();
 	}
-	auto jtmp = *ret;
+	auto jtmb = *ret;
 #endif
 
 	SubtargetFeatures features;
