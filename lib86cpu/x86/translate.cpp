@@ -15,8 +15,8 @@
 #include "memory.h"
 #include "jit.h"
 
-#define BAD       printf("%s: encountered unimplemented instruction %s\n", __func__, get_instr_name(instr.opcode)); return LIB86CPU_OP_NOT_IMPLEMENTED
-#define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real"); return LIB86CPU_OP_NOT_IMPLEMENTED
+#define BAD       printf("%s: encountered unimplemented instruction %s\n", __func__, get_instr_name(instr.opcode)); return lc86_status::OP_NOT_IMPLEMENTED
+#define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real"); return lc86_status::OP_NOT_IMPLEMENTED
 
 
 translated_code_t::translated_code_t(cpu_t *cpu) noexcept
@@ -355,7 +355,7 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 
 		cpu_ctx->regs.cr3 = (new_cr & CR3_FLG_MASK);
 		cpu_ctx->cpu->pt_mr = as_memory_search_addr<uint8_t>(cpu_ctx->cpu, cpu_ctx->regs.cr3 & CR3_PD_MASK);
-		assert(cpu_ctx->cpu->pt_mr->type == MEM_RAM);
+		assert(cpu_ctx->cpu->pt_mr->type == mem_type::RAM);
 		break;
 
 	case 2:
@@ -381,7 +381,7 @@ get_pc(cpu_ctx_t *cpu_ctx)
 	return cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
 }
 
-static lib86cpu_status
+static lc86_status
 cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 {
 	uint8_t translate_next = 1;
@@ -431,7 +431,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
 			RAISEin(exp_data.fault_addr, exp_data.code, exp_data.idx, exp_data.eip);
-			return LIB86CPU_SUCCESS;
+			return lc86_status::SUCCESS;
 		}
 
 		if ((disas_ctx->flags & DISAS_FLG_CS32) ^ instr.op_size_override) {
@@ -3402,11 +3402,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		ST_R32(CONST32(pc - cpu_ctx->regs.cs_hidden.base), EIP_idx);
 	}
 
-	return LIB86CPU_SUCCESS;
+	return lc86_status::SUCCESS;
 }
 
 template<typename T>
-lib86cpu_status cpu_exec_tc(cpu_t *cpu, T &&lambda)
+lc86_status cpu_exec_tc(cpu_t *cpu, T &&lambda)
 {
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
 	addr_t pc;
@@ -3441,14 +3441,14 @@ lib86cpu_status cpu_exec_tc(cpu_t *cpu, T &&lambda)
 			std::unique_ptr<translated_code_t> tc(new translated_code_t(cpu));
 			cpu->ctx = new LLVMContext();
 			if (cpu->ctx == nullptr) {
-				return LIB86CPU_NO_MEMORY;
+				return lc86_status::NO_MEMORY;
 			}
 			cpu->mod = new Module(cpu->cpu_name, *cpu->ctx);
 			cpu->mod->setDataLayout(*cpu->dl);
 			if (cpu->mod == nullptr) {
 				delete cpu->ctx;
 				cpu->ctx = nullptr;
-				return LIB86CPU_NO_MEMORY;
+				return lc86_status::NO_MEMORY;
 			}
 
 			cpu->tc = tc.get();
@@ -3473,7 +3473,7 @@ lib86cpu_status cpu_exec_tc(cpu_t *cpu, T &&lambda)
 			}
 			else {
 				// start guest code translation
-				lib86cpu_status status = cpu_translate(cpu, &disas_ctx);
+				lc86_status status = cpu_translate(cpu, &disas_ctx);
 				if (!LIB86CPU_CHECK_SUCCESS(status)) {
 					delete cpu->mod;
 					delete cpu->ctx;
@@ -3564,10 +3564,10 @@ lib86cpu_status cpu_exec_tc(cpu_t *cpu, T &&lambda)
 		prev_tc = tc_run_code(&cpu->cpu_ctx, ptr_tc);
 	}
 
-	return LIB86CPU_SUCCESS;
+	return lc86_status::SUCCESS;
 }
 
-lib86cpu_status
+lc86_status
 cpu_start(cpu_t *cpu)
 {
 	gen_exp_fn(cpu);
@@ -3618,7 +3618,7 @@ trmp_edx_i8(cpu_t *cpu, std::any &value, std::vector<uint32_t *> &vec)
 	*(vec[1]) += 2; // simulates a mov dl,imm8 instruction
 }
 
-lib86cpu_status
+lc86_status
 cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std::vector<std::any> &args)
 {
 	if (hook_ptr->trmp_vec.empty()) {
@@ -3720,7 +3720,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 
 		cpu->cpu_ctx.regs.ecx = ecx;
 		cpu->cpu_ctx.regs.edx = edx;
-		return LIB86CPU_PAGE_FAULT;
+		return lc86_status::PAGE_FAULT;
 	}
 	catch (std::bad_any_cast e) {
 		// this will happen if the client passes an argument type not supported by arg_types
@@ -3728,7 +3728,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		cpu->cpu_ctx.regs.ecx = ecx;
 		cpu->cpu_ctx.regs.edx = edx;
 		LOG("Exception thrown while calling a trampoline. The error was: %s\n", e.what());
-		return LIB86CPU_INVALID_PARAMETER;
+		return lc86_status::INVALID_PARAMETER;
 	}
 
 	int i = 0;
@@ -3740,7 +3740,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 	if (hook_ptr->trmp_tc_flags != nullptr) {
 		*(hook_ptr->trmp_tc_flags) &= ~CPU_IGNORE_TC;
 	}
-	lib86cpu_status status = cpu_exec_tc(cpu, [&i]() { return i++ == 0; });
+	lc86_status status = cpu_exec_tc(cpu, [&i]() { return i++ == 0; });
 	if (hook_ptr->trmp_tc_flags == nullptr) {
 		translated_code_t *tc = tc_cache_search(cpu, addr);
 		if (tc != nullptr) {

@@ -52,7 +52,7 @@ enum x86_rep_prefix {
 };
 
 struct x86_operand {
-	enum x86_operand_type	type;
+	x86_operand_type type;
 	uint8_t       reg;
 	uint16_t      seg_sel;
 	int32_t	      disp; /* address displacement can be negative */

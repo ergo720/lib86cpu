@@ -25,7 +25,7 @@ sync_hflags(cpu_t *cpu)
 	}
 }
 
-lib86cpu_status
+lc86_status
 cpu_new(size_t ramsize, cpu_t *&out)
 {
 	cpu_t *cpu;
@@ -35,18 +35,18 @@ cpu_new(size_t ramsize, cpu_t *&out)
 
 	cpu = new cpu_t();
 	if (cpu == nullptr) {
-		return LIB86CPU_NO_MEMORY;
+		return lc86_status::NO_MEMORY;
 	}
 
 	if ((ramsize % PAGE_SIZE) != 0) {
 		cpu_free(cpu);
-		return LIB86CPU_INVALID_PARAMETER;
+		return lc86_status::INVALID_PARAMETER;
 	}
 
 	cpu->cpu_ctx.ram = new uint8_t[ramsize];
 	if (cpu->cpu_ctx.ram == nullptr) {
 		cpu_free(cpu);
-		return LIB86CPU_NO_MEMORY;
+		return lc86_status::NO_MEMORY;
 	}
 
 	cpu_x86_init(cpu);
@@ -62,7 +62,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 	io_region->end = UINT16_MAX;
 	cpu->io_space_tree->insert(io_region->start, io_region->end, std::move(io_region));
 
-	cpu->jit = std::move(lib86cpu_jit::create(cpu));
+	cpu->jit = std::move(lc86_jit::create(cpu));
 
 	// check if FP80 and FP128 are supported by this architecture
 	std::string data_layout = cpu->dl->getStringRepresentation();
@@ -79,7 +79,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 	printf("Created new cpu \"%s\"\n", cpu->cpu_name);
 
 	out = cpu->cpu_ctx.cpu = cpu;
-	return LIB86CPU_SUCCESS;
+	return lc86_status::SUCCESS;
 }
 
 void
@@ -101,7 +101,7 @@ cpu_free(cpu_t *cpu)
 	delete cpu;
 }
 
-lib86cpu_status
+lc86_status
 cpu_run(cpu_t *cpu)
 {
 	sync_hflags(cpu);
@@ -134,17 +134,17 @@ default_pmio_read_handler(addr_t addr, size_t size, void *opaque)
 	return std::numeric_limits<uint32_t>::max();
 }
 
-lib86cpu_status
+lc86_status
 memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 {
 	std::unique_ptr<memory_region_t<addr_t>> ram(new memory_region_t<addr_t>);
 
 	if (size == 0) {
-		return LIB86CPU_INVALID_PARAMETER;
+		return lc86_status::INVALID_PARAMETER;
 	}
 
 	if ((start % PAGE_SIZE) != 0 || ((size % PAGE_SIZE) != 0)) {
-		return LIB86CPU_INVALID_PARAMETER;
+		return lc86_status::INVALID_PARAMETER;
 	}
 
 	addr_t end = start + size - 1;
@@ -152,37 +152,37 @@ memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 
 	for (auto &region : cpu->memory_out) {
 		if (region.get()->priority == priority) {
-			return LIB86CPU_INVALID_PARAMETER;
+			return lc86_status::INVALID_PARAMETER;
 		}
 	}
 
 	ram->start = start;
 	ram->end = end;
-	ram->type = MEM_RAM;
+	ram->type = mem_type::RAM;
 	ram->priority = priority;
 
 	if (cpu->memory_space_tree->insert(start, end, std::move(ram))) {
-		return LIB86CPU_SUCCESS;
+		return lc86_status::SUCCESS;
 	}
 	else {
-		return LIB86CPU_INVALID_PARAMETER;
+		return lc86_status::INVALID_PARAMETER;
 	}
 }
 
-lib86cpu_status
+lc86_status
 memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read read_func, fp_write write_func, void *opaque, int priority)
 {
 	bool inserted;
 
 	if (size == 0) {
-		return LIB86CPU_INVALID_PARAMETER;
+		return lc86_status::INVALID_PARAMETER;
 	}
 
 	if (io_space) {
 		std::unique_ptr<memory_region_t<port_t>> io(new memory_region_t<port_t>);
 
 		if (start > 65535 || (start + size) > 65536) {
-			return LIB86CPU_INVALID_PARAMETER;
+			return lc86_status::INVALID_PARAMETER;
 		}
 
 		port_t start_io = static_cast<port_t>(start);
@@ -191,13 +191,13 @@ memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_r
 
 		for (auto &region : cpu->io_out) {
 			if (region.get()->priority == priority) {
-				return LIB86CPU_INVALID_PARAMETER;
+				return lc86_status::INVALID_PARAMETER;
 			}
 		}
 
 		io->start = start_io;
 		io->end = end;
-		io->type = MEM_PMIO;
+		io->type = mem_type::PMIO;
 		io->priority = priority;
 		if (read_func) {
 			io->read_handler = read_func;
@@ -224,13 +224,13 @@ memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_r
 
 		for (auto &region : cpu->memory_out) {
 			if (region.get()->priority == priority) {
-				return LIB86CPU_INVALID_PARAMETER;
+				return lc86_status::INVALID_PARAMETER;
 			}
 		}
 
 		io->start = start;
 		io->end = end;
-		io->type = MEM_MMIO;
+		io->type = mem_type::MMIO;
 		io->priority = priority;
 		if (read_func) {
 			io->read_handler = read_func;
@@ -252,21 +252,21 @@ memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_r
 	}
 
 	if (inserted) {
-		return LIB86CPU_SUCCESS;
+		return lc86_status::SUCCESS;
 	}
 	else {
-		return LIB86CPU_INVALID_PARAMETER;
+		return lc86_status::INVALID_PARAMETER;
 	}
 }
 
 // XXX Are aliased regions allowed in the io space as well?
-lib86cpu_status
+lc86_status
 memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority)
 {
 	std::unique_ptr<memory_region_t<addr_t>> alias(new memory_region_t<addr_t>);
 
 	if (ori_size == 0) {
-		return LIB86CPU_INVALID_PARAMETER;
+		return lc86_status::INVALID_PARAMETER;
 	}
 
 	memory_region_t<addr_t> *aliased_region = nullptr;
@@ -274,7 +274,7 @@ memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_
 	cpu->memory_space_tree->search(ori_start, end, cpu->memory_out);
 
 	if (cpu->memory_out.empty()) {
-		return LIB86CPU_INVALID_PARAMETER;
+		return lc86_status::INVALID_PARAMETER;
 	}
 
 	for (auto &region : cpu->memory_out) {
@@ -285,7 +285,7 @@ memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_
 	}
 
 	if (!aliased_region) {
-		return LIB86CPU_INVALID_PARAMETER;
+		return lc86_status::INVALID_PARAMETER;
 	}
 
 	end = alias_start + ori_size - 1;
@@ -293,26 +293,26 @@ memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_
 
 	for (auto &region : cpu->memory_out) {
 		if (region.get()->priority == priority) {
-			return LIB86CPU_INVALID_PARAMETER;
+			return lc86_status::INVALID_PARAMETER;
 		}
 	}
 
 	alias->start = alias_start;
 	alias->end = end;
 	alias->alias_offset = ori_start - aliased_region->start;
-	alias->type = MEM_ALIAS;
+	alias->type = mem_type::ALIAS;
 	alias->priority = priority;
 	alias->aliased_region = aliased_region;
 
 	if (cpu->memory_space_tree->insert(alias_start, end, std::move(alias))) {
-		return LIB86CPU_SUCCESS;
+		return lc86_status::SUCCESS;
 	}
 	else {
-		return LIB86CPU_INVALID_PARAMETER;
+		return lc86_status::INVALID_PARAMETER;
 	}
 }
 
-lib86cpu_status
+lc86_status
 memory_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int priority, const char *rom_path, uint8_t *&out)
 {
 	std::unique_ptr<memory_region_t<addr_t>> rom(new memory_region_t<addr_t>);
@@ -320,17 +320,17 @@ memory_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, i
 	if (out == nullptr) {
 		std::ifstream ifs(rom_path, std::ios_base::in | std::ios_base::binary);
 		if (!ifs.is_open()) {
-			return LIB86CPU_INVALID_PARAMETER;
+			return lc86_status::INVALID_PARAMETER;
 		}
 		ifs.seekg(0, ifs.end);
 		size_t length = ifs.tellg();
 		ifs.seekg(0, ifs.beg);
 
 		if (length == 0) {
-			return LIB86CPU_INVALID_PARAMETER;
+			return lc86_status::INVALID_PARAMETER;
 		}
 		else if (offset + size > length) {
-			return LIB86CPU_INVALID_PARAMETER;
+			return lc86_status::INVALID_PARAMETER;
 		}
 
 		std::unique_ptr<uint8_t[]> rom_ptr(new uint8_t[size]);
@@ -349,7 +349,7 @@ memory_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, i
 		}
 
 		if (rom->rom_idx == -1) {
-			return LIB86CPU_INVALID_PARAMETER;
+			return lc86_status::INVALID_PARAMETER;
 		}
 	}
 
@@ -364,24 +364,24 @@ memory_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, i
 
 	rom->start = start;
 	rom->end = end;
-	rom->type = MEM_ROM;
+	rom->type = mem_type::ROM;
 	rom->priority = priority;
 
 	auto &rom_ref = cpu->vec_rom[rom->rom_idx];
 	if (cpu->memory_space_tree->insert(start, end, std::move(rom))) {
 		out = rom_ref.first.get();
 		rom_ref.second++;
-		return LIB86CPU_SUCCESS;
+		return lc86_status::SUCCESS;
 	}
 
 	fail:
 	if (out == nullptr) {
 		cpu->vec_rom.pop_back();
 	}
-	return LIB86CPU_INVALID_PARAMETER;
+	return lc86_status::INVALID_PARAMETER;
 }
 
-lib86cpu_status
+lc86_status
 memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 {
 	bool deleted;
@@ -398,7 +398,7 @@ memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 		cpu->memory_space_tree->search(start, end, cpu->memory_out);
 		for (auto &region : cpu->memory_out) {
 			if ((region.get().get()->start == start) && (region.get().get()->end == end)) {
-				if (region.get().get()->type == MEM_ROM) {
+				if (region.get().get()->type == mem_type::ROM) {
 					rom_idx = region.get().get()->rom_idx;
 				}
 				found = true;
@@ -407,7 +407,7 @@ memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 		}
 
 		if (!found) {
-			return LIB86CPU_INVALID_PARAMETER;
+			return lc86_status::INVALID_PARAMETER;
 		}
 
 		deleted = cpu->memory_space_tree->erase(start, end);
@@ -420,14 +420,14 @@ memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 				cpu->vec_rom.erase(cpu->vec_rom.begin() + rom_idx);
 			}
 		}
-		return LIB86CPU_SUCCESS;
+		return lc86_status::SUCCESS;
 	}
 	else {
-		return LIB86CPU_INVALID_PARAMETER;
+		return lc86_status::INVALID_PARAMETER;
 	}
 }
 
-lib86cpu_status
+lc86_status
 hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 {
 	// NOTE: this hooks will only work as expected when they are added before cpu execution starts (becasue
@@ -435,21 +435,21 @@ hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 	// function (because we only check for hooks at the start of the translation of a new code block)
 
 	if (cpu->hook_map.find(addr) != cpu->hook_map.end()) {
-		return LIB86CPU_ALREADY_EXIST;
+		return lc86_status::ALREADY_EXIST;
 	}
 
 	if (obj.get() == nullptr) {
-		return LIB86CPU_INVALID_PARAMETER;
+		return lc86_status::INVALID_PARAMETER;
 	}
 
 	if (obj->info.args.size() == 0) {
-		return LIB86CPU_INVALID_PARAMETER;
+		return lc86_status::INVALID_PARAMETER;
 	}
 
 	if (obj->info.args.size() > 1) {
 		for (unsigned i = 1; i < obj->info.args.size(); i++) {
 			if (obj->info.args[i] == arg_types::VOID) {
-				return LIB86CPU_INVALID_PARAMETER;
+				return lc86_status::INVALID_PARAMETER;
 			}
 		}
 	}
@@ -457,15 +457,15 @@ hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 	obj->trmp_vec.clear();
 	cpu->hook_map.emplace(addr, std::move(obj));
 
-	return LIB86CPU_SUCCESS;
+	return lc86_status::SUCCESS;
 }
 
-lib86cpu_status
+lc86_status
 trampoline_call(cpu_t *cpu, addr_t addr, std::any &ret, std::vector<std::any> args)
 {
 	auto it = cpu->hook_map.find(addr);
 	if (it == cpu->hook_map.end()) {
-		return LIB86CPU_NOT_FOUND;
+		return lc86_status::NOT_FOUND;
 	}
 
 	return cpu_exec_trampoline(cpu, addr, it->second.get(), ret, args);

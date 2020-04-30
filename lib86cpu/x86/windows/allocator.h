@@ -20,6 +20,8 @@
 #define BLOCK_SIZE       (4 * 1024)              // 4 KiB
 #define BLOCKS_PER_POOL  POOL_SIZE / BLOCK_SIZE  // 16
 
+using namespace llvm;
+
 
 class mem_manager final : public SectionMemoryManager::MemoryMapper {
 public:

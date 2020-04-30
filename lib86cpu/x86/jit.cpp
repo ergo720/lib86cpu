@@ -16,8 +16,8 @@ private:
 	std::shared_ptr<TargetMachine> m_tm;
 };
 
-std::unique_ptr<lib86cpu_jit>
-lib86cpu_jit::create(cpu_t *cpu)
+std::unique_ptr<lc86_jit>
+lc86_jit::create(cpu_t *cpu)
 {
 	// init llvm
 	InitializeNativeTarget();
@@ -63,10 +63,10 @@ lib86cpu_jit::create(cpu_t *cpu)
 		LIB86CPU_ABORT();
 	}
 
-	return std::unique_ptr<lib86cpu_jit>(new lib86cpu_jit(std::make_unique<ExecutionSession>(), std::move(*tm), std::move(*dl)));
+	return std::unique_ptr<lc86_jit>(new lc86_jit(std::make_unique<ExecutionSession>(), std::move(*tm), std::move(*dl)));
 }
 
-lib86cpu_jit::lib86cpu_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetMachine> tm, DataLayout dl) :
+lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetMachine> tm, DataLayout dl) :
 	m_es(std::move(es)),
 	m_sym_table(this->m_es->getMainJITDylib()),
 	m_dl(std::move(dl)),
@@ -86,7 +86,7 @@ lib86cpu_jit::lib86cpu_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr
 }
 
 void
-lib86cpu_jit::add_ir_module(ThreadSafeModule tsm)
+lc86_jit::add_ir_module(ThreadSafeModule tsm)
 {
 	assert(tsm && "Can not add null module");
 
@@ -100,13 +100,13 @@ lib86cpu_jit::add_ir_module(ThreadSafeModule tsm)
 }
 
 Expected<JITEvaluatedSymbol>
-lib86cpu_jit::lookup_mangled(StringRef name)
+lc86_jit::lookup_mangled(StringRef name)
 {
 	return m_es->lookup(JITDylibSearchList({ {&m_sym_table, true} }), m_es->intern(name));
 }
 
 std::string
-lib86cpu_jit::mangle(StringRef unmangled_name)
+lc86_jit::mangle(StringRef unmangled_name)
 {
 	std::string mangled_name;
 	{
@@ -118,7 +118,7 @@ lib86cpu_jit::mangle(StringRef unmangled_name)
 }
 
 Error
-lib86cpu_jit::apply_data_layout(Module &m)
+lc86_jit::apply_data_layout(Module &m)
 {
 	if (m.getDataLayout().isDefault()) {
 		m.setDataLayout(m_dl);
@@ -134,7 +134,7 @@ lib86cpu_jit::apply_data_layout(Module &m)
 }
 
 void
-lib86cpu_jit::remove_symbols(std::vector<std::string> &names)
+lc86_jit::remove_symbols(std::vector<std::string> &names)
 {
 	MangleAndInterner mangle(*m_es, m_dl);
 	orc::SymbolNameSet module_symbol_names;
@@ -146,7 +146,7 @@ lib86cpu_jit::remove_symbols(std::vector<std::string> &names)
 }
 
 Error
-lib86cpu_jit::define_absolute(StringRef name, JITEvaluatedSymbol sym)
+lc86_jit::define_absolute(StringRef name, JITEvaluatedSymbol sym)
 {
 	auto interned_name = m_es->intern(name);
 	SymbolMap symbols({ {interned_name, sym} });
@@ -154,7 +154,7 @@ lib86cpu_jit::define_absolute(StringRef name, JITEvaluatedSymbol sym)
 }
 
 std::string
-lib86cpu_jit::mangle(Function *func)
+lc86_jit::mangle(Function *func)
 {
 	std::string mangled;
 	raw_string_ostream ss(mangled);
@@ -164,7 +164,7 @@ lib86cpu_jit::mangle(Function *func)
 }
 
 void
-lib86cpu_jit::free_code_block(void *addr)
+lc86_jit::free_code_block(void *addr)
 {
 	// based on the llvm sources and observed behaviour, the ptr_code of the tc is exactly the same addr that was initially allocated
 	// by allocateMappedMemory, so this will work in practice. Also note that our custom pool allocator uses a fixed block size, and thus

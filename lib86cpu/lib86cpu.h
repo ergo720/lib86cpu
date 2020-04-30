@@ -30,17 +30,15 @@ namespace llvm {
 	class GlobalVariable;
 }
 
-using namespace llvm;
-
 // lib86cpu error flags
-enum lib86cpu_status {
-	LIB86CPU_NO_MEMORY = -6,
-	LIB86CPU_INVALID_PARAMETER,
-	LIB86CPU_OP_NOT_IMPLEMENTED,
-	LIB86CPU_ALREADY_EXIST,
-	LIB86CPU_NOT_FOUND,
-	LIB86CPU_PAGE_FAULT,
-	LIB86CPU_SUCCESS,
+enum class lc86_status {
+	NO_MEMORY = -6,
+	INVALID_PARAMETER,
+	OP_NOT_IMPLEMENTED,
+	ALREADY_EXIST,
+	NOT_FOUND,
+	PAGE_FAULT,
+	SUCCESS,
 };
 
 // convenience macros to cast a trampoline argument to the appropriate type
@@ -89,7 +87,7 @@ struct hook {
 	std::vector<trmp_call_fn_t> trmp_vec;
 };
 
-#define LIB86CPU_CHECK_SUCCESS(status) (static_cast<lib86cpu_status>(status) == 0)
+#define LIB86CPU_CHECK_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::SUCCESS)
 
 #define CPU_FLAG_SWAPMEM        (1 << 0)
 #define CPU_INTEL_SYNTAX        (1 << 1)
@@ -140,20 +138,20 @@ typedef uint32_t  (*fp_read)(addr_t addr, size_t size, void *opaque);
 typedef void      (*fp_write)(addr_t addr, size_t size, uint32_t value, void *opaque);
 
 // memory region type
-enum mem_type_t {
-	MEM_UNMAPPED,
-	MEM_RAM,
-	MEM_MMIO,
-	MEM_PMIO,
-	MEM_ALIAS,
-	MEM_ROM,
+enum class mem_type {
+	UNMAPPED,
+	RAM,
+	MMIO,
+	PMIO,
+	ALIAS,
+	ROM,
 };
 
 template<typename T>
 struct memory_region_t {
 	T start;
 	T end;
-	int type;
+	mem_type type;
 	int priority;
 	fp_read read_handler;
 	fp_write write_handler;
@@ -161,7 +159,7 @@ struct memory_region_t {
 	addr_t alias_offset;
 	memory_region_t<T> *aliased_region;
 	int rom_idx;
-	memory_region_t() : start(0), end(0), alias_offset(0), type(MEM_UNMAPPED), priority(0), read_handler(nullptr), write_handler(nullptr),
+	memory_region_t() : start(0), end(0), alias_offset(0), type(mem_type::UNMAPPED), priority(0), read_handler(nullptr), write_handler(nullptr),
 		opaque(nullptr), aliased_region(nullptr), rom_idx(-1) {};
 };
 
@@ -246,7 +244,7 @@ struct cpu_ctx_t {
 };
 
 // forward declare
-class lib86cpu_jit;
+class lc86_jit;
 struct cpu_t {
 	uint32_t cpu_flags;
 	const char *cpu_name;
@@ -266,37 +264,37 @@ struct cpu_t {
 	exp_info_t exp_info;
 
 	// llvm specific variables
-	std::unique_ptr<lib86cpu_jit> jit;
-	DataLayout *dl;
-	LLVMContext *ctx;
-	Module *mod;
-	Value *ptr_cpu_ctx;
-	Value *ptr_regs;
-	Value *ptr_eflags;
-	Value *ptr_hflags;
-	Value *ptr_tlb;
-	Value *ptr_ram;
-	Value *ptr_exp_fn;
-	Value *ptr_invtc_fn;
-	Value *instr_eip;
-	BasicBlock *bb; // bb to which we are currently adding llvm instructions
-	Function *ptr_mem_ldfn[7];
-	Function *ptr_mem_stfn[7];
-	GlobalVariable *exp_data;
+	std::unique_ptr<lc86_jit> jit;
+	llvm::DataLayout *dl;
+	llvm::LLVMContext *ctx;
+	llvm::Module *mod;
+	llvm::Value *ptr_cpu_ctx;
+	llvm::Value *ptr_regs;
+	llvm::Value *ptr_eflags;
+	llvm::Value *ptr_hflags;
+	llvm::Value *ptr_tlb;
+	llvm::Value *ptr_ram;
+	llvm::Value *ptr_exp_fn;
+	llvm::Value *ptr_invtc_fn;
+	llvm::Value *instr_eip;
+	llvm::BasicBlock *bb; // bb to which we are currently adding llvm instructions
+	llvm::Function *ptr_mem_ldfn[7];
+	llvm::Function *ptr_mem_stfn[7];
+	llvm::GlobalVariable *exp_data;
 };
 
 // cpu api
-API_FUNC lib86cpu_status cpu_new(size_t ramsize, cpu_t *&out);
+API_FUNC lc86_status cpu_new(size_t ramsize, cpu_t *&out);
 API_FUNC void cpu_free(cpu_t *cpu);
-API_FUNC lib86cpu_status cpu_run(cpu_t *cpu);
+API_FUNC lc86_status cpu_run(cpu_t *cpu);
 
 // memory api
-API_FUNC lib86cpu_status memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority);
-API_FUNC lib86cpu_status memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read read_func, fp_write write_func, void *opaque, int priority);
-API_FUNC lib86cpu_status memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority);
-API_FUNC lib86cpu_status memory_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int priority, const char *rom_path, uint8_t *&out);
-API_FUNC lib86cpu_status memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space);
+API_FUNC lc86_status memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority);
+API_FUNC lc86_status memory_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read read_func, fp_write write_func, void *opaque, int priority);
+API_FUNC lc86_status memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority);
+API_FUNC lc86_status memory_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int priority, const char *rom_path, uint8_t *&out);
+API_FUNC lc86_status memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space);
 
 // hook api
-API_FUNC lib86cpu_status hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj);
-API_FUNC lib86cpu_status trampoline_call(cpu_t *cpu, addr_t addr, std::any &ret, std::vector<std::any> args);
+API_FUNC lc86_status hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj);
+API_FUNC lc86_status trampoline_call(cpu_t *cpu, addr_t addr, std::any &ret, std::vector<std::any> args);

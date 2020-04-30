@@ -22,9 +22,9 @@
 
 using namespace orc;
 
-class lib86cpu_jit {
+class lc86_jit {
 public:
-	static std::unique_ptr<lib86cpu_jit> create(cpu_t *cpu);
+	static std::unique_ptr<lc86_jit> create(cpu_t *cpu);
 	ExecutionSession &getExecutionSession() { return *m_es; }
 	JITDylib &get_main_jit_dylib() { return m_sym_table; }
 	void add_ir_module(ThreadSafeModule tsm);
@@ -40,7 +40,7 @@ public:
 	void free_code_block(void *addr);
 
 private:
-	lib86cpu_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetMachine> tm, DataLayout dl);
+	lc86_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetMachine> tm, DataLayout dl);
 	std::string mangle(StringRef unmangled_name);
 	Error apply_data_layout(Module &m);
 
