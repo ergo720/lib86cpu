@@ -15,6 +15,7 @@
 #include "interval_tree.h"
 #include <unordered_set>
 #include <string>
+#include <any>
 
 
 namespace llvm {
@@ -33,12 +34,25 @@ using namespace llvm;
 
 // lib86cpu error flags
 enum lib86cpu_status {
-	LIB86CPU_NO_MEMORY = -4,
+	LIB86CPU_NO_MEMORY = -6,
 	LIB86CPU_INVALID_PARAMETER,
 	LIB86CPU_OP_NOT_IMPLEMENTED,
 	LIB86CPU_ALREADY_EXIST,
+	LIB86CPU_NOT_FOUND,
+	LIB86CPU_PAGE_FAULT,
 	LIB86CPU_SUCCESS,
 };
+
+// convenience macros to cast a trampoline argument to the appropriate type
+#define ANY_I8s(x) static_cast<uint8_t>(x)
+#define ANY_I16s(x) static_cast<uint16_t>(x)
+#define ANY_I32s(x) static_cast<uint32_t>(x)
+#define ANY_I64s(x) static_cast<uint64_t>(x)
+#define ANY_I8r(x) reinterpret_cast<uint8_t>(x)
+#define ANY_I16r(x) reinterpret_cast<uint16_t>(x)
+#define ANY_I32r(x) reinterpret_cast<uint32_t>(x)
+#define ANY_I64r(x) reinterpret_cast<uint64_t>(x)
+#define ANY_VEC(...) std::vector<std::any> { __VA_ARGS__ }
 
 enum class call_conv {
 	X86_STDCALL,
@@ -55,6 +69,10 @@ enum class arg_types {
 	PTR,
 };
 
+// forward declare
+struct cpu_t;
+using trmp_call_fn_t = void(*)(cpu_t *, std::any &, std::vector<uint32_t *> &);
+
 struct hook_info {
 	std::vector<arg_types> args;
 	std::string name;
@@ -65,6 +83,10 @@ struct hook {
 	call_conv d_conv;
 	call_conv o_conv;
 	hook_info info;
+	uint32_t *hook_tc_flags;
+	uint32_t *trmp_tc_flags;
+	std::function<void(cpu_t *, std::vector<std::any> &, uint32_t *)> trmp_fn;
+	std::vector<trmp_call_fn_t> trmp_vec;
 };
 
 #define LIB86CPU_CHECK_SUCCESS(status) (static_cast<lib86cpu_status>(status) == 0)
@@ -75,6 +97,10 @@ struct hook {
 #define CPU_CODEGEN_OPTIMIZE    (1 << 3)
 #define CPU_PRINT_IR            (1 << 4)
 #define CPU_PRINT_IR_OPTIMIZED  (1 << 5)
+#define CPU_IGNORE_TC           (1 << 6)
+#define CPU_DISAS_ONE           (1 << 7)
+#define CPU_ALLOW_CODE_WRITE    (1 << 8)
+#define CPU_FORCE_INSERT        (1 << 9)
 
 #define CPU_INTEL_SYNTAX_SHIFT  1
 
@@ -161,9 +187,8 @@ struct exp_info_t {
 };
 
 // forward declare
-struct translated_code_t;
 struct cpu_ctx_t;
-struct cpu_t;
+struct translated_code_t;
 using entry_t = translated_code_t *(*)(cpu_ctx_t *cpu_ctx);
 using raise_exp_t = translated_code_t *(*)(cpu_ctx_t *cpu_ctx, exp_data_t *exp_data);
 
@@ -235,10 +260,10 @@ struct cpu_t {
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<port_t>>>, sort_by_priority<port_t>> io_out;
 	std::forward_list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
 	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
-	uint16_t num_tc;
-	exp_info_t exp_info;
 	std::vector<std::pair<std::unique_ptr<uint8_t[]>, int>> vec_rom;
 	std::unordered_map<addr_t, std::unique_ptr<hook>> hook_map;
+	uint16_t num_tc;
+	exp_info_t exp_info;
 
 	// llvm specific variables
 	std::unique_ptr<lib86cpu_jit> jit;
@@ -274,3 +299,4 @@ API_FUNC lib86cpu_status memory_destroy_region(cpu_t *cpu, addr_t start, size_t 
 
 // hook api
 API_FUNC lib86cpu_status hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj);
+API_FUNC lib86cpu_status trampoline_call(cpu_t *cpu, addr_t addr, std::any &ret, std::vector<std::any> args);

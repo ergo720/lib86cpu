@@ -1389,7 +1389,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	static const uint8_t idx_to_size[4] = { 8, 16, 32, 64 };
 	uint8_t mem_size = idx_to_size[idx];
 
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), (cpu->cpu_ctx.hflags & HFLG_DISAS_ONE) ? 5 : 7);
+	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), (cpu->cpu_flags & CPU_ALLOW_CODE_WRITE) ? 5 : 7);
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
 	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
@@ -1406,7 +1406,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	ST(ram_offset, OR(AND(tlb_entry, CONST32(~PAGE_MASK)), AND(addr, CONST32(PAGE_MASK))));
 	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM | TLB_CODE)), vec_bb[4]);
 	swi->SWITCH_add(32, TLB_RAM, vec_bb[3]);
-	if (!(cpu->cpu_ctx.hflags & HFLG_DISAS_ONE)) {
+	if (!(cpu->cpu_flags & CPU_ALLOW_CODE_WRITE)) {
 		swi->SWITCH_add(32, TLB_RAM | TLB_CODE, vec_bb[5]);
 	}
 
@@ -1427,7 +1427,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	ST(IBITCASTs(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(ram_offset) })), LD(val_ptr));
 	BR_UNCOND(vec_bb[2]);
 
-	if (!(cpu->cpu_ctx.hflags & HFLG_DISAS_ONE)) {
+	if (!(cpu->cpu_flags & CPU_ALLOW_CODE_WRITE)) {
 		// yes, but we are writing to a page which holds translated code, check for self-modifying code
 		cpu->bb = vec_bb[5];
 		CallInst *ci = CallInst::Create(cpu->ptr_invtc_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, tc_ptr, addr, CONST8(mem_size / 8) }, "", cpu->bb);
@@ -2105,7 +2105,7 @@ hook_clean_stack_emit(cpu_t *cpu, const unsigned stack_bytes)
 	Value *stack_ptr = ADD(LD_R32(ESP_idx), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)); // assumes a 32 bit esp
 	Value *eip = LD_MEM(MEM_LD32_idx, stack_ptr);
 	ST_R32(eip, EIP_idx);
-	ST_R32(ADD(stack_ptr, CONST32(4 + stack_bytes)), ESP_idx);
+	ST_R32(ADD(SUB(stack_ptr, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), CONST32(4 + stack_bytes)), ESP_idx);
 }
 
 static std::vector<Value *>
@@ -2178,10 +2178,8 @@ hook_get_args(cpu_t *cpu, hook *obj, std::vector<int> &reg_args, int *stack_byte
 	break;
 
 	case call_conv::UNDEFINED:
-		break;
-
 	default:
-		LIB86CPU_ABORT_msg("Unknown hook calling convention specified\n");
+		LIB86CPU_ABORT_msg("Unknown hook or invalid calling convention specified\n");
 	}
 
 	return args;
@@ -2269,9 +2267,6 @@ hook_emit(cpu_t *cpu, hook *obj)
 		break;
 
 	case arg_types::I16:
-		ST_R32(ci, EAX_idx);
-		break;
-
 	case arg_types::I32:
 	case arg_types::PTR:
 		ST_R32(ci, EAX_idx);

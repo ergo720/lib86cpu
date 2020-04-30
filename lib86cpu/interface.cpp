@@ -9,6 +9,7 @@
 #include "internal.h"
 #include <fstream>
 
+
 static void
 sync_hflags(cpu_t *cpu)
 {
@@ -104,8 +105,7 @@ lib86cpu_status
 cpu_run(cpu_t *cpu)
 {
 	sync_hflags(cpu);
-
-	return cpu_exec_tc(cpu);
+	return cpu_start(cpu);
 }
 
 static void
@@ -454,7 +454,19 @@ hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 		}
 	}
 
+	obj->trmp_vec.clear();
 	cpu->hook_map.emplace(addr, std::move(obj));
 
 	return LIB86CPU_SUCCESS;
+}
+
+lib86cpu_status
+trampoline_call(cpu_t *cpu, addr_t addr, std::any &ret, std::vector<std::any> args)
+{
+	auto it = cpu->hook_map.find(addr);
+	if (it == cpu->hook_map.end()) {
+		return LIB86CPU_NOT_FOUND;
+	}
+
+	return cpu_exec_trampoline(cpu, addr, it->second.get(), ret, args);
 }

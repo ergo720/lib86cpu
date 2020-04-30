@@ -69,10 +69,11 @@ tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t 
 	uint8_t halt_tc = 0;
 	std::vector<std::unordered_set<translated_code_t *>::iterator> tc_to_delete;
 
-	if ((tc != nullptr) && !(std::min(addr + size - 1, tc->tc_ctx.pc + tc->tc_ctx.size - 1) < std::max(addr, tc->tc_ctx.pc))) {
+	if ((tc != nullptr) && !(tc->tc_ctx.flags & TC_FLG_HOOK) &&
+		!(std::min(addr + size - 1, tc->tc_ctx.pc + tc->tc_ctx.size - 1) < std::max(addr, tc->tc_ctx.pc))) {
 		// worst case: the write overlaps with the tc we are currently executing
 		halt_tc = 1;
-		cpu_ctx->hflags |= HFLG_DISAS_ONE;
+		cpu_ctx->cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
 	}
 
 	// find all tc's in the page addr belongs to
@@ -428,7 +429,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
 			}
 
-			cpu->cpu_ctx.hflags &= ~HFLG_DISAS_ONE;
+			cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
 			RAISEin(exp_data.fault_addr, exp_data.code, exp_data.idx, exp_data.eip);
 			return LIB86CPU_SUCCESS;
 		}
@@ -3396,19 +3397,22 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 	} while ((translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR))) == 1);
 
+	if (translate_next == 1) {
+		assert(disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR));
+		ST_R32(CONST32(pc - cpu_ctx->regs.cs_hidden.base), EIP_idx);
+	}
+
 	return LIB86CPU_SUCCESS;
 }
 
-lib86cpu_status
-cpu_exec_tc(cpu_t *cpu)
+template<typename T>
+lib86cpu_status cpu_exec_tc(cpu_t *cpu, T &&lambda)
 {
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
 	addr_t pc;
 
-	gen_exp_fn(cpu);
-
 	// main cpu loop
-	while (true) {
+	while (lambda()) {
 
 		retry:
 		try {
@@ -3455,7 +3459,7 @@ cpu_exec_tc(cpu_t *cpu)
 
 			// prepare the disas ctx
 			disas_ctx_t disas_ctx;
-			disas_ctx.flags = ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT) | (cpu->cpu_ctx.hflags & HFLG_DISAS_ONE);
+			disas_ctx.flags = ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT) | (cpu->cpu_flags & CPU_DISAS_ONE);
 			disas_ctx.virt_pc = get_pc(&cpu->cpu_ctx);
 			disas_ctx.pc = pc;
 			disas_ctx.instr_page_addr = disas_ctx.virt_pc & ~PAGE_MASK;
@@ -3465,6 +3469,7 @@ cpu_exec_tc(cpu_t *cpu)
 				cpu->instr_eip = CONST32(disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
 				hook_emit(cpu, it->second.get());
 				cpu->tc->tc_ctx.flags |= TC_FLG_HOOK;
+				it->second->hook_tc_flags = &cpu->tc->tc_ctx.cpu_flags;
 			}
 			else {
 				// start guest code translation
@@ -3517,7 +3522,15 @@ cpu_exec_tc(cpu_t *cpu)
 			cpu->bb = nullptr;
 
 			if (disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR)) {
-				cpu->cpu_ctx.hflags &= ~HFLG_DISAS_ONE;
+				if (cpu->cpu_flags & CPU_FORCE_INSERT) {
+					if ((cpu->num_tc) == CODE_CACHE_MAX_SIZE) {
+						tc_cache_clear(cpu);
+						prev_tc = nullptr;
+					}
+					tc_cache_insert(cpu, pc, std::move(tc));
+				}
+
+				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE | CPU_FORCE_INSERT);
 				tc_run_code(&cpu->cpu_ctx, ptr_tc);
 				prev_tc = nullptr;
 				continue;
@@ -3550,4 +3563,228 @@ cpu_exec_tc(cpu_t *cpu)
 
 		prev_tc = tc_run_code(&cpu->cpu_ctx, ptr_tc);
 	}
+
+	return LIB86CPU_SUCCESS;
+}
+
+lib86cpu_status
+cpu_start(cpu_t *cpu)
+{
+	gen_exp_fn(cpu);
+	return cpu_exec_tc(cpu, []() { return true; });
+}
+
+void
+trmp_stack_i32(cpu_t *cpu, std::any &value, std::vector<uint32_t *> &vec)
+{
+	*(vec[0]) -= 4;
+	mem_write<uint32_t>(cpu, *vec[0], std::any_cast<uint32_t>(value), *vec[1], 0, nullptr);
+	*(vec[1]) += 1; // simulates a push imm32 instruction
+}
+
+void
+trmp_stack_i64(cpu_t *cpu, std::any &value, std::vector<uint32_t *> &vec)
+{
+	*(vec[0]) -= 8;
+	mem_write<uint64_t>(cpu, *vec[0], std::any_cast<uint64_t>(value), *vec[1], 0, nullptr);
+	*(vec[1]) += 2; // simulates two push imm32 instructions
+}
+
+void
+trmp_ecx_i32(cpu_t *cpu, std::any &value, std::vector<uint32_t *> &vec)
+{
+	cpu->cpu_ctx.regs.ecx = std::any_cast<uint32_t>(value);
+	*(vec[1]) += 5; // simulates a mov ecx,imm32 instruction
+}
+
+void
+trmp_ecx_i8(cpu_t *cpu, std::any &value, std::vector<uint32_t *> &vec)
+{
+	cpu->cpu_ctx.regs.ecx |= std::any_cast<uint8_t>(value);
+	*(vec[1]) += 2; // simulates a mov cl,imm8 instruction
+}
+
+void
+trmp_edx_i32(cpu_t *cpu, std::any &value, std::vector<uint32_t *> &vec)
+{
+	cpu->cpu_ctx.regs.edx = std::any_cast<uint32_t>(value);
+	*(vec[1]) += 5; // simulates a mov edx,imm32 instruction
+}
+
+void
+trmp_edx_i8(cpu_t *cpu, std::any &value, std::vector<uint32_t *> &vec)
+{
+	cpu->cpu_ctx.regs.edx |= std::any_cast<uint8_t>(value);
+	*(vec[1]) += 2; // simulates a mov dl,imm8 instruction
+}
+
+lib86cpu_status
+cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std::vector<std::any> &args)
+{
+	if (hook_ptr->trmp_vec.empty()) {
+		// code for calling the trampoline is not present, we need to generate it first. This will happen when the trampoline
+		// for this hook is called for the first time
+
+		switch (hook_ptr->o_conv)
+		{
+		case call_conv::X86_STDCALL: {
+			for (unsigned i = hook_ptr->info.args.size() - 1; i > 0; i--) {
+				if (hook_ptr->info.args[i] == arg_types::I64) {
+					hook_ptr->trmp_vec.push_back(trmp_stack_i64);
+				}
+				else {
+					hook_ptr->trmp_vec.push_back(trmp_stack_i32);
+				}
+			}
+		}
+		break;
+
+		case call_conv::X86_FASTCALL: {
+			int num_reg_args = 0;
+			bool use_stack = false;
+			hook_ptr->trmp_vec.resize(hook_ptr->info.args.size(), nullptr);
+			for (unsigned i = 1; i < hook_ptr->info.args.size(); i++) {
+				if (use_stack || (hook_ptr->info.args[i] == arg_types::I64)) {
+					continue;
+				}
+				else {
+					switch (hook_ptr->info.args[i])
+					{
+					case arg_types::I8:
+						hook_ptr->trmp_vec[i] = num_reg_args ? trmp_edx_i8 : trmp_ecx_i8;
+						break;
+
+					case arg_types::I16:
+					case arg_types::I32:
+					case arg_types::PTR:
+						hook_ptr->trmp_vec[i] = num_reg_args ? trmp_edx_i32 : trmp_ecx_i32;
+						break;
+
+					default:
+						LIB86CPU_ABORT_msg("Unknown or invalid hook argument type specified\n");
+					}
+
+					num_reg_args++;
+					if (num_reg_args == 2) {
+						use_stack = true;
+					}
+				}
+			}
+
+			for (unsigned i = hook_ptr->info.args.size() - 1; i > 0; i--) {
+				if (hook_ptr->trmp_vec[i] == nullptr) {
+					if (hook_ptr->info.args[i] == arg_types::I64) {
+						hook_ptr->trmp_vec[i] = trmp_stack_i64;
+					}
+					else {
+						hook_ptr->trmp_vec[i] = trmp_stack_i32;
+					}
+				}
+			}
+
+			hook_ptr->trmp_vec.erase(hook_ptr->trmp_vec.begin());
+		}
+		break;
+
+		case call_conv::UNDEFINED:
+		default:
+			LIB86CPU_ABORT_msg("Unknown or invalid hook calling convention specified\n");
+		}
+
+		hook_ptr->trmp_fn = [hook_ptr, addr](cpu_t *cpu, std::vector<std::any> &args, uint32_t *ret_eip) {
+			uint32_t eip = cpu->cpu_ctx.regs.eip;
+			uint32_t stack = cpu->cpu_ctx.regs.esp + cpu->cpu_ctx.regs.ss_hidden.base;
+			std::vector<uint32_t *> vec { &stack, &eip };
+			for (unsigned i = 0; i < args.size(); i++) {
+				hook_ptr->trmp_vec[i](cpu, args[i], vec);
+			}
+
+			stack -= 4;
+			mem_write<uint32_t>(cpu, stack, eip + 5, eip, 0, nullptr); // simulates a near, relative call instruction
+			*ret_eip = (eip + 5);
+			cpu->cpu_ctx.regs.eip = addr;
+			cpu->cpu_ctx.regs.esp = stack - cpu->cpu_ctx.regs.ss_hidden.base;
+		};
+	}
+
+	uint32_t ret_eip;
+	uint32_t ecx = cpu->cpu_ctx.regs.ecx;
+	uint32_t edx = cpu->cpu_ctx.regs.edx;
+	try {
+		// setup the stack to call the trampoline
+		hook_ptr->trmp_fn(cpu, args, &ret_eip);
+	}
+	catch (exp_data_t exp_data) {
+		// page fault while calling the trampoline. We return because we can't handle an exception here. If this happens,
+		// it probably means there is a stack overflow condition in the guest stack
+
+		cpu->cpu_ctx.regs.ecx = ecx;
+		cpu->cpu_ctx.regs.edx = edx;
+		return LIB86CPU_PAGE_FAULT;
+	}
+	catch (std::bad_any_cast e) {
+		// this will happen if the client passes an argument type not supported by arg_types
+
+		cpu->cpu_ctx.regs.ecx = ecx;
+		cpu->cpu_ctx.regs.edx = edx;
+		LOG("Exception thrown while calling a trampoline. The error was: %s\n", e.what());
+		return LIB86CPU_INVALID_PARAMETER;
+	}
+
+	int i = 0;
+	auto &hook_node = cpu->hook_map.extract(addr);
+	cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_FORCE_INSERT);
+	if (hook_ptr->hook_tc_flags != nullptr) {
+		*(hook_ptr->hook_tc_flags) |= CPU_IGNORE_TC;
+	}
+	if (hook_ptr->trmp_tc_flags != nullptr) {
+		*(hook_ptr->trmp_tc_flags) &= ~CPU_IGNORE_TC;
+	}
+	lib86cpu_status status = cpu_exec_tc(cpu, [&i]() { return i++ == 0; });
+	if (hook_ptr->trmp_tc_flags == nullptr) {
+		translated_code_t *tc = tc_cache_search(cpu, addr);
+		if (tc != nullptr) {
+			assert(tc->tc_ctx.size != 0);
+			hook_ptr->trmp_tc_flags = &tc->tc_ctx.cpu_flags;
+			*(hook_ptr->trmp_tc_flags) |= CPU_IGNORE_TC;
+		}
+	}
+	else {
+		*(hook_ptr->trmp_tc_flags) |= CPU_IGNORE_TC;
+	}
+	if (hook_ptr->hook_tc_flags != nullptr) {
+		*(hook_ptr->hook_tc_flags) &= ~CPU_IGNORE_TC;
+	}
+	cpu->hook_map.insert(std::move(hook_node));
+	if (!LIB86CPU_CHECK_SUCCESS(status)) {
+		return status;
+	}
+
+	status = cpu_exec_tc(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
+
+	switch (hook_ptr->info.args[0])
+	{
+	case arg_types::VOID:
+		ret.reset();
+		break;
+
+	case arg_types::I8:
+		ret = static_cast<uint8_t>(cpu->cpu_ctx.regs.eax & 0xFF);
+		break;
+
+	case arg_types::I16:
+	case arg_types::I32:
+	case arg_types::PTR:
+		ret = cpu->cpu_ctx.regs.eax;
+		break;
+
+	case arg_types::I64:
+		ret = (cpu->cpu_ctx.regs.eax | (static_cast<uint64_t>(cpu->cpu_ctx.regs.edx) << 32));
+		break;
+
+	default:
+		LIB86CPU_ABORT_msg("Unknown hook return type specified\n");
+	}
+
+	return status;
 }
