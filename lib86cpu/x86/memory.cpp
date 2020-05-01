@@ -42,6 +42,9 @@ tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 		phys_addr -= region->start;
 		prot |= TLB_RAM;
 	}
+	else if (region->type == mem_type::ROM) {
+		prot &= ~TLB_CODE;
+	}
 
 	cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] = (phys_addr & ~PAGE_MASK) | prot;
 }
