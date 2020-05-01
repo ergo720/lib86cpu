@@ -52,7 +52,7 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 		}
 	}
 	catch (int err) {
-		// used by mov cr0, reg when it switches cpu mode and by mem_write when it invalidates the current tc with a page crossing write
+		// used by mov cr0, reg when it switches cpu mode and by tc_invalidate when it invalidates the current tc
 		return nullptr;
 	}
 }
@@ -63,16 +63,16 @@ tc_hash(addr_t pc)
 	return pc & (CODE_CACHE_MAX_SIZE - 1);
 }
 
-uint8_t
-tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t size)
+void
+tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t size, uint32_t eip)
 {
-	uint8_t halt_tc = 0;
+	bool halt_tc = false;
 	std::vector<std::unordered_set<translated_code_t *>::iterator> tc_to_delete;
 
 	if ((tc != nullptr) && !(tc->tc_ctx.flags & TC_FLG_HOOK) &&
 		!(std::min(addr + size - 1, tc->tc_ctx.pc + tc->tc_ctx.size - 1) < std::max(addr, tc->tc_ctx.pc))) {
 		// worst case: the write overlaps with the tc we are currently executing
-		halt_tc = 1;
+		halt_tc = true;
 		cpu_ctx->cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
 	}
 
@@ -135,7 +135,11 @@ tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t 
 		}
 	}
 
-	return halt_tc;
+	if (halt_tc) {
+		// in this case the tc we were executing has been destroyed and thus we must return to the translator with an exception
+		cpu_ctx->regs.eip = eip;
+		throw -2;
+	}
 }
 
 

@@ -376,13 +376,11 @@ void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t flags, tr
 			addr_t phys_addr_e = get_write_addr(cpu, addr + sizeof(T) - 1, flags & 2, eip, &is_code2);
 			addr_t phys_addr = phys_addr_s;
 			uint8_t bytes_in_page = ((addr + sizeof(T) - 1) & ~PAGE_MASK) - addr;
-			if (is_code1 && tc_invalidate(&cpu->cpu_ctx, tc, phys_addr_s, bytes_in_page)) {
-				cpu->cpu_ctx.regs.eip = eip;
-				throw -2;
+			if (is_code1) {
+				tc_invalidate(&cpu->cpu_ctx, tc, phys_addr_s, bytes_in_page, eip);
 			}
-			if (is_code2 && tc_invalidate(&cpu->cpu_ctx, tc, phys_addr_e & ~PAGE_MASK, sizeof(T) - bytes_in_page)) {
-				cpu->cpu_ctx.regs.eip = eip;
-				throw -2;
+			if (is_code2) {
+				tc_invalidate(&cpu->cpu_ctx, tc, phys_addr_e & ~PAGE_MASK, sizeof(T) - bytes_in_page, eip);
 			}
 			if (cpu->cpu_flags & CPU_FLAG_SWAPMEM) {
 				sys::swapByteOrder<T>(value);
@@ -401,9 +399,8 @@ void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t flags, tr
 		else {
 			uint8_t is_code;
 			addr_t phys_addr = get_write_addr(cpu, addr, flags & 2, eip, &is_code);
-			if (is_code && tc_invalidate(&cpu->cpu_ctx, tc, phys_addr, sizeof(T))) {
-				cpu->cpu_ctx.regs.eip = eip;
-				throw -2;
+			if (is_code) {
+				tc_invalidate(&cpu->cpu_ctx, tc, phys_addr, sizeof(T), eip);
 			}
 			as_memory_dispatch_write<T>(cpu, phys_addr, value, as_memory_search_addr<T>(cpu, phys_addr));
 		}

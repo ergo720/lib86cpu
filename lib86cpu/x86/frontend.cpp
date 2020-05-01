@@ -130,8 +130,8 @@ get_ext_fn(cpu_t *cpu)
 			getIntegerType(16), getIntegerType(bit_size[i])));
 	}
 
-	cpu->ptr_invtc_fn = cast<Function>(cpu->mod->getOrInsertFunction("tc_invalidate", getIntegerType(8), cpu_ctx_ty,
-		tc_ty, getIntegerType(32), getIntegerType(8)));
+	cpu->ptr_invtc_fn = cast<Function>(cpu->mod->getOrInsertFunction("tc_invalidate", getVoidType(), cpu_ctx_ty,
+		tc_ty, getIntegerType(32), getIntegerType(8), getIntegerType(32)));
 }
 
 Value *
@@ -1389,7 +1389,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	static const uint8_t idx_to_size[4] = { 8, 16, 32, 64 };
 	uint8_t mem_size = idx_to_size[idx];
 
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), (cpu->cpu_flags & CPU_ALLOW_CODE_WRITE) ? 5 : 7);
+	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), (cpu->cpu_flags & CPU_ALLOW_CODE_WRITE) ? 5 : 6);
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
 	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
@@ -1406,9 +1406,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	ST(ram_offset, OR(AND(tlb_entry, CONST32(~PAGE_MASK)), AND(addr, CONST32(PAGE_MASK))));
 	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM | TLB_CODE)), vec_bb[4]);
 	swi->SWITCH_add(32, TLB_RAM, vec_bb[3]);
-	if (!(cpu->cpu_flags & CPU_ALLOW_CODE_WRITE)) {
-		swi->SWITCH_add(32, TLB_RAM | TLB_CODE, vec_bb[5]);
-	}
+	swi->SWITCH_add(32, TLB_RAM | TLB_CODE, cpu->cpu_flags & CPU_ALLOW_CODE_WRITE ? vec_bb[3] : vec_bb[5]);
 
 	// no, acccess the memory region with is_phys flag=1
 	cpu->bb = vec_bb[4];
@@ -1430,13 +1428,8 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	if (!(cpu->cpu_flags & CPU_ALLOW_CODE_WRITE)) {
 		// yes, but we are writing to a page which holds translated code, check for self-modifying code
 		cpu->bb = vec_bb[5];
-		CallInst *ci = CallInst::Create(cpu->ptr_invtc_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, tc_ptr, addr, CONST8(mem_size / 8) }, "", cpu->bb);
-		BR_COND(vec_bb[6], vec_bb[3], ICMP_NE(ci, CONST8(0)));
-
-		// we have been asked to exit the current tc, so we simply return from main
-		cpu->bb = vec_bb[6];
-		ST_R32(cpu->instr_eip, EIP_idx);
-		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
+		CallInst::Create(cpu->ptr_invtc_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, tc_ptr, addr, CONST8(mem_size / 8), cpu->instr_eip }, "", cpu->bb);
+		BR_UNCOND(vec_bb[3]);
 	}
 
 	// tlb miss, acccess the memory region with is_phys flag=0
