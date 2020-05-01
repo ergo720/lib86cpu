@@ -308,7 +308,7 @@ create_tc_epilogue(cpu_t *cpu)
 #endif
 }
 
-JIT_EXTERNAL_CALL_C uint8_t
+uint8_t
 cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes)
 {
 	switch (idx)

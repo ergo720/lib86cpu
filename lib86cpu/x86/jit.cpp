@@ -6,6 +6,7 @@
 
 #include "llvm/Support/TargetSelect.h"
 #include "jit.h"
+#include "memory.h"
 
 
 class tm_owning_simple_compiler : public SimpleCompiler {
@@ -78,6 +79,23 @@ lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetM
 	m_dtor_runner(m_sym_table)
 {
 	m_sym_table.setGenerator(*orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(m_dl));
+	define_absolute(mangle("mem_read8"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read8), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_read16"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read16), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_read32"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read32), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_read64"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read64), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_write8"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_write8), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_write16"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_write16), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_write32"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_write32), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_write64"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_write64), JITSymbolFlags::Absolute));
+	define_absolute(mangle("io_read8"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_read8), JITSymbolFlags::Absolute));
+	define_absolute(mangle("io_read16"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_read16), JITSymbolFlags::Absolute));
+	define_absolute(mangle("io_read32"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_read32), JITSymbolFlags::Absolute));
+	define_absolute(mangle("io_write8"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_write8), JITSymbolFlags::Absolute));
+	define_absolute(mangle("io_write16"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_write16), JITSymbolFlags::Absolute));
+	define_absolute(mangle("io_write32"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_write32), JITSymbolFlags::Absolute));
+	define_absolute(mangle("io_write32"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_write32), JITSymbolFlags::Absolute));
+	define_absolute(mangle("tc_invalidate"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&tc_invalidate), JITSymbolFlags::Absolute));
+	define_absolute(mangle("cpu_update_crN"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_update_crN), JITSymbolFlags::Absolute));
 
 #ifdef _WIN32
 	// workaround for llvm bug D65548

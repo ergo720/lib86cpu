@@ -17,10 +17,8 @@
 #  else
 #    define API_FUNC __declspec(dllimport)
 #  endif
-#  define JIT_EXTERNAL_CALL_C extern "C" __declspec(dllexport)
 #else
 #  define API_FUNC /* nothing */
-#  define JIT_EXTERNAL_CALL_C extern "C"
 #endif
 
 #if HAVE_ATTRIBUTE_PACKED

@@ -8,6 +8,7 @@
 
 #include "llvm/support/SwapByteOrder.h"
 #include "lib86cpu.h"
+#include "internal.h"
 
 #define AS_RESOLVE_ALIAS() 	addr_t alias_offset = region->alias_offset; \
 while (region->aliased_region) { \
@@ -22,20 +23,20 @@ addr_t get_read_addr(cpu_t * cpu, addr_t addr, uint8_t is_priv, uint32_t eip);
 addr_t get_write_addr(cpu_t * cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *is_code);
 addr_t get_code_addr(cpu_t * cpu, addr_t addr, uint32_t eip);
 void check_instr_length(cpu_t *cpu, addr_t start_pc, addr_t pc, size_t size);
-JIT_EXTERNAL_CALL_C uint8_t mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
-JIT_EXTERNAL_CALL_C uint16_t mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
-JIT_EXTERNAL_CALL_C uint32_t mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
-JIT_EXTERNAL_CALL_C uint64_t mem_read64(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
-JIT_EXTERNAL_CALL_C void mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip, uint8_t is_phys, translated_code_t * tc);
-JIT_EXTERNAL_CALL_C void mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip, uint8_t is_phys, translated_code_t * tc);
-JIT_EXTERNAL_CALL_C void mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip, uint8_t is_phys, translated_code_t * tc);
-JIT_EXTERNAL_CALL_C void mem_write64(cpu_ctx_t * cpu_ctx, addr_t addr, uint64_t value, uint32_t eip, uint8_t is_phys, translated_code_t * tc);
-JIT_EXTERNAL_CALL_C uint8_t io_read8(cpu_ctx_t *cpu_ctx, port_t port);
-JIT_EXTERNAL_CALL_C uint16_t io_read16(cpu_ctx_t *cpu_ctx, port_t port);
-JIT_EXTERNAL_CALL_C uint32_t io_read32(cpu_ctx_t *cpu_ctx, port_t port);
-JIT_EXTERNAL_CALL_C void io_write8(cpu_ctx_t *cpu_ctx, port_t port, uint8_t value);
-JIT_EXTERNAL_CALL_C void io_write16(cpu_ctx_t *cpu_ctx, port_t port, uint16_t value);
-JIT_EXTERNAL_CALL_C void io_write32(cpu_ctx_t *cpu_ctx, port_t port, uint32_t value);
+uint8_t mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
+uint16_t mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
+uint32_t mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
+uint64_t mem_read64(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
+void mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip, uint8_t is_phys, translated_code_t * tc);
+void mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip, uint8_t is_phys, translated_code_t * tc);
+void mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip, uint8_t is_phys, translated_code_t * tc);
+void mem_write64(cpu_ctx_t * cpu_ctx, addr_t addr, uint64_t value, uint32_t eip, uint8_t is_phys, translated_code_t * tc);
+uint8_t io_read8(cpu_ctx_t *cpu_ctx, port_t port);
+uint16_t io_read16(cpu_ctx_t *cpu_ctx, port_t port);
+uint32_t io_read32(cpu_ctx_t *cpu_ctx, port_t port);
+void io_write8(cpu_ctx_t *cpu_ctx, port_t port, uint8_t value);
+void io_write16(cpu_ctx_t *cpu_ctx, port_t port, uint16_t value);
+void io_write32(cpu_ctx_t *cpu_ctx, port_t port, uint32_t value);
 template<typename T> T ram_read(cpu_t *cpu, void *ram_ptr);
 template<typename T> void ram_write(cpu_t *cpu, void *ram_ptr, T value);
 

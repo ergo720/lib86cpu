@@ -17,7 +17,8 @@ lc86_status cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::an
 addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip);
 size_t disasm_instr(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_line, disas_ctx_t *disas_ctx);
 void decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx);
-JIT_EXTERNAL_CALL_C void tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t size, uint32_t eip);
+void tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t size, uint32_t eip);
+uint8_t cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes);
 
 extern const char *mnemo[];
 
