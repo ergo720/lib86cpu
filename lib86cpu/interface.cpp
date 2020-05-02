@@ -49,7 +49,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 		return lc86_status::NO_MEMORY;
 	}
 
-	cpu_x86_init(cpu);
+	cpu_init(cpu);
 
 	std::unique_ptr<memory_region_t<addr_t>> mem_region(new memory_region_t<addr_t>);
 	cpu->memory_space_tree = interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>::create();
@@ -101,11 +101,12 @@ cpu_free(cpu_t *cpu)
 	delete cpu;
 }
 
-lc86_status
+void
 cpu_run(cpu_t *cpu)
 {
 	sync_hflags(cpu);
-	return cpu_start(cpu);
+	cpu_start(cpu);
+	LIB86CPU_ABORT();
 }
 
 static void

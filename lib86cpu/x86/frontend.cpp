@@ -645,6 +645,8 @@ gen_exp_fn(cpu_t *cpu)
 	cpu->cpu_ctx.exp_fn = reinterpret_cast<raise_exp_t>(cpu->jit->lookup("cpu_raise_exception")->getAddress());
 	assert(cpu->cpu_ctx.exp_fn);
 	cpu->jit->remove_symbols(std::vector<std::string> { "cpu_raise_exception" });
+	cpu->tc = nullptr;
+	cpu->bb = nullptr;
 }
 
 void

@@ -93,7 +93,7 @@ static_assert(check_regs_layout_idx(32), "wrong index in regs_layout array!");
 
 
 void
-cpu_x86_init(cpu_t *cpu)
+cpu_init(cpu_t *cpu)
 {
 	cpu->cpu_name = "Intel Pentium III";
 	cpu->regs_layout = regs_layout;

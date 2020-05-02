@@ -341,7 +341,6 @@ main(int argc, char **argv)
 		(intel_syntax ? CPU_INTEL_SYNTAX : 0) | CPU_CODEGEN_OPTIMIZE;
 
 	cpu_run(cpu);
-	cpu_free(cpu);
 
 	return 0;
 }

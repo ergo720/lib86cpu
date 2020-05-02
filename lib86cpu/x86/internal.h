@@ -11,8 +11,8 @@
 using namespace llvm;
 
 
-void cpu_x86_init(cpu_t *cpu);
-lc86_status cpu_start(cpu_t *cpu);
+void cpu_init(cpu_t *cpu);
+void cpu_start(cpu_t *cpu);
 lc86_status cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std::vector<std::any> &args);
 addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip);
 size_t disasm_instr(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_line, disas_ctx_t *disas_ctx);

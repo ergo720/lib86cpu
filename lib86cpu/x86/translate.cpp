@@ -15,8 +15,8 @@
 #include "memory.h"
 #include "jit.h"
 
-#define BAD       printf("%s: encountered unimplemented instruction %s\n", __func__, get_instr_name(instr.opcode)); return lc86_status::OP_NOT_IMPLEMENTED
-#define BAD_MODE  printf("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real"); return lc86_status::OP_NOT_IMPLEMENTED
+#define BAD LIB86CPU_ABORT_msg("%s: encountered unimplemented instruction %s\n", __func__, get_instr_name(instr.opcode))
+#define BAD_MODE LIB86CPU_ABORT_msg("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real")
 
 
 translated_code_t::translated_code_t(cpu_t *cpu) noexcept
@@ -403,7 +403,7 @@ get_pc(cpu_ctx_t *cpu_ctx)
 	return cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
 }
 
-static lc86_status
+static void
 cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 {
 	uint8_t translate_next = 1;
@@ -453,7 +453,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
 			RAISEin(exp_data.fault_addr, exp_data.code, exp_data.idx, exp_data.eip);
-			return lc86_status::SUCCESS;
+			return;
 		}
 
 		if ((disas_ctx->flags & DISAS_FLG_CS32) ^ instr.op_size_override) {
@@ -3461,12 +3461,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		assert(disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR));
 		ST_R32(CONST32(pc - cpu_ctx->regs.cs_hidden.base), EIP_idx);
 	}
-
-	return lc86_status::SUCCESS;
 }
 
 template<typename T>
-lc86_status cpu_exec_tc(cpu_t *cpu, T &&lambda)
+void cpu_exec_tc(cpu_t *cpu, T &&lambda)
 {
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
 	addr_t pc;
@@ -3501,14 +3499,12 @@ lc86_status cpu_exec_tc(cpu_t *cpu, T &&lambda)
 			std::unique_ptr<translated_code_t> tc(new translated_code_t(cpu));
 			cpu->ctx = new LLVMContext();
 			if (cpu->ctx == nullptr) {
-				return lc86_status::NO_MEMORY;
+				LIB86CPU_ABORT();
 			}
 			cpu->mod = new Module(cpu->cpu_name, *cpu->ctx);
 			cpu->mod->setDataLayout(*cpu->dl);
 			if (cpu->mod == nullptr) {
-				delete cpu->ctx;
-				cpu->ctx = nullptr;
-				return lc86_status::NO_MEMORY;
+				LIB86CPU_ABORT();
 			}
 
 			cpu->tc = tc.get();
@@ -3533,14 +3529,7 @@ lc86_status cpu_exec_tc(cpu_t *cpu, T &&lambda)
 			}
 			else {
 				// start guest code translation
-				lc86_status status = cpu_translate(cpu, &disas_ctx);
-				if (!LIB86CPU_CHECK_SUCCESS(status)) {
-					delete cpu->mod;
-					delete cpu->ctx;
-					cpu->mod = nullptr;
-					cpu->ctx = nullptr;
-					return status;
-				}
+				cpu_translate(cpu, &disas_ctx);
 			}
 
 			create_tc_epilogue(cpu);
@@ -3627,15 +3616,13 @@ lc86_status cpu_exec_tc(cpu_t *cpu, T &&lambda)
 
 		prev_tc = tc_run_code(&cpu->cpu_ctx, ptr_tc);
 	}
-
-	return lc86_status::SUCCESS;
 }
 
-lc86_status
+void
 cpu_start(cpu_t *cpu)
 {
 	gen_exp_fn(cpu);
-	return cpu_exec_tc(cpu, []() { return true; });
+	cpu_exec_tc(cpu, []() { return true; });
 }
 
 void
@@ -3804,7 +3791,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 	if (hook_ptr->trmp_tc_flags != nullptr) {
 		*(hook_ptr->trmp_tc_flags) &= ~CPU_IGNORE_TC;
 	}
-	lc86_status status = cpu_exec_tc(cpu, [&i]() { return i++ == 0; });
+	cpu_exec_tc(cpu, [&i]() { return i++ == 0; });
 	if (hook_ptr->trmp_tc_flags == nullptr) {
 		translated_code_t *tc = tc_cache_search(cpu, addr);
 		if (tc != nullptr) {
@@ -3820,11 +3807,8 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		*(hook_ptr->hook_tc_flags) &= ~CPU_IGNORE_TC;
 	}
 	cpu->hook_map.insert(std::move(hook_node));
-	if (!LIB86CPU_CHECK_SUCCESS(status)) {
-		return status;
-	}
 
-	status = cpu_exec_tc(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
+	cpu_exec_tc(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
 
 	switch (hook_ptr->info.args[0])
 	{
@@ -3850,5 +3834,5 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		LIB86CPU_ABORT_msg("Unknown hook return type specified\n");
 	}
 
-	return status;
+	return lc86_status::SUCCESS;
 }

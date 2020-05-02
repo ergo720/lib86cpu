@@ -32,9 +32,8 @@ namespace llvm {
 
 // lib86cpu error flags
 enum class lc86_status {
-	NO_MEMORY = -6,
+	NO_MEMORY = -5,
 	INVALID_PARAMETER,
-	OP_NOT_IMPLEMENTED,
 	ALREADY_EXIST,
 	NOT_FOUND,
 	PAGE_FAULT,
@@ -115,14 +114,14 @@ struct hook {
 
 #define LIB86CPU_ABORT() \
 do {\
-    printf("%s:%d: lib86cpu fatal error in function %s\n", __FILE__, __LINE__, __func__);\
-    exit(1);\
+    std::printf("%s:%d: lib86cpu fatal error in function %s\n", __FILE__, __LINE__, __func__);\
+    std::exit(1);\
 } while (0)
 
 #define LIB86CPU_ABORT_msg(...) \
 do {\
-    printf(__VA_ARGS__);\
-    exit(1);\
+    std::printf(__VA_ARGS__);\
+    std::exit(1);\
 } while (0)
 
 // used to generate the parity table
@@ -286,7 +285,7 @@ struct cpu_t {
 // cpu api
 API_FUNC lc86_status cpu_new(size_t ramsize, cpu_t *&out);
 API_FUNC void cpu_free(cpu_t *cpu);
-API_FUNC lc86_status cpu_run(cpu_t *cpu);
+[[noreturn]] API_FUNC void cpu_run(cpu_t *cpu);
 
 // memory api
 API_FUNC lc86_status memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority);
