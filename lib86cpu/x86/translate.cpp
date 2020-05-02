@@ -1035,7 +1035,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			else {
 				// we don't implement interrupts yet, so if we reach here, we will just abort for now
-				INTRINSIC(trap);
+				BAD;
 			}
 		}
 		break;
