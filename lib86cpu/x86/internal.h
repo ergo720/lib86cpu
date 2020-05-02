@@ -45,7 +45,8 @@ extern const char *mnemo[];
 #define TC_FLG_DIRECT     (1 << 3)
 #define TC_FLG_JMP_TAKEN  (3 << 4)
 #define TC_FLG_HOOK       (1 << 6)
-#define TC_FLG_LINK_MASK  (TC_FLG_INDIRECT | TC_FLG_DIRECT)
+#define TC_FLG_DST_ONLY   (1 << 7)
+#define TC_FLG_LINK_MASK  (TC_FLG_INDIRECT | TC_FLG_DIRECT | TC_FLG_DST_ONLY)
 
 // segment descriptor flags
 #define SEG_DESC_TY   (15ULL << 40) // type

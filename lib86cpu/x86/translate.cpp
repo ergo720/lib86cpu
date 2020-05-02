@@ -222,6 +222,24 @@ tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc)
 	}
 }
 
+void
+tc_link_dst_only(translated_code_t *prev_tc, translated_code_t *ptr_tc)
+{
+	switch (prev_tc->tc_ctx.flags & TC_FLG_NUM_JMP)
+	{
+	case 0:
+		break;
+
+	case 1:
+		prev_tc->tc_ctx.jmp_offset[0] = ptr_tc->tc_ctx.ptr_code;
+		ptr_tc->linked_tc.push_front(prev_tc);
+		break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
 static void
 create_tc_prologue(cpu_t *cpu)
 {
@@ -1757,6 +1775,15 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, vec[1]),
 							read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
 						ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
+						ST_REG_val(offset, GET_REG(OPNUM_DST));
+						if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
+							std:: vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+							BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(CONST32(cpu->cpu_ctx.hflags & HFLG_SS32), AND(LD(cpu->ptr_hflags), CONST32(HFLG_SS32))));
+							cpu->bb = vec_bb[0];
+							link_dst_only_emit(cpu);
+							cpu->bb = vec_bb[1];
+							cpu->tc->tc_ctx.flags |= TC_FLG_DST_ONLY;
+						}
 						translate_next = 0;
 					}
 					else {
@@ -1772,13 +1799,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
 						BR_UNCOND(vec_bb[2]);
 						cpu->bb = vec_bb[2];
+						ST_REG_val(offset, GET_REG(OPNUM_DST));
 					}
 				}
 				else {
 					ST_SEG(sel, sel_idx);
 					ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), sel_idx, SEG_BASE_idx);
+					ST_REG_val(offset, GET_REG(OPNUM_DST));
 				}
-				ST_REG_val(offset, GET_REG(OPNUM_DST));
 			}
 		}
 		break;
@@ -1921,6 +1949,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, vec[1]),
 								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
 							ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
+							if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
+								std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+								BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(CONST32(cpu->cpu_ctx.hflags & HFLG_SS32), AND(LD(cpu->ptr_hflags), CONST32(HFLG_SS32))));
+								cpu->bb = vec_bb[0];
+								link_dst_only_emit(cpu);
+								cpu->bb = vec_bb[1];
+								cpu->tc->tc_ctx.flags |= TC_FLG_DST_ONLY;
+							}
 							translate_next = 0;
 						}
 						else {
@@ -2408,8 +2444,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				case 0xA1:
 				case 0xA9: {
 					const unsigned sel_idx = instr.operand[OPNUM_SRC].reg + SEG_offset;
-					vec = MEM_POP(1);
-					Value *sel = vec[0];
+					std::vector<Value *> vec_pop = MEM_POP(1);
+					Value *sel = vec_pop[0];
 					if (size_mode == SIZE32) {
 						sel = TRUNC16(sel);
 					}
@@ -2423,6 +2459,15 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, vec[1]),
 								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
 							ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
+							ST_REG_val(vec_pop[1], vec_pop[2]);
+							if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
+								std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+								BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(CONST32(cpu->cpu_ctx.hflags & HFLG_SS32), AND(LD(cpu->ptr_hflags), CONST32(HFLG_SS32))));
+								cpu->bb = vec_bb[0];
+								link_dst_only_emit(cpu);
+								cpu->bb = vec_bb[1];
+								cpu->tc->tc_ctx.flags |= TC_FLG_DST_ONLY;
+							}
 							translate_next = 0;
 						}
 						else {
@@ -2438,14 +2483,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
 							BR_UNCOND(vec_bb[2]);
 							cpu->bb = vec_bb[2];
+							ST_REG_val(vec_pop[1], vec_pop[2]);
 						}
 					}
 					else {
 						ST_SEG(sel, sel_idx);
 						ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), sel_idx, SEG_BASE_idx);
+						ST_REG_val(vec_pop[1], vec_pop[2]);
 					}
-
-					ST_REG_val(vec[1], vec[2]);
 				}
 				break;
 
@@ -2520,10 +2565,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			std::vector<Value *> vec = MEM_POP(1);
 			Value *eflags = vec[0];
 			Value *mask = CONST32(TF_MASK | DF_MASK | NT_MASK);
+			uint32_t mask2 = TF_MASK;
 			uint32_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
 			uint32_t iopl = (cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12;
 			if (cpl == 0) {
 				mask = OR(mask, CONST32(IOPL_MASK | IF_MASK));
+				mask2 |= IOPL_MASK;
 			}
 			else if (iopl >= cpl) {
 				mask = OR(mask, CONST32(IF_MASK));
@@ -2531,6 +2578,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			if (size_mode == SIZE32) {
 				mask = OR(mask, CONST32(ID_MASK | AC_MASK));
+				mask2 |= AC_MASK;
 			}
 			else {
 				eflags = ZEXT32(eflags);
@@ -2539,6 +2587,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			write_eflags(cpu, eflags, mask);
 			ST_REG_val(vec[1], vec[2]);
 			ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
+			if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
+				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(CONST32(cpu->cpu_ctx.regs.eflags & mask2), AND(LD_R32(EFLAGS_idx), CONST32(mask2))));
+				cpu->bb = vec_bb[0];
+				link_dst_only_emit(cpu);
+				cpu->bb = vec_bb[1];
+				cpu->tc->tc_ctx.flags |= TC_FLG_DST_ONLY;
+			}
 			translate_next = 0;
 		}
 		break;
@@ -3554,6 +3610,10 @@ lc86_status cpu_exec_tc(cpu_t *cpu, T &&lambda)
 			{
 			case 0:
 			case TC_FLG_INDIRECT:
+				break;
+
+			case TC_FLG_DST_ONLY:
+				tc_link_dst_only(prev_tc, ptr_tc);
 				break;
 
 			case TC_FLG_DIRECT:

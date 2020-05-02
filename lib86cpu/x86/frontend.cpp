@@ -263,6 +263,28 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 }
 
 void
+link_dst_only_emit(cpu_t *cpu)
+{
+	cpu->tc->tc_ctx.flags |= (1 & TC_FLG_NUM_JMP);
+
+	std::vector<Type *> type_struct_tc_t_fields;
+	type_struct_tc_t_fields.push_back(getIntegerType(32));
+	type_struct_tc_t_fields.push_back(getIntegerType(32));
+	type_struct_tc_t_fields.push_back(getIntegerType(32));
+	type_struct_tc_t_fields.push_back(getPointerType(cpu->bb->getParent()->getFunctionType()));
+	type_struct_tc_t_fields.push_back(getArrayType(getPointerType(cpu->bb->getParent()->getFunctionType()), 3));
+	type_struct_tc_t_fields.push_back(getIntegerType(32));
+	type_struct_tc_t_fields.push_back(getIntegerType(32));
+	PointerType *tc_pstruct_type = getPointerType(StructType::create(CTX(), type_struct_tc_t_fields, "struct.tc_ctx_t", false));
+	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->tc_ctx.jmp_offset[0]), getPointerType(tc_pstruct_type->getElementType()->getStructElementType(3)));
+
+	CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+	ci->setCallingConv(CallingConv::C);
+	ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+	ReturnInst::Create(CTX(), ci, cpu->bb);
+}
+
+void
 gen_exp_fn(cpu_t *cpu)
 {
 	cpu->ctx = new LLVMContext();

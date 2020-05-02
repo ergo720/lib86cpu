@@ -24,6 +24,7 @@ void check_io_priv_emit(cpu_t *cpu, Value *port, uint8_t size_mode);
 void stack_push_emit(cpu_t *cpu, std::vector<Value *> &vec, uint32_t size_mode);
 std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at = 0);
 void link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr);
+void link_dst_only_emit(cpu_t *cpu);
 Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
 void raise_exp_inline_emit(cpu_t *cpu, std::vector<Value *> &exp_data);
 BasicBlock *raise_exception_emit(cpu_t *cpu, std::vector<Value *> &exp_data);
