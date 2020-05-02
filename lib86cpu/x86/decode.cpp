@@ -1361,7 +1361,7 @@ decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx)
 	decode_third_operand(instr);
 
 	instr->nr_bytes = static_cast<unsigned long>(disas_ctx->virt_pc - disas_ctx->start_pc);
-	disas_ctx->flags |= (disas_ctx->instr_page_addr != ((disas_ctx->start_pc + instr->nr_bytes - 1) & ~PAGE_MASK)) << 2;
+	disas_ctx->flags |= (disas_ctx->instr_page_addr != ((disas_ctx->start_pc + instr->nr_bytes - 1) & ~PAGE_MASK)) << 1;
 	disas_ctx->instr_page_addr = disas_ctx->start_pc & ~PAGE_MASK;
 }
 

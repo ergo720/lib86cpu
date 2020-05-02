@@ -3457,8 +3457,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 	} while ((translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR))) == 1);
 
-	if (translate_next == 1) {
-		assert(disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR));
+	if ((translate_next == 1) && (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR) != 0) {
 		ST_R32(CONST32(pc - cpu_ctx->regs.cs_hidden.base), EIP_idx);
 	}
 }
