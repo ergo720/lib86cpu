@@ -68,6 +68,7 @@ enum class arg_types {
 
 // forward declare
 struct cpu_t;
+struct translated_code_t;
 using trmp_call_fn_t = void(*)(cpu_t *, std::any &, std::vector<uint32_t *> &);
 
 struct hook_info {
@@ -80,8 +81,8 @@ struct hook {
 	call_conv d_conv;
 	call_conv o_conv;
 	hook_info info;
-	uint32_t *hook_tc_flags;
-	uint32_t *trmp_tc_flags;
+	std::weak_ptr<translated_code_t> hook_tc_flags;
+	std::weak_ptr<translated_code_t> trmp_tc_flags;
 	std::function<void(cpu_t *, std::vector<std::any> &, uint32_t *)> trmp_fn;
 	std::vector<trmp_call_fn_t> trmp_vec;
 };
@@ -185,7 +186,6 @@ struct exp_info_t {
 
 // forward declare
 struct cpu_ctx_t;
-struct translated_code_t;
 using entry_t = translated_code_t *(*)(cpu_ctx_t *cpu_ctx);
 using raise_exp_t = translated_code_t *(*)(cpu_ctx_t *cpu_ctx, exp_data_t *exp_data);
 
@@ -255,7 +255,7 @@ struct cpu_t {
 	std::unique_ptr<interval_tree<port_t, std::unique_ptr<memory_region_t<port_t>>>> io_space_tree;
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<addr_t>>>, sort_by_priority<addr_t>> memory_out;
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<port_t>>>, sort_by_priority<port_t>> io_out;
-	std::forward_list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
+	std::forward_list<std::shared_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
 	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
 	std::vector<std::pair<std::unique_ptr<uint8_t[]>, int>> vec_rom;
 	std::unordered_map<addr_t, std::unique_ptr<hook>> hook_map;

@@ -142,7 +142,6 @@ tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t 
 	}
 }
 
-
 static translated_code_t *
 tc_cache_search(cpu_t *cpu, addr_t pc)
 {
@@ -163,7 +162,7 @@ tc_cache_search(cpu_t *cpu, addr_t pc)
 }
 
 static void
-tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc)
+tc_cache_insert(cpu_t *cpu, addr_t pc, std::shared_ptr<translated_code_t> &&tc)
 {
 	cpu->num_tc++;
 	if (!(tc->tc_ctx.flags & TC_FLG_HOOK)) {
@@ -3495,7 +3494,7 @@ void cpu_exec_tc(cpu_t *cpu, T &&lambda)
 		if (ptr_tc == nullptr) {
 
 			// code block for this pc not present, we need to translate new code
-			std::unique_ptr<translated_code_t> tc(new translated_code_t(cpu));
+			std::shared_ptr<translated_code_t> tc(new translated_code_t(cpu));
 			cpu->ctx = new LLVMContext();
 			if (cpu->ctx == nullptr) {
 				LIB86CPU_ABORT();
@@ -3524,7 +3523,7 @@ void cpu_exec_tc(cpu_t *cpu, T &&lambda)
 				cpu->instr_eip = CONST32(disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
 				hook_emit(cpu, it->second.get());
 				cpu->tc->tc_ctx.flags |= TC_FLG_HOOK;
-				it->second->hook_tc_flags = &cpu->tc->tc_ctx.cpu_flags;
+				it->second->hook_tc_flags = tc;
 			}
 			else {
 				// start guest code translation
@@ -3784,26 +3783,44 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 	int i = 0;
 	auto &hook_node = cpu->hook_map.extract(addr);
 	cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_FORCE_INSERT);
-	if (hook_ptr->hook_tc_flags != nullptr) {
-		*(hook_ptr->hook_tc_flags) |= CPU_IGNORE_TC;
+	if (!(hook_ptr->hook_tc_flags.expired())) {
+		hook_ptr->hook_tc_flags.lock()->tc_ctx.cpu_flags |= CPU_IGNORE_TC;
 	}
-	if (hook_ptr->trmp_tc_flags != nullptr) {
-		*(hook_ptr->trmp_tc_flags) &= ~CPU_IGNORE_TC;
+	if (!(hook_ptr->trmp_tc_flags.expired())) {
+		hook_ptr->trmp_tc_flags.lock()->tc_ctx.cpu_flags &= ~CPU_IGNORE_TC;
 	}
+
 	cpu_exec_tc(cpu, [&i]() { return i++ == 0; });
-	if (hook_ptr->trmp_tc_flags == nullptr) {
-		translated_code_t *tc = tc_cache_search(cpu, addr);
-		if (tc != nullptr) {
-			assert(tc->tc_ctx.size != 0);
-			hook_ptr->trmp_tc_flags = &tc->tc_ctx.cpu_flags;
-			*(hook_ptr->trmp_tc_flags) |= CPU_IGNORE_TC;
+
+	if (hook_ptr->trmp_tc_flags.expired()) {
+		auto &tc_ptr = std::invoke([](cpu_t *cpu, uint32_t pc) {
+			uint32_t flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
+			uint32_t idx = tc_hash(pc);
+			auto it = cpu->code_cache[idx].begin();
+			while (it != cpu->code_cache[idx].end()) {
+				translated_code_t *tc = it->get();
+				if (tc->tc_ctx.cs_base == cpu->cpu_ctx.regs.cs_hidden.base &&
+					tc->tc_ctx.pc == pc &&
+					tc->tc_ctx.cpu_flags == flags) {
+					return *it;
+				}
+				it++;
+			}
+
+			return std::shared_ptr<translated_code_t>();
+			}, cpu, addr);
+
+		if (tc_ptr) {
+			assert(tc_ptr->tc_ctx.size != 0);
+			tc_ptr->tc_ctx.cpu_flags |= CPU_IGNORE_TC;
+			hook_ptr->trmp_tc_flags = tc_ptr;
 		}
 	}
 	else {
-		*(hook_ptr->trmp_tc_flags) |= CPU_IGNORE_TC;
+		hook_ptr->trmp_tc_flags.lock()->tc_ctx.cpu_flags |= CPU_IGNORE_TC;
 	}
-	if (hook_ptr->hook_tc_flags != nullptr) {
-		*(hook_ptr->hook_tc_flags) &= ~CPU_IGNORE_TC;
+	if (!(hook_ptr->hook_tc_flags.expired())) {
+		hook_ptr->hook_tc_flags.lock()->tc_ctx.cpu_flags &= ~CPU_IGNORE_TC;
 	}
 	cpu->hook_map.insert(std::move(hook_node));
 
