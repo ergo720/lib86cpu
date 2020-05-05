@@ -1,55 +1,57 @@
-# This cmake file is borrowed from libcpu, Copyright (c) 2009-2010, the libcpu developers
+# ergo720 Copyright (c) 2020
 
-PROJECT(lib86cpu)
+cmake_minimum_required(VERSION 3.4.3)
+project(lib86cpu)
 
-CMAKE_MINIMUM_REQUIRED(VERSION 2.8)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_STANDARD 17)
 
-INCLUDE(FindThreads)
+set(LLVM_DIR ${PROJECT_SOURCE_DIR}/llvm/build/llvm)
+if (NOT IS_DIRECTORY ${LLVM_DIR})
+  message(FATAL_ERROR "Could NOT find LLVM")
+endif ()
+message(STATUS "Found LLVM: ${LLVM_DIR}")
 
-#
-#
-#
-SET(CMAKE_BUILD_TYPE "Debug")
+message("Building lib86cpu")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG_LOG")
+include(BuildConfigH.cmake)
+include_directories(${LLVM_DIR}/include ${PROJECT_SOURCE_DIR}/lib86cpu ${PROJECT_SOURCE_DIR}/lib86cpu/x86)
+set(LLVM_LIBS LLVMX86Disassembler.lib LLVMX86AsmParser.lib LLVMX86CodeGen.lib LLVMGlobalISel.lib LLVMSelectionDAG.lib LLVMAsmPrinter.lib LLVMCodeGen.lib LLVMTarget.lib
+LLVMScalarOpts.lib LLVMInstCombine.lib LLVMAggressiveInstCombine.lib LLVMTransformUtils.lib LLVMBitWriter.lib LLVMAnalysis.lib LLVMProfileData.lib LLVMX86Desc.lib LLVMObject.lib
+LLVMMCParser.lib LLVMBitReader.lib LLVMCore.lib LLVMMCDisassembler.lib LLVMX86Info.lib LLVMX86AsmPrinter.lib LLVMMC.lib LLVMDebugInfoCodeView.lib LLVMDebugInfoMSF.lib
+LLVMBinaryFormat.lib LLVMX86Utils.lib LLVMSupport.lib LLVMDemangle.lib LLVMMCJIT.lib LLVMOrcJIT.lib LLVMExecutionEngine.lib LLVMRuntimeDyld.lib LLVMipo.lib LLVMObjCARCOpts.lib
+LLVMInstrumentation.lib LLVMVectorize.lib LLVMIRReader.lib LLVMLinker.lib LLVMAsmParser.lib)
+link_directories(${LLVM_DIR}/lib)
 
-# Add compiler flags.
-IF(MSVC)
-SET(CMAKE_CXX_FLAGS "/std:c++17 /EHs")
-ELSE(MSVC)
-SET(CMAKE_CXX_FLAGS "-std=c++17")
-ENDIF(MSVC)
+if (MSVC)
 
-#
-# Find LLVM, we need it.
-#
-SET(LLVM_FIND_REQUIRED TRUE)
-INCLUDE(CMake/FindLLVM.cmake)
+set(CMAKE_CXX_FLAGS "/EHs")
+include_directories(${PROJECT_SOURCE_DIR}/lib86cpu/x86/windows)
+add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS -D__STDC_FORMAT_MACROS -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS)
+add_definitions(-wd4146)
+add_definitions(-wd4800)
+add_definitions(-wd4355)
 
-INCLUDE(CMake/BuildConfigH.cmake)
-IF(MSVC)
-	add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS -D__STDC_FORMAT_MACROS -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS)
-	# disable warnings for LLVM
-	add_definitions(-wd4146) # unary minus operator applied to unsigned type, result still unsigned
-	add_definitions(-wd4800) # forcing value to bool 'true' or 'false' (performance warning)
-	add_definitions(-wd4355) # 'this' : used in base member initializer list
-ENDIF()
+add_library(cpu SHARED
+			lib86cpu/interface.cpp
+			lib86cpu/x86/arch.cpp
+			lib86cpu/x86/decode.cpp
+			lib86cpu/x86/disasm.cpp
+			lib86cpu/x86/disasm_att.cpp
+			lib86cpu/x86/disasm_intel.cpp
+			lib86cpu/x86/translate.cpp
+			lib86cpu/x86/frontend.cpp
+			lib86cpu/x86/memory.cpp
+			lib86cpu/x86/jit.cpp
+			lib86cpu/x86/windows/allocator.cpp)
+			
+target_link_libraries(cpu ${LLVM_LIBS})
 
-SET(LIB86CPU_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/lib86cpu)
+else ()
+message(FATAL_ERROR "Only Windows builds are supported for now")
+endif()
 
-#
-#
-#
-LINK_DIRECTORIES(${LLVM_LIB_DIR})
-include_directories(${LLVM_INCLUDE_DIR} ${PROJECT_SOURCE_DIR}/lib86cpu ${PROJECT_SOURCE_DIR}/lib86cpu/x86)
-
-MACRO(TARGET_LINK_LLVM TARGET)
-  TARGET_LINK_LIBRARIES(${TARGET} ${LLVM_LDFLAGS} ${LLVM_LIBS_CORE} ${LLVM_LIBS_JIT} ${LLVM_LIBS_JIT_OBJECTS})
-ENDMACRO(TARGET_LINK_LLVM)
-
-#
-# Build lib86cpu
-#
-SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG_LOG")
-MESSAGE("** Building test")
-ADD_SUBDIRECTORY(${PROJECT_SOURCE_DIR}/test)
-MESSAGE("** Building lib86cpu")
-ADD_SUBDIRECTORY(lib86cpu)
+if (${LIB86CPU_BUILD_TEST})
+message("Building test")
+add_subdirectory(${PROJECT_SOURCE_DIR}/test)
+endif()

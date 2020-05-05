@@ -1,4 +1,5 @@
 # Build folders
 [Bb]uild/
 [Bb]uild-*/
+llvm/
 lib86cpu/config.h
