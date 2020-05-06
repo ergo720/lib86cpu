@@ -293,6 +293,20 @@ API_FUNC lc86_status memory_init_region_io(cpu_t *cpu, addr_t start, size_t size
 API_FUNC lc86_status memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority);
 API_FUNC lc86_status memory_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int priority, const char *rom_path, uint8_t *&out);
 API_FUNC lc86_status memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space);
+API_FUNC lc86_status mem_read_8(cpu_t *cpu, addr_t addr, uint8_t &ret);
+API_FUNC lc86_status mem_read_16(cpu_t *cpu, addr_t addr, uint16_t &ret);
+API_FUNC lc86_status mem_read_32(cpu_t *cpu, addr_t addr, uint32_t &ret);
+API_FUNC lc86_status mem_read_64(cpu_t *cpu, addr_t addr, uint64_t &ret);
+API_FUNC lc86_status mem_write_8(cpu_t *cpu, addr_t addr, uint8_t value);
+API_FUNC lc86_status mem_write_16(cpu_t *cpu, addr_t addr, uint16_t value);
+API_FUNC lc86_status mem_write_32(cpu_t *cpu, addr_t addr, uint32_t value);
+API_FUNC lc86_status mem_write_64(cpu_t *cpu, addr_t addr, uint64_t value);
+API_FUNC lc86_status io_read_8(cpu_t *cpu, port_t port, uint8_t &ret);
+API_FUNC lc86_status io_read_16(cpu_t *cpu, port_t port, uint16_t &ret);
+API_FUNC lc86_status io_read_32(cpu_t *cpu, port_t port, uint32_t &ret);
+API_FUNC lc86_status io_write_8(cpu_t *cpu, port_t port, uint8_t value);
+API_FUNC lc86_status io_write_16(cpu_t *cpu, port_t port, uint16_t value);
+API_FUNC lc86_status io_write_32(cpu_t *cpu, port_t port, uint32_t value);
 
 // hook api
 API_FUNC lc86_status hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj);

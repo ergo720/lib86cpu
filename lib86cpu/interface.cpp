@@ -7,6 +7,7 @@
 
 #include "jit.h"
 #include "internal.h"
+#include "memory.h"
 #include <fstream>
 
 
@@ -426,6 +427,149 @@ memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 	else {
 		return lc86_status::INVALID_PARAMETER;
 	}
+}
+
+lc86_status
+mem_read_8(cpu_t *cpu, addr_t addr, uint8_t &ret)
+{
+	try {
+		ret = mem_read<uint8_t>(cpu, addr, 0, 0);
+		return lc86_status::SUCCESS;
+	}
+	catch (exp_data_t exp_data) {
+		ret = 0xFF;
+		return lc86_status::PAGE_FAULT;
+	}
+}
+
+lc86_status
+mem_read_16(cpu_t *cpu, addr_t addr, uint16_t &ret)
+{
+	try {
+		ret = mem_read<uint16_t>(cpu, addr, 0, 0);
+		return lc86_status::SUCCESS;
+	}
+	catch (exp_data_t exp_data) {
+		ret = 0xFFFF;
+		return lc86_status::PAGE_FAULT;
+	}
+}
+
+lc86_status
+mem_read_32(cpu_t *cpu, addr_t addr, uint32_t &ret)
+{
+	try {
+		ret = mem_read<uint32_t>(cpu, addr, 0, 0);
+		return lc86_status::SUCCESS;
+	}
+	catch (exp_data_t exp_data) {
+		ret = 0xFFFFFFFF;
+		return lc86_status::PAGE_FAULT;
+	}
+}
+
+lc86_status
+mem_read_64(cpu_t *cpu, addr_t addr, uint64_t &ret)
+{
+	try {
+		ret = mem_read<uint64_t>(cpu, addr, 0, 0);
+		return lc86_status::SUCCESS;
+	}
+	catch (exp_data_t exp_data) {
+		ret = 0xFFFFFFFFFFFFFFFF;
+		return lc86_status::PAGE_FAULT;
+	}
+}
+
+// NOTE: this is not correct if the client writes to a page that holds translated code
+lc86_status
+mem_write_8(cpu_t *cpu, addr_t addr, uint8_t value)
+{
+	try {
+		mem_write<uint8_t>(cpu, addr, value, 0, 0, nullptr);
+		return lc86_status::SUCCESS;
+	}
+	catch (exp_data_t exp_data) {
+		return lc86_status::PAGE_FAULT;
+	}
+}
+
+lc86_status
+mem_write_16(cpu_t *cpu, addr_t addr, uint16_t value)
+{
+	try {
+		mem_write<uint16_t>(cpu, addr, value, 0, 0, nullptr);
+		return lc86_status::SUCCESS;
+	}
+	catch (exp_data_t exp_data) {
+		return lc86_status::PAGE_FAULT;
+	}
+}
+
+lc86_status
+mem_write_32(cpu_t *cpu, addr_t addr, uint32_t value)
+{
+	try {
+		mem_write<uint32_t>(cpu, addr, value, 0, 0, nullptr);
+		return lc86_status::SUCCESS;
+	}
+	catch (exp_data_t exp_data) {
+		return lc86_status::PAGE_FAULT;
+	}
+}
+
+lc86_status
+mem_write_64(cpu_t *cpu, addr_t addr, uint64_t value)
+{
+	try {
+		mem_write<uint64_t>(cpu, addr, value, 0, 0, nullptr);
+		return lc86_status::SUCCESS;
+	}
+	catch (exp_data_t exp_data) {
+		return lc86_status::PAGE_FAULT;
+	}
+}
+
+lc86_status
+io_read_8(cpu_t *cpu, port_t port, uint8_t &ret)
+{
+	ret = io_read<uint8_t>(cpu, port);
+	return lc86_status::SUCCESS;
+}
+
+lc86_status
+io_read_16(cpu_t *cpu, port_t port, uint16_t &ret)
+{
+	ret = io_read<uint16_t>(cpu, port);
+	return lc86_status::SUCCESS;
+}
+
+lc86_status
+io_read_32(cpu_t *cpu, port_t port, uint32_t &ret)
+{
+	ret = io_read<uint32_t>(cpu, port);
+	return lc86_status::SUCCESS;
+}
+
+lc86_status
+io_write_8(cpu_t *cpu, port_t port, uint8_t value)
+{
+	io_write<uint8_t>(cpu, port, value);
+	return lc86_status::SUCCESS;
+}
+
+lc86_status
+io_write_16(cpu_t *cpu, port_t port, uint16_t value)
+{
+	io_write<uint16_t>(cpu, port, value);
+	return lc86_status::SUCCESS;
+}
+
+lc86_status
+io_write_32(cpu_t *cpu, port_t port, uint32_t value)
+{
+	io_write<uint32_t>(cpu, port, value);
+	return lc86_status::SUCCESS;
 }
 
 lc86_status
