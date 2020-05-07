@@ -45,7 +45,7 @@ add_library(cpu SHARED
 			lib86cpu/x86/jit.cpp
 			lib86cpu/x86/windows/allocator.cpp)
 			
-target_link_libraries(cpu ${LLVM_LIBS})
+target_link_libraries(cpu PRIVATE ${LLVM_LIBS})
 
 else ()
 message(FATAL_ERROR "Only Windows builds are supported for now")
