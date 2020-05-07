@@ -375,8 +375,6 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 		}
 
 		cpu_ctx->regs.cr3 = (new_cr & CR3_FLG_MASK);
-		cpu_ctx->cpu->pt_mr = as_memory_search_addr<uint8_t>(cpu_ctx->cpu, cpu_ctx->regs.cr3 & CR3_PD_MASK);
-		assert(cpu_ctx->cpu->pt_mr->type == mem_type::RAM);
 		break;
 
 	case 2:

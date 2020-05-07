@@ -169,7 +169,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 		uint8_t err_code = 0;
 		uint8_t cpu_lv = cpl_to_page_priv[cpu->cpu_ctx.hflags & HFLG_CPL];
 		addr_t pte_addr = (cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK) | (addr >> PAGE_SHIFT_LARGE) * 4;
-		uint32_t pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr));
+		uint32_t pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, as_memory_search_addr<uint8_t>(cpu, cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK), pte_addr));
 
 		if (!(pte & PTE_PRESENT)) {
 			goto page_fault;
@@ -184,7 +184,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 					if (is_write) {
 						pte |= PTE_DIRTY;
 					}
-					ram_write<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr), pte);
+					ram_write<uint32_t>(cpu, get_ram_host_ptr(cpu, as_memory_search_addr<uint8_t>(cpu, cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK), pte_addr), pte);
 				}
 				addr_t phys_addr = (pte & PTE_ADDR_4M) | (addr & PAGE_MASK_LARGE);
 				tlb_fill(cpu, addr, phys_addr,
@@ -197,7 +197,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 		}
 
 		pte_addr = (pte & PTE_ADDR_4K) | ((addr >> PAGE_SHIFT) & 0x3FF) * 4;
-		pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr));
+		pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, as_memory_search_addr<uint8_t>(cpu, cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK), pte_addr));
 
 		if (!(pte & PTE_PRESENT)) {
 			goto page_fault;
@@ -210,7 +210,7 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 				if (is_write) {
 					pte |= PTE_DIRTY;
 				}
-				ram_write<uint32_t>(cpu, get_ram_host_ptr(cpu, cpu->pt_mr, pte_addr), pte);
+				ram_write<uint32_t>(cpu, get_ram_host_ptr(cpu, as_memory_search_addr<uint8_t>(cpu, cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK), pte_addr), pte);
 			}
 			addr_t phys_addr = (pte & PTE_ADDR_4K) | (addr & PAGE_MASK);
 			tlb_fill(cpu, addr, phys_addr,

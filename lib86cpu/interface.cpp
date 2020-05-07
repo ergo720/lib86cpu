@@ -11,8 +11,8 @@
 #include <fstream>
 
 
-static void
-sync_hflags(cpu_t *cpu)
+void
+cpu_sync_state(cpu_t *cpu)
 {
 	uint16_t cs = cpu->cpu_ctx.regs.cs;
 	if (cpu->cpu_ctx.regs.cr0 & CR0_PE_MASK) {
@@ -105,7 +105,7 @@ cpu_free(cpu_t *cpu)
 void
 cpu_run(cpu_t *cpu)
 {
-	sync_hflags(cpu);
+	cpu_sync_state(cpu);
 	cpu_start(cpu);
 	LIB86CPU_ABORT();
 }

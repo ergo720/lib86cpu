@@ -249,7 +249,6 @@ struct cpu_t {
 	const char *cpu_name;
 	const regs_layout_t *regs_layout;
 	cpu_ctx_t cpu_ctx;
-	memory_region_t<addr_t> *pt_mr;
 	translated_code_t *tc; // tc for which we are currently generating code
 	std::unique_ptr<interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>> memory_space_tree;
 	std::unique_ptr<interval_tree<port_t, std::unique_ptr<memory_region_t<port_t>>>> io_space_tree;
@@ -285,6 +284,7 @@ struct cpu_t {
 // cpu api
 API_FUNC lc86_status cpu_new(size_t ramsize, cpu_t *&out);
 API_FUNC void cpu_free(cpu_t *cpu);
+API_FUNC void cpu_sync_state(cpu_t *cpu);
 [[noreturn]] API_FUNC void cpu_run(cpu_t *cpu);
 
 // memory api
