@@ -3672,15 +3672,32 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		// code for calling the trampoline is not present, we need to generate it first. This will happen when the trampoline
 		// for this hook is called for the first time
 
+		hook_ptr->trmp_vec.resize(hook_ptr->info.args.size(), nullptr);
 		switch (hook_ptr->o_conv)
 		{
+		case call_conv::X86_CDECL: {
+			uint32_t arg_size = 0;
+			for (unsigned i = hook_ptr->info.args.size() - 1; i > 0; i--) {
+				if (hook_ptr->info.args[i] == arg_types::I64) {
+					hook_ptr->trmp_vec[i] = trmp_stack_i64;
+					arg_size += 8;
+				}
+				else {
+					hook_ptr->trmp_vec[i] = trmp_stack_i32;
+					arg_size += 4;
+				}
+			}
+			hook_ptr->cdecl_arg_size = arg_size;
+		}
+		break;
+
 		case call_conv::X86_STDCALL: {
 			for (unsigned i = hook_ptr->info.args.size() - 1; i > 0; i--) {
 				if (hook_ptr->info.args[i] == arg_types::I64) {
-					hook_ptr->trmp_vec.push_back(trmp_stack_i64);
+					hook_ptr->trmp_vec[i] = trmp_stack_i64;
 				}
 				else {
-					hook_ptr->trmp_vec.push_back(trmp_stack_i32);
+					hook_ptr->trmp_vec[i] = trmp_stack_i32;
 				}
 			}
 		}
@@ -3689,7 +3706,6 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		case call_conv::X86_FASTCALL: {
 			int num_reg_args = 0;
 			bool use_stack = false;
-			hook_ptr->trmp_vec.resize(hook_ptr->info.args.size(), nullptr);
 			for (unsigned i = 1; i < hook_ptr->info.args.size(); i++) {
 				if (use_stack || (hook_ptr->info.args[i] == arg_types::I64)) {
 					continue;
@@ -3728,22 +3744,20 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 					}
 				}
 			}
-
-			hook_ptr->trmp_vec.erase(hook_ptr->trmp_vec.begin());
 		}
 		break;
 
-		case call_conv::UNDEFINED:
 		default:
 			LIB86CPU_ABORT_msg("Unknown or invalid hook calling convention specified\n");
 		}
 
+		hook_ptr->trmp_vec.erase(hook_ptr->trmp_vec.begin());
 		hook_ptr->trmp_fn = [hook_ptr, addr](cpu_t *cpu, std::vector<std::any> &args, uint32_t *ret_eip) {
 			uint32_t eip = cpu->cpu_ctx.regs.eip;
 			uint32_t stack = cpu->cpu_ctx.regs.esp + cpu->cpu_ctx.regs.ss_hidden.base;
 			std::vector<uint32_t *> vec { &stack, &eip };
-			for (unsigned i = 0; i < args.size(); i++) {
-				hook_ptr->trmp_vec[i](cpu, args[i], vec);
+			for (unsigned i = args.size(); i > 0 ; i--) {
+				hook_ptr->trmp_vec[i - 1](cpu, args[i - 1], vec);
 			}
 
 			stack -= 4;
@@ -3823,6 +3837,12 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 	cpu->hook_map.insert(std::move(hook_node));
 
 	cpu_exec_tc(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
+
+	if (hook_ptr->o_conv == call_conv::X86_CDECL) {
+		// with cdecl, we also have to clean the stack ourselves
+
+		cpu->cpu_ctx.regs.esp += hook_ptr->cdecl_arg_size;
+	}
 
 	switch (hook_ptr->info.args[0])
 	{

@@ -2133,6 +2133,7 @@ hook_get_args(cpu_t *cpu, hook *obj, std::vector<int> &reg_args, int *stack_byte
 	std::vector<Value *> args;
 	switch (obj->o_conv)
 	{
+	case call_conv::X86_CDECL:
 	case call_conv::X86_STDCALL: {
 		int stack_arg_size = 0;
 		Value *stack_ptr = ALLOC32(); // assumes that call pushed a 32 bit eip
@@ -2194,7 +2195,6 @@ hook_get_args(cpu_t *cpu, hook *obj, std::vector<int> &reg_args, int *stack_byte
 	}
 	break;
 
-	case call_conv::UNDEFINED:
 	default:
 		LIB86CPU_ABORT_msg("Unknown hook or invalid calling convention specified\n");
 	}
@@ -2246,13 +2246,22 @@ hook_emit(cpu_t *cpu, hook *obj)
 	auto &vec_args = hook_get_args(cpu, obj, reg_args, &stack_bytes);
 	switch (obj->d_conv)
 	{
+	case call_conv::X86_CDECL: {
+		stack_bytes = 0;
+		hook->setCallingConv(CallingConv::C);
+		cpu->jit->define_absolute(cpu->jit->mangle(hook), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(obj->info.addr),
+			JITSymbolFlags::Absolute | JITSymbolFlags::Exported));
+		ci = CallInst::Create(hook, vec_args, "", cpu->bb);
+		ci->setCallingConv(CallingConv::C);
+	}
+	break;
+
 	case call_conv::X86_STDCALL: {
 		hook->setCallingConv(CallingConv::X86_StdCall);
 		cpu->jit->define_absolute(cpu->jit->mangle(hook), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(obj->info.addr),
 			JITSymbolFlags::Absolute | JITSymbolFlags::Exported));
 		ci = CallInst::Create(hook, vec_args, "", cpu->bb);
 		ci->setCallingConv(CallingConv::X86_StdCall);
-		hook_clean_stack_emit(cpu, stack_bytes);
 	}
 	break;
 
@@ -2265,14 +2274,14 @@ hook_emit(cpu_t *cpu, hook *obj)
 			JITSymbolFlags::Absolute | JITSymbolFlags::Exported));
 		ci = CallInst::Create(hook, vec_args, "", cpu->bb);
 		ci->setCallingConv(CallingConv::X86_FastCall);
-		hook_clean_stack_emit(cpu, stack_bytes);
 	}
 	break;
 
-	case call_conv::UNDEFINED:
 	default:
 		LIB86CPU_ABORT_msg("Unknown or invalid hook calling convention specified\n");
 	}
+
+	hook_clean_stack_emit(cpu, stack_bytes);
 
 	switch (obj->info.args[0])
 	{

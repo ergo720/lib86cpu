@@ -13,34 +13,32 @@
 #define TEST386_POST_PORT 0x190
 cpu_t *cpu = nullptr;
 
-#if _WIN32
-#define HAS_HOOK_TEST 1
-#endif
 
-#if HAS_HOOK_TEST
-#if _WIN32
+#if _MSC_VER
 #define FASTCALL __fastcall
 #define STDCALL __stdcall
-#endif
+#define CDECL __cdecl
+#else
+#error Do not know how to specify calling conventions with this compiler
 #endif
 
-
-#ifdef HAS_HOOK_TEST
 
 uint64_t
-FASTCALL test1(uint64_t a, uint16_t b, uint8_t c, uint32_t d)
+FASTCALL test_fastcall(uint64_t a, uint16_t b, uint8_t c, uint32_t d)
 {
-	printf("Hook called with args: %llu, %hu, %u, %u\n", a, b, c, d);
+	printf("test_fastcall called with args: %llu, %hu, %u, %u\n", a, b, c, d);
 
 	std::any ret;
 	if (!LIB86CPU_CHECK_SUCCESS(trampoline_call(cpu, 0x17, ret, ANY_VEC(a, ANY_I32s(b), c, d)))) {
 		printf("Failed to call trampoline at address 0x17!\n");
+		return 0;
 	}
 
 	printf("Trampoline at address 0x17 returned %llu\n", std::any_cast<uint64_t>(ret));
 
 	if (!LIB86CPU_CHECK_SUCCESS(trampoline_call(cpu, 0x17, ret, ANY_VEC(a, ANY_I32s(b), c, d)))) {
 		printf("Failed to call trampoline at address 0x17!\n");
+		return 0;
 	}
 
 	printf("Trampoline at address 0x17 returned %llu\n", std::any_cast<uint64_t>(ret));
@@ -48,13 +46,27 @@ FASTCALL test1(uint64_t a, uint16_t b, uint8_t c, uint32_t d)
 }
 
 uint64_t
-STDCALL test2(uint64_t a, uint16_t b, uint8_t c, uint32_t d)
+STDCALL test_stdcall(uint64_t a, uint16_t b, uint8_t c, uint32_t d)
 {
-	printf("Hook called with args: %llu, %hu, %u, %u\n", a, b, c, d);
+	printf("test_stdcall called with args: %llu, %hu, %u, %u\n", a, b, c, d);
 	return 6;
 }
 
-#endif
+uint64_t
+CDECL test_cdecl(uint8_t a, uint16_t b, uint32_t c, uint64_t d)
+{
+	printf("test_cdecl called with args: %u, %hu, %u, %llu\n", a, b, c, d);
+
+	std::any ret;
+	if (!LIB86CPU_CHECK_SUCCESS(trampoline_call(cpu, 0x7a, ret, ANY_VEC(ANY_I32s(a), ANY_I32s(b), c, d)))) {
+		printf("Failed to call trampoline at address 0x7a!\n");
+		return d;
+	}
+
+	printf("Trampoline at address 0x7a returned %llu\n", std::any_cast<uint64_t>(ret));
+
+	return d;
+}
 
 void
 test386_write_handler(addr_t addr, size_t size, uint32_t value, void *opaque)
@@ -156,9 +168,7 @@ gen_test386asm_test(const std::string &executable)
 	return true;
 }
 
-#ifdef HAS_HOOK_TEST
-
-unsigned char hook_binary[106] = {
+unsigned char hook_binary[] = {
 	0x6A, 0x07, 0x6A, 0x00, 0x6A, 0x02, 0xB2, 0x03, 0xB9, 0x04, 0x00, 0x00,
 	0x00, 0xE8, 0x05, 0x00, 0x00, 0x00, 0xE9, 0x20, 0x00, 0x00, 0x00, 0x55,
 	0x8B, 0xEC, 0x83, 0xEC, 0x48, 0x53, 0x56, 0x57, 0x88, 0x55, 0xF8, 0x66,
@@ -167,7 +177,10 @@ unsigned char hook_binary[106] = {
 	0x6A, 0x00, 0x6A, 0x02, 0xE8, 0x05, 0x00, 0x00, 0x00, 0xE9, 0x19, 0x00,
 	0x00, 0x00, 0x55, 0x8B, 0xEC, 0x83, 0xEC, 0x40, 0x53, 0x56, 0x57, 0xB8,
 	0x06, 0x00, 0x00, 0x00, 0x33, 0xD2, 0x5F, 0x5E, 0x5B, 0x8B, 0xE5, 0x5D,
-	0xC2, 0x14, 0x00, 0xFA, 0xF4, 0xE9, 0x96, 0xFF, 0xFF, 0xFF
+	0xC2, 0x14, 0x00, 0x6A, 0x00, 0x6A, 0x04, 0x6A, 0x03, 0x6A, 0x02, 0x6A,
+	0x01, 0xE8, 0x08, 0x00, 0x00, 0x00, 0x83, 0xC4, 0x14, 0xE9, 0x0B, 0x00,
+	0x00, 0x00, 0x55, 0x8B, 0xEC, 0x8B, 0x45, 0x14, 0x8B, 0x55, 0x18, 0x5D,
+	0xC3, 0xFA, 0xF4, 0xE9, 0x74, 0xFF, 0xFF, 0xFF
 };
 
 static bool
@@ -188,13 +201,19 @@ gen_hook_test()
 	}
 
 	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x17, std::unique_ptr<hook>(new hook({ call_conv::X86_FASTCALL, call_conv::X86_FASTCALL,
-		{ std::vector<arg_types> { arg_types::I64, arg_types::I64, arg_types::I16, arg_types::I8, arg_types::I32 }, "test1", &test1 } }))))) {
+		{ std::vector<arg_types> { arg_types::I64, arg_types::I64, arg_types::I16, arg_types::I8, arg_types::I32 }, "test_fastcall", &test_fastcall } }))))) {
 		printf("Failed to install hook!\n");
 		return false;
 	}
 
 	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x4a, std::unique_ptr<hook>(new hook({ call_conv::X86_STDCALL, call_conv::X86_STDCALL,
-	{ std::vector<arg_types> { arg_types::I64, arg_types::I64, arg_types::I16, arg_types::I8, arg_types::I32 }, "test2", &test2 } }))))) {
+	{ std::vector<arg_types> { arg_types::I64, arg_types::I64, arg_types::I16, arg_types::I8, arg_types::I32 }, "test_stdcall", &test_stdcall } }))))) {
+		printf("Failed to install hook!\n");
+		return false;
+	}
+
+	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x7a, std::unique_ptr<hook>(new hook({ call_conv::X86_CDECL, call_conv::X86_CDECL,
+	{ std::vector<arg_types> { arg_types::I64, arg_types::I8, arg_types::I16, arg_types::I32, arg_types::I64 }, "test_cdecl", &test_cdecl } }))))) {
 		printf("Failed to install hook!\n");
 		return false;
 	}
@@ -209,8 +228,6 @@ gen_hook_test()
 
 	return true;
 }
-
-#endif
 
 
 int
@@ -314,13 +331,11 @@ main(int argc, char **argv)
 		}
 		break;
 
-#ifdef HAS_HOOK_TEST
 	case 1:
 		if (gen_hook_test() == false) {
 			return 1;
 		}
 		break;
-#endif
 
 	default:
 		if (create_cpu(executable, ramsize, code_start) == false) {

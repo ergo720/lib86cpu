@@ -54,7 +54,7 @@ enum class lc86_status {
 enum class call_conv {
 	X86_STDCALL,
 	X86_FASTCALL,
-	UNDEFINED,
+	X86_CDECL,
 };
 
 enum class arg_types {
@@ -85,6 +85,7 @@ struct hook {
 	std::weak_ptr<translated_code_t> trmp_tc_flags;
 	std::function<void(cpu_t *, std::vector<std::any> &, uint32_t *)> trmp_fn;
 	std::vector<trmp_call_fn_t> trmp_vec;
+	uint32_t cdecl_arg_size;
 };
 
 #define LIB86CPU_CHECK_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::SUCCESS)
