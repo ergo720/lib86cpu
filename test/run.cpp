@@ -128,10 +128,7 @@ create_cpu(const std::string &executable, size_t ramsize, addr_t code_start)
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(cpu_new(ramsize, cpu))) {
-		printf("Failed to initialize lib86cpu!\n");
-		return false;
-	}
+	LIB86CPU_EXPECTED(cpu = cpu_new(ramsize).value();, printf("Failed to initialize lib86cpu!\n"); return false;)
 
 	ifs.read((char *)&cpu->cpu_ctx.ram[code_start], length);
 	ifs.close();
@@ -188,10 +185,7 @@ gen_hook_test()
 {
 	size_t ramsize = 8 * 1024;
 
-	if (!LIB86CPU_CHECK_SUCCESS(cpu_new(ramsize, cpu))) {
-		printf("Failed to initialize lib86cpu!\n");
-		return false;
-	}
+	LIB86CPU_EXPECTED(cpu = cpu_new(ramsize).value();, printf("Failed to initialize lib86cpu!\n"); return false;)
 
 	std::memcpy(cpu->cpu_ctx.ram, hook_binary, sizeof(hook_binary));
 

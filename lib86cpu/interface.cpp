@@ -26,28 +26,25 @@ cpu_sync_state(cpu_t *cpu)
 	}
 }
 
-lc86_status
-cpu_new(size_t ramsize, cpu_t *&out)
+tl::expected<cpu_t *, lc86_status>
+cpu_new(size_t ramsize)
 {
-	cpu_t *cpu;
-	out = nullptr;
-
 	printf("Creating new cpu...\n");
 
-	cpu = new cpu_t();
+	cpu_t *cpu = new cpu_t();
 	if (cpu == nullptr) {
-		return lc86_status::NO_MEMORY;
+		return tl::unexpected<lc86_status>(lc86_status::NO_MEMORY);
 	}
 
 	if ((ramsize % PAGE_SIZE) != 0) {
 		cpu_free(cpu);
-		return lc86_status::INVALID_PARAMETER;
+		return tl::unexpected<lc86_status>(lc86_status::INVALID_PARAMETER);
 	}
 
 	cpu->cpu_ctx.ram = new uint8_t[ramsize];
 	if (cpu->cpu_ctx.ram == nullptr) {
 		cpu_free(cpu);
-		return lc86_status::NO_MEMORY;
+		return tl::unexpected<lc86_status>(lc86_status::NO_MEMORY);
 	}
 
 	cpu_init(cpu);
@@ -79,8 +76,8 @@ cpu_new(size_t ramsize, cpu_t *&out)
 
 	printf("Created new cpu \"%s\"\n", cpu->cpu_name);
 
-	out = cpu->cpu_ctx.cpu = cpu;
-	return lc86_status::SUCCESS;
+	cpu->cpu_ctx.cpu = cpu;
+	return cpu;
 }
 
 void
@@ -429,59 +426,51 @@ memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 	}
 }
 
-lc86_status
-mem_read_8(cpu_t *cpu, addr_t addr, uint8_t &ret)
+tl::expected<uint8_t, lc86_status>
+mem_read_8(cpu_t *cpu, addr_t addr)
 {
 	try {
-		ret = mem_read<uint8_t>(cpu, addr, 0, 0);
-		return lc86_status::SUCCESS;
+		return mem_read<uint8_t>(cpu, addr, 0, 0);
 	}
 	catch (exp_data_t exp_data) {
-		ret = 0xFF;
-		return lc86_status::PAGE_FAULT;
+		return tl::unexpected<lc86_status>(lc86_status::PAGE_FAULT);
 	}
 }
 
-lc86_status
-mem_read_16(cpu_t *cpu, addr_t addr, uint16_t &ret)
+tl::expected<uint16_t, lc86_status>
+mem_read_16(cpu_t *cpu, addr_t addr)
 {
 	try {
-		ret = mem_read<uint16_t>(cpu, addr, 0, 0);
-		return lc86_status::SUCCESS;
+		return mem_read<uint16_t>(cpu, addr, 0, 0);
 	}
 	catch (exp_data_t exp_data) {
-		ret = 0xFFFF;
-		return lc86_status::PAGE_FAULT;
+		return tl::unexpected<lc86_status>(lc86_status::PAGE_FAULT);
 	}
 }
 
-lc86_status
-mem_read_32(cpu_t *cpu, addr_t addr, uint32_t &ret)
+tl::expected<uint32_t, lc86_status>
+mem_read_32(cpu_t *cpu, addr_t addr)
 {
 	try {
-		ret = mem_read<uint32_t>(cpu, addr, 0, 0);
-		return lc86_status::SUCCESS;
+		return mem_read<uint32_t>(cpu, addr, 0, 0);
 	}
 	catch (exp_data_t exp_data) {
-		ret = 0xFFFFFFFF;
-		return lc86_status::PAGE_FAULT;
+		return tl::unexpected<lc86_status>(lc86_status::PAGE_FAULT);
 	}
 }
 
-lc86_status
-mem_read_64(cpu_t *cpu, addr_t addr, uint64_t &ret)
+tl::expected<uint64_t, lc86_status>
+mem_read_64(cpu_t *cpu, addr_t addr)
 {
 	try {
-		ret = mem_read<uint64_t>(cpu, addr, 0, 0);
-		return lc86_status::SUCCESS;
+		return mem_read<uint64_t>(cpu, addr, 0, 0);
 	}
 	catch (exp_data_t exp_data) {
-		ret = 0xFFFFFFFFFFFFFFFF;
-		return lc86_status::PAGE_FAULT;
+		return tl::unexpected<lc86_status>(lc86_status::PAGE_FAULT);
 	}
 }
 
-// NOTE: this is not correct if the client writes to a page that holds translated code
+// NOTE: this is not correct if the client writes to a page that holds translated code (becaue we pass nullptr as tc argument)
 lc86_status
 mem_write_8(cpu_t *cpu, addr_t addr, uint8_t value)
 {
@@ -530,25 +519,22 @@ mem_write_64(cpu_t *cpu, addr_t addr, uint64_t value)
 	}
 }
 
-lc86_status
-io_read_8(cpu_t *cpu, port_t port, uint8_t &ret)
+uint8_t
+io_read_8(cpu_t *cpu, port_t port)
 {
-	ret = io_read<uint8_t>(cpu, port);
-	return lc86_status::SUCCESS;
+	return io_read<uint8_t>(cpu, port);
 }
 
-lc86_status
-io_read_16(cpu_t *cpu, port_t port, uint16_t &ret)
+uint16_t
+io_read_16(cpu_t *cpu, port_t port)
 {
-	ret = io_read<uint16_t>(cpu, port);
-	return lc86_status::SUCCESS;
+	return io_read<uint16_t>(cpu, port);
 }
 
-lc86_status
-io_read_32(cpu_t *cpu, port_t port, uint32_t &ret)
+uint32_t
+io_read_32(cpu_t *cpu, port_t port)
 {
-	ret = io_read<uint32_t>(cpu, port);
-	return lc86_status::SUCCESS;
+	return io_read<uint32_t>(cpu, port);
 }
 
 lc86_status

@@ -16,6 +16,7 @@
 #include <unordered_set>
 #include <string>
 #include <any>
+#include "expected.hpp"
 
 
 namespace llvm {
@@ -89,6 +90,12 @@ struct hook {
 };
 
 #define LIB86CPU_CHECK_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::SUCCESS)
+#define LIB86CPU_EXPECTED(success, fail) try { \
+success \
+} \
+catch (const tl::bad_expected_access<lc86_status> &e) { \
+fail \
+}
 
 #define CPU_FLAG_SWAPMEM        (1 << 0)
 #define CPU_INTEL_SYNTAX        (1 << 1)
@@ -283,7 +290,7 @@ struct cpu_t {
 };
 
 // cpu api
-API_FUNC lc86_status cpu_new(size_t ramsize, cpu_t *&out);
+API_FUNC tl::expected<cpu_t *, lc86_status> cpu_new(size_t ramsize);
 API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC void cpu_sync_state(cpu_t *cpu);
 [[noreturn]] API_FUNC void cpu_run(cpu_t *cpu);
@@ -294,17 +301,17 @@ API_FUNC lc86_status memory_init_region_io(cpu_t *cpu, addr_t start, size_t size
 API_FUNC lc86_status memory_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority);
 API_FUNC lc86_status memory_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int priority, const char *rom_path, uint8_t *&out);
 API_FUNC lc86_status memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space);
-API_FUNC lc86_status mem_read_8(cpu_t *cpu, addr_t addr, uint8_t &ret);
-API_FUNC lc86_status mem_read_16(cpu_t *cpu, addr_t addr, uint16_t &ret);
-API_FUNC lc86_status mem_read_32(cpu_t *cpu, addr_t addr, uint32_t &ret);
-API_FUNC lc86_status mem_read_64(cpu_t *cpu, addr_t addr, uint64_t &ret);
+API_FUNC tl::expected<uint8_t, lc86_status> mem_read_8(cpu_t *cpu, addr_t addr);
+API_FUNC tl::expected<uint16_t, lc86_status> mem_read_16(cpu_t *cpu, addr_t addr);
+API_FUNC tl::expected<uint32_t, lc86_status> mem_read_32(cpu_t *cpu, addr_t addr);
+API_FUNC tl::expected<uint64_t, lc86_status> mem_read_64(cpu_t *cpu, addr_t addr);
 API_FUNC lc86_status mem_write_8(cpu_t *cpu, addr_t addr, uint8_t value);
 API_FUNC lc86_status mem_write_16(cpu_t *cpu, addr_t addr, uint16_t value);
 API_FUNC lc86_status mem_write_32(cpu_t *cpu, addr_t addr, uint32_t value);
 API_FUNC lc86_status mem_write_64(cpu_t *cpu, addr_t addr, uint64_t value);
-API_FUNC lc86_status io_read_8(cpu_t *cpu, port_t port, uint8_t &ret);
-API_FUNC lc86_status io_read_16(cpu_t *cpu, port_t port, uint16_t &ret);
-API_FUNC lc86_status io_read_32(cpu_t *cpu, port_t port, uint32_t &ret);
+API_FUNC uint8_t io_read_8(cpu_t *cpu, port_t port);
+API_FUNC uint16_t io_read_16(cpu_t *cpu, port_t port);
+API_FUNC uint32_t io_read_32(cpu_t *cpu, port_t port);
 API_FUNC lc86_status io_write_8(cpu_t *cpu, port_t port, uint8_t value);
 API_FUNC lc86_status io_write_16(cpu_t *cpu, port_t port, uint16_t value);
 API_FUNC lc86_status io_write_32(cpu_t *cpu, port_t port, uint32_t value);
