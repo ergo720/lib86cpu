@@ -291,7 +291,6 @@ struct cpu_t {
 
 // cpu api
 API_FUNC tl::expected<cpu_t *, lc86_status> cpu_new(size_t ramsize);
-API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC void cpu_sync_state(cpu_t *cpu);
 [[noreturn]] API_FUNC void cpu_run(cpu_t *cpu);
 

@@ -26,6 +26,25 @@ cpu_sync_state(cpu_t *cpu)
 	}
 }
 
+static void
+cpu_free(cpu_t *cpu)
+{
+	if (cpu->dl) {
+		delete cpu->dl;
+	}
+	if (cpu->cpu_ctx.ram) {
+		delete[] cpu->cpu_ctx.ram;
+	}
+
+	for (auto &bucket : cpu->code_cache) {
+		bucket.clear();
+	}
+
+	llvm_shutdown();
+
+	delete cpu;
+}
+
 tl::expected<cpu_t *, lc86_status>
 cpu_new(size_t ramsize)
 {
@@ -78,25 +97,6 @@ cpu_new(size_t ramsize)
 
 	cpu->cpu_ctx.cpu = cpu;
 	return cpu;
-}
-
-void
-cpu_free(cpu_t *cpu)
-{
-	if (cpu->dl) {
-		delete cpu->dl;
-	}
-	if (cpu->cpu_ctx.ram) {
-		delete[] cpu->cpu_ctx.ram;
-	}
-
-	for (auto &bucket : cpu->code_cache) {
-		bucket.clear();
-	}
-
-	llvm_shutdown();
-
-	delete cpu;
 }
 
 void
