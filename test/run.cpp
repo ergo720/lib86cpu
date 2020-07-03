@@ -28,6 +28,11 @@ FASTCALL test_fastcall(uint64_t a, uint16_t b, uint8_t c, uint32_t d)
 {
 	printf("test_fastcall called with args: %llu, %hu, %u, %u\n", a, b, c, d);
 
+	mem_write_block(cpu, 0x2800, 0x2000, std::vector<uint8_t>(0x2000, 0xAA).data());
+	std::vector<uint8_t> vec = mem_read_block(cpu, 0, 0x3800).value();
+	// should print 0x6A, uninitialzed value, 0xAA
+	printf("vec[0x0] = 0x%X, vec[0x27FF] = 0x%X, vec[0x2800] = 0x%X\n", vec[0x0], vec[0x27FF], vec[0x2800]);
+
 	std::any ret;
 	if (!LIB86CPU_CHECK_SUCCESS(trampoline_call(cpu, 0x17, ret, ANY_VEC(a, ANY_I32s(b), c, d)))) {
 		printf("Failed to call trampoline at address 0x17!\n");
@@ -69,13 +74,13 @@ CDECL test_cdecl(uint8_t a, uint16_t b, uint32_t c, uint64_t d)
 }
 
 void
-test386_write_handler(addr_t addr, size_t size, uint32_t value, void *opaque)
+test386_write_handler(addr_t addr, size_t size, void *buffer, void *opaque)
 {
 	switch (addr)
 	{
 	case TEST386_POST_PORT: {
 		if (size == 1) {
-			printf("Test number is %d\n", value);
+			printf("Test number is %u\n", *static_cast<uint8_t *>(buffer));
 		}
 		else {
 			printf("Unhandled i/o port size at port %d\n", TEST386_POST_PORT);
@@ -183,7 +188,7 @@ unsigned char hook_binary[] = {
 static bool
 gen_hook_test()
 {
-	size_t ramsize = 8 * 1024;
+	size_t ramsize = 5 * 4096;
 
 	LIB86CPU_EXPECTED(cpu = cpu_new(ramsize).value();, printf("Failed to initialize lib86cpu!\n"); return false;)
 

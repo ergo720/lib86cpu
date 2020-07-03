@@ -108,29 +108,29 @@ cpu_run(cpu_t *cpu)
 }
 
 static void
-default_mmio_write_handler(addr_t addr, size_t size, uint32_t value, void *opaque)
+default_mmio_write_handler(addr_t addr, size_t size, void *buffer, void *opaque)
 {
 	LOG("Unhandled MMIO write at address %#010x with size %d\n", addr, size);
 }
 
-static uint32_t
+static std::vector<uint8_t>
 default_mmio_read_handler(addr_t addr, size_t size, void *opaque)
 {
 	LOG("Unhandled MMIO read at address %#010x with size %d\n", addr, size);
-	return std::numeric_limits<uint32_t>::max();
+	return std::vector<uint8_t>(size, 0xFF);
 }
 
 static void
-default_pmio_write_handler(addr_t addr, size_t size, uint32_t value, void *opaque)
+default_pmio_write_handler(addr_t addr, size_t size, void *buffer, void *opaque)
 {
 	LOG("Unhandled PMIO write at port %#06x with size %d\n", addr, size);
 }
 
-static uint32_t
+static std::vector<uint8_t>
 default_pmio_read_handler(addr_t addr, size_t size, void *opaque)
 {
 	LOG("Unhandled PMIO read at port %#06x with size %d\n", addr, size);
-	return std::numeric_limits<uint32_t>::max();
+	return std::vector<uint8_t>(size, 0xFF);
 }
 
 lc86_status
@@ -426,92 +426,129 @@ memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 	}
 }
 
-tl::expected<uint8_t, lc86_status>
-mem_read_8(cpu_t *cpu, addr_t addr)
+tl::expected<std::vector<uint8_t>, lc86_status>
+mem_read_block(cpu_t *cpu, addr_t addr, size_t size)
 {
+	std::vector<uint8_t> buffer(size);
+	size_t vec_offset = 0;
+	size_t page_offset = addr & PAGE_MASK;
+	size_t size_left = size;
+
 	try {
-		return mem_read<uint8_t>(cpu, addr, 0, 0);
+		while (size_left > 0) {
+			size_t bytes_to_read = std::min(PAGE_SIZE - page_offset, size_left);
+			addr_t phys_addr = get_read_addr(cpu, addr, 0, 0);
+
+			memory_region_t<addr_t> *region = as_memory_search_addr<uint8_t>(cpu, phys_addr);
+			retry:
+			if ((phys_addr >= region->start) && ((phys_addr + bytes_to_read - 1) <= region->end)) {
+				switch (region->type)
+				{
+				case mem_type::RAM:
+					std::memcpy(buffer.data() + vec_offset, get_ram_host_ptr(cpu, region, phys_addr), bytes_to_read);
+					break;
+
+				case mem_type::ROM:
+					std::memcpy(buffer.data() + vec_offset, get_rom_host_ptr(cpu, region, phys_addr), bytes_to_read);
+					break;
+
+				case mem_type::MMIO:
+					std::memcpy(buffer.data() + vec_offset, (region->read_handler(phys_addr, bytes_to_read, region->opaque)).data(), bytes_to_read);
+					break;
+
+				case mem_type::ALIAS: {
+					memory_region_t<addr_t> *alias = region;
+					AS_RESOLVE_ALIAS();
+					phys_addr = region->start + alias_offset + (phys_addr - alias->start);
+					goto retry;
+				}
+				break;
+
+				case mem_type::UNMAPPED:
+					LOG("Memory read to unmapped memory at address %#010x with size %zu\n", phys_addr, bytes_to_read);
+					std::memcpy(buffer.data() + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+			}
+			else {
+				LOG("Memory read at address %#010x with size %zu is not completely inside a memory region\n", phys_addr, bytes_to_read);
+			}
+
+			page_offset = 0;
+			vec_offset += bytes_to_read;
+			size_left -= bytes_to_read;
+			addr += bytes_to_read;
+		}
+
+		return buffer;
 	}
 	catch (exp_data_t exp_data) {
 		return tl::unexpected<lc86_status>(lc86_status::PAGE_FAULT);
 	}
 }
 
-tl::expected<uint16_t, lc86_status>
-mem_read_16(cpu_t *cpu, addr_t addr)
-{
-	try {
-		return mem_read<uint16_t>(cpu, addr, 0, 0);
-	}
-	catch (exp_data_t exp_data) {
-		return tl::unexpected<lc86_status>(lc86_status::PAGE_FAULT);
-	}
-}
-
-tl::expected<uint32_t, lc86_status>
-mem_read_32(cpu_t *cpu, addr_t addr)
-{
-	try {
-		return mem_read<uint32_t>(cpu, addr, 0, 0);
-	}
-	catch (exp_data_t exp_data) {
-		return tl::unexpected<lc86_status>(lc86_status::PAGE_FAULT);
-	}
-}
-
-tl::expected<uint64_t, lc86_status>
-mem_read_64(cpu_t *cpu, addr_t addr)
-{
-	try {
-		return mem_read<uint64_t>(cpu, addr, 0, 0);
-	}
-	catch (exp_data_t exp_data) {
-		return tl::unexpected<lc86_status>(lc86_status::PAGE_FAULT);
-	}
-}
-
-// NOTE: this is not correct if the client writes to a page that holds translated code (because we pass nullptr as tc argument)
+// NOTE1: this is not correct if the client writes to the same tc we are executing (because we pass nullptr as tc argument to tc_invalidate)
+// NOTE2: if a page fault is raised on a page after the first one is written to, this will result in a partial write. I'm not sure if this is a problem though
 lc86_status
-mem_write_8(cpu_t *cpu, addr_t addr, uint8_t value)
+mem_write_block(cpu_t *cpu, addr_t addr, size_t size, void *buffer)
 {
-	try {
-		mem_write<uint8_t>(cpu, addr, value, 0, 0, nullptr);
-		return lc86_status::SUCCESS;
-	}
-	catch (exp_data_t exp_data) {
-		return lc86_status::PAGE_FAULT;
-	}
-}
+	size_t page_offset = addr & PAGE_MASK;
+	size_t size_left = size;
 
-lc86_status
-mem_write_16(cpu_t *cpu, addr_t addr, uint16_t value)
-{
 	try {
-		mem_write<uint16_t>(cpu, addr, value, 0, 0, nullptr);
-		return lc86_status::SUCCESS;
-	}
-	catch (exp_data_t exp_data) {
-		return lc86_status::PAGE_FAULT;
-	}
-}
+		while (size_left > 0) {
+			uint8_t is_code;
+			size_t bytes_to_write = std::min(PAGE_SIZE - page_offset, size_left);
+			addr_t phys_addr = get_write_addr(cpu, addr, 0, 0, &is_code);
+			if (is_code) {
+				tc_invalidate(&cpu->cpu_ctx, nullptr, phys_addr, bytes_to_write, 0);
+			}
 
-lc86_status
-mem_write_32(cpu_t *cpu, addr_t addr, uint32_t value)
-{
-	try {
-		mem_write<uint32_t>(cpu, addr, value, 0, 0, nullptr);
-		return lc86_status::SUCCESS;
-	}
-	catch (exp_data_t exp_data) {
-		return lc86_status::PAGE_FAULT;
-	}
-}
+			memory_region_t<addr_t> *region = as_memory_search_addr<uint8_t>(cpu, phys_addr);
+			retry:
+			if ((phys_addr >= region->start) && ((phys_addr + bytes_to_write - 1) <= region->end)) {
+				switch (region->type)
+				{
+				case mem_type::RAM:
+					std::memcpy(get_ram_host_ptr(cpu, region, phys_addr), buffer, bytes_to_write);
+					break;
 
-lc86_status
-mem_write_64(cpu_t *cpu, addr_t addr, uint64_t value)
-{
-	try {
-		mem_write<uint64_t>(cpu, addr, value, 0, 0, nullptr);
+				case mem_type::ROM:
+					break;
+
+				case mem_type::MMIO:
+					region->write_handler(phys_addr, bytes_to_write, buffer, region->opaque);
+					break;
+
+				case mem_type::ALIAS: {
+					memory_region_t<addr_t> *alias = region;
+					AS_RESOLVE_ALIAS();
+					phys_addr = region->start + alias_offset + (phys_addr - alias->start);
+					goto retry;
+				}
+				break;
+
+				case mem_type::UNMAPPED:
+					LOG("Memory write to unmapped memory at address %#010x with size %zu\n", phys_addr, bytes_to_write);
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+			}
+			else {
+				LOG("Memory write at address %#010x with size %zu is not completely inside a memory region\n", phys_addr, bytes_to_write);
+			}
+
+			page_offset = 0;
+			buffer = static_cast<uint8_t *>(buffer) + bytes_to_write;
+			size_left -= bytes_to_write;
+			addr += bytes_to_write;
+		}
+
 		return lc86_status::SUCCESS;
 	}
 	catch (exp_data_t exp_data) {
