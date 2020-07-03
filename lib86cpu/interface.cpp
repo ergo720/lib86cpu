@@ -470,7 +470,7 @@ mem_read_64(cpu_t *cpu, addr_t addr)
 	}
 }
 
-// NOTE: this is not correct if the client writes to a page that holds translated code (becaue we pass nullptr as tc argument)
+// NOTE: this is not correct if the client writes to a page that holds translated code (because we pass nullptr as tc argument)
 lc86_status
 mem_write_8(cpu_t *cpu, addr_t addr, uint8_t value)
 {
