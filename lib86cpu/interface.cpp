@@ -475,6 +475,7 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size)
 			}
 			else {
 				LOG("Memory read at address %#010x with size %zu is not completely inside a memory region\n", phys_addr, bytes_to_read);
+				std::memcpy(buffer.data() + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
 			}
 
 			page_offset = 0;
