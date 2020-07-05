@@ -596,6 +596,14 @@ io_write_32(cpu_t *cpu, port_t port, uint32_t value)
 	return lc86_status::SUCCESS;
 }
 
+void
+tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end)
+{
+	for (uint32_t tlb_idx_s = addr_start >> PAGE_SHIFT, tlb_idx_e = addr_end >> PAGE_SHIFT; tlb_idx_s <= tlb_idx_e; tlb_idx_s++) {
+		cpu->cpu_ctx.tlb[tlb_idx_s] = 0;
+	}
+}
+
 lc86_status
 hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 {
