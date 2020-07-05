@@ -2209,7 +2209,7 @@ hook_emit(cpu_t *cpu, hook *obj)
 	for (const auto &type : obj->info.args) {
 		switch (type)
 		{
-		case arg_types::VOID:
+		case arg_types::EMPTY:
 			args.push_back(getVoidType());
 			break;
 
@@ -2285,7 +2285,7 @@ hook_emit(cpu_t *cpu, hook *obj)
 
 	switch (obj->info.args[0])
 	{
-	case arg_types::VOID:
+	case arg_types::EMPTY:
 		break;
 
 	case arg_types::I8:

@@ -58,12 +58,14 @@ enum class call_conv {
 	X86_CDECL,
 };
 
+// NOTE: avoid using a VOID type because it's possible that the client includes a header (e.g. Windows.h) which defines a VOID macro and thus will
+// conflict with our type
 enum class arg_types {
 	I8,
 	I16,
 	I32,
 	I64,
-	VOID,
+	EMPTY,
 	PTR,
 };
 

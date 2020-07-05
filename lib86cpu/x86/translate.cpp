@@ -3846,7 +3846,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 
 	switch (hook_ptr->info.args[0])
 	{
-	case arg_types::VOID:
+	case arg_types::EMPTY:
 		ret.reset();
 		break;
 

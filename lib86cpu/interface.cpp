@@ -617,7 +617,7 @@ hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 
 	if (obj->info.args.size() > 1) {
 		for (unsigned i = 1; i < obj->info.args.size(); i++) {
-			if (obj->info.args[i] == arg_types::VOID) {
+			if (obj->info.args[i] == arg_types::EMPTY) {
 				return lc86_status::INVALID_PARAMETER;
 			}
 		}
