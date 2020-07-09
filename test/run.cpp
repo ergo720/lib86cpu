@@ -74,13 +74,13 @@ CDECL test_cdecl(uint8_t a, uint16_t b, uint32_t c, uint64_t d)
 }
 
 void
-test386_write_handler(addr_t addr, size_t size, void *buffer, void *opaque)
+test386_write_handler(addr_t addr, size_t size, const void *buffer, void *opaque)
 {
 	switch (addr)
 	{
 	case TEST386_POST_PORT: {
 		if (size == 1) {
-			printf("Test number is %u\n", *static_cast<uint8_t *>(buffer));
+			printf("Test number is %u\n", *static_cast<const uint8_t *>(buffer));
 		}
 		else {
 			printf("Unhandled i/o port size at port %d\n", TEST386_POST_PORT);

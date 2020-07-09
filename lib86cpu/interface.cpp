@@ -108,7 +108,7 @@ cpu_run(cpu_t *cpu)
 }
 
 static void
-default_mmio_write_handler(addr_t addr, size_t size, void *buffer, void *opaque)
+default_mmio_write_handler(addr_t addr, size_t size, const void *buffer, void *opaque)
 {
 	LOG("Unhandled MMIO write at address %#010x with size %d\n", addr, size);
 }
@@ -121,7 +121,7 @@ default_mmio_read_handler(addr_t addr, size_t size, void *opaque)
 }
 
 static void
-default_pmio_write_handler(addr_t addr, size_t size, void *buffer, void *opaque)
+default_pmio_write_handler(addr_t addr, size_t size, const void *buffer, void *opaque)
 {
 	LOG("Unhandled PMIO write at port %#06x with size %d\n", addr, size);
 }
@@ -494,7 +494,7 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size)
 // NOTE1: this is not correct if the client writes to the same tc we are executing (because we pass nullptr as tc argument to tc_invalidate)
 // NOTE2: if a page fault is raised on a page after the first one is written to, this will result in a partial write. I'm not sure if this is a problem though
 lc86_status
-mem_write_block(cpu_t *cpu, addr_t addr, size_t size, void *buffer)
+mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer)
 {
 	size_t page_offset = addr & PAGE_MASK;
 	size_t size_left = size;
@@ -545,7 +545,7 @@ mem_write_block(cpu_t *cpu, addr_t addr, size_t size, void *buffer)
 			}
 
 			page_offset = 0;
-			buffer = static_cast<uint8_t *>(buffer) + bytes_to_write;
+			buffer = static_cast<const uint8_t *>(buffer) + bytes_to_write;
 			size_left -= bytes_to_write;
 			addr += bytes_to_write;
 		}
@@ -575,25 +575,22 @@ io_read_32(cpu_t *cpu, port_t port)
 	return io_read<uint32_t>(cpu, port);
 }
 
-lc86_status
+void
 io_write_8(cpu_t *cpu, port_t port, uint8_t value)
 {
 	io_write<uint8_t>(cpu, port, value);
-	return lc86_status::SUCCESS;
 }
 
-lc86_status
+void
 io_write_16(cpu_t *cpu, port_t port, uint16_t value)
 {
 	io_write<uint16_t>(cpu, port, value);
-	return lc86_status::SUCCESS;
 }
 
-lc86_status
+void
 io_write_32(cpu_t *cpu, port_t port, uint32_t value)
 {
 	io_write<uint32_t>(cpu, port, value);
-	return lc86_status::SUCCESS;
 }
 
 void

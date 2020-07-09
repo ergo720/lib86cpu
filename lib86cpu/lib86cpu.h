@@ -145,7 +145,7 @@ do {\
 
 // mmio/pmio access handlers
 using fp_read = std::vector<uint8_t> (*)(addr_t addr, size_t size, void *opaque);
-using fp_write = void (*)(addr_t addr, size_t size, void *buffer, void *opaque);
+using fp_write = void (*)(addr_t addr, size_t size, const void *buffer, void *opaque);
 
 // memory region type
 enum class mem_type {
@@ -303,13 +303,13 @@ API_FUNC lc86_status memory_init_region_alias(cpu_t *cpu, addr_t alias_start, ad
 API_FUNC lc86_status memory_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int priority, const char *rom_path, uint8_t *&out);
 API_FUNC lc86_status memory_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space);
 API_FUNC tl::expected<std::vector<uint8_t>, lc86_status> mem_read_block(cpu_t *cpu, addr_t addr, size_t size);
-API_FUNC lc86_status mem_write_block(cpu_t *cpu, addr_t addr, size_t size, void *buffer);
+API_FUNC lc86_status mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer);
 API_FUNC uint8_t io_read_8(cpu_t *cpu, port_t port);
 API_FUNC uint16_t io_read_16(cpu_t *cpu, port_t port);
 API_FUNC uint32_t io_read_32(cpu_t *cpu, port_t port);
-API_FUNC lc86_status io_write_8(cpu_t *cpu, port_t port, uint8_t value);
-API_FUNC lc86_status io_write_16(cpu_t *cpu, port_t port, uint16_t value);
-API_FUNC lc86_status io_write_32(cpu_t *cpu, port_t port, uint32_t value);
+API_FUNC void io_write_8(cpu_t *cpu, port_t port, uint8_t value);
+API_FUNC void io_write_16(cpu_t *cpu, port_t port, uint16_t value);
+API_FUNC void io_write_32(cpu_t *cpu, port_t port, uint32_t value);
 API_FUNC void tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end);
 
 // hook api
