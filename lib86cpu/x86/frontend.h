@@ -161,6 +161,7 @@ default: \
 #define NOT_ZERO(s, v) AND(SHR(OR(v, SUB(CONSTs(s, 0), v)), CONSTs(s, s-1)), CONSTs(s, 1))
 #define SWITCH_new(n, v, def) SwitchInst::Create(v, def, n, cpu->bb)
 #define SWITCH_add(s, v, bb) addCase(CONSTs(s, v), bb)
+#define INT2PTR(ty, v) new IntToPtrInst(v, ty, "", cpu->bb)
 
 #define GEP(ptr, idx)  gep_emit(cpu, ptr, idx)
 #define GEP_R32(idx)   GEP(cpu->ptr_regs, idx)

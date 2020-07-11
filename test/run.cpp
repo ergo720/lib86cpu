@@ -74,6 +74,18 @@ CDECL test_cdecl(uint8_t a, uint16_t b, uint32_t c, uint64_t d)
 }
 
 void
+CDECL test_double_ptr(int **a, int *b)
+{
+	printf("test_double_ptr called with args: 0x%p, 0x%p\n", a, b);
+
+	std::any ret;
+	if (!LIB86CPU_CHECK_SUCCESS(trampoline_call(cpu, 0x96, ret, ANY_VEC(ANY_I32r(a), ANY_I32r(b))))) {
+		printf("Failed to call trampoline at address 0x96!\n");
+		return;
+	}
+}
+
+void
 test386_write_handler(addr_t addr, size_t size, const void *buffer, void *opaque)
 {
 	switch (addr)
@@ -182,7 +194,9 @@ unsigned char hook_binary[] = {
 	0xC2, 0x14, 0x00, 0x6A, 0x00, 0x6A, 0x04, 0x6A, 0x03, 0x6A, 0x02, 0x6A,
 	0x01, 0xE8, 0x08, 0x00, 0x00, 0x00, 0x83, 0xC4, 0x14, 0xE9, 0x0B, 0x00,
 	0x00, 0x00, 0x55, 0x8B, 0xEC, 0x8B, 0x45, 0x14, 0x8B, 0x55, 0x18, 0x5D,
-	0xC3, 0xFA, 0xF4, 0xE9, 0x74, 0xFF, 0xFF, 0xFF
+	0xC3, 0x6A, 0x00, 0x6A, 0x00, 0xE8, 0x08, 0x00, 0x00, 0x00, 0x83, 0xC4,
+	0x08, 0xE9, 0x05, 0x00, 0x00, 0x00, 0x55, 0x8B, 0xEC, 0x5D, 0xC3, 0xFA,
+	0xF4, 0xE9, 0x96, 0xFF, 0xFF, 0xFF
 };
 
 static bool
@@ -213,6 +227,12 @@ gen_hook_test()
 
 	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x7a, std::unique_ptr<hook>(new hook({ call_conv::X86_CDECL, call_conv::X86_CDECL,
 	{ std::vector<arg_types> { arg_types::I64, arg_types::I8, arg_types::I16, arg_types::I32, arg_types::I64 }, "test_cdecl", &test_cdecl } }))))) {
+		printf("Failed to install hook!\n");
+		return false;
+	}
+
+	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x96, std::unique_ptr<hook>(new hook({ call_conv::X86_CDECL, call_conv::X86_CDECL,
+	{ std::vector<arg_types> { arg_types::EMPTY, arg_types::PTR2, arg_types::PTR }, "test_double_ptr", &test_double_ptr } }))))) {
 		printf("Failed to install hook!\n");
 		return false;
 	}

@@ -3720,6 +3720,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 					case arg_types::I16:
 					case arg_types::I32:
 					case arg_types::PTR:
+					case arg_types::PTR2:
 						hook_ptr->trmp_vec[i] = num_reg_args ? trmp_edx_i32 : trmp_ecx_i32;
 						break;
 
@@ -3857,6 +3858,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 	case arg_types::I16:
 	case arg_types::I32:
 	case arg_types::PTR:
+	case arg_types::PTR2:
 		ret = cpu->cpu_ctx.regs.eax;
 		break;
 

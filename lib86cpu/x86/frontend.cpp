@@ -1362,8 +1362,11 @@ ret_pe_emit(cpu_t *cpu, uint8_t size_mode, bool is_iret)
 Value *
 mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_priv)
 {
+	// idx > 3 are for hooks 4 -> EMPTY (error), 5 -> PTR, 6 -> PTR2
+	static const uint8_t idx_remap[7] = { 0, 1, 2, 3, 0xFF, 2, 2 };
 	static const uint8_t idx_to_size[4] = { 8, 16, 32, 64 };
-	uint8_t mem_size = idx_to_size[idx];
+	const uint8_t mem_idx = idx_remap[idx];
+	const uint8_t mem_size = idx_to_size[mem_idx];
 
 	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 5);
 	Value *ret = ALLOCs(mem_size);
@@ -1385,7 +1388,7 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_pri
 
 	// no, acccess the memory region with is_phys flag=1
 	cpu->bb = vec_bb[4];
-	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(ram_offset), cpu->instr_eip, CONST8(1 | is_priv) }, "", cpu->bb));
+	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(ram_offset), cpu->instr_eip, CONST8(1 | is_priv) }, "", cpu->bb));
 	BR_UNCOND(vec_bb[2]);
 
 	// yes, access ram directly
@@ -1400,7 +1403,7 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_pri
 
 	// tlb miss, acccess the memory region with is_phys flag=0
 	cpu->bb = vec_bb[1];
-	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, cpu->instr_eip, CONST8(is_priv) }, "", cpu->bb));
+	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, cpu->instr_eip, CONST8(is_priv) }, "", cpu->bb));
 	BR_UNCOND(vec_bb[2]);
 
 	cpu->bb = vec_bb[2];
@@ -1410,8 +1413,11 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_pri
 void
 mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const unsigned is_priv)
 {
+	// idx > 3 are for hooks 4 -> EMPTY (error), 5 -> PTR, 6 -> PTR2
+	static const uint8_t idx_remap[7] = { 0, 1, 2, 3, 0xFF, 2, 2 };
 	static const uint8_t idx_to_size[4] = { 8, 16, 32, 64 };
-	uint8_t mem_size = idx_to_size[idx];
+	const uint8_t mem_idx = idx_remap[idx];
+	const uint8_t mem_size = idx_to_size[mem_idx];
 
 	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), (cpu->cpu_flags & CPU_ALLOW_CODE_WRITE) ? 5 : 6);
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
@@ -1434,7 +1440,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 
 	// no, acccess the memory region with is_phys flag=1
 	cpu->bb = vec_bb[4];
-	CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(ram_offset), value, cpu->instr_eip, CONST8(1 | is_priv), tc_ptr }, "", cpu->bb);
+	CallInst::Create(cpu->ptr_mem_stfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(ram_offset), value, cpu->instr_eip, CONST8(1 | is_priv), tc_ptr }, "", cpu->bb);
 	BR_UNCOND(vec_bb[2]);
 
 	// yes, access ram directly
@@ -1458,7 +1464,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 
 	// tlb miss, acccess the memory region with is_phys flag=0
 	cpu->bb = vec_bb[1];
-	CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv), tc_ptr }, "", cpu->bb);
+	CallInst::Create(cpu->ptr_mem_stfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv), tc_ptr }, "", cpu->bb);
 	BR_UNCOND(vec_bb[2]);
 
 	cpu->bb = vec_bb[2];
@@ -2177,6 +2183,7 @@ hook_get_args(cpu_t *cpu, hook *obj, std::vector<int> &reg_args, int *stack_byte
 
 				case arg_types::I32:
 				case arg_types::PTR:
+				case arg_types::PTR2:
 					reg_args.push_back(i);
 					args.push_back(LD_R32(reg_idx));
 					break;
@@ -2197,6 +2204,19 @@ hook_get_args(cpu_t *cpu, hook *obj, std::vector<int> &reg_args, int *stack_byte
 
 	default:
 		LIB86CPU_ABORT_msg("Unknown hook or invalid calling convention specified\n");
+	}
+
+	for (unsigned i = 1; i < obj->info.args.size(); i++) {
+		switch (obj->info.args[i])
+		{
+		case arg_types::PTR:
+			args[i - 1] = INT2PTR(getPointerType(getIntegerType(8)), args[i - 1]);
+			break;
+
+		case arg_types::PTR2:
+			args[i - 1] = INT2PTR(getPointerType(getPointerType(getIntegerType(8))), args[i - 1]);
+			break;
+		}
 	}
 
 	return args;
@@ -2231,6 +2251,10 @@ hook_emit(cpu_t *cpu, hook *obj)
 
 		case arg_types::PTR:
 			args.push_back(getPointerType(getIntegerType(8)));
+			break;
+
+		case arg_types::PTR2:
+			args.push_back(getPointerType(getPointerType(getIntegerType(8))));
 			break;
 
 		default:
@@ -2295,6 +2319,7 @@ hook_emit(cpu_t *cpu, hook *obj)
 	case arg_types::I16:
 	case arg_types::I32:
 	case arg_types::PTR:
+	case arg_types::PTR2:
 		ST_R32(ci, EAX_idx);
 		break;
 

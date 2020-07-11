@@ -67,6 +67,7 @@ enum class arg_types {
 	I64,
 	EMPTY,
 	PTR,
+	PTR2,
 };
 
 // forward declare
