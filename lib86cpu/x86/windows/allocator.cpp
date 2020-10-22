@@ -5,6 +5,7 @@
  */
 
 #include "lib86cpu.h"
+#include "internal.h"
 #include "allocator.h"
 #include "llvm/Support/WindowsError.h"
 #include "Windows.h"

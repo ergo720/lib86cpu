@@ -92,7 +92,7 @@ case OPTYPE_SIB_DISP: \
 	break; \
 \
 default: \
-	LIB86CPU_ABORT_msg("Invalid operand type used in GET_RM macro!\n"); \
+	LIB86CPU_ABORT_msg("Invalid operand type used in GET_RM macro!"); \
 }
 
 #define INTPTR(v) ConstantInt::get(getIntegerPointerType(), reinterpret_cast<uintptr_t>(v))
@@ -115,6 +115,11 @@ default: \
 #define UNREACH() new UnreachableInst(CTX(), cpu->bb)
 #define INTRINSIC(id) CallInst::Create(Intrinsic::getDeclaration(cpu->mod, Intrinsic::id), "", cpu->bb)
 #define INTRINSIC_ty(id, ty, arg) CallInst::Create(Intrinsic::getDeclaration(cpu->mod, Intrinsic::id, ty), arg, "", cpu->bb)
+#define ABORT() \
+do {\
+    CallInst *ci = CallInst::Create(cpu->ptr_abort_fn, CONST32(static_cast<int32_t>(lc86_status::INTERNAL_ERROR)), "", cpu->bb);\
+    ci->setCallingConv(CallingConv::C);\
+} while (0)
 
 #define ZEXT(s, v) new ZExtInst(v, getIntegerType(s), "", cpu->bb)
 #define ZEXT8(v) ZEXT(8, v)

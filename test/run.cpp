@@ -374,7 +374,9 @@ main(int argc, char **argv)
 	cpu->cpu_flags |= (print_ir ? (CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED) : 0) |
 		(intel_syntax ? CPU_INTEL_SYNTAX : 0) | CPU_CODEGEN_OPTIMIZE;
 
-	cpu_run(cpu);
+	lc86_status code = cpu_run(cpu);
+	std::printf("Emulation terminated with status %d. The error was %s\n", code, cpu->exit_str.c_str());
+	cpu_free(cpu);
 
 	return 0;
 }

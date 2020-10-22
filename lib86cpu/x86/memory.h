@@ -121,7 +121,7 @@ T as_ram_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *region)
 		break;
 
 		default:
-			LIB86CPU_ABORT_msg("Attempted to execute code outside of ram/rom!\n");
+			LIB86CPU_ABORT_msg("Attempted to execute code outside of ram/rom!");
 		}
 	}
 	else {

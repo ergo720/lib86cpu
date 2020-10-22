@@ -32,8 +32,9 @@ namespace llvm {
 }
 
 // lib86cpu error flags
-enum class lc86_status {
-	NO_MEMORY = -5,
+enum class lc86_status : int32_t {
+	INTERNAL_ERROR = -6,
+	NO_MEMORY,
 	INVALID_PARAMETER,
 	ALREADY_EXIST,
 	NOT_FOUND,
@@ -123,18 +124,6 @@ fail \
 #else
 #define LOG(...)
 #endif
-
-#define LIB86CPU_ABORT() \
-do {\
-    std::printf("%s:%d: lib86cpu fatal error in function %s\n", __FILE__, __LINE__, __func__);\
-    std::exit(1);\
-} while (0)
-
-#define LIB86CPU_ABORT_msg(...) \
-do {\
-    std::printf(__VA_ARGS__);\
-    std::exit(1);\
-} while (0)
 
 // used to generate the parity table
 // borrowed from Bit Twiddling Hacks by Sean Eron Anderson (public domain)
@@ -271,6 +260,7 @@ struct cpu_t {
 	std::unordered_map<addr_t, std::unique_ptr<hook>> hook_map;
 	uint16_t num_tc;
 	exp_info_t exp_info;
+	std::string exit_str;
 
 	// llvm specific variables
 	std::unique_ptr<lc86_jit> jit;
@@ -285,6 +275,7 @@ struct cpu_t {
 	llvm::Value *ptr_ram;
 	llvm::Value *ptr_exp_fn;
 	llvm::Value *ptr_invtc_fn;
+	llvm::Value *ptr_abort_fn;
 	llvm::Value *instr_eip;
 	llvm::BasicBlock *bb; // bb to which we are currently adding llvm instructions
 	llvm::Function *ptr_mem_ldfn[7];
@@ -294,8 +285,9 @@ struct cpu_t {
 
 // cpu api
 API_FUNC tl::expected<cpu_t *, lc86_status> cpu_new(size_t ramsize);
+API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC void cpu_sync_state(cpu_t *cpu);
-[[noreturn]] API_FUNC void cpu_run(cpu_t *cpu);
+API_FUNC lc86_status cpu_run(cpu_t *cpu);
 
 // memory api
 API_FUNC lc86_status memory_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority);

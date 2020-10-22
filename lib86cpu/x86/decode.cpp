@@ -1274,7 +1274,7 @@ decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx)
 			case X86_DECODE_CLASS_INVALID:
 				// This handles all occurences of X86_OPC_UNDEFINED :
 				// TODO: actually this should raise an UD exception for illegal opcodes
-				LIB86CPU_ABORT_msg("Illegal or not implemented opcode 0x%x\n", instr_byte);
+				LIB86CPU_ABORT_msg("Illegal or not implemented opcode 0x%x", instr_byte);
 			case X86_DECODE_CLASS_PREFIX: // TODO : Honor maximum number of prefix bytes per prefix group
 				// All prefix bytes set an instruction variable to some value and will fetch and decode another byte :
 				bits = GET_FIELD(decode, X86_PREFIX_INDEX);

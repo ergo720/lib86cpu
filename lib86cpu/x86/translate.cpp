@@ -15,8 +15,8 @@
 #include "memory.h"
 #include "jit.h"
 
-#define BAD LIB86CPU_ABORT_msg("%s: encountered unimplemented instruction %s\n", __func__, get_instr_name(instr.opcode))
-#define BAD_MODE LIB86CPU_ABORT_msg("%s: instruction %s not implemented in %s mode\n", __func__, get_instr_name(instr.opcode), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real")
+#define BAD LIB86CPU_ABORT_msg("%s: encountered unimplemented instruction %s", __func__, get_instr_name(instr.opcode))
+#define BAD_MODE LIB86CPU_ABORT_msg("%s: instruction %s not implemented in %s mode", __func__, get_instr_name(instr.opcode), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real")
 
 
 translated_code_t::translated_code_t(cpu_t *cpu) noexcept
@@ -3614,11 +3614,65 @@ void cpu_exec_tc(cpu_t *cpu, T &&lambda)
 	}
 }
 
-void
+lc86_status
 cpu_start(cpu_t *cpu)
 {
 	gen_exp_fn(cpu);
-	cpu_exec_tc(cpu, []() { return true; });
+
+	try {
+		cpu_exec_tc(cpu, []() { return true; });
+	}
+	catch (lc86_exp_abort &exp) {
+		cpu->exit_str = exp.what();
+		return exp.get_code();
+	}
+
+	cpu->exit_str = lc86status_to_str(lc86_status::INTERNAL_ERROR);
+	return lc86_status::INTERNAL_ERROR;
+}
+
+void
+cpu_abort(int32_t code)
+{
+	lc86_status code2 = static_cast<lc86_status>(code);
+	throw lc86_exp_abort(lc86status_to_str(code2), code2);
+}
+
+void
+cpu_abort(int32_t code, const char *msg)
+{
+	throw lc86_exp_abort(msg, static_cast<lc86_status>(code));
+}
+
+std::string
+lc86status_to_str(lc86_status code)
+{
+	switch (code)
+	{
+	case lc86_status::INTERNAL_ERROR:
+		return "An unspecified error internal to lib86cpu has occured";
+
+	case lc86_status::NO_MEMORY:
+		return "The operation failed because of insuffiecient memory";
+
+	case lc86_status::INVALID_PARAMETER:
+		return "An invalid parameter was specified";
+
+	case lc86_status::ALREADY_EXIST:
+		return "The specified object already exists";
+
+	case lc86_status::NOT_FOUND:
+		return "The specified object could not be found";
+
+	case lc86_status::PAGE_FAULT:
+		return "A page fault was raised by lib86cpu while executing the operation";
+
+	case lc86_status::SUCCESS:
+		return "The operation completed successfully";
+
+	default:
+		return "Unknown error code";
+	}
 }
 
 void
@@ -3725,7 +3779,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 						break;
 
 					default:
-						LIB86CPU_ABORT_msg("Unknown or invalid hook argument type specified\n");
+						LIB86CPU_ABORT_msg("Unknown or invalid hook argument type specified");
 					}
 
 					num_reg_args++;
@@ -3749,7 +3803,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		break;
 
 		default:
-			LIB86CPU_ABORT_msg("Unknown or invalid hook calling convention specified\n");
+			LIB86CPU_ABORT_msg("Unknown or invalid hook calling convention specified");
 		}
 
 		hook_ptr->trmp_vec.erase(hook_ptr->trmp_vec.begin());
@@ -3867,7 +3921,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		break;
 
 	default:
-		LIB86CPU_ABORT_msg("Unknown hook return type specified\n");
+		LIB86CPU_ABORT_msg("Unknown hook return type specified");
 	}
 
 	return lc86_status::SUCCESS;

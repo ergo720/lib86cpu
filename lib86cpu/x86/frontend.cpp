@@ -132,6 +132,10 @@ get_ext_fn(cpu_t *cpu)
 
 	cpu->ptr_invtc_fn = cast<Function>(cpu->mod->getOrInsertFunction("tc_invalidate", getVoidType(), cpu_ctx_ty,
 		tc_ty, getIntegerType(32), getIntegerType(8), getIntegerType(32)));
+
+	Function *abort_func = cast<Function>(cpu->mod->getOrInsertFunction("cpu_abort", getVoidType(), getIntegerType(32)));
+	abort_func->addAttribute(0, Attribute::AttrKind::NoReturn);
+	cpu->ptr_abort_fn = abort_func;
 }
 
 Value *
@@ -232,7 +236,7 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 			ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 			ReturnInst::Create(CTX(), ci, cpu->bb);
 			cpu->bb = BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0);
-			INTRINSIC(trap);
+			ABORT();
 		}
 	}
 	break;
@@ -253,7 +257,7 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 		ci2->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 		ReturnInst::Create(CTX(), ci2, cpu->bb);
 		cpu->bb = vec_bb[2];
-		INTRINSIC(trap);
+		ABORT();
 	}
 	break;
 
@@ -364,7 +368,7 @@ gen_exp_fn(cpu_t *cpu)
 	BR_COND(bb_exp_in_flight, bb_next, ICMP_NE(LD(GEP(ptr_exp_info, 1)), CONST8(0)));
 	cpu->bb = bb_exp_in_flight;
 	// we don't handle double and triple faults yet, so just abort
-	INTRINSIC(trap);
+	ABORT();
 	UNREACH();
 	cpu->bb = bb_next;
 	ST(GEP(ptr_exp_info, 1), CONST8(1));
@@ -596,7 +600,7 @@ gen_exp_fn(cpu_t *cpu)
 		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
 		// we don't handle double and triple faults yet, so just abort
-		INTRINSIC(trap);
+		ABORT();
 		UNREACH();
 	}
 	else {
@@ -624,7 +628,7 @@ gen_exp_fn(cpu_t *cpu)
 		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
 		// we don't handle double and triple faults yet, so just abort
-		INTRINSIC(trap);
+		ABORT();
 		UNREACH();
 	}
 
@@ -963,7 +967,7 @@ lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t
 	swi->SWITCH_add(8, 12, vec_bb[9]); // call gate, 32 bit
 	cpu->bb = vec_bb[8];
 	// we don't support tss and task gates yet, so just abort
-	INTRINSIC(trap);
+	ABORT();
 	UNREACH();
 
 	// call gate
@@ -1175,7 +1179,7 @@ ljmp_pe_emit(cpu_t *cpu, Value *sel, uint8_t size_mode, uint32_t eip)
 	swi->SWITCH_add(8, 12, vec_bb[9]); // call gate, 32 bit
 	cpu->bb = vec_bb[8];
 	// we don't support tss and task gates yet, so just abort
-	INTRINSIC(trap);
+	ABORT();
 	UNREACH();
 
 	// call gate
@@ -1234,13 +1238,13 @@ ret_pe_emit(cpu_t *cpu, uint8_t size_mode, bool is_iret)
 		BR_COND(vec_bb2[0], vec_bb2[1], ICMP_NE(AND(eflags, CONST32(VM_MASK)), CONST32(0)));
 		cpu->bb = vec_bb2[0];
 		// we don't support virtual 8086 mode, so just abort
-		INTRINSIC(trap);
+		ABORT();
 		UNREACH();
 		cpu->bb = vec_bb2[1];
 		BR_COND(vec_bb2[2], vec_bb2[3], ICMP_NE(AND(eflags, CONST32(NT_MASK)), CONST32(0)));
 		cpu->bb = vec_bb2[2];
 		// we don't support task returns yet, so just abort
-		INTRINSIC(trap);
+		ABORT();
 		UNREACH();
 		cpu->bb = vec_bb2[3];
 		vec = MEM_POP(3);
@@ -1627,7 +1631,7 @@ get_immediate_op(cpu_t *cpu, x86_instr *instr, uint8_t idx, uint8_t size_mode)
 		break;
 
 	default:
-		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s\n", size_mode, __func__);
+		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s", size_mode, __func__);
 	}
 
 	return value;
@@ -1661,7 +1665,7 @@ set_flags_sum(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode)
 		break;
 
 	default:
-		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s\n", size_mode, __func__);
+		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s", size_mode, __func__);
 	}
 }
 
@@ -1686,7 +1690,7 @@ set_flags_sub(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode)
 		break;
 
 	default:
-		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s\n", size_mode, __func__);
+		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s", size_mode, __func__);
 	}
 }
 
@@ -2189,7 +2193,7 @@ hook_get_args(cpu_t *cpu, hook *obj, std::vector<int> &reg_args, int *stack_byte
 					break;
 
 				default:
-					LIB86CPU_ABORT_msg("Unknown hook argument type specified\n");
+					LIB86CPU_ABORT_msg("Unknown hook argument type specified");
 				}
 
 				num_reg_args++;
@@ -2203,7 +2207,7 @@ hook_get_args(cpu_t *cpu, hook *obj, std::vector<int> &reg_args, int *stack_byte
 	break;
 
 	default:
-		LIB86CPU_ABORT_msg("Unknown hook or invalid calling convention specified\n");
+		LIB86CPU_ABORT_msg("Unknown hook or invalid calling convention specified");
 	}
 
 	for (unsigned i = 1; i < obj->info.args.size(); i++) {
@@ -2258,7 +2262,7 @@ hook_emit(cpu_t *cpu, hook *obj)
 			break;
 
 		default:
-			LIB86CPU_ABORT_msg("Unknown hook argument type specified\n");
+			LIB86CPU_ABORT_msg("Unknown hook argument type specified");
 		}
 	}
 
@@ -2302,7 +2306,7 @@ hook_emit(cpu_t *cpu, hook *obj)
 	break;
 
 	default:
-		LIB86CPU_ABORT_msg("Unknown or invalid hook calling convention specified\n");
+		LIB86CPU_ABORT_msg("Unknown or invalid hook calling convention specified");
 	}
 
 	hook_clean_stack_emit(cpu, stack_bytes);
@@ -2329,6 +2333,6 @@ hook_emit(cpu_t *cpu, hook *obj)
 		break;
 
 	default:
-		LIB86CPU_ABORT_msg("Unknown hook return type specified\n");
+		LIB86CPU_ABORT_msg("Unknown hook return type specified");
 	}
 }

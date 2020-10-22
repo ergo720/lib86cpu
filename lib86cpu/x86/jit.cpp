@@ -95,6 +95,7 @@ lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetM
 	define_absolute(mangle("io_write32"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_write32), JITSymbolFlags::Absolute));
 	define_absolute(mangle("tc_invalidate"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&tc_invalidate), JITSymbolFlags::Absolute));
 	define_absolute(mangle("cpu_update_crN"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_update_crN), JITSymbolFlags::Absolute));
+	define_absolute(mangle("cpu_abort"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(static_cast<void(*)(int32_t)>(&cpu_abort)), JITSymbolFlags::Absolute));
 
 #ifdef _WIN32
 	// workaround for llvm bug D65548
