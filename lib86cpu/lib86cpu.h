@@ -107,23 +107,9 @@ fail \
 #define CPU_CODEGEN_OPTIMIZE    (1 << 3)
 #define CPU_PRINT_IR            (1 << 4)
 #define CPU_PRINT_IR_OPTIMIZED  (1 << 5)
-#define CPU_IGNORE_TC           (1 << 6)
-#define CPU_DISAS_ONE           (1 << 7)
-#define CPU_ALLOW_CODE_WRITE    (1 << 8)
-#define CPU_FORCE_INSERT        (1 << 9)
-
-#define CPU_INTEL_SYNTAX_SHIFT  1
-
-#define CPU_NUM_REGS 33
 
 #define CODE_CACHE_MAX_SIZE (1 << 15)
 #define TLB_MAX_SIZE (1 << 20)
-
-#ifdef DEBUG_LOG
-#define LOG(...) do { printf(__VA_ARGS__); } while(0)
-#else
-#define LOG(...)
-#endif
 
 // used to generate the parity table
 // borrowed from Bit Twiddling Hacks by Sean Eron Anderson (public domain)

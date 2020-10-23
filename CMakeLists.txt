@@ -35,7 +35,8 @@ add_definitions(-wd4355)
 
 add_library(cpu SHARED
 			lib86cpu/interface.cpp
-			lib86cpu/x86/arch.cpp
+			lib86cpu/support.cpp
+			lib86cpu/x86/init.cpp
 			lib86cpu/x86/decode.cpp
 			lib86cpu/x86/disasm.cpp
 			lib86cpu/x86/disasm_att.cpp
