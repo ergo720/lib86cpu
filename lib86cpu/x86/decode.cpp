@@ -6,7 +6,7 @@
  * the libcpu developers  Copyright (c) 2009-2010
  */
 
-#include "lib86cpu.h"
+#include "lib86cpu_priv.h"
 #include "isa.h"
 #include "internal.h"
 #include "decode.h"

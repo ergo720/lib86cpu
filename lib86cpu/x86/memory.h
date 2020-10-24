@@ -7,7 +7,7 @@
 #pragma once
 
 #include "llvm/support/SwapByteOrder.h"
-#include "lib86cpu.h"
+#include "lib86cpu_priv.h"
 #include "internal.h"
 
 #define AS_RESOLVE_ALIAS() 	addr_t alias_offset = region->alias_offset; \

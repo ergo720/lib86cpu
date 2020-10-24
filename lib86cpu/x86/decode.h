@@ -8,7 +8,7 @@
 
 #pragma once
 
-#include "lib86cpu.h"
+#include "lib86cpu_priv.h"
 #include <stdint.h>
 
 #define SIZE32 0

@@ -12,6 +12,7 @@
 
 #define TEST386_POST_PORT 0x190
 cpu_t *cpu = nullptr;
+uint8_t *ram = nullptr;
 
 
 #if _MSC_VER
@@ -145,9 +146,10 @@ create_cpu(const std::string &executable, size_t ramsize, addr_t code_start)
 		return false;
 	}
 
-	LIB86CPU_EXPECTED(cpu = cpu_new(ramsize).value();, printf("Failed to initialize lib86cpu!\n"); return false;)
+	LIB86CPU_EXPECTED(cpu = cpu_new(ramsize).value(); , printf("Failed to initialize lib86cpu!\n"); return false;)
+	ram = get_ram_ptr(cpu);
 
-	ifs.read((char *)&cpu->cpu_ctx.ram[code_start], length);
+	ifs.read((char *)&ram[code_start], length);
 	ifs.close();
 
 	return true;
@@ -164,17 +166,17 @@ gen_test386asm_test(const std::string &executable)
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(memory_init_region_ram(cpu, 0, ramsize, 1))) {
+	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
 		printf("Failed to initialize ram memory for test386.asm!\n");
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(memory_init_region_alias(cpu, 0xFFFF0000, 0xF0000, 0x10000, 1))) {
+	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_alias(cpu, 0xFFFF0000, 0xF0000, 0x10000, 1))) {
 		printf("Failed to initialize aliased ram memory for test386.asm!\n");
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(memory_init_region_io(cpu, TEST386_POST_PORT, 0x1, true, nullptr, test386_write_handler, nullptr, 1))) {
+	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_io(cpu, TEST386_POST_PORT, 0x1, true, nullptr, test386_write_handler, nullptr, 1))) {
 		printf("Failed to initialize post i/o port for test386.asm!\n");
 		return false;
 	}
@@ -205,10 +207,10 @@ gen_hook_test()
 	size_t ramsize = 5 * 4096;
 
 	LIB86CPU_EXPECTED(cpu = cpu_new(ramsize).value();, printf("Failed to initialize lib86cpu!\n"); return false;)
+	ram = get_ram_ptr(cpu);
+	std::memcpy(ram, hook_binary, sizeof(hook_binary));
 
-	std::memcpy(cpu->cpu_ctx.ram, hook_binary, sizeof(hook_binary));
-
-	if (!LIB86CPU_CHECK_SUCCESS(memory_init_region_ram(cpu, 0, ramsize, 1))) {
+	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
 		printf("Failed to initialize ram memory for hook test!\n");
 		return false;
 	}
@@ -237,13 +239,17 @@ gen_hook_test()
 		return false;
 	}
 
-	cpu->cpu_ctx.regs.cr0 |= 1;
-	cpu->cpu_ctx.regs.eip = 0;
-	cpu->cpu_ctx.regs.cs = 0;
-	cpu->cpu_ctx.regs.cs_hidden.base = 0;
-	cpu->cpu_ctx.regs.cs_hidden.flags = (1 << 22);
-	cpu->cpu_ctx.regs.ss_hidden.flags = (1 << 22);
-	cpu->cpu_ctx.regs.esp = cpu->cpu_ctx.regs.ebp = ramsize;
+	uint32_t cr0;
+	read_reg(cpu, &cr0, REG_CR0);
+	cr0 |= 1;
+	write_reg(cpu, cr0, REG_CR0);
+	write_reg(cpu, 0, REG_EIP);
+	write_reg(cpu, 0, REG_CS, SEG_SEL);
+	write_reg(cpu, 0, REG_CS, SEG_BASE);
+	write_reg(cpu, 1 << 22, REG_CS, SEG_FLG);
+	write_reg(cpu, 1 << 22, REG_SS, SEG_FLG);
+	write_reg(cpu, ramsize, REG_ESP);
+	write_reg(cpu, ramsize, REG_EBP);
 
 	return true;
 }
@@ -361,21 +367,21 @@ main(int argc, char **argv)
 			return 1;
 		}
 
-		cpu->cpu_ctx.regs.cs = 0;
-		cpu->cpu_ctx.regs.cs_hidden.base = 0;
-		cpu->cpu_ctx.regs.eip = code_entry;
+		write_reg(cpu, 0, REG_CS, SEG_SEL);
+		write_reg(cpu, 0, REG_CS, SEG_BASE);
+		write_reg(cpu, code_entry, REG_EIP);
 
-		if (!LIB86CPU_CHECK_SUCCESS(memory_init_region_ram(cpu, 0, ramsize, 1))) {
+		if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
 			printf("Failed to initialize ram memory!\n");
 			return 1;
 		}
 	}
 
-	cpu->cpu_flags |= (print_ir ? (CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED) : 0) |
-		(intel_syntax ? CPU_INTEL_SYNTAX : 0) | CPU_CODEGEN_OPTIMIZE;
+	cpu_set_flags(cpu, (print_ir ? (CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED) : 0) |
+		(intel_syntax ? CPU_INTEL_SYNTAX : 0) | CPU_CODEGEN_OPTIMIZE);
 
 	lc86_status code = cpu_run(cpu);
-	std::printf("Emulation terminated with status %d. The error was %s\n", code, cpu->exit_str.c_str());
+	std::printf("Emulation terminated with status %d. The error was %s\n", code, cpu_get_exit_str(cpu).c_str());
 	cpu_free(cpu);
 
 	return 0;

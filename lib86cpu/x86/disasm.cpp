@@ -6,6 +6,7 @@
  */
 
 #include "decode.h"
+#include "support.h"
 
 const char *mnemo[] = {
 	"illegal",

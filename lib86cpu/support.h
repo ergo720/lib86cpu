@@ -6,9 +6,11 @@
 
 #pragma once
 
-#include "lib86cpu.h"
+#include "lib86cpu_priv.h"
 
 
+#define CPU_FLAG_SWAPMEM        (1 << 0)
+#define CPU_FLAG_FP80           (1 << 2)
 #define CPU_IGNORE_TC           (1 << 6)
 #define CPU_DISAS_ONE           (1 << 7)
 #define CPU_ALLOW_CODE_WRITE    (1 << 8)

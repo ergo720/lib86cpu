@@ -4,7 +4,7 @@
  * ergo720                Copyright (c) 2020
  */
 
-#include "lib86cpu.h"
+#include "lib86cpu_priv.h"
 #include "internal.h"
 #include "allocator.h"
 #include "llvm/Support/WindowsError.h"
