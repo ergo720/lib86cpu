@@ -1452,7 +1452,7 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, std::vector<uint8_t> &out)
 					break;
 
 				default:
-					LIB86CPU_ABORT();
+					return lc86_status::INTERNAL_ERROR;
 				}
 			}
 			else {
@@ -1519,7 +1519,7 @@ mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer)
 					break;
 
 				default:
-					LIB86CPU_ABORT();
+					return lc86_status::INTERNAL_ERROR;
 				}
 			}
 			else {
