@@ -71,23 +71,23 @@ T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *regi
 	if ((addr >= region->start) && ((addr + sizeof(T) - 1) <= region->end)) {
 		switch (region->type)
 		{
-		case mem_type::RAM:
+		case mem_type::ram:
 			return ram_read<T>(cpu, get_ram_host_ptr(cpu, region, addr));
 
-		case mem_type::ROM:
+		case mem_type::rom:
 			return ram_read<T>(cpu, get_rom_host_ptr(cpu, region, addr));
 
-		case mem_type::MMIO:
+		case mem_type::mmio:
 			return *reinterpret_cast<T *>((region->read_handler(addr, sizeof(T), region->opaque)).data());
 
-		case mem_type::ALIAS: {
+		case mem_type::alias: {
 			memory_region_t<addr_t> *alias = region;
 			AS_RESOLVE_ALIAS();
 			return as_memory_dispatch_read<T>(cpu, region->start + alias_offset + (addr - alias->start), region);
 		}
 		break;
 
-		case mem_type::UNMAPPED:
+		case mem_type::unmapped:
 			LOG("Memory read to unmapped memory at address %#010x with size %d\n", addr, sizeof(T));
 			return std::numeric_limits<T>::max();
 
@@ -107,13 +107,13 @@ T as_ram_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *region)
 	if ((addr >= region->start) && ((addr + sizeof(T) - 1) <= region->end)) {
 		switch (region->type)
 		{
-		case mem_type::RAM:
+		case mem_type::ram:
 			return ram_read<T>(cpu, get_ram_host_ptr(cpu, region, addr));
 
-		case mem_type::ROM:
+		case mem_type::rom:
 			return ram_read<T>(cpu, get_rom_host_ptr(cpu, region, addr));
 
-		case mem_type::ALIAS: {
+		case mem_type::alias: {
 			memory_region_t<addr_t> *alias = region;
 			AS_RESOLVE_ALIAS();
 			return as_ram_dispatch_read<T>(cpu, region->start + alias_offset + (addr - alias->start), region);
@@ -136,25 +136,25 @@ void as_memory_dispatch_write(cpu_t *cpu, addr_t addr, T value, memory_region_t<
 	if ((addr >= region->start) && ((addr + sizeof(T) - 1) <= region->end)) {
 		switch (region->type)
 		{
-		case mem_type::RAM:
+		case mem_type::ram:
 			ram_write<T>(cpu, get_ram_host_ptr(cpu, region, addr), value);
 			break;
 
-		case mem_type::ROM:
+		case mem_type::rom:
 			break;
 
-		case mem_type::MMIO:
+		case mem_type::mmio:
 			region->write_handler(addr, sizeof(T), &value, region->opaque);
 			break;
 
-		case mem_type::ALIAS: {
+		case mem_type::alias: {
 			memory_region_t<addr_t> *alias = region;
 			AS_RESOLVE_ALIAS();
 			as_memory_dispatch_write<T>(cpu, region->start + alias_offset + (addr - alias->start), value, region);
 		}
 		break;
 
-		case mem_type::UNMAPPED:
+		case mem_type::unmapped:
 			LOG("Memory write to unmapped memory at address %#010x with size %d\n", addr, sizeof(T));
 			break;
 
@@ -173,10 +173,10 @@ T as_io_dispatch_read(cpu_t *cpu, port_t port, memory_region_t<port_t> *region)
 	if ((port >= region->start) && ((port + sizeof(T) - 1) <= region->end)) {
 		switch (region->type)
 		{
-		case mem_type::PMIO:
+		case mem_type::pmio:
 			return *reinterpret_cast<T *>((region->read_handler(port, sizeof(T), region->opaque)).data());
 
-		case mem_type::UNMAPPED:
+		case mem_type::unmapped:
 			LOG("Memory read to unmapped memory at port %#06hx with size %d\n", port, sizeof(T));
 			return std::numeric_limits<T>::max();
 
@@ -196,11 +196,11 @@ void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, memory_region_t<port
 	if ((port >= region->start) && ((port + sizeof(T) - 1) <= region->end)) {
 		switch (region->type)
 		{
-		case mem_type::PMIO:
+		case mem_type::pmio:
 			region->write_handler(port, sizeof(T), &value, region->opaque);
 			break;
 
-		case mem_type::UNMAPPED:
+		case mem_type::unmapped:
 			LOG("Memory write to unmapped memory at port %#06hx with size %d\n", port, sizeof(T));
 			break;
 

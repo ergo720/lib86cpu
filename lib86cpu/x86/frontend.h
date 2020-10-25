@@ -117,7 +117,7 @@ default: \
 #define INTRINSIC_ty(id, ty, arg) CallInst::Create(Intrinsic::getDeclaration(cpu->mod, Intrinsic::id, ty), arg, "", cpu->bb)
 #define ABORT() \
 do {\
-    CallInst *ci = CallInst::Create(cpu->ptr_abort_fn, CONST32(static_cast<int32_t>(lc86_status::INTERNAL_ERROR)), "", cpu->bb);\
+    CallInst *ci = CallInst::Create(cpu->ptr_abort_fn, CONST32(static_cast<int32_t>(lc86_status::internal_error)), "", cpu->bb);\
     ci->setCallingConv(CallingConv::C);\
 } while (0)
 

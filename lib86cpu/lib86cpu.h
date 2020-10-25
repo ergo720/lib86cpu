@@ -28,31 +28,31 @@
 
 // lib86cpu error flags
 enum class lc86_status : int32_t {
-	INTERNAL_ERROR = -6,
-	NO_MEMORY,
-	INVALID_PARAMETER,
-	ALREADY_EXIST,
-	NOT_FOUND,
-	PAGE_FAULT,
-	SUCCESS,
+	internal_error = -6,
+	no_memory,
+	invalid_parameter,
+	already_exist,
+	not_found,
+	page_fault,
+	success,
 };
 
 enum class call_conv {
-	X86_STDCALL,
-	X86_FASTCALL,
-	X86_CDECL,
+	x86_stdcall,
+	x86_fastcall,
+	x86_cdecl,
 };
 
 // NOTE: avoid using a VOID type because it's possible that the client includes a header (e.g. Windows.h) which defines a VOID macro and thus will
 // conflict with our type
 enum class arg_types {
-	I8,
-	I16,
-	I32,
-	I64,
-	EMPTY,
-	PTR,
-	PTR2,
+	i8,
+	i16,
+	i32,
+	i64,
+	void_,
+	ptr,
+	ptr2,
 };
 
 // forward declare
@@ -77,7 +77,7 @@ struct hook {
 	uint32_t cdecl_arg_size;
 };
 
-#define LIB86CPU_CHECK_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::SUCCESS)
+#define LIB86CPU_CHECK_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::success)
 
 #define CPU_INTEL_SYNTAX        (1 << 1)
 #define CPU_CODEGEN_OPTIMIZE    (1 << 3)

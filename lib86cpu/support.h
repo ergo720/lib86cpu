@@ -30,14 +30,14 @@
 do {\
     char str[500];\
     std::snprintf(str, 500, "%s:%d: lib86cpu fatal error in function %s", __FILE__, __LINE__, __func__);\
-    cpu_abort(static_cast<int32_t>(lc86_status::INTERNAL_ERROR), str);\
+    cpu_abort(static_cast<int32_t>(lc86_status::internal_error), str);\
 } while (0)
 
 #define LIB86CPU_ABORT_msg(...) \
 do {\
     char str[500];\
     std::snprintf(str, 500, __VA_ARGS__);\
-    cpu_abort(static_cast<int32_t>(lc86_status::INTERNAL_ERROR), str);\
+    cpu_abort(static_cast<int32_t>(lc86_status::internal_error), str);\
 } while (0)
 
 

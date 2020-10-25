@@ -25,25 +25,25 @@ lc86status_to_str(lc86_status code)
 {
 	switch (code)
 	{
-	case lc86_status::INTERNAL_ERROR:
+	case lc86_status::internal_error:
 		return "An unspecified error internal to lib86cpu has occured";
 
-	case lc86_status::NO_MEMORY:
+	case lc86_status::no_memory:
 		return "The operation failed because of insuffiecient memory";
 
-	case lc86_status::INVALID_PARAMETER:
+	case lc86_status::invalid_parameter:
 		return "An invalid parameter was specified";
 
-	case lc86_status::ALREADY_EXIST:
+	case lc86_status::already_exist:
 		return "The specified object already exists";
 
-	case lc86_status::NOT_FOUND:
+	case lc86_status::not_found:
 		return "The specified object could not be found";
 
-	case lc86_status::PAGE_FAULT:
+	case lc86_status::page_fault:
 		return "A page fault was raised by lib86cpu while executing the operation";
 
-	case lc86_status::SUCCESS:
+	case lc86_status::success:
 		return "The operation completed successfully";
 
 	default:

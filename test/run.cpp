@@ -222,26 +222,26 @@ gen_hook_test()
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x17, std::unique_ptr<hook>(new hook({ call_conv::X86_FASTCALL, call_conv::X86_FASTCALL,
-		{ std::vector<arg_types> { arg_types::I64, arg_types::I64, arg_types::I16, arg_types::I8, arg_types::I32 }, "test_fastcall", &test_fastcall } }))))) {
+	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x17, std::unique_ptr<hook>(new hook({ call_conv::x86_fastcall, call_conv::x86_fastcall,
+		{ std::vector<arg_types> { arg_types::i64, arg_types::i64, arg_types::i16, arg_types::i8, arg_types::i32 }, "test_fastcall", &test_fastcall } }))))) {
 		printf("Failed to install hook!\n");
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x4a, std::unique_ptr<hook>(new hook({ call_conv::X86_STDCALL, call_conv::X86_STDCALL,
-	{ std::vector<arg_types> { arg_types::I64, arg_types::I64, arg_types::I16, arg_types::I8, arg_types::I32 }, "test_stdcall", &test_stdcall } }))))) {
+	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x4a, std::unique_ptr<hook>(new hook({ call_conv::x86_stdcall, call_conv::x86_stdcall,
+	{ std::vector<arg_types> { arg_types::i64, arg_types::i64, arg_types::i16, arg_types::i8, arg_types::i32 }, "test_stdcall", &test_stdcall } }))))) {
 		printf("Failed to install hook!\n");
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x7a, std::unique_ptr<hook>(new hook({ call_conv::X86_CDECL, call_conv::X86_CDECL,
-	{ std::vector<arg_types> { arg_types::I64, arg_types::I8, arg_types::I16, arg_types::I32, arg_types::I64 }, "test_cdecl", &test_cdecl } }))))) {
+	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x7a, std::unique_ptr<hook>(new hook({ call_conv::x86_cdecl, call_conv::x86_cdecl,
+	{ std::vector<arg_types> { arg_types::i64, arg_types::i8, arg_types::i16, arg_types::i32, arg_types::i64 }, "test_cdecl", &test_cdecl } }))))) {
 		printf("Failed to install hook!\n");
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x96, std::unique_ptr<hook>(new hook({ call_conv::X86_CDECL, call_conv::X86_CDECL,
-	{ std::vector<arg_types> { arg_types::EMPTY, arg_types::PTR2, arg_types::PTR }, "test_double_ptr", &test_double_ptr } }))))) {
+	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x96, std::unique_ptr<hook>(new hook({ call_conv::x86_cdecl, call_conv::x86_cdecl,
+	{ std::vector<arg_types> { arg_types::void_, arg_types::ptr2, arg_types::ptr }, "test_double_ptr", &test_double_ptr } }))))) {
 		printf("Failed to install hook!\n");
 		return false;
 	}

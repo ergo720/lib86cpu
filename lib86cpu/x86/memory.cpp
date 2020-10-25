@@ -38,11 +38,11 @@ tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 	assert((prot & ~PAGE_MASK) == 0);
 
 	memory_region_t<addr_t> *region = as_memory_search_addr<uint8_t>(cpu, phys_addr);
-	if (region->type == mem_type::RAM) {
+	if (region->type == mem_type::ram) {
 		phys_addr -= region->start;
 		prot |= TLB_RAM;
 	}
-	else if (region->type == mem_type::ROM) {
+	else if (region->type == mem_type::rom) {
 		prot &= ~TLB_CODE;
 	}
 

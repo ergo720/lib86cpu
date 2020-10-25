@@ -19,18 +19,18 @@ cpu_new(size_t ramsize, cpu_t *&out)
 	out = nullptr;
 	cpu_t *cpu = new cpu_t();
 	if (cpu == nullptr) {
-		return lc86_status::NO_MEMORY;
+		return lc86_status::no_memory;
 	}
 
 	if ((ramsize % PAGE_SIZE) != 0) {
 		cpu_free(cpu);
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 
 	cpu->cpu_ctx.ram = new uint8_t[ramsize];
 	if (cpu->cpu_ctx.ram == nullptr) {
 		cpu_free(cpu);
-		return lc86_status::NO_MEMORY;
+		return lc86_status::no_memory;
 	}
 
 	cpu_init(cpu);
@@ -63,7 +63,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 	printf("Created new cpu \"%s\"\n", cpu->cpu_name);
 
 	cpu->cpu_ctx.cpu = out = cpu;
-	return lc86_status::SUCCESS;
+	return lc86_status::success;
 }
 
 void
@@ -111,17 +111,17 @@ lc86_status
 cpu_set_flags(cpu_t *cpu, uint32_t flags)
 {
 	if (flags & ~(CPU_INTEL_SYNTAX | CPU_CODEGEN_OPTIMIZE | CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED)) {
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 
 	if ((flags & CPU_PRINT_IR_OPTIMIZED) && ((flags & CPU_CODEGEN_OPTIMIZE) == 0)) {
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 
 	cpu->cpu_flags &= ~(CPU_INTEL_SYNTAX | CPU_CODEGEN_OPTIMIZE | CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED);
 	cpu->cpu_flags |= flags;
 
-	return lc86_status::SUCCESS;
+	return lc86_status::success;
 }
 
 std::string
@@ -155,7 +155,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -179,7 +179,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -203,7 +203,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -227,7 +227,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -243,7 +243,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -259,7 +259,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -275,7 +275,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -291,7 +291,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -315,7 +315,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -339,7 +339,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -363,7 +363,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -387,7 +387,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -411,7 +411,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -435,7 +435,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -503,7 +503,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -519,7 +519,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -535,7 +535,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -551,7 +551,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -575,7 +575,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -599,12 +599,12 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 	}
 
-	return lc86_status::SUCCESS;
+	return lc86_status::success;
 }
 
 lc86_status
@@ -632,7 +632,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -656,7 +656,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -680,7 +680,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -704,7 +704,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -720,7 +720,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -736,7 +736,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -752,7 +752,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -768,7 +768,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -792,7 +792,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -816,7 +816,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -840,7 +840,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -864,7 +864,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -888,7 +888,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -912,7 +912,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -980,7 +980,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -996,7 +996,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -1012,7 +1012,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -1028,7 +1028,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -1052,7 +1052,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 
@@ -1076,12 +1076,12 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		break;
 	}
 
-	return lc86_status::SUCCESS;
+	return lc86_status::success;
 }
 
 uint8_t *get_ram_ptr(cpu_t *cpu)
@@ -1121,11 +1121,11 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 	std::unique_ptr<memory_region_t<addr_t>> ram(new memory_region_t<addr_t>);
 
 	if (size == 0) {
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 
 	if ((start % PAGE_SIZE) != 0 || ((size % PAGE_SIZE) != 0)) {
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 
 	addr_t end = start + size - 1;
@@ -1133,20 +1133,20 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 
 	for (auto &region : cpu->memory_out) {
 		if (region.get()->priority == priority) {
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 	}
 
 	ram->start = start;
 	ram->end = end;
-	ram->type = mem_type::RAM;
+	ram->type = mem_type::ram;
 	ram->priority = priority;
 
 	if (cpu->memory_space_tree->insert(start, end, std::move(ram))) {
-		return lc86_status::SUCCESS;
+		return lc86_status::success;
 	}
 	else {
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 }
 
@@ -1156,14 +1156,14 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 	bool inserted;
 
 	if (size == 0) {
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 
 	if (io_space) {
 		std::unique_ptr<memory_region_t<port_t>> io(new memory_region_t<port_t>);
 
 		if (start > 65535 || (start + size) > 65536) {
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 
 		port_t start_io = static_cast<port_t>(start);
@@ -1172,13 +1172,13 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 
 		for (auto &region : cpu->io_out) {
 			if (region.get()->priority == priority) {
-				return lc86_status::INVALID_PARAMETER;
+				return lc86_status::invalid_parameter;
 			}
 		}
 
 		io->start = start_io;
 		io->end = end;
-		io->type = mem_type::PMIO;
+		io->type = mem_type::pmio;
 		io->priority = priority;
 		if (read_func) {
 			io->read_handler = read_func;
@@ -1205,13 +1205,13 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 
 		for (auto &region : cpu->memory_out) {
 			if (region.get()->priority == priority) {
-				return lc86_status::INVALID_PARAMETER;
+				return lc86_status::invalid_parameter;
 			}
 		}
 
 		io->start = start;
 		io->end = end;
-		io->type = mem_type::MMIO;
+		io->type = mem_type::mmio;
 		io->priority = priority;
 		if (read_func) {
 			io->read_handler = read_func;
@@ -1233,10 +1233,10 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 	}
 
 	if (inserted) {
-		return lc86_status::SUCCESS;
+		return lc86_status::success;
 	}
 	else {
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 }
 
@@ -1247,7 +1247,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 	std::unique_ptr<memory_region_t<addr_t>> alias(new memory_region_t<addr_t>);
 
 	if (ori_size == 0) {
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 
 	memory_region_t<addr_t> *aliased_region = nullptr;
@@ -1255,7 +1255,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 	cpu->memory_space_tree->search(ori_start, end, cpu->memory_out);
 
 	if (cpu->memory_out.empty()) {
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 
 	for (auto &region : cpu->memory_out) {
@@ -1266,7 +1266,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 	}
 
 	if (!aliased_region) {
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 
 	end = alias_start + ori_size - 1;
@@ -1274,22 +1274,22 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 
 	for (auto &region : cpu->memory_out) {
 		if (region.get()->priority == priority) {
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 	}
 
 	alias->start = alias_start;
 	alias->end = end;
 	alias->alias_offset = ori_start - aliased_region->start;
-	alias->type = mem_type::ALIAS;
+	alias->type = mem_type::alias;
 	alias->priority = priority;
 	alias->aliased_region = aliased_region;
 
 	if (cpu->memory_space_tree->insert(alias_start, end, std::move(alias))) {
-		return lc86_status::SUCCESS;
+		return lc86_status::success;
 	}
 	else {
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 }
 
@@ -1301,17 +1301,17 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int 
 	if (out == nullptr) {
 		std::ifstream ifs(rom_path, std::ios_base::in | std::ios_base::binary);
 		if (!ifs.is_open()) {
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		ifs.seekg(0, ifs.end);
 		size_t length = ifs.tellg();
 		ifs.seekg(0, ifs.beg);
 
 		if (length == 0) {
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 		else if (offset + size > length) {
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 
 		std::unique_ptr<uint8_t[]> rom_ptr(new uint8_t[size]);
@@ -1330,7 +1330,7 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int 
 		}
 
 		if (rom->rom_idx == -1) {
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 	}
 
@@ -1345,21 +1345,21 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int 
 
 	rom->start = start;
 	rom->end = end;
-	rom->type = mem_type::ROM;
+	rom->type = mem_type::rom;
 	rom->priority = priority;
 
 	auto &rom_ref = cpu->vec_rom[rom->rom_idx];
 	if (cpu->memory_space_tree->insert(start, end, std::move(rom))) {
 		out = rom_ref.first.get();
 		rom_ref.second++;
-		return lc86_status::SUCCESS;
+		return lc86_status::success;
 	}
 
 	fail:
 	if (out == nullptr) {
 		cpu->vec_rom.pop_back();
 	}
-	return lc86_status::INVALID_PARAMETER;
+	return lc86_status::invalid_parameter;
 }
 
 lc86_status
@@ -1379,7 +1379,7 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 		cpu->memory_space_tree->search(start, end, cpu->memory_out);
 		for (auto &region : cpu->memory_out) {
 			if ((region.get().get()->start == start) && (region.get().get()->end == end)) {
-				if (region.get().get()->type == mem_type::ROM) {
+				if (region.get().get()->type == mem_type::rom) {
 					rom_idx = region.get().get()->rom_idx;
 				}
 				found = true;
@@ -1388,7 +1388,7 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 		}
 
 		if (!found) {
-			return lc86_status::INVALID_PARAMETER;
+			return lc86_status::invalid_parameter;
 		}
 
 		deleted = cpu->memory_space_tree->erase(start, end);
@@ -1401,10 +1401,10 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 				cpu->vec_rom.erase(cpu->vec_rom.begin() + rom_idx);
 			}
 		}
-		return lc86_status::SUCCESS;
+		return lc86_status::success;
 	}
 	else {
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 }
 
@@ -1426,19 +1426,19 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, std::vector<uint8_t> &out)
 			if ((phys_addr >= region->start) && ((phys_addr + bytes_to_read - 1) <= region->end)) {
 				switch (region->type)
 				{
-				case mem_type::RAM:
+				case mem_type::ram:
 					std::memcpy(out.data() + vec_offset, get_ram_host_ptr(cpu, region, phys_addr), bytes_to_read);
 					break;
 
-				case mem_type::ROM:
+				case mem_type::rom:
 					std::memcpy(out.data() + vec_offset, get_rom_host_ptr(cpu, region, phys_addr), bytes_to_read);
 					break;
 
-				case mem_type::MMIO:
+				case mem_type::mmio:
 					std::memcpy(out.data() + vec_offset, (region->read_handler(phys_addr, bytes_to_read, region->opaque)).data(), bytes_to_read);
 					break;
 
-				case mem_type::ALIAS: {
+				case mem_type::alias: {
 					memory_region_t<addr_t> *alias = region;
 					AS_RESOLVE_ALIAS();
 					phys_addr = region->start + alias_offset + (phys_addr - alias->start);
@@ -1446,13 +1446,13 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, std::vector<uint8_t> &out)
 				}
 				break;
 
-				case mem_type::UNMAPPED:
+				case mem_type::unmapped:
 					LOG("Memory read to unmapped memory at address %#010x with size %zu\n", phys_addr, bytes_to_read);
 					std::memcpy(out.data() + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
 					break;
 
 				default:
-					return lc86_status::INTERNAL_ERROR;
+					return lc86_status::internal_error;
 				}
 			}
 			else {
@@ -1466,10 +1466,10 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, std::vector<uint8_t> &out)
 			addr += bytes_to_read;
 		}
 
-		return lc86_status::SUCCESS;
+		return lc86_status::success;
 	}
 	catch (exp_data_t exp_data) {
-		return lc86_status::PAGE_FAULT;
+		return lc86_status::page_fault;
 	}
 }
 
@@ -1495,18 +1495,18 @@ mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer)
 			if ((phys_addr >= region->start) && ((phys_addr + bytes_to_write - 1) <= region->end)) {
 				switch (region->type)
 				{
-				case mem_type::RAM:
+				case mem_type::ram:
 					std::memcpy(get_ram_host_ptr(cpu, region, phys_addr), buffer, bytes_to_write);
 					break;
 
-				case mem_type::ROM:
+				case mem_type::rom:
 					break;
 
-				case mem_type::MMIO:
+				case mem_type::mmio:
 					region->write_handler(phys_addr, bytes_to_write, buffer, region->opaque);
 					break;
 
-				case mem_type::ALIAS: {
+				case mem_type::alias: {
 					memory_region_t<addr_t> *alias = region;
 					AS_RESOLVE_ALIAS();
 					phys_addr = region->start + alias_offset + (phys_addr - alias->start);
@@ -1514,12 +1514,12 @@ mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer)
 				}
 				break;
 
-				case mem_type::UNMAPPED:
+				case mem_type::unmapped:
 					LOG("Memory write to unmapped memory at address %#010x with size %zu\n", phys_addr, bytes_to_write);
 					break;
 
 				default:
-					return lc86_status::INTERNAL_ERROR;
+					return lc86_status::internal_error;
 				}
 			}
 			else {
@@ -1532,10 +1532,10 @@ mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer)
 			addr += bytes_to_write;
 		}
 
-		return lc86_status::SUCCESS;
+		return lc86_status::success;
 	}
 	catch (exp_data_t exp_data) {
-		return lc86_status::PAGE_FAULT;
+		return lc86_status::page_fault;
 	}
 }
 
@@ -1591,21 +1591,21 @@ hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 	// function (because we only check for hooks at the start of the translation of a new code block)
 
 	if (cpu->hook_map.find(addr) != cpu->hook_map.end()) {
-		return lc86_status::ALREADY_EXIST;
+		return lc86_status::already_exist;
 	}
 
 	if (obj.get() == nullptr) {
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 
 	if (obj->info.args.size() == 0) {
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 
 	if (obj->info.args.size() > 1) {
 		for (unsigned i = 1; i < obj->info.args.size(); i++) {
-			if (obj->info.args[i] == arg_types::EMPTY) {
-				return lc86_status::INVALID_PARAMETER;
+			if (obj->info.args[i] == arg_types::void_) {
+				return lc86_status::invalid_parameter;
 			}
 		}
 	}
@@ -1613,7 +1613,7 @@ hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 	obj->trmp_vec.clear();
 	cpu->hook_map.emplace(addr, std::move(obj));
 
-	return lc86_status::SUCCESS;
+	return lc86_status::success;
 }
 
 lc86_status
@@ -1621,7 +1621,7 @@ trampoline_call(cpu_t *cpu, addr_t addr, std::any &ret, std::vector<std::any> ar
 {
 	auto it = cpu->hook_map.find(addr);
 	if (it == cpu->hook_map.end()) {
-		return lc86_status::NOT_FOUND;
+		return lc86_status::not_found;
 	}
 
 	return cpu_exec_trampoline(cpu, addr, it->second.get(), ret, args);

@@ -37,12 +37,12 @@ namespace llvm {
 
  // memory region type
 enum class mem_type {
-	UNMAPPED,
-	RAM,
-	MMIO,
-	PMIO,
-	ALIAS,
-	ROM,
+	unmapped,
+	ram,
+	mmio,
+	pmio,
+	alias,
+	rom,
 };
 
 template<typename T>
@@ -57,7 +57,7 @@ struct memory_region_t {
 	addr_t alias_offset;
 	memory_region_t<T> *aliased_region;
 	int rom_idx;
-	memory_region_t() : start(0), end(0), alias_offset(0), type(mem_type::UNMAPPED), priority(0), read_handler(nullptr), write_handler(nullptr),
+	memory_region_t() : start(0), end(0), alias_offset(0), type(mem_type::unmapped), priority(0), read_handler(nullptr), write_handler(nullptr),
 		opaque(nullptr), aliased_region(nullptr), rom_idx(-1) {};
 };
 

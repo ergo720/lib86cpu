@@ -3627,8 +3627,8 @@ cpu_start(cpu_t *cpu)
 		return exp.get_code();
 	}
 
-	cpu->exit_str = lc86status_to_str(lc86_status::INTERNAL_ERROR);
-	return lc86_status::INTERNAL_ERROR;
+	cpu->exit_str = lc86status_to_str(lc86_status::internal_error);
+	return lc86_status::internal_error;
 }
 
 void
@@ -3685,10 +3685,10 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		hook_ptr->trmp_vec.resize(hook_ptr->info.args.size(), nullptr);
 		switch (hook_ptr->o_conv)
 		{
-		case call_conv::X86_CDECL: {
+		case call_conv::x86_cdecl: {
 			uint32_t arg_size = 0;
 			for (unsigned i = hook_ptr->info.args.size() - 1; i > 0; i--) {
-				if (hook_ptr->info.args[i] == arg_types::I64) {
+				if (hook_ptr->info.args[i] == arg_types::i64) {
 					hook_ptr->trmp_vec[i] = trmp_stack_i64;
 					arg_size += 8;
 				}
@@ -3701,9 +3701,9 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		}
 		break;
 
-		case call_conv::X86_STDCALL: {
+		case call_conv::x86_stdcall: {
 			for (unsigned i = hook_ptr->info.args.size() - 1; i > 0; i--) {
-				if (hook_ptr->info.args[i] == arg_types::I64) {
+				if (hook_ptr->info.args[i] == arg_types::i64) {
 					hook_ptr->trmp_vec[i] = trmp_stack_i64;
 				}
 				else {
@@ -3713,24 +3713,24 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		}
 		break;
 
-		case call_conv::X86_FASTCALL: {
+		case call_conv::x86_fastcall: {
 			int num_reg_args = 0;
 			bool use_stack = false;
 			for (unsigned i = 1; i < hook_ptr->info.args.size(); i++) {
-				if (use_stack || (hook_ptr->info.args[i] == arg_types::I64)) {
+				if (use_stack || (hook_ptr->info.args[i] == arg_types::i64)) {
 					continue;
 				}
 				else {
 					switch (hook_ptr->info.args[i])
 					{
-					case arg_types::I8:
+					case arg_types::i8:
 						hook_ptr->trmp_vec[i] = num_reg_args ? trmp_edx_i8 : trmp_ecx_i8;
 						break;
 
-					case arg_types::I16:
-					case arg_types::I32:
-					case arg_types::PTR:
-					case arg_types::PTR2:
+					case arg_types::i16:
+					case arg_types::i32:
+					case arg_types::ptr:
+					case arg_types::ptr2:
 						hook_ptr->trmp_vec[i] = num_reg_args ? trmp_edx_i32 : trmp_ecx_i32;
 						break;
 
@@ -3747,7 +3747,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 
 			for (unsigned i = hook_ptr->info.args.size() - 1; i > 0; i--) {
 				if (hook_ptr->trmp_vec[i] == nullptr) {
-					if (hook_ptr->info.args[i] == arg_types::I64) {
+					if (hook_ptr->info.args[i] == arg_types::i64) {
 						hook_ptr->trmp_vec[i] = trmp_stack_i64;
 					}
 					else {
@@ -3792,7 +3792,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 
 		cpu->cpu_ctx.regs.ecx = ecx;
 		cpu->cpu_ctx.regs.edx = edx;
-		return lc86_status::PAGE_FAULT;
+		return lc86_status::page_fault;
 	}
 	catch (std::bad_any_cast e) {
 		// this will happen if the client passes an argument type not supported by arg_types
@@ -3800,7 +3800,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		cpu->cpu_ctx.regs.ecx = ecx;
 		cpu->cpu_ctx.regs.edx = edx;
 		LOG("Exception thrown while calling a trampoline. The error was: %s\n", e.what());
-		return lc86_status::INVALID_PARAMETER;
+		return lc86_status::invalid_parameter;
 	}
 
 	int i = 0;
@@ -3849,7 +3849,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 
 	cpu_exec_tc(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
 
-	if (hook_ptr->o_conv == call_conv::X86_CDECL) {
+	if (hook_ptr->o_conv == call_conv::x86_cdecl) {
 		// with cdecl, we also have to clean the stack ourselves
 
 		cpu->cpu_ctx.regs.esp += hook_ptr->cdecl_arg_size;
@@ -3857,22 +3857,22 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 
 	switch (hook_ptr->info.args[0])
 	{
-	case arg_types::EMPTY:
+	case arg_types::void_:
 		ret.reset();
 		break;
 
-	case arg_types::I8:
+	case arg_types::i8:
 		ret = static_cast<uint8_t>(cpu->cpu_ctx.regs.eax & 0xFF);
 		break;
 
-	case arg_types::I16:
-	case arg_types::I32:
-	case arg_types::PTR:
-	case arg_types::PTR2:
+	case arg_types::i16:
+	case arg_types::i32:
+	case arg_types::ptr:
+	case arg_types::ptr2:
 		ret = cpu->cpu_ctx.regs.eax;
 		break;
 
-	case arg_types::I64:
+	case arg_types::i64:
 		ret = (cpu->cpu_ctx.regs.eax | (static_cast<uint64_t>(cpu->cpu_ctx.regs.edx) << 32));
 		break;
 
@@ -3880,5 +3880,5 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		LIB86CPU_ABORT_msg("Unknown hook return type specified");
 	}
 
-	return lc86_status::SUCCESS;
+	return lc86_status::success;
 }
