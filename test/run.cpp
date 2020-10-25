@@ -29,8 +29,9 @@ FASTCALL test_fastcall(uint64_t a, uint16_t b, uint8_t c, uint32_t d)
 {
 	printf("test_fastcall called with args: %llu, %hu, %u, %u\n", a, b, c, d);
 
-	mem_write_block(cpu, 0x2800, 0x2000, std::vector<uint8_t>(0x2000, 0xAA).data());
-	std::vector<uint8_t> vec = mem_read_block(cpu, 0, 0x3800).value();
+	std::vector<uint8_t> vec(0x2000, 0xAA);
+	mem_write_block(cpu, 0x2800, 0x2000, vec.data());
+	mem_read_block(cpu, 0, 0x3800, vec);
 	// should print 0x6A, uninitialzed value, 0xAA
 	printf("vec[0x0] = 0x%X, vec[0x27FF] = 0x%X, vec[0x2800] = 0x%X\n", vec[0x0], vec[0x27FF], vec[0x2800]);
 
@@ -146,7 +147,10 @@ create_cpu(const std::string &executable, size_t ramsize, addr_t code_start)
 		return false;
 	}
 
-	LIB86CPU_EXPECTED(cpu = cpu_new(ramsize).value(); , printf("Failed to initialize lib86cpu!\n"); return false;)
+	if (!LIB86CPU_CHECK_SUCCESS(cpu_new(ramsize, cpu))) {
+		printf("Failed to initialize lib86cpu!\n");
+		return false;
+	}
 	ram = get_ram_ptr(cpu);
 
 	ifs.read((char *)&ram[code_start], length);
@@ -206,7 +210,10 @@ gen_hook_test()
 {
 	size_t ramsize = 5 * 4096;
 
-	LIB86CPU_EXPECTED(cpu = cpu_new(ramsize).value();, printf("Failed to initialize lib86cpu!\n"); return false;)
+	if (!LIB86CPU_CHECK_SUCCESS(cpu_new(ramsize, cpu))) {
+		printf("Failed to initialize lib86cpu!\n");
+		return false;
+	}
 	ram = get_ram_ptr(cpu);
 	std::memcpy(ram, hook_binary, sizeof(hook_binary));
 

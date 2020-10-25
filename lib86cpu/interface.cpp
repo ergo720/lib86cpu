@@ -11,25 +11,26 @@
 #include <fstream>
 
 
-tl::expected<cpu_t *, lc86_status>
-cpu_new(size_t ramsize)
+lc86_status
+cpu_new(size_t ramsize, cpu_t *&out)
 {
 	printf("Creating new cpu...\n");
 
+	out = nullptr;
 	cpu_t *cpu = new cpu_t();
 	if (cpu == nullptr) {
-		return tl::unexpected<lc86_status>(lc86_status::NO_MEMORY);
+		return lc86_status::NO_MEMORY;
 	}
 
 	if ((ramsize % PAGE_SIZE) != 0) {
 		cpu_free(cpu);
-		return tl::unexpected<lc86_status>(lc86_status::INVALID_PARAMETER);
+		return lc86_status::INVALID_PARAMETER;
 	}
 
 	cpu->cpu_ctx.ram = new uint8_t[ramsize];
 	if (cpu->cpu_ctx.ram == nullptr) {
 		cpu_free(cpu);
-		return tl::unexpected<lc86_status>(lc86_status::NO_MEMORY);
+		return lc86_status::NO_MEMORY;
 	}
 
 	cpu_init(cpu);
@@ -61,8 +62,8 @@ cpu_new(size_t ramsize)
 
 	printf("Created new cpu \"%s\"\n", cpu->cpu_name);
 
-	cpu->cpu_ctx.cpu = cpu;
-	return cpu;
+	cpu->cpu_ctx.cpu = out = cpu;
+	return lc86_status::SUCCESS;
 }
 
 void
@@ -1407,10 +1408,10 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 	}
 }
 
-tl::expected<std::vector<uint8_t>, lc86_status>
-mem_read_block(cpu_t *cpu, addr_t addr, size_t size)
+lc86_status
+mem_read_block(cpu_t *cpu, addr_t addr, size_t size, std::vector<uint8_t> &out)
 {
-	std::vector<uint8_t> buffer(size);
+	out.resize(size);
 	size_t vec_offset = 0;
 	size_t page_offset = addr & PAGE_MASK;
 	size_t size_left = size;
@@ -1426,15 +1427,15 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size)
 				switch (region->type)
 				{
 				case mem_type::RAM:
-					std::memcpy(buffer.data() + vec_offset, get_ram_host_ptr(cpu, region, phys_addr), bytes_to_read);
+					std::memcpy(out.data() + vec_offset, get_ram_host_ptr(cpu, region, phys_addr), bytes_to_read);
 					break;
 
 				case mem_type::ROM:
-					std::memcpy(buffer.data() + vec_offset, get_rom_host_ptr(cpu, region, phys_addr), bytes_to_read);
+					std::memcpy(out.data() + vec_offset, get_rom_host_ptr(cpu, region, phys_addr), bytes_to_read);
 					break;
 
 				case mem_type::MMIO:
-					std::memcpy(buffer.data() + vec_offset, (region->read_handler(phys_addr, bytes_to_read, region->opaque)).data(), bytes_to_read);
+					std::memcpy(out.data() + vec_offset, (region->read_handler(phys_addr, bytes_to_read, region->opaque)).data(), bytes_to_read);
 					break;
 
 				case mem_type::ALIAS: {
@@ -1447,7 +1448,7 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size)
 
 				case mem_type::UNMAPPED:
 					LOG("Memory read to unmapped memory at address %#010x with size %zu\n", phys_addr, bytes_to_read);
-					std::memcpy(buffer.data() + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
+					std::memcpy(out.data() + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
 					break;
 
 				default:
@@ -1456,7 +1457,7 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size)
 			}
 			else {
 				LOG("Memory read at address %#010x with size %zu is not completely inside a memory region\n", phys_addr, bytes_to_read);
-				std::memcpy(buffer.data() + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
+				std::memcpy(out.data() + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
 			}
 
 			page_offset = 0;
@@ -1465,10 +1466,10 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size)
 			addr += bytes_to_read;
 		}
 
-		return buffer;
+		return lc86_status::SUCCESS;
 	}
 	catch (exp_data_t exp_data) {
-		return tl::unexpected<lc86_status>(lc86_status::PAGE_FAULT);
+		return lc86_status::PAGE_FAULT;
 	}
 }
 

@@ -12,7 +12,8 @@
 #include "types.h"
 #include <string>
 #include <any>
-#include "expected.hpp"
+#include <vector>
+#include <functional>
 
 // convenience macros to cast a trampoline argument to the appropriate type
 #define ANY_I8s(x) static_cast<uint8_t>(x)
@@ -77,12 +78,6 @@ struct hook {
 };
 
 #define LIB86CPU_CHECK_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::SUCCESS)
-#define LIB86CPU_EXPECTED(success, fail) try { \
-success \
-} \
-catch (const tl::bad_expected_access<lc86_status> &e) { \
-fail \
-}
 
 #define CPU_INTEL_SYNTAX        (1 << 1)
 #define CPU_CODEGEN_OPTIMIZE    (1 << 3)
@@ -138,7 +133,7 @@ using fp_read = std::vector<uint8_t> (*)(addr_t addr, size_t size, void *opaque)
 using fp_write = void (*)(addr_t addr, size_t size, const void *buffer, void *opaque);
 
 // cpu api
-API_FUNC tl::expected<cpu_t *, lc86_status> cpu_new(size_t ramsize);
+API_FUNC lc86_status cpu_new(size_t ramsize, cpu_t *&out);
 API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC lc86_status cpu_run(cpu_t *cpu);
 API_FUNC void cpu_sync_state(cpu_t *cpu);
@@ -154,7 +149,7 @@ API_FUNC lc86_status mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, b
 API_FUNC lc86_status mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority);
 API_FUNC lc86_status mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int priority, const char *rom_path, uint8_t *&out);
 API_FUNC lc86_status mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space);
-API_FUNC tl::expected<std::vector<uint8_t>, lc86_status> mem_read_block(cpu_t *cpu, addr_t addr, size_t size);
+API_FUNC lc86_status mem_read_block(cpu_t *cpu, addr_t addr, size_t size, std::vector<uint8_t> &out);
 API_FUNC lc86_status mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer);
 API_FUNC uint8_t io_read_8(cpu_t *cpu, port_t port);
 API_FUNC uint16_t io_read_16(cpu_t *cpu, port_t port);
