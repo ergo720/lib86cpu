@@ -28,6 +28,10 @@ LLVMInstrumentation.lib LLVMVectorize.lib LLVMIRReader.lib LLVMLinker.lib LLVMAs
 link_directories(${LLVM_DIR}/lib)
 add_definitions(-DLIB86CPU_BUILD_CORE)
 
+option(ZYDIS_BUILD_TOOLS "" OFF)
+option(ZYDIS_BUILD_EXAMPLES "" OFF)
+add_subdirectory("import/zydis")
+
 if (MSVC)
 
 set(CMAKE_CXX_FLAGS "/EHs")
@@ -51,7 +55,7 @@ add_library(cpu SHARED
 			lib86cpu/x86/jit.cpp
 			lib86cpu/x86/windows/allocator.cpp)
 			
-target_link_libraries(cpu PRIVATE ${LLVM_LIBS})
+target_link_libraries(cpu PRIVATE ${LLVM_LIBS} Zydis)
 
 else ()
 message(FATAL_ERROR "Only Windows builds are supported for now")
