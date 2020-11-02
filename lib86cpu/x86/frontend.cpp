@@ -19,6 +19,69 @@
 #include "memory.h"
 
 
+static const std::unordered_map<ZydisRegister, int> zydis_to_reg_idx_table = {
+	{ ZYDIS_REGISTER_AL,     EAX_idx },
+	{ ZYDIS_REGISTER_CL,     ECX_idx },
+	{ ZYDIS_REGISTER_DL,     EDX_idx },
+	{ ZYDIS_REGISTER_BL,     EBX_idx },
+	{ ZYDIS_REGISTER_AH,     EAX_idx },
+	{ ZYDIS_REGISTER_CH,     ECX_idx },
+	{ ZYDIS_REGISTER_DH,     EDX_idx },
+	{ ZYDIS_REGISTER_BH,     EBX_idx },
+	{ ZYDIS_REGISTER_AX,     EAX_idx },
+	{ ZYDIS_REGISTER_CX,     ECX_idx },
+	{ ZYDIS_REGISTER_DX,     EDX_idx },
+	{ ZYDIS_REGISTER_BX,     EBX_idx },
+	{ ZYDIS_REGISTER_SP,     ESP_idx },
+	{ ZYDIS_REGISTER_BP,     EBP_idx },
+	{ ZYDIS_REGISTER_SI,     ESI_idx },
+	{ ZYDIS_REGISTER_DI,     EDI_idx },
+	{ ZYDIS_REGISTER_EAX,    EAX_idx },
+	{ ZYDIS_REGISTER_ECX,    ECX_idx },
+	{ ZYDIS_REGISTER_EDX,    EDX_idx },
+	{ ZYDIS_REGISTER_EBX,    EBX_idx },
+	{ ZYDIS_REGISTER_ESP,    ESP_idx },
+	{ ZYDIS_REGISTER_EBP,    EBP_idx },
+	{ ZYDIS_REGISTER_ESI,    ESI_idx },
+	{ ZYDIS_REGISTER_EDI,    EDI_idx },
+	{ ZYDIS_REGISTER_EFLAGS, EFLAGS_idx},
+	{ ZYDIS_REGISTER_EIP,    EIP_idx},
+	{ ZYDIS_REGISTER_ES,     ES_idx },
+	{ ZYDIS_REGISTER_CS,     CS_idx },
+	{ ZYDIS_REGISTER_SS,     SS_idx },
+	{ ZYDIS_REGISTER_DS,     DS_idx },
+	{ ZYDIS_REGISTER_FS,     FS_idx },
+	{ ZYDIS_REGISTER_GS,     GS_idx },
+	{ ZYDIS_REGISTER_GDTR,   GDTR_idx },
+	{ ZYDIS_REGISTER_LDTR,   LDTR_idx },
+	{ ZYDIS_REGISTER_IDTR,   IDTR_idx },
+	{ ZYDIS_REGISTER_TR,     TR_idx},
+	{ ZYDIS_REGISTER_CR0,    CR0_idx },
+	{ ZYDIS_REGISTER_CR1,    CR1_idx },
+	{ ZYDIS_REGISTER_CR2,    CR2_idx },
+	{ ZYDIS_REGISTER_CR3,    CR3_idx },
+	{ ZYDIS_REGISTER_CR4,    CR4_idx },
+	{ ZYDIS_REGISTER_DR0,    DR0_idx },
+	{ ZYDIS_REGISTER_DR1,    DR1_idx },
+	{ ZYDIS_REGISTER_DR2,    DR2_idx },
+	{ ZYDIS_REGISTER_DR3,    DR3_idx },
+	{ ZYDIS_REGISTER_DR4,    DR4_idx },
+	{ ZYDIS_REGISTER_DR5,    DR5_idx },
+	{ ZYDIS_REGISTER_DR6,    DR6_idx },
+	{ ZYDIS_REGISTER_DR7,    DR7_idx }
+};
+
+int
+get_reg_idx(ZydisRegister reg)
+{
+	auto it = zydis_to_reg_idx_table.find(reg);
+	if (it == zydis_to_reg_idx_table.end()) {
+		LIB86CPU_ABORT_msg("Unhandled register index %d in %s\n", reg, __func__);
+	}
+
+	return it->second;
+}
+
 Value *
 get_r8h_pointer(cpu_t *cpu, Value *gep_start)
 {
@@ -1612,22 +1675,23 @@ stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigne
 }
 
 Value *
-get_immediate_op(cpu_t *cpu, x86_instr *instr, uint8_t idx, uint8_t size_mode)
+get_immediate_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx, uint8_t size_mode)
 {
+	assert(instr->operands[idx].type == ZYDIS_OPERAND_TYPE_IMMEDIATE);
 	Value *value;
 
 	switch (size_mode)
 	{
 	case SIZE8:
-		value = CONST8(instr->operand[idx].imm);
+		value = CONST8(instr->operands[idx].imm.value.u);
 		break;
 
 	case SIZE16:
-		value = CONST16(instr->operand[idx].imm);
+		value = CONST16(instr->operands[idx].imm.value.u);
 		break;
 
 	case SIZE32:
-		value = CONST32(instr->operand[idx].imm);
+		value = CONST32(instr->operands[idx].imm.value.u);
 		break;
 
 	default:
@@ -1638,9 +1702,9 @@ get_immediate_op(cpu_t *cpu, x86_instr *instr, uint8_t idx, uint8_t size_mode)
 }
 
 Value *
-get_register_op(cpu_t *cpu, x86_instr *instr, uint8_t idx)
+get_register_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx)
 {
-	assert(instr->operand[idx].type == OPTYPE_REG || instr->operand[idx].type == OPTYPE_CR_REG);
+	assert(instr->operands[idx].type == ZYDIS_OPERAND_TYPE_REGISTER);
 	return get_operand(cpu, instr, idx);
 }
 
@@ -1701,427 +1765,189 @@ set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode)
 	ST_FLG_AUX(aux);
 }
 
-Value *
-get_operand(cpu_t *cpu, x86_instr *instr, const unsigned opnum)
+int
+get_seg_prfx_idx(ZydisDecodedInstruction *instr)
 {
-	assert(opnum < OPNUM_COUNT && "Invalid operand number specified\n");
+	// This is to be used for instructions that have hidden operands, for which zydis does not guarantee
+	// their position in the operand array
 
-	x86_operand *operand = &instr->operand[opnum];
+	if (!(instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT)) {
+		return DS_idx;
+	}
+	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_CS) {
+		return CS_idx;
+	}
+	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_SS) {
+		return SS_idx;
+	}
+	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_DS) {
+		return DS_idx;
+	}
+	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_ES) {
+		return ES_idx;
+	}
+	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_FS) {
+		return FS_idx;
+	}
+	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_GS) {
+		return GS_idx;
+	}
+	else {
+		LIB86CPU_ABORT();
+	}
+}
 
-	switch (operand->type) {
-	case OPTYPE_MEM:
-		if (instr->addr_size_override ^ ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT)) {
-			uint8_t reg_idx;
-			switch (operand->reg) {
-			case 0:
-				reg_idx = EAX_idx;
-				break;
-			case 1:
-				reg_idx = ECX_idx;
-				break;
-			case 2:
-				reg_idx = EDX_idx;
-				break;
-			case 3:
-				reg_idx = EBX_idx;
-				break;
-			case 6:
-				reg_idx = ESI_idx;
-				break;
-			case 7:
-				reg_idx = EDI_idx;
-				break;
-			case 4:
-				assert(0 && "operand->reg specifies SIB with OPTYPE_MEM!\n");
-				return nullptr;
-			case 5:
-				assert(0 && "operand->reg specifies OPTYPE_MEM_DISP with OPTYPE_MEM!\n");
-				return nullptr;
-			default:
-				assert(0 && "Unknown reg index in OPTYPE_MEM\n");
-				return nullptr;
-			}
-			return ADD(LD_R32(reg_idx), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
-		}
-		else {
-			Value *reg;
-			switch (operand->reg) {
-			case 0:
-				reg = ADD(LD_R16(EBX_idx), LD_R16(ESI_idx));
-				break;
-			case 1:
-				reg = ADD(LD_R16(EBX_idx), LD_R16(EDI_idx));
-				break;
-			case 2:
-				reg = ADD(LD_R16(EBP_idx), LD_R16(ESI_idx));
-				break;
-			case 3:
-				reg = ADD(LD_R16(EBP_idx), LD_R16(EDI_idx));
-				break;
-			case 4:
-				reg = LD_R16(ESI_idx);
-				break;
-			case 5:
-				reg = LD_R16(EDI_idx);
-				break;
-			case 7:
-				reg = LD_R16(EBX_idx);
-				break;
-			case 6:
-				assert(0 && "operand->reg specifies OPTYPE_MEM_DISP with OPTYPE_MEM!\n");
-				return nullptr;
-			default:
-				assert(0 && "Unknown reg index in OPTYPE_MEM\n");
-				return nullptr;
-			}
-			return ADD(ZEXT32(reg), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
-		}
-	case OPTYPE_MOFFSET:
-		return ADD(CONST32(operand->disp), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
-	case OPTYPE_MEM_DISP:
-		if (instr->addr_size_override ^ ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT)) {
-			Value *reg;
-			uint8_t reg_idx;
-			switch (instr->mod) {
-			case 0:
-				if (instr->rm == 5) {
-					reg = CONST32(operand->disp);
+Value *
+get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum)
+{
+	ZydisDecodedOperand *operand = &instr->operands[opnum];
+
+	switch (operand->type)
+	{
+	case ZYDIS_OPERAND_TYPE_MEMORY:
+	{
+		switch (operand->encoding)
+		{
+		case ZYDIS_OPERAND_ENCODING_DISP16_32_64:
+			return ADD(CONST32(operand->mem.disp.value), LD_SEG_HIDDEN(GET_REG_idx(operand->mem.segment), SEG_BASE_idx));
+
+		case ZYDIS_OPERAND_ENCODING_MODRM_RM: {
+			Value *base, *temp, *disp;
+			if (instr->address_width == 32) {
+				if (operand->mem.base != ZYDIS_REGISTER_NONE) {
+					base = LD_R32(GET_REG_idx(operand->mem.base));
 				}
 				else {
-					assert(0 && "instr->mod == 0 but instr->rm != 5 in OPTYPE_MEM_DISP!\n");
-					return nullptr;
+					base = CONST32(0);
 				}
-				break;
-			case 1:
-				switch (instr->rm) {
-				case 0:
-					reg_idx = EAX_idx;
-					break;
-				case 1:
-					reg_idx = ECX_idx;
-					break;
-				case 2:
-					reg_idx = EDX_idx;
-					break;
-				case 3:
-					reg_idx = EBX_idx;
-					break;
-				case 5:
-					reg_idx = EBP_idx;
-					break;
-				case 6:
-					reg_idx = ESI_idx;
-					break;
-				case 7:
-					reg_idx = EDI_idx;
-					break;
-				case 4:
-					assert(0 && "instr->rm specifies OPTYPE_SIB_DISP with OPTYPE_MEM_DISP!\n");
-					return nullptr;
-				default:
-					assert(0 && "Unknown rm index in OPTYPE_MEM_DISP\n");
-					return nullptr;
-				}
-				reg = ADD(LD_R32(reg_idx), SEXT32(CONST8(operand->disp)));
-				break;
-			case 2:
-				switch (instr->rm) {
-				case 0:
-					reg_idx = EAX_idx;
-					break;
-				case 1:
-					reg_idx = ECX_idx;
-					break;
-				case 2:
-					reg_idx = EDX_idx;
-					break;
-				case 3:
-					reg_idx = EBX_idx;
-					break;
-				case 5:
-					reg_idx = EBP_idx;
-					break;
-				case 6:
-					reg_idx = ESI_idx;
-					break;
-				case 7:
-					reg_idx = EDI_idx;
-					break;
-				case 4:
-					assert(0 && "instr->rm specifies OPTYPE_SIB_DISP with OPTYPE_MEM_DISP!\n");
-					return nullptr;
-				default:
-					assert(0 && "Unknown rm index in OPTYPE_MEM_DISP\n");
-					return nullptr;
-				}
-				reg = ADD(LD_R32(reg_idx), CONST32(operand->disp));
-				break;
-			case 3:
-				assert(0 && "instr->rm specifies OPTYPE_REG with OPTYPE_MEM_DISP!\n");
-				return nullptr;
-			default:
-				assert(0 && "Unknown rm index in OPTYPE_MEM_DISP\n");
-				return nullptr;
-			}
-			return ADD(reg, LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
-		}
-		else {
-			Value *reg;
-			switch (instr->mod) {
-			case 0:
-				if (instr->rm == 6) {
-					reg = CONST16(operand->disp);
+
+				if (operand->mem.scale != 0) {
+					temp = ADD(base, MUL(LD_R32(GET_REG_idx(operand->mem.index)), CONST32(operand->mem.scale)));
 				}
 				else {
-					assert(0 && "instr->mod == 0 but instr->rm != 6 in OPTYPE_MEM_DISP!\n");
-					return nullptr;
+					temp = base;
 				}
-				break;
-			case 1:
-				switch (instr->rm) {
-				case 0:
-					reg = ADD(ADD(LD_R16(EBX_idx), LD_R16(ESI_idx)), SEXT16(CONST8(operand->disp)));
-					break;
-				case 1:
-					reg = ADD(ADD(LD_R16(EBX_idx), LD_R16(EDI_idx)), SEXT16(CONST8(operand->disp)));
-					break;
-				case 2:
-					reg = ADD(ADD(LD_R16(EBP_idx), LD_R16(ESI_idx)), SEXT16(CONST8(operand->disp)));
-					break;
-				case 3:
-					reg = ADD(ADD(LD_R16(EBP_idx), LD_R16(EDI_idx)), SEXT16(CONST8(operand->disp)));
-					break;
-				case 4:
-					reg = ADD(LD_R16(ESI_idx), SEXT16(CONST8(operand->disp)));
-					break;
-				case 5:
-					reg = ADD(LD_R16(EDI_idx), SEXT16(CONST8(operand->disp)));
-					break;
-				case 6:
-					reg = ADD(LD_R16(EBP_idx), SEXT16(CONST8(operand->disp)));
-					break;
-				case 7:
-					reg = ADD(LD_R16(EBX_idx), SEXT16(CONST8(operand->disp)));
-					break;
-				default:
-					assert(0 && "Unknown rm index in OPTYPE_MEM_DISP\n");
-					return nullptr;
+
+				if (operand->mem.disp.has_displacement) {
+					if (instr->raw.modrm.mod == 1) {
+						disp = SEXT32(CONST8(operand->mem.disp.value));
+					}
+					else {
+						disp = CONST32(operand->mem.disp.value);
+					}
+					
+					return ADD(ADD(temp, disp), LD_SEG_HIDDEN(GET_REG_idx(operand->mem.segment), SEG_BASE_idx));
 				}
-				break;
-			case 2:
-				switch (instr->rm) {
-				case 0:
-					reg = ADD(ADD(LD_R16(EBX_idx), LD_R16(ESI_idx)), CONST16(operand->disp));
-					break;
-				case 1:
-					reg = ADD(ADD(LD_R16(EBX_idx), LD_R16(EDI_idx)), CONST16(operand->disp));
-					break;
-				case 2:
-					reg = ADD(ADD(LD_R16(EBP_idx), LD_R16(ESI_idx)), CONST16(operand->disp));
-					break;
-				case 3:
-					reg = ADD(ADD(LD_R16(EBP_idx), LD_R16(EDI_idx)), CONST16(operand->disp));
-					break;
-				case 4:
-					reg = ADD(LD_R16(ESI_idx), CONST16(operand->disp));
-					break;
-				case 5:
-					reg = ADD(LD_R16(EDI_idx), CONST16(operand->disp));
-					break;
-				case 6:
-					reg = ADD(LD_R16(EBP_idx), CONST16(operand->disp));
-					break;
-				case 7:
-					reg = ADD(LD_R16(EBX_idx), CONST16(operand->disp));
-					break;
-				default:
-					assert(0 && "Unknown rm index in OPTYPE_MEM_DISP\n");
-					return nullptr;
-				}
-				break;
-			case 3:
-				assert(0 && "instr->rm specifies OPTYPE_REG with OPTYPE_MEM_DISP!\n");
-				return nullptr;
-			default:
-				assert(0 && "Unknown rm index in OPTYPE_MEM_DISP\n");
-				return nullptr;
-			}
-			return ADD(ZEXT32(reg), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
-		}
-	case OPTYPE_REG:
-	case OPTYPE_REG8:
-		if (operand->reg > 7) {
-			assert(0 && "Unknown reg index in OPTYPE_REG(8)\n");
-			return nullptr;
-		}
-		if (instr->flags & WIDTH_BYTE || operand->type == OPTYPE_REG8) {
-			if (operand->reg < 4) {
-				return GEP_R8L(operand->reg);
+				
+				return ADD(temp, LD_SEG_HIDDEN(GET_REG_idx(operand->mem.segment), SEG_BASE_idx));
 			}
 			else {
-				return GEP_R8H(operand->reg - 4);
+				if (operand->mem.base != ZYDIS_REGISTER_NONE) {
+					base = LD_R16(GET_REG_idx(operand->mem.base));
+				}
+				else {
+					base = CONST16(0);
+				}
+
+				if (operand->mem.scale != 0) {
+					temp = ADD(base, MUL(LD_R16(GET_REG_idx(operand->mem.index)), CONST16(operand->mem.scale)));
+				}
+				else {
+					temp = base;
+				}
+
+				if (operand->mem.disp.has_displacement) {
+					if (instr->raw.modrm.mod == 1) {
+						disp = SEXT16(CONST8(operand->mem.disp.value));
+					}
+					else {
+						disp = CONST16(operand->mem.disp.value);
+					}
+
+					return ADD(ZEXT32(ADD(temp, disp)), LD_SEG_HIDDEN(GET_REG_idx(operand->mem.segment), SEG_BASE_idx));
+				}
+
+				return ADD(ZEXT32(temp), LD_SEG_HIDDEN(GET_REG_idx(operand->mem.segment), SEG_BASE_idx));
 			}
 		}
-		else if (instr->flags & WIDTH_WORD) {
-			return GEP_R16(operand->reg);
-		}
-		else {
-			return GEP_R32(operand->reg);
-		}
-	case OPTYPE_SEG_REG:
-		switch (operand->reg) {
-		case 0:
-			return GEP_ES();
-		case 1:
-			return GEP_CS();
-		case 2:
-			return GEP_SS();
-		case 3:
-			return GEP_DS();
-		case 4:
-			return GEP_FS();
-		case 5:
-			return GEP_GS();
-		case 6:
-		case 7:
-			assert(0 && "operand->reg specifies a reserved segment register!\n");
-			return nullptr;
+		break;
+
 		default:
-			assert(0 && "Unknown reg index in OPTYPE_SEG_REG\n");
-			return nullptr;
+			LIB86CPU_ABORT_msg("Unhandled mem operand encoding %d in %s\n", operand->encoding, __func__);
 		}
-	case OPTYPE_CR_REG:
-		switch (operand->reg) {
-		case 0:
-			return GEP_CR0();
-		case 2:
-			return GEP_CR2();
-		case 3:
-			return GEP_CR3();
-		case 4:
-			return GEP_CR4();
-		case 1:
-		case 6:
-		case 7:
-			assert(0 && "operand->reg specifies a reserved control register!\n");
-			return nullptr;
-		default:
-			assert(0 && "Unknown reg index in OPTYPE_CR_REG\n");
-			return nullptr;
-		}
-	case OPTYPE_DBG_REG:
-		switch (operand->reg) {
-		case 0:
-			return GEP_DR0();
-		case 1:
-			return GEP_DR1();
-		case 2:
-			return GEP_DR2();
-		case 3:
-			return GEP_DR3();
-		case 6:
-			return GEP_DR6();
-		case 7:
-			return GEP_DR7();
-		case 4:
-		case 5:
-			assert(0 && "operand->reg specifies a reserved debug register!\n");
-			return nullptr;
-		default:
-			assert(0 && "Unknown reg index in OPTYPE_DBG_REG\n");
-			return nullptr;
-		}
-	case OPTYPE_REL:
-		switch (instr->flags & WIDTH_MASK) {
-		case WIDTH_BYTE:
-			return CONST8(operand->rel);
-		case WIDTH_WORD:
-			return CONST16(operand->rel);
-		case WIDTH_DWORD:
-			return CONST32(operand->rel);
-		default:
-			assert(0 && "Missing operand size in OPTYPE_REL (calling %s on an instruction without operands?)\n");
-			return nullptr;
-		}
-	case OPTYPE_SIB_MEM:
-	case OPTYPE_SIB_DISP:
-		assert((instr->mod == 0 || instr->mod == 1 || instr->mod == 2) && instr->rm == 4);
-		Value *scale, *idx, *base, *disp;
-		if (instr->scale < 4) {
-			scale = CONST32(1ULL << instr->scale);
-		}
-		else {
-			assert(0 && "Invalid sib scale specified\n");
-			return nullptr;
-		}
-		switch (instr->idx) {
-		case 0:
-		case 1:
-		case 2:
-		case 3:
-		case 5:
-		case 6:
-		case 7:
-			idx = LD_R32(instr->idx);
-			break;
-		case 4:
-			idx = CONST32(0);
-			break;
-		default:
-			assert(0 && "Unknown sib index specified\n");
-			return nullptr;
-		}
-		switch (instr->base) {
-		case 0:
-		case 1:
-		case 2:
-		case 3:
-		case 4:
-		case 6:
-		case 7:
-			base = LD_R32(instr->base);
-			break;
-		case 5:
-			switch (instr->mod) {
-			case 0:
-				return ADD(ADD(MUL(idx, scale), CONST32(instr->disp)), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
-			case 1:
-				return ADD(ADD(ADD(MUL(idx, scale), SEXT32(CONST8(operand->disp))), LD_R32(EBP_idx)), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
-			case 2:
-				return ADD(ADD(ADD(MUL(idx, scale), CONST32(operand->disp)), LD_R32(EBP_idx)), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
-			case 3:
-				assert(0 && "instr->mod specifies OPTYPE_REG with sib addressing mode!\n");
-				return nullptr;
-			default:
-				assert(0 && "Unknown instr->mod specified with instr->base == 5\n");
-				return nullptr;
-			}
-		default:
-			assert(0 && "Unknown sib base specified\n");
-			return nullptr;
-		}
-		switch (instr->mod)
+	}
+	break;
+
+	case ZYDIS_OPERAND_TYPE_REGISTER: {
+		ZyanU8 reg8;
+
+		switch (operand->encoding)
 		{
-		case 0:
-			disp = CONST32(0);
+		case ZYDIS_OPERAND_ENCODING_MODRM_RM:
+			reg8 = instr->raw.modrm.rm;
 			break;
-		case 1:
-			disp = SEXT32(CONST8(instr->disp));
+
+		case ZYDIS_OPERAND_ENCODING_MODRM_REG:
+			reg8 = instr->raw.modrm.reg;
 			break;
-		case 2:
-			disp = CONST32(instr->disp);
+
+		case ZYDIS_OPERAND_ENCODING_OPCODE:
+			reg8 = instr->opcode & 7;
 			break;
-		case 3:
-			assert(0 && "instr->mod specifies OPTYPE_REG with sib addressing mode!\n");
-			return nullptr;
+
+		case ZYDIS_OPERAND_ENCODING_NONE:
+			assert(operand->reg.value == ZYDIS_REGISTER_AL ||
+				operand->reg.value == ZYDIS_REGISTER_AX ||
+				operand->reg.value == ZYDIS_REGISTER_EAX);
+			reg8 = 0;
+			break;
+
 		default:
-			assert(0 && "Unknown instr->mod specified with instr->base == 5\n");
-			return nullptr;
+			LIB86CPU_ABORT_msg("Unhandled reg operand encoding %d in %s\n", operand->encoding, __func__);
 		}
-		return ADD(ADD(ADD(base, MUL(idx, scale)), disp), LD_SEG_HIDDEN(instr->seg + SEG_offset, SEG_BASE_idx));
+
+		int idx = GET_REG_idx(operand->reg.value);
+		switch (operand->size)
+		{
+		case 8:
+			return (reg8 < 4) ? GEP_R8L(idx) : GEP_R8H(idx);
+
+		case 16:
+			return GEP_R16(idx);
+
+		case 32:
+			return GEP_R32(idx);
+
+		default:
+			LIB86CPU_ABORT();
+		}
+	}
+	break;
+
+	case ZYDIS_OPERAND_TYPE_POINTER:
+		LIB86CPU_ABORT_msg("Segment and offset of pointer type operand should be read directly by the translator instead of from %s\n", __func__);
+		break;
+
+	case ZYDIS_OPERAND_TYPE_IMMEDIATE: {
+		switch (operand->encoding)
+		{
+		case ZYDIS_OPERAND_ENCODING_UIMM16:
+			return CONST16(operand->imm.value.u);
+
+		case ZYDIS_OPERAND_ENCODING_UIMM8:
+		case ZYDIS_OPERAND_ENCODING_JIMM8:
+			return CONST8(operand->imm.value.u);
+
+		case ZYDIS_OPERAND_ENCODING_JIMM16_32_32:
+			return (operand->size == 32) ? CONST32(operand->imm.value.u) : CONST16(operand->imm.value.u);
+
+		default:
+			LIB86CPU_ABORT_msg("Unhandled imm operand encoding %d in %s\n", operand->encoding, __func__);
+		}
+	}
+
 	default:
-		assert(0 && "Unknown operand type specified\n");
-		return nullptr;
+		LIB86CPU_ABORT_msg("Unhandled operand type specified\n");
 	}
 }
 

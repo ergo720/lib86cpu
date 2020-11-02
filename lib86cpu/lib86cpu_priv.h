@@ -106,12 +106,9 @@ struct translated_code_t {
 
 struct disas_ctx_t {
 	uint8_t flags;
-	addr_t virt_pc, start_pc, pc;
-	addr_t instr_page_addr;
-#if DEBUG_LOG
-	uint8_t instr_bytes[15];
-	uint8_t byte_idx;
-#endif
+	addr_t virt_pc, pc;
+	size_t instr_buff_size;
+	exp_data_t pf_info;
 };
 
 struct regs_layout_t {

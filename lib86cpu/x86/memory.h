@@ -19,10 +19,10 @@ while (region->aliased_region) { \
 void tlb_flush(cpu_t *cpu, int n);
 inline void *get_rom_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *rom, addr_t addr);
 inline void *get_ram_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *ram, addr_t addr);
-addr_t get_read_addr(cpu_t * cpu, addr_t addr, uint8_t is_priv, uint32_t eip);
-addr_t get_write_addr(cpu_t * cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *is_code);
-addr_t get_code_addr(cpu_t * cpu, addr_t addr, uint32_t eip);
-void check_instr_length(cpu_t *cpu, addr_t start_pc, addr_t pc, size_t size);
+addr_t get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip);
+addr_t get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *is_code);
+addr_t get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx);
+addr_t get_code_addr_exp(cpu_t *cpu, addr_t addr, uint32_t eip);
 uint8_t mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
 uint16_t mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
 uint32_t mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
@@ -39,6 +39,8 @@ void io_write16(cpu_ctx_t *cpu_ctx, port_t port, uint16_t value);
 void io_write32(cpu_ctx_t *cpu_ctx, port_t port, uint32_t value);
 template<typename T> T ram_read(cpu_t *cpu, void *ram_ptr);
 template<typename T> void ram_write(cpu_t *cpu, void *ram_ptr, T value);
+void ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer);
+size_t as_ram_dispatch_read(cpu_t *cpu, addr_t addr, size_t size, memory_region_t<addr_t> *region, uint8_t *buffer);
 
 inline const uint8_t tlb_access[2][4] = {
 	{ TLB_SUP_READ, TLB_SUP_READ, TLB_SUP_READ, TLB_USER_READ },
@@ -93,35 +95,6 @@ T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *regi
 
 		default:
 			LIB86CPU_ABORT();
-		}
-	}
-	else {
-		LOG("Memory read at address %#010x with size %d is not completely inside a memory region\n", addr, sizeof(T));
-		return std::numeric_limits<T>::max();
-	}
-}
-
-template<typename T>
-T as_ram_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *region)
-{
-	if ((addr >= region->start) && ((addr + sizeof(T) - 1) <= region->end)) {
-		switch (region->type)
-		{
-		case mem_type::ram:
-			return ram_read<T>(cpu, get_ram_host_ptr(cpu, region, addr));
-
-		case mem_type::rom:
-			return ram_read<T>(cpu, get_rom_host_ptr(cpu, region, addr));
-
-		case mem_type::alias: {
-			memory_region_t<addr_t> *alias = region;
-			AS_RESOLVE_ALIAS();
-			return as_ram_dispatch_read<T>(cpu, region->start + alias_offset + (addr - alias->start), region);
-		}
-		break;
-
-		default:
-			LIB86CPU_ABORT_msg("Attempted to execute code outside of ram/rom!");
 		}
 	}
 	else {
@@ -289,41 +262,6 @@ template<typename T>
 void ram_write(cpu_t *cpu, void *ram_ptr, T value)
 {
 	(*std::get<MultiplyDeBruijnBitPosition2[static_cast<uint32_t>(sizeof(T) * 0x077CB531U) >> 27] + 4>(ram_func[cpu->cpu_flags & CPU_FLAG_SWAPMEM]))(cpu, ram_ptr, value);
-}
-
-template<typename T>
-T ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t page_cross)
-{
-	T value = 0;
-
-	if (page_cross) {
-		check_instr_length(cpu, disas_ctx->start_pc, disas_ctx->virt_pc, sizeof(T));
-		uint8_t i = 0;
-		while (i < sizeof(T)) {
-			disas_ctx->pc = get_code_addr(cpu, disas_ctx->virt_pc, disas_ctx->start_pc - cpu->cpu_ctx.regs.cs_hidden.base);
-			memory_region_t<addr_t> *region = as_memory_search_addr<T>(cpu, disas_ctx->pc);
-			value |= (static_cast<T>(as_ram_dispatch_read<uint8_t>(cpu, disas_ctx->pc, region)) << (i * 8));
-			disas_ctx->virt_pc++;
-			i++;
-		}
-		disas_ctx->pc++;
-		if (cpu->cpu_flags & CPU_FLAG_SWAPMEM) {
-			sys::swapByteOrder<T>(value);
-		}
-	}
-	else {
-		check_instr_length(cpu, disas_ctx->start_pc, disas_ctx->virt_pc, sizeof(T));
-		value = as_ram_dispatch_read<T>(cpu, disas_ctx->pc, as_memory_search_addr<T>(cpu, disas_ctx->pc));
-		disas_ctx->pc += sizeof(T);
-		disas_ctx->virt_pc += sizeof(T);
-	}
-
-#if DEBUG_LOG
-	memcpy(&disas_ctx->instr_bytes[disas_ctx->byte_idx], &value, sizeof(T));
-	disas_ctx->byte_idx += sizeof(T);
-#endif
-
-	return value;
 }
 
 /*

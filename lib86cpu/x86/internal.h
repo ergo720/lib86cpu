@@ -12,25 +12,21 @@
 
 using namespace llvm;
 
-addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip);
-size_t disasm_instr(cpu_t *cpu, x86_instr *instr, char *line, unsigned int max_line, disas_ctx_t *disas_ctx);
-void decode_instr(cpu_t *cpu, x86_instr *instr, disas_ctx_t *disas_ctx);
 void tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t size, uint32_t eip);
 uint8_t cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes);
 
-extern const char *mnemo[];
-
 // cpu hidden flags
-#define HFLG_CPL        (3 << 0)
-#define HFLG_CS32       (1 << 2)
-#define HFLG_SS32       (1 << 3)
-#define HFLG_PE_MODE    (1 << 4)
 #define CS32_SHIFT      2
 #define SS32_SHIFT      3
+#define PE_MODE_SHIFT   4
+#define HFLG_CPL        (3 << 0)
+#define HFLG_CS32       (1 << CS32_SHIFT)
+#define HFLG_SS32       (1 << SS32_SHIFT)
+#define HFLG_PE_MODE    (1 << PE_MODE_SHIFT)
 
 // disassembly context flags
 #define DISAS_FLG_CS32         (1 << 0)
-#define DISAS_FLG_PAGE_CROSS   (1 << 1)
+#define DISAS_FLG_PAGE_CROSS   (1 << 2)
 #define DISAS_FLG_FETCH_FAULT  DISAS_FLG_PAGE_CROSS
 #define DISAS_FLG_ONE_INSTR    CPU_DISAS_ONE
 

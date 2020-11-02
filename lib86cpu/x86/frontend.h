@@ -17,7 +17,9 @@ Value *gep_emit(cpu_t *cpu, Value *gep_start, const int gep_index);
 Value *gep_emit(cpu_t *cpu, Value *gep_start, Value *gep_index);
 Value *gep_emit(cpu_t *cpu, Value *gep_start, std::vector<Value *> &vec_index);
 Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
-Value *get_operand(cpu_t *cpu, x86_instr *instr, const unsigned opnum);
+Value *get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum);
+int get_reg_idx(ZydisRegister reg);
+int get_seg_prfx_idx(ZydisDecodedInstruction *instr);
 Value *mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_priv);
 void mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const unsigned is_priv);
 void check_io_priv_emit(cpu_t *cpu, Value *port, uint8_t size_mode);
@@ -41,8 +43,8 @@ Value *read_seg_desc_flags_emit(cpu_t *cpu, Value *desc);
 std::vector<Value *> read_tss_desc_emit(cpu_t *cpu, Value *sel);
 std::vector<Value *> read_stack_ptr_from_tss_emit(cpu_t *cpu, Value *cpl, BasicBlock *bb_exp = nullptr);
 void write_seg_reg_emit(cpu_t *cpu, const unsigned reg, std::vector<Value *> &vec);
-Value *get_immediate_op(cpu_t *cpu, x86_instr *instr, uint8_t idx, uint8_t size_mode);
-Value *get_register_op(cpu_t *cpu, x86_instr *instr, uint8_t idx);
+Value *get_immediate_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx, uint8_t size_mode);
+Value *get_register_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx);
 void set_flags_sum(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode);
 void set_flags_sub(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode);
 void set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode);
@@ -73,21 +75,19 @@ void hook_emit(cpu_t *cpu, hook *obj);
 #define IO_ST16_idx  5
 #define IO_ST32_idx  6
 
+#define GET_REG_idx(reg) get_reg_idx(reg)
 #define GET_IMM() get_immediate_op(cpu, &instr, OPNUM_SRC, size_mode)
 #define GET_IMM8() get_immediate_op(cpu, &instr, OPNUM_SRC, SIZE8)
 #define GET_REG(idx) get_register_op(cpu, &instr, idx)
 #define GET_OP(op) get_operand(cpu, &instr, op)
 #define GET_RM(idx, r, m) 	rm = GET_OP(idx); \
-switch (instr.operand[idx].type) \
+switch (instr.operands[idx].type) \
 { \
-case OPTYPE_REG: \
+case ZYDIS_OPERAND_TYPE_REGISTER: \
 	r \
 	break; \
 \
-case OPTYPE_MEM: \
-case OPTYPE_MEM_DISP: \
-case OPTYPE_SIB_MEM: \
-case OPTYPE_SIB_DISP: \
+case ZYDIS_OPERAND_TYPE_MEMORY: \
 	m \
 	break; \
 \
@@ -205,14 +205,14 @@ do {\
 #define GEP_EIP()      GEP_R32(EIP_idx)
 #define GEP_PARITY()   GEP(cpu->ptr_eflags, 2)
 
-#define ST_R32(val, idx) ST(GEP(cpu->ptr_regs, idx), val)
+#define ST_R32(val, idx) ST(GEP_R32(idx), val)
 #define ST_R16(val, idx) ST(GEP_R16(idx), val)
 #define ST_R8L(val, idx) ST(GEP_R8L(idx), val)
 #define ST_R8H(val, idx) ST(GEP_R8H(idx), val)
 #define ST_REG_val(val, reg) ST(reg, val)
 #define ST_SEG(val, seg) ST(GEP_SEL(seg), val)
 #define ST_SEG_HIDDEN(val, seg, idx) ST(GEP(GEP(GEP(cpu->ptr_regs, seg), SEG_HIDDEN_idx), idx), val)
-#define LD_R32(idx) LD(GEP(cpu->ptr_regs, idx))
+#define LD_R32(idx) LD(GEP_R32(idx))
 #define LD_R16(idx) LD(GEP_R16(idx))
 #define LD_R8L(idx) LD(GEP_R8L(idx))
 #define LD_R8H(idx) LD(GEP_R8H(idx))

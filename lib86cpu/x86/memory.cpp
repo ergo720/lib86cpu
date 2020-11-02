@@ -152,8 +152,8 @@ check_page_privilege(cpu_t *cpu, uint8_t pde_priv, uint8_t pte_priv)
 }
 
 // NOTE: flags: bit 0 -> is_write, bit 1 -> is_priv, bit 4 -> is_code
-addr_t
-mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
+template<typename bool raise_host_exp>
+addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, disas_ctx_t *disas_ctx = nullptr)
 {
 	uint8_t is_code = flags & TLB_CODE;
 
@@ -221,8 +221,19 @@ mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip)
 		err_code = 1;
 
 	page_fault:
-		exp_data_t exp_data { addr, err_code | (is_write << 1) | (cpu_lv >> 3), EXP_PF, eip };
-		throw exp_data;
+		if constexpr (raise_host_exp) {
+			assert(disas_ctx == nullptr);
+			exp_data_t exp_data{ addr, err_code | (is_write << 1) | (cpu_lv >> 3), EXP_PF, eip };
+			throw exp_data;
+		}
+		else {
+			assert(disas_ctx != nullptr);
+			disas_ctx->pf_info.fault_addr = addr;
+			disas_ctx->pf_info.code = err_code | (is_write << 1) | (cpu_lv >> 3);
+			disas_ctx->pf_info.idx = EXP_PF;
+			disas_ctx->pf_info.eip = eip;
+			return 0;
+		}
 	}
 }
 
@@ -231,7 +242,7 @@ get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip)
 {
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
 	if ((tlb_access[0][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) ^ (tlb_entry & (tlb_access[0][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]))) {
-		return mmu_translate_addr(cpu, addr, is_priv, eip);
+		return mmu_translate_addr<true>(cpu, addr, is_priv, eip);
 	}
 
 	return (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
@@ -243,7 +254,7 @@ get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *
 	*is_code = 0;
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
 	if (((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) | TLB_DIRTY) ^ (tlb_entry & ((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) | TLB_DIRTY))) {
-		return mmu_translate_addr(cpu, addr, 1 | is_priv, eip);
+		return mmu_translate_addr<true>(cpu, addr, 1 | is_priv, eip);
 	}
 
 	*is_code = tlb_entry & TLB_CODE;
@@ -251,27 +262,88 @@ get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *
 }
 
 addr_t
-get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip)
+get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx)
 {
 	// this is only used for ram fetching, so we don't need to check for privileged accesses and is_write
 
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
 	if ((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) ^ (tlb_entry & (tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]))) {
-		return mmu_translate_addr(cpu, addr, TLB_CODE, eip);
+		return mmu_translate_addr<false>(cpu, addr, TLB_CODE, eip, disas_ctx);
 	}
 
 	cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] = tlb_entry | TLB_CODE;
 	return (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
 }
 
-void
-check_instr_length(cpu_t *cpu, addr_t start_pc, addr_t pc, size_t size)
+addr_t
+get_code_addr_exp(cpu_t *cpu, addr_t addr, uint32_t eip)
 {
-	pc += size;
-	if (pc - start_pc > X86_MAX_INSTR_LENGTH) {
-		volatile addr_t addr = get_code_addr(cpu, pc - 1, start_pc - cpu->cpu_ctx.regs.cs_hidden.base);
-		exp_data_t exp_data { 0, 0, EXP_GP, start_pc - cpu->cpu_ctx.regs.cs_hidden.base };
-		throw exp_data;
+	// same as get_code_addr, but it throws an exception when a page fault occurs
+
+	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
+	if ((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) ^ (tlb_entry & (tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]))) {
+		return mmu_translate_addr<true>(cpu, addr, TLB_CODE, eip);
+	}
+
+	cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] = tlb_entry | TLB_CODE;
+	return (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
+}
+
+size_t
+as_ram_dispatch_read(cpu_t *cpu, addr_t addr, size_t size, memory_region_t<addr_t> *region, uint8_t *buffer)
+{
+	size_t bytes_to_read = std::min((region->end - addr) + 1, size);
+
+	switch (region->type)
+	{
+	case mem_type::ram:
+		std::memcpy(buffer, get_ram_host_ptr(cpu, region, addr), bytes_to_read);
+		break;
+
+	case mem_type::rom:
+		std::memcpy(buffer, get_rom_host_ptr(cpu, region, addr), bytes_to_read);
+		break;
+
+	case mem_type::alias: {
+		memory_region_t<addr_t> *alias = region;
+		AS_RESOLVE_ALIAS();
+		return as_ram_dispatch_read(cpu, region->start + alias_offset + (addr - alias->start), bytes_to_read, region, buffer);
+	}
+	break;
+
+	default:
+		return 0;
+	}
+
+	return bytes_to_read;
+}
+
+void
+ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer)
+{
+	if ((disas_ctx->virt_pc & ~PAGE_MASK) != ((disas_ctx->virt_pc + X86_MAX_INSTR_LENGTH - 1) & ~PAGE_MASK)) {
+		size_t bytes_to_read, bytes_in_first_page;
+		bytes_to_read = bytes_in_first_page = (PAGE_SIZE - (disas_ctx->virt_pc & PAGE_MASK));
+		bytes_to_read = as_ram_dispatch_read(cpu, disas_ctx->pc, bytes_to_read, as_memory_search_addr<uint8_t>(cpu, disas_ctx->pc), buffer);
+		if (bytes_to_read < bytes_in_first_page) {
+			// ram/rom region ends before end of buffer
+			disas_ctx->instr_buff_size = bytes_to_read;
+			return;
+		}
+
+		addr_t addr = get_code_addr(cpu, disas_ctx->virt_pc + bytes_in_first_page, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, disas_ctx);
+		if (disas_ctx->pf_info.idx == EXP_PF) {
+			// a page fault will be raised when fetching from the second page
+			disas_ctx->instr_buff_size = bytes_in_first_page;
+			return;
+		}
+		bytes_to_read = (X86_MAX_INSTR_LENGTH - bytes_to_read);
+		buffer += bytes_in_first_page;
+		bytes_to_read = as_ram_dispatch_read(cpu, addr, bytes_to_read, as_memory_search_addr<uint8_t>(cpu, addr), buffer);
+		disas_ctx->instr_buff_size = bytes_to_read + bytes_in_first_page;
+	}
+	else {
+		disas_ctx->instr_buff_size = as_ram_dispatch_read(cpu, disas_ctx->pc, disas_ctx->instr_buff_size, as_memory_search_addr<uint8_t>(cpu, disas_ctx->pc), buffer);
 	}
 }
 

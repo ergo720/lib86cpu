@@ -46,9 +46,6 @@ add_library(cpu SHARED
 			lib86cpu/support.cpp
 			lib86cpu/x86/init.cpp
 			lib86cpu/x86/decode.cpp
-			lib86cpu/x86/disasm.cpp
-			lib86cpu/x86/disasm_att.cpp
-			lib86cpu/x86/disasm_intel.cpp
 			lib86cpu/x86/translate.cpp
 			lib86cpu/x86/frontend.cpp
 			lib86cpu/x86/memory.cpp

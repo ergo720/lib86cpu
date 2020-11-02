@@ -120,6 +120,10 @@ cpu_set_flags(cpu_t *cpu, uint32_t flags)
 
 	cpu->cpu_flags &= ~(CPU_INTEL_SYNTAX | CPU_CODEGEN_OPTIMIZE | CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED);
 	cpu->cpu_flags |= flags;
+#ifdef DEBUG_LOG
+	// XXX: eventually, the user should be able to set the instruction formatting
+	set_instr_format(cpu);
+#endif
 
 	return lc86_status::success;
 }

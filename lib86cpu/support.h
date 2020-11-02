@@ -16,28 +16,22 @@
 #define CPU_ALLOW_CODE_WRITE    (1 << 8)
 #define CPU_FORCE_INSERT        (1 << 9)
 
-#define CPU_INTEL_SYNTAX_SHIFT  1
-
 #define CPU_NUM_REGS 33
 
 #ifdef DEBUG_LOG
-#define LOG(...) do { printf(__VA_ARGS__); } while(0)
+#define LOG(msg, ...) do { std::printf(msg, __VA_ARGS__); } while(0)
 #else
-#define LOG(...)
+#define LOG(msg, ...)
 #endif
 
 #define LIB86CPU_ABORT() \
 do {\
-    char str[500];\
-    std::snprintf(str, 500, "%s:%d: lib86cpu fatal error in function %s", __FILE__, __LINE__, __func__);\
-    cpu_abort(static_cast<int32_t>(lc86_status::internal_error), str);\
+    cpu_abort(static_cast<int32_t>(lc86_status::internal_error), "%s:%d: lib86cpu fatal error in function %s", __FILE__, __LINE__, __func__);\
 } while (0)
 
-#define LIB86CPU_ABORT_msg(...) \
+#define LIB86CPU_ABORT_msg(msg, ...) \
 do {\
-    char str[500];\
-    std::snprintf(str, 500, __VA_ARGS__);\
-    cpu_abort(static_cast<int32_t>(lc86_status::internal_error), str);\
+    cpu_abort(static_cast<int32_t>(lc86_status::internal_error), msg, __VA_ARGS__);\
 } while (0)
 
 
@@ -55,6 +49,6 @@ private:
 void cpu_init(cpu_t *cpu);
 lc86_status cpu_start(cpu_t *cpu);
 [[noreturn]] void cpu_abort(int32_t code);
-[[noreturn]] void cpu_abort(int32_t code, const char *msg);
+[[noreturn]] void cpu_abort(int32_t code, const char *msg, ...);
 std::string lc86status_to_str(lc86_status code);
 lc86_status cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std::vector<std::any> &args);

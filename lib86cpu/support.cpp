@@ -5,19 +5,24 @@
  */
 
 #include "support.h"
+#include <cstdarg>
 
 
 void
 cpu_abort(int32_t code)
 {
-	lc86_status code2 = static_cast<lc86_status>(code);
-	throw lc86_exp_abort(lc86status_to_str(code2), code2);
+	cpu_abort(code, "Unsupported operation encountered while executing the translated code");
 }
 
 void
-cpu_abort(int32_t code, const char *msg)
+cpu_abort(int32_t code, const char *msg, ...)
 {
-	throw lc86_exp_abort(msg, static_cast<lc86_status>(code));
+	char str[256];
+	std::va_list args;
+	va_start(args, msg);
+	std::vsnprintf(str, sizeof(str), msg, args);
+	va_end(args);
+	throw lc86_exp_abort(str, static_cast<lc86_status>(code));
 }
 
 std::string
