@@ -9,6 +9,8 @@
 #include <cstdio>
 #include <string>
 #include <fstream>
+#include <cstdarg>
+#include <iostream>
 
 #define TEST386_POST_PORT 0x190
 cpu_t *cpu = nullptr;
@@ -261,6 +263,34 @@ gen_hook_test()
 	return true;
 }
 
+void
+logger(log_level lv, const unsigned count, const char *msg, ...)
+{
+	static const std::unordered_map<log_level, std::string> lv_to_str = {
+		{log_level::debug, "DBG:  "},
+		{log_level::info,  "INFO: "},
+		{log_level::warn,  "WARN: "}
+	};
+
+	std::string str;
+	auto it = lv_to_str.find(lv);
+	if (it == lv_to_str.end()) {
+		str = std::string("UNK: ") + msg + '\n';
+	}
+	else {
+		str = it->second + msg + '\n';
+	}
+
+	if (count > 0) {
+		std::va_list args;
+		va_start(args, msg);
+		std::vprintf(str.c_str(), args);
+		va_end(args);
+	}
+	else {
+		std::cout << str << std::endl;
+	}
+}
 
 int
 main(int argc, char **argv)
@@ -384,11 +414,12 @@ main(int argc, char **argv)
 		}
 	}
 
+	register_log_func(logger);
 	cpu_set_flags(cpu, (print_ir ? (CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED) : 0) |
 		(intel_syntax ? CPU_INTEL_SYNTAX : 0) | CPU_CODEGEN_OPTIMIZE);
 
 	lc86_status code = cpu_run(cpu);
-	std::printf("Emulation terminated with status %d. The error was %s\n", code, cpu_get_exit_str(cpu).c_str());
+	std::printf("Emulation terminated with status %d. The error was \"%s\"\n", code, get_last_error().c_str());
 	cpu_free(cpu);
 
 	return 0;

@@ -18,11 +18,9 @@
 
 #define CPU_NUM_REGS 33
 
-#ifdef DEBUG_LOG
-#define LOG(msg, ...) do { std::printf(msg, __VA_ARGS__); } while(0)
-#else
-#define LOG(msg, ...)
-#endif
+#define NUM_VARGS(args) std::tuple_size<decltype(std::make_tuple(args))>::value
+
+#define LOG(lv, msg, ...) do { logfn(lv, NUM_VARGS(__VA_ARGS__), msg, __VA_ARGS__); } while(0)
 
 #define LIB86CPU_ABORT() \
 do {\
@@ -38,17 +36,22 @@ do {\
 class lc86_exp_abort : public std::exception
 {
 public:
-    explicit lc86_exp_abort(const std::string &msg, lc86_status status) : exception(msg.c_str()), code(status) {}
-    explicit lc86_exp_abort(const char *msg, lc86_status status) : exception(msg), code(status) {}
-    lc86_status get_code() { return code; }
+    explicit lc86_exp_abort(const std::string &msg, lc86_status status) : exception(msg.c_str()), status(status) {}
+    explicit lc86_exp_abort(const char *msg, lc86_status status) : exception(msg), status(status) {}
+    lc86_status get_code() { return status; }
 
 private:
-    lc86_status code;
+    lc86_status status;
 };
 
 void cpu_init(cpu_t *cpu);
 lc86_status cpu_start(cpu_t *cpu);
 [[noreturn]] void cpu_abort(int32_t code);
 [[noreturn]] void cpu_abort(int32_t code, const char *msg, ...);
-std::string lc86status_to_str(lc86_status code);
+std::string lc86status_to_str(lc86_status status);
+void discard_log(log_level lv, const unsigned count, const char *msg, ...);
+lc86_status set_last_error(lc86_status status);
 lc86_status cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std::vector<std::any> &args);
+
+inline logfn_t logfn = &discard_log;
+inline std::string last_error = "";

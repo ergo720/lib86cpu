@@ -90,7 +90,7 @@ T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *regi
 		break;
 
 		case mem_type::unmapped:
-			LOG("Memory read to unmapped memory at address %#010x with size %d\n", addr, sizeof(T));
+			LOG(log_level::warn, "Memory read to unmapped memory at address %#010x with size %d", addr, sizeof(T));
 			return std::numeric_limits<T>::max();
 
 		default:
@@ -98,7 +98,7 @@ T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *regi
 		}
 	}
 	else {
-		LOG("Memory read at address %#010x with size %d is not completely inside a memory region\n", addr, sizeof(T));
+		LOG(log_level::warn, "Memory read at address %#010x with size %d is not completely inside a memory region", addr, sizeof(T));
 		return std::numeric_limits<T>::max();
 	}
 }
@@ -128,7 +128,7 @@ void as_memory_dispatch_write(cpu_t *cpu, addr_t addr, T value, memory_region_t<
 		break;
 
 		case mem_type::unmapped:
-			LOG("Memory write to unmapped memory at address %#010x with size %d\n", addr, sizeof(T));
+			LOG(log_level::warn, "Memory write to unmapped memory at address %#010x with size %d", addr, sizeof(T));
 			break;
 
 		default:
@@ -136,7 +136,7 @@ void as_memory_dispatch_write(cpu_t *cpu, addr_t addr, T value, memory_region_t<
 		}
 	}
 	else {
-		LOG("Memory write at address %#010x with size %d is not completely inside a memory region\n", addr, sizeof(T));
+		LOG(log_level::warn, "Memory write at address %#010x with size %d is not completely inside a memory region", addr, sizeof(T));
 	}
 }
 
@@ -150,7 +150,7 @@ T as_io_dispatch_read(cpu_t *cpu, port_t port, memory_region_t<port_t> *region)
 			return *reinterpret_cast<T *>((region->read_handler(port, sizeof(T), region->opaque)).data());
 
 		case mem_type::unmapped:
-			LOG("Memory read to unmapped memory at port %#06hx with size %d\n", port, sizeof(T));
+			LOG(log_level::warn, "Memory read to unmapped memory at port %#06hx with size %d", port, sizeof(T));
 			return std::numeric_limits<T>::max();
 
 		default:
@@ -158,7 +158,7 @@ T as_io_dispatch_read(cpu_t *cpu, port_t port, memory_region_t<port_t> *region)
 		}
 	}
 	else {
-		LOG("Memory read at port %#06hx with size %d is not completely inside a memory region\n", port, sizeof(T));
+		LOG(log_level::warn, "Memory read at port %#06hx with size %d is not completely inside a memory region", port, sizeof(T));
 		return std::numeric_limits<T>::max();
 	}
 }
@@ -174,7 +174,7 @@ void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, memory_region_t<port
 			break;
 
 		case mem_type::unmapped:
-			LOG("Memory write to unmapped memory at port %#06hx with size %d\n", port, sizeof(T));
+			LOG(log_level::warn, "Memory write to unmapped memory at port %#06hx with size %d", port, sizeof(T));
 			break;
 
 		default:
@@ -182,7 +182,7 @@ void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, memory_region_t<port
 		}
 	}
 	else {
-		LOG("Memory write at port %#06hx with size %d is not completely inside a memory region\n", port, sizeof(T));
+		LOG(log_level::warn, "Memory write at port %#06hx with size %d is not completely inside a memory region", port, sizeof(T));
 	}
 }
 

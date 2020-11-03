@@ -14,27 +14,29 @@
 lc86_status
 cpu_new(size_t ramsize, cpu_t *&out)
 {
-	printf("Creating new cpu...\n");
+	LOG(log_level::info, "Creating new cpu...");
 
 	out = nullptr;
 	cpu_t *cpu = new cpu_t();
 	if (cpu == nullptr) {
-		return lc86_status::no_memory;
+		return set_last_error(lc86_status::no_memory);
 	}
 
 	if ((ramsize % PAGE_SIZE) != 0) {
 		cpu_free(cpu);
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	cpu->cpu_ctx.ram = new uint8_t[ramsize];
 	if (cpu->cpu_ctx.ram == nullptr) {
 		cpu_free(cpu);
-		return lc86_status::no_memory;
+		return set_last_error(lc86_status::no_memory);
 	}
 
 	cpu_init(cpu);
-	cpu->exit_str = "";
+	// XXX: eventually, the user should be able to set the instruction formatting
+	set_instr_format(cpu);
+
 	std::unique_ptr<memory_region_t<addr_t>> mem_region(new memory_region_t<addr_t>);
 	cpu->memory_space_tree = interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>::create();
 	mem_region->start = 0;
@@ -51,7 +53,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 	// check if FP80 and FP128 are supported by this architecture
 	std::string data_layout = cpu->dl->getStringRepresentation();
 	if (data_layout.find("f80") != std::string::npos) {
-		LOG("INFO: FP80 supported.\n");
+		LOG(log_level::info, "FP80 supported.");
 		cpu->cpu_flags |= CPU_FLAG_FP80;
 	}
 
@@ -60,7 +62,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 		cpu->cpu_flags |= CPU_FLAG_SWAPMEM;
 	}
 
-	printf("Created new cpu \"%s\"\n", cpu->cpu_name);
+	LOG(log_level::info, "Created new cpu \"%s\"", cpu->cpu_name);
 
 	cpu->cpu_ctx.cpu = out = cpu;
 	return lc86_status::success;
@@ -111,27 +113,19 @@ lc86_status
 cpu_set_flags(cpu_t *cpu, uint32_t flags)
 {
 	if (flags & ~(CPU_INTEL_SYNTAX | CPU_CODEGEN_OPTIMIZE | CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED)) {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	if ((flags & CPU_PRINT_IR_OPTIMIZED) && ((flags & CPU_CODEGEN_OPTIMIZE) == 0)) {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	cpu->cpu_flags &= ~(CPU_INTEL_SYNTAX | CPU_CODEGEN_OPTIMIZE | CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED);
 	cpu->cpu_flags |= flags;
-#ifdef DEBUG_LOG
 	// XXX: eventually, the user should be able to set the instruction formatting
 	set_instr_format(cpu);
-#endif
 
 	return lc86_status::success;
-}
-
-std::string
-cpu_get_exit_str(cpu_t *cpu)
-{
-	return cpu->exit_str;
 }
 
 lc86_status
@@ -159,7 +153,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -183,7 +177,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -207,7 +201,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -231,7 +225,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -247,7 +241,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -263,7 +257,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -279,7 +273,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -295,7 +289,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -319,7 +313,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -343,7 +337,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -367,7 +361,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -391,7 +385,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -415,7 +409,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -439,7 +433,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -507,7 +501,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -523,7 +517,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -539,7 +533,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -555,7 +549,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -579,7 +573,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -603,7 +597,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 	}
@@ -636,7 +630,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -660,7 +654,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -684,7 +678,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -708,7 +702,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -724,7 +718,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -740,7 +734,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -756,7 +750,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -772,7 +766,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -796,7 +790,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -820,7 +814,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -844,7 +838,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -868,7 +862,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -892,7 +886,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -916,7 +910,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -984,7 +978,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -1000,7 +994,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -1016,7 +1010,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -1032,7 +1026,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -1056,7 +1050,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 
@@ -1080,7 +1074,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		default:
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
 	}
@@ -1088,7 +1082,27 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 	return lc86_status::success;
 }
 
-uint8_t *get_ram_ptr(cpu_t *cpu)
+void
+register_log_func(logfn_t logger)
+{
+	if (logger == nullptr) {
+		logfn = &discard_log;
+		instr_logfn = &discard_instr_log;
+	}
+	else {
+		logfn = logger;
+		instr_logfn = &log_instr;
+	}
+}
+
+std::string
+get_last_error()
+{
+	return last_error;
+}
+
+uint8_t *
+get_ram_ptr(cpu_t *cpu)
 {
 	return cpu->cpu_ctx.ram;
 }
@@ -1096,26 +1110,26 @@ uint8_t *get_ram_ptr(cpu_t *cpu)
 static void
 default_mmio_write_handler(addr_t addr, size_t size, const void *buffer, void *opaque)
 {
-	LOG("Unhandled MMIO write at address %#010x with size %d\n", addr, size);
+	LOG(log_level::warn, "Unhandled MMIO write at address %#010x with size %d", addr, size);
 }
 
 static std::vector<uint8_t>
 default_mmio_read_handler(addr_t addr, size_t size, void *opaque)
 {
-	LOG("Unhandled MMIO read at address %#010x with size %d\n", addr, size);
+	LOG(log_level::warn, "Unhandled MMIO read at address %#010x with size %d", addr, size);
 	return std::vector<uint8_t>(size, 0xFF);
 }
 
 static void
 default_pmio_write_handler(addr_t addr, size_t size, const void *buffer, void *opaque)
 {
-	LOG("Unhandled PMIO write at port %#06x with size %d\n", addr, size);
+	LOG(log_level::warn, "Unhandled PMIO write at port %#06x with size %d", addr, size);
 }
 
 static std::vector<uint8_t>
 default_pmio_read_handler(addr_t addr, size_t size, void *opaque)
 {
-	LOG("Unhandled PMIO read at port %#06x with size %d\n", addr, size);
+	LOG(log_level::warn, "Unhandled PMIO read at port %#06x with size %d", addr, size);
 	return std::vector<uint8_t>(size, 0xFF);
 }
 
@@ -1125,11 +1139,11 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 	std::unique_ptr<memory_region_t<addr_t>> ram(new memory_region_t<addr_t>);
 
 	if (size == 0) {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	if ((start % PAGE_SIZE) != 0 || ((size % PAGE_SIZE) != 0)) {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	addr_t end = start + size - 1;
@@ -1137,7 +1151,7 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 
 	for (auto &region : cpu->memory_out) {
 		if (region.get()->priority == priority) {
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 	}
 
@@ -1150,7 +1164,7 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 		return lc86_status::success;
 	}
 	else {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 }
 
@@ -1160,14 +1174,14 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 	bool inserted;
 
 	if (size == 0) {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	if (io_space) {
 		std::unique_ptr<memory_region_t<port_t>> io(new memory_region_t<port_t>);
 
 		if (start > 65535 || (start + size) > 65536) {
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 
 		port_t start_io = static_cast<port_t>(start);
@@ -1176,7 +1190,7 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 
 		for (auto &region : cpu->io_out) {
 			if (region.get()->priority == priority) {
-				return lc86_status::invalid_parameter;
+				return set_last_error(lc86_status::invalid_parameter);
 			}
 		}
 
@@ -1209,7 +1223,7 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 
 		for (auto &region : cpu->memory_out) {
 			if (region.get()->priority == priority) {
-				return lc86_status::invalid_parameter;
+				return set_last_error(lc86_status::invalid_parameter);
 			}
 		}
 
@@ -1240,7 +1254,7 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 		return lc86_status::success;
 	}
 	else {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 }
 
@@ -1251,7 +1265,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 	std::unique_ptr<memory_region_t<addr_t>> alias(new memory_region_t<addr_t>);
 
 	if (ori_size == 0) {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	memory_region_t<addr_t> *aliased_region = nullptr;
@@ -1259,7 +1273,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 	cpu->memory_space_tree->search(ori_start, end, cpu->memory_out);
 
 	if (cpu->memory_out.empty()) {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	for (auto &region : cpu->memory_out) {
@@ -1270,7 +1284,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 	}
 
 	if (!aliased_region) {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	end = alias_start + ori_size - 1;
@@ -1278,7 +1292,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 
 	for (auto &region : cpu->memory_out) {
 		if (region.get()->priority == priority) {
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 	}
 
@@ -1293,7 +1307,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 		return lc86_status::success;
 	}
 	else {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 }
 
@@ -1305,17 +1319,17 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int 
 	if (out == nullptr) {
 		std::ifstream ifs(rom_path, std::ios_base::in | std::ios_base::binary);
 		if (!ifs.is_open()) {
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		ifs.seekg(0, ifs.end);
 		size_t length = ifs.tellg();
 		ifs.seekg(0, ifs.beg);
 
 		if (length == 0) {
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 		else if (offset + size > length) {
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 
 		std::unique_ptr<uint8_t[]> rom_ptr(new uint8_t[size]);
@@ -1334,7 +1348,7 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int 
 		}
 
 		if (rom->rom_idx == -1) {
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 	}
 
@@ -1363,7 +1377,7 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int 
 	if (out == nullptr) {
 		cpu->vec_rom.pop_back();
 	}
-	return lc86_status::invalid_parameter;
+	return set_last_error(lc86_status::invalid_parameter);
 }
 
 lc86_status
@@ -1392,7 +1406,7 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 		}
 
 		if (!found) {
-			return lc86_status::invalid_parameter;
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 
 		deleted = cpu->memory_space_tree->erase(start, end);
@@ -1408,7 +1422,7 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 		return lc86_status::success;
 	}
 	else {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 }
 
@@ -1451,16 +1465,16 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, std::vector<uint8_t> &out)
 				break;
 
 				case mem_type::unmapped:
-					LOG("Memory read to unmapped memory at address %#010x with size %zu\n", phys_addr, bytes_to_read);
+					LOG(log_level::warn, "Memory read to unmapped memory at address %#010x with size %zu", phys_addr, bytes_to_read);
 					std::memcpy(out.data() + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
 					break;
 
 				default:
-					return lc86_status::internal_error;
+					return set_last_error(lc86_status::internal_error);
 				}
 			}
 			else {
-				LOG("Memory read at address %#010x with size %zu is not completely inside a memory region\n", phys_addr, bytes_to_read);
+				LOG(log_level::warn, "Memory read at address %#010x with size %zu is not completely inside a memory region", phys_addr, bytes_to_read);
 				std::memcpy(out.data() + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
 			}
 
@@ -1473,7 +1487,7 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, std::vector<uint8_t> &out)
 		return lc86_status::success;
 	}
 	catch (exp_data_t exp_data) {
-		return lc86_status::page_fault;
+		return set_last_error(lc86_status::page_fault);
 	}
 }
 
@@ -1519,15 +1533,15 @@ mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer)
 				break;
 
 				case mem_type::unmapped:
-					LOG("Memory write to unmapped memory at address %#010x with size %zu\n", phys_addr, bytes_to_write);
+					LOG(log_level::warn, "Memory write to unmapped memory at address %#010x with size %zu", phys_addr, bytes_to_write);
 					break;
 
 				default:
-					return lc86_status::internal_error;
+					return set_last_error(lc86_status::internal_error);
 				}
 			}
 			else {
-				LOG("Memory write at address %#010x with size %zu is not completely inside a memory region\n", phys_addr, bytes_to_write);
+				LOG(log_level::warn, "Memory write at address %#010x with size %zu is not completely inside a memory region", phys_addr, bytes_to_write);
 			}
 
 			page_offset = 0;
@@ -1539,7 +1553,7 @@ mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer)
 		return lc86_status::success;
 	}
 	catch (exp_data_t exp_data) {
-		return lc86_status::page_fault;
+		return set_last_error(lc86_status::page_fault);
 	}
 }
 
@@ -1595,21 +1609,21 @@ hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 	// function (because we only check for hooks at the start of the translation of a new code block)
 
 	if (cpu->hook_map.find(addr) != cpu->hook_map.end()) {
-		return lc86_status::already_exist;
+		return set_last_error(lc86_status::already_exist);
 	}
 
 	if (obj.get() == nullptr) {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	if (obj->info.args.size() == 0) {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	if (obj->info.args.size() > 1) {
 		for (unsigned i = 1; i < obj->info.args.size(); i++) {
 			if (obj->info.args[i] == arg_types::void_) {
-				return lc86_status::invalid_parameter;
+				return set_last_error(lc86_status::invalid_parameter);
 			}
 		}
 	}
@@ -1625,7 +1639,7 @@ trampoline_call(cpu_t *cpu, addr_t addr, std::any &ret, std::vector<std::any> ar
 {
 	auto it = cpu->hook_map.find(addr);
 	if (it == cpu->hook_map.end()) {
-		return lc86_status::not_found;
+		return set_last_error(lc86_status::not_found);
 	}
 
 	return cpu_exec_trampoline(cpu, addr, it->second.get(), ret, args);

@@ -153,7 +153,6 @@ struct cpu_t {
 	std::unordered_map<addr_t, std::unique_ptr<hook>> hook_map;
 	uint16_t num_tc;
 	exp_info_t exp_info;
-	std::string exit_str;
 
 	// llvm specific variables
 	std::unique_ptr<lc86_jit> jit;

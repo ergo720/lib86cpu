@@ -25,10 +25,13 @@ cpu_abort(int32_t code, const char *msg, ...)
 	throw lc86_exp_abort(str, static_cast<lc86_status>(code));
 }
 
+void
+discard_log(log_level lv, const unsigned count, const char *msg, ...) {}
+
 std::string
-lc86status_to_str(lc86_status code)
+lc86status_to_str(lc86_status status)
 {
-	switch (code)
+	switch (status)
 	{
 	case lc86_status::internal_error:
 		return "An unspecified error internal to lib86cpu has occured";
@@ -54,4 +57,11 @@ lc86status_to_str(lc86_status code)
 	default:
 		return "Unknown error code";
 	}
+}
+
+lc86_status
+set_last_error(lc86_status status)
+{
+	last_error = lc86status_to_str(status);
+	return status;
 }

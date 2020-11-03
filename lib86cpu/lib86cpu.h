@@ -37,6 +37,14 @@ enum class lc86_status : int32_t {
 	success,
 };
 
+enum class log_level {
+	debug,
+	info,
+	warn,
+};
+
+using logfn_t = void(*)(log_level, const unsigned, const char *, ...);
+
 enum class call_conv {
 	x86_stdcall,
 	x86_fastcall,
@@ -138,7 +146,6 @@ API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC lc86_status cpu_run(cpu_t *cpu);
 API_FUNC void cpu_sync_state(cpu_t *cpu);
 API_FUNC lc86_status cpu_set_flags(cpu_t *cpu, uint32_t flags);
-API_FUNC std::string cpu_get_exit_str(cpu_t *cpu);
 API_FUNC lc86_status read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel = REG32);
 API_FUNC lc86_status write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel = REG32);
 
@@ -162,3 +169,7 @@ API_FUNC void tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end);
 // hook api
 API_FUNC lc86_status hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj);
 API_FUNC lc86_status trampoline_call(cpu_t *cpu, addr_t addr, std::any &ret, std::vector<std::any> args);
+
+// logging api
+API_FUNC void register_log_func(logfn_t logger);
+API_FUNC std::string get_last_error();

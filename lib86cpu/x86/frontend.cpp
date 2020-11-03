@@ -76,7 +76,7 @@ get_reg_idx(ZydisRegister reg)
 {
 	auto it = zydis_to_reg_idx_table.find(reg);
 	if (it == zydis_to_reg_idx_table.end()) {
-		LIB86CPU_ABORT_msg("Unhandled register index %d in %s\n", reg, __func__);
+		LIB86CPU_ABORT_msg("Unhandled register index %d in %s", reg, __func__);
 	}
 
 	return it->second;
@@ -696,13 +696,21 @@ gen_exp_fn(cpu_t *cpu)
 	}
 
 	if (cpu->cpu_flags & CPU_PRINT_IR) {
-		cpu->mod->print(errs(), nullptr);
+		std::string str;
+		raw_string_ostream os(str);
+		os << *cpu->mod;
+		os.flush();
+		LOG(log_level::debug, str.c_str());
 	}
 
 	if (cpu->cpu_flags & CPU_CODEGEN_OPTIMIZE) {
 		optimize(cpu);
 		if (cpu->cpu_flags & CPU_PRINT_IR_OPTIMIZED) {
-			cpu->mod->print(errs(), nullptr);
+			std::string str;
+			raw_string_ostream os(str);
+			os << *cpu->mod;
+			os.flush();
+			LOG(log_level::debug, str.c_str());
 		}
 	}
 
@@ -1873,7 +1881,7 @@ get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum)
 		break;
 
 		default:
-			LIB86CPU_ABORT_msg("Unhandled mem operand encoding %d in %s\n", operand->encoding, __func__);
+			LIB86CPU_ABORT_msg("Unhandled mem operand encoding %d in %s", operand->encoding, __func__);
 		}
 	}
 	break;
@@ -1903,7 +1911,7 @@ get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum)
 			break;
 
 		default:
-			LIB86CPU_ABORT_msg("Unhandled reg operand encoding %d in %s\n", operand->encoding, __func__);
+			LIB86CPU_ABORT_msg("Unhandled reg operand encoding %d in %s", operand->encoding, __func__);
 		}
 
 		int idx = GET_REG_idx(operand->reg.value);
@@ -1925,7 +1933,7 @@ get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum)
 	break;
 
 	case ZYDIS_OPERAND_TYPE_POINTER:
-		LIB86CPU_ABORT_msg("Segment and offset of pointer type operand should be read directly by the translator instead of from %s\n", __func__);
+		LIB86CPU_ABORT_msg("Segment and offset of pointer type operand should be read directly by the translator instead of from %s", __func__);
 		break;
 
 	case ZYDIS_OPERAND_TYPE_IMMEDIATE: {
@@ -1942,12 +1950,12 @@ get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum)
 			return (operand->size == 32) ? CONST32(operand->imm.value.u) : CONST16(operand->imm.value.u);
 
 		default:
-			LIB86CPU_ABORT_msg("Unhandled imm operand encoding %d in %s\n", operand->encoding, __func__);
+			LIB86CPU_ABORT_msg("Unhandled imm operand encoding %d in %s", operand->encoding, __func__);
 		}
 	}
 
 	default:
-		LIB86CPU_ABORT_msg("Unhandled operand type specified\n");
+		LIB86CPU_ABORT_msg("Unhandled operand type specified");
 	}
 }
 

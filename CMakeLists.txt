@@ -17,7 +17,6 @@ endif ()
 message(STATUS "Found LLVM: ${LLVM_DIR}")
 
 message("Building lib86cpu")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -DDEBUG_LOG")
 include(BuildConfigH.cmake)
 include_directories(${LLVM_DIR}/include ${PROJECT_SOURCE_DIR}/lib86cpu ${PROJECT_SOURCE_DIR}/lib86cpu/x86)
 set(LLVM_LIBS LLVMX86Disassembler.lib LLVMX86AsmParser.lib LLVMX86CodeGen.lib LLVMGlobalISel.lib LLVMSelectionDAG.lib LLVMAsmPrinter.lib LLVMCodeGen.lib LLVMTarget.lib

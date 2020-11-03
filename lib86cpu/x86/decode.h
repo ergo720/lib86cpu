@@ -17,7 +17,6 @@
 #define ADDR16 1
 
 
-
 // Operand numbers
 // NOTE for OPNUM_SINGLE: intel docs are not consistent for instr with a single op. Sometimes it's considered a src but in others
 // it's considered a dst, so adding the src/dst prefix would be incorrect for some of those.
@@ -29,6 +28,10 @@ enum {
 };
 
 void set_instr_format(cpu_t *cpu);
-std::string print_instr(addr_t addr, ZydisDecodedInstruction *instr);
+std::string log_instr(const char *addr_str, addr_t addr, ZydisDecodedInstruction *instr);
+std::string discard_instr_log(const char *addr_str, addr_t addr, ZydisDecodedInstruction *instr);
 void init_instr_decoder(disas_ctx_t *disas_ctx, ZydisDecoder *decoder);
 ZyanStatus decode_instr(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, ZydisDecodedInstruction *instr);
+
+using instr_logfn_t = std::string(*)(const char *, addr_t, ZydisDecodedInstruction *);
+inline instr_logfn_t instr_logfn = &discard_instr_log;

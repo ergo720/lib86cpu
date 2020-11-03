@@ -14,8 +14,8 @@
 #include "memory.h"
 #include "jit.h"
 
-#define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", print_instr(disas_ctx->virt_pc - bytes, &instr).c_str())
-#define BAD_MODE LIB86CPU_ABORT_msg("Instruction %s not implemented in %s mode", print_instr(disas_ctx->virt_pc - bytes, &instr).c_str(), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real")
+#define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr("", disas_ctx->virt_pc - bytes, &instr).c_str())
+#define BAD_MODE LIB86CPU_ABORT_msg("Instruction %s not implemented in %s mode", log_instr("", disas_ctx->virt_pc - bytes, &instr).c_str(), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real")
 
 
 translated_code_t::translated_code_t(cpu_t *cpu) noexcept
@@ -317,11 +317,6 @@ create_tc_epilogue(cpu_t *cpu)
 	BasicBlock *bb = BasicBlock::Create(CTX(), "", exit, 0);
 	Value *tc_ptr2 = new IntToPtrInst(INTPTR(cpu->tc), exit->getReturnType(), "", bb);
 	ReturnInst::Create(CTX(), tc_ptr2, bb);
-
-#if DEBUG_LOG
-	verifyFunction(*cpu->bb->getParent(), &errs());
-	verifyFunction(*exit, &errs());
-#endif
 }
 
 uint8_t
@@ -420,10 +415,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			disas_ctx->pc += bytes;
 			disas_ctx->virt_pc += bytes;
 
-#ifdef DEBUG_LOG
-			std::printf("0x%08X  ", disas_ctx->virt_pc - bytes);
-			std::puts(print_instr(disas_ctx->virt_pc - bytes, &instr).c_str());
-#endif
+			LOG(log_level::debug, instr_logfn("0x%08X  ", disas_ctx->virt_pc - bytes, &instr).c_str(), disas_ctx->virt_pc - bytes);
 		}
 		else {
 			switch (status)
@@ -465,7 +457,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 
 			default:
-				LIB86CPU_ABORT_msg("Unhandled zydis decode return status\n");
+				LIB86CPU_ABORT_msg("Unhandled zydis decode return status");
 			}
 		}
 
@@ -3427,13 +3419,21 @@ void cpu_exec_tc(cpu_t *cpu, T &&lambda)
 			create_tc_epilogue(cpu);
 
 			if (cpu->cpu_flags & CPU_PRINT_IR) {
-				cpu->mod->print(errs(), nullptr);
+				std::string str;
+				raw_string_ostream os(str);
+				os << *cpu->mod;
+				os.flush();
+				LOG(log_level::debug, str.c_str());
 			}
 
 			if (cpu->cpu_flags & CPU_CODEGEN_OPTIMIZE) {
 				optimize(cpu);
 				if (cpu->cpu_flags & CPU_PRINT_IR_OPTIMIZED) {
-					cpu->mod->print(errs(), nullptr);
+					std::string str;
+					raw_string_ostream os(str);
+					os << *cpu->mod;
+					os.flush();
+					LOG(log_level::debug, str.c_str());
 				}
 			}
 
@@ -3519,12 +3519,11 @@ cpu_start(cpu_t *cpu)
 		cpu_exec_tc(cpu, []() { return true; });
 	}
 	catch (lc86_exp_abort &exp) {
-		cpu->exit_str = exp.what();
+		last_error = exp.what();
 		return exp.get_code();
 	}
 
-	cpu->exit_str = lc86status_to_str(lc86_status::internal_error);
-	return lc86_status::internal_error;
+	return set_last_error(lc86_status::internal_error);
 }
 
 void
@@ -3688,15 +3687,15 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 
 		cpu->cpu_ctx.regs.ecx = ecx;
 		cpu->cpu_ctx.regs.edx = edx;
-		return lc86_status::page_fault;
+		return set_last_error(lc86_status::page_fault);
 	}
 	catch (std::bad_any_cast e) {
 		// this will happen if the client passes an argument type not supported by arg_types
 
 		cpu->cpu_ctx.regs.ecx = ecx;
 		cpu->cpu_ctx.regs.edx = edx;
-		LOG("Exception thrown while calling a trampoline. The error was: %s\n", e.what());
-		return lc86_status::invalid_parameter;
+		LOG(log_level::warn, "Exception thrown while calling a trampoline with error string: %s", e.what());
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	int i = 0;

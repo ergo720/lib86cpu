@@ -152,7 +152,7 @@ check_page_privilege(cpu_t *cpu, uint8_t pde_priv, uint8_t pte_priv)
 }
 
 // NOTE: flags: bit 0 -> is_write, bit 1 -> is_priv, bit 4 -> is_code
-template<typename bool raise_host_exp>
+template<bool raise_host_exp>
 addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, disas_ctx_t *disas_ctx = nullptr)
 {
 	uint8_t is_code = flags & TLB_CODE;
