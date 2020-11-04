@@ -288,7 +288,7 @@ logger(log_level lv, const unsigned count, const char *msg, ...)
 		va_end(args);
 	}
 	else {
-		std::cout << str << std::endl;
+		std::cout << str;
 	}
 }
 
