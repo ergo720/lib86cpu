@@ -12,14 +12,15 @@
 	}
 
 #define DEFINE_SEG_REG(_reg)			\
-	struct {				\
+	PACKED(struct {				\
 		uint16_t		_reg;	\
+		uint16_t		_reg ## _pad;	\
 		struct { \
 			uint32_t base; \
 			uint32_t limit; \
 			uint32_t flags; \
 		} _reg ## _hidden; \
-	}
+	})
 
 // These registers must have the same order they have in cpu->regs_layout
 struct regs_t {

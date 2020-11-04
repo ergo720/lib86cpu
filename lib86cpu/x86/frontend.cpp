@@ -103,8 +103,9 @@ get_struct_reg(cpu_t *cpu)
 	StructType *type_struct_hiddenseg_t = StructType::create(CTX(), type_struct_hiddenseg_t_fields, "struct.hiddenseg_t", false);
 
 	type_struct_seg_t_fields.push_back(getIntegerType(16));
+	type_struct_seg_t_fields.push_back(getIntegerType(16));
 	type_struct_seg_t_fields.push_back(type_struct_hiddenseg_t);
-	StructType *type_struct_seg_t = StructType::create(CTX(), type_struct_seg_t_fields, "struct.seg_t", false);
+	StructType *type_struct_seg_t = StructType::create(CTX(), type_struct_seg_t_fields, "struct.seg_t", true);
 
 	for (uint8_t n = 0; n < CPU_NUM_REGS; n++) {
 		switch (n)
