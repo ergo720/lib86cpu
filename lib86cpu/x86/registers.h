@@ -15,11 +15,11 @@
 	PACKED(struct {				\
 		uint16_t		_reg;	\
 		uint16_t		_reg ## _pad;	\
-		struct { \
+		PACKED(struct { \
 			uint32_t base; \
 			uint32_t limit; \
 			uint32_t flags; \
-		} _reg ## _hidden; \
+		}) _reg ## _hidden; \
 	})
 
 // These registers must have the same order they have in cpu->regs_layout

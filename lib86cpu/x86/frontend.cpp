@@ -100,7 +100,7 @@ get_struct_reg(cpu_t *cpu)
 	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
 	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
 	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
-	StructType *type_struct_hiddenseg_t = StructType::create(CTX(), type_struct_hiddenseg_t_fields, "struct.hiddenseg_t", false);
+	StructType *type_struct_hiddenseg_t = StructType::create(CTX(), type_struct_hiddenseg_t_fields, "struct.hiddenseg_t", true);
 
 	type_struct_seg_t_fields.push_back(getIntegerType(16));
 	type_struct_seg_t_fields.push_back(getIntegerType(16));
