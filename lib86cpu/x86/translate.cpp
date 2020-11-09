@@ -15,7 +15,6 @@
 #include "jit.h"
 
 #define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr("", disas_ctx->virt_pc - bytes, &instr).c_str())
-#define BAD_MODE LIB86CPU_ABORT_msg("Instruction %s not implemented in %s mode", log_instr("", disas_ctx->virt_pc - bytes, &instr).c_str(), cpu_ctx->hflags & HFLG_PE_MODE ? "protected" : "real")
 
 
 translated_code_t::translated_code_t(cpu_t *cpu) noexcept
@@ -698,7 +697,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 				else if (instr.raw.modrm.reg == 3) {
 					if (cpu_ctx->hflags & HFLG_PE_MODE) {
-						BAD_MODE;
+						BAD;
 					}
 					assert(instr.operands[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_MEMORY);
 
