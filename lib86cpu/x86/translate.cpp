@@ -1393,7 +1393,22 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			break;
 
-			case 0xFF: BAD;
+			case 0xFF: {
+				assert(instr.raw.modrm.reg == 4);
+
+				Value *rm, *offset, *new_eip;
+				GET_RM(OPNUM_SINGLE, offset = LD_REG_val(rm);, offset = LD_MEM(fn_idx[size_mode], rm););
+				if (size_mode == SIZE16) {
+					new_eip = ZEXT32(offset);
+					ST_R32(new_eip, EIP_idx);
+				}
+				else {
+					new_eip = offset;
+					ST_R32(new_eip, EIP_idx);
+				}
+				cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
+			}
+			break;
 
 			default:
 				LIB86CPU_ABORT();
