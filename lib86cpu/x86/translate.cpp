@@ -562,7 +562,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			case 0x21: {
 				Value *val, *reg, *rm;
-				reg = GET_REG(OPNUM_SRC);
+				reg = LD_REG_val(GET_REG(OPNUM_SRC));
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = AND(val, reg); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
 				val = AND(val, reg); ST_MEM(fn_idx[size_mode], rm, val););
 				SET_FLG(val, CONST32(0));
