@@ -3275,8 +3275,25 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			break;
 
+			case 0x90:
+			case 0x91:
+			case 0x92:
+			case 0x93:
+			case 0x94:
+			case 0x95:
+			case 0x96:
+			case 0x97: {
+				Value *reg, *val, *reg_dst;
+				reg = (size_mode == SIZE32) ? GEP_R32(EAX_idx) : GEP_R16(EAX_idx);
+				reg_dst = GET_REG(OPNUM_DST);
+				val = LD_REG_val(reg_dst);
+				ST_REG_val(LD_REG_val(reg), reg_dst);
+				ST_REG_val(val, reg);
+			}
+			break;
+
 			default:
-				BAD;
+				LIB86CPU_ABORT();
 			}
 		}
 		break;
