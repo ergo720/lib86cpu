@@ -103,7 +103,8 @@ default: \
 #define CONST32(v) CONSTs(32, v)
 #define CONST64(v) CONSTs(64, v)
 
-#define ALLOCs(s) new AllocaInst(getIntegerType(s), 0, "", cpu->bb)
+#define ALLOC(ty) new AllocaInst(ty, 0, "", cpu->bb)
+#define ALLOCs(s) ALLOC(getIntegerType(s))
 #define ALLOC8() ALLOCs(8)
 #define ALLOC16() ALLOCs(16)
 #define ALLOC32() ALLOCs(32)
@@ -115,11 +116,6 @@ default: \
 #define UNREACH() new UnreachableInst(CTX(), cpu->bb)
 #define INTRINSIC(id) CallInst::Create(Intrinsic::getDeclaration(cpu->mod, Intrinsic::id), "", cpu->bb)
 #define INTRINSIC_ty(id, ty, arg) CallInst::Create(Intrinsic::getDeclaration(cpu->mod, Intrinsic::id, ty), arg, "", cpu->bb)
-#define ABORT() \
-do {\
-    CallInst *ci = CallInst::Create(cpu->ptr_abort_fn, CONST32(static_cast<int32_t>(lc86_status::internal_error)), "", cpu->bb);\
-    ci->setCallingConv(CallingConv::C);\
-} while (0)
 
 #define ZEXT(s, v) new ZExtInst(v, getIntegerType(s), "", cpu->bb)
 #define ZEXT8(v) ZEXT(8, v)
@@ -336,3 +332,14 @@ BR_COND(vec_bb[3], vec_bb[2], AND(ICMP_NE(ecx, zero), ICMP_EQ(LD_ZF(), CONST32(0
 #define LD_SF() XOR(SHR(LD_FLG_RES(), CONST32(31)), AND(LD_FLG_AUX(), CONST32(1)))
 #define LD_PF() LD_PARITY(TRUNC8(XOR(LD_FLG_RES(), SHR(LD_FLG_AUX(), CONST32(8)))))
 #define LD_AF() AND(LD_FLG_AUX(), CONST32(8))
+
+#define ABORT(str) \
+do { \
+    assert(sizeof(str) <= 256); \
+    Value *arr = ALLOC(getArrayType(getIntegerType(8), 256)); \
+    for (size_t idx = 0; idx < sizeof(str); ++idx) { \
+	    ST(GEP(arr, idx), CONST8(str[idx])); \
+	} \
+    CallInst *ci = CallInst::Create(cpu->ptr_abort_fn, std::vector<Value *>{ CONST32(static_cast<int32_t>(lc86_status::internal_error)), GEP(arr, 0) }, "", cpu->bb); \
+    ci->setCallingConv(CallingConv::C); \
+} while (0)

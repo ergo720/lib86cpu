@@ -197,7 +197,7 @@ get_ext_fn(cpu_t *cpu)
 	cpu->ptr_invtc_fn = cast<Function>(cpu->mod->getOrInsertFunction("tc_invalidate", getVoidType(), cpu_ctx_ty,
 		tc_ty, getIntegerType(32), getIntegerType(8), getIntegerType(32)));
 
-	Function *abort_func = cast<Function>(cpu->mod->getOrInsertFunction("cpu_abort", getVoidType(), getIntegerType(32)));
+	Function *abort_func = cast<Function>(cpu->mod->getOrInsertFunction("cpu_abort", getVoidType(), getIntegerType(32), getPointerType(getIntegerType(8))));
 	abort_func->addAttribute(0, Attribute::AttrKind::NoReturn);
 	cpu->ptr_abort_fn = abort_func;
 }
@@ -300,7 +300,7 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 			ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 			ReturnInst::Create(CTX(), ci, cpu->bb);
 			cpu->bb = BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0);
-			ABORT();
+			ABORT("Unreachable code in link_direct_emit reached with n = 1");
 		}
 	}
 	break;
@@ -321,7 +321,7 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 		ci2->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 		ReturnInst::Create(CTX(), ci2, cpu->bb);
 		cpu->bb = vec_bb[2];
-		ABORT();
+		ABORT("Unreachable code in link_direct_emit reached with n = 2");
 	}
 	break;
 
@@ -432,7 +432,7 @@ gen_exp_fn(cpu_t *cpu)
 	BR_COND(bb_exp_in_flight, bb_next, ICMP_NE(LD(GEP(ptr_exp_info, 1)), CONST8(0)));
 	cpu->bb = bb_exp_in_flight;
 	// we don't handle double and triple faults yet, so just abort
-	ABORT();
+	ABORT("A double or triple fault occoured while attempting to deliver another exception");
 	UNREACH();
 	cpu->bb = bb_next;
 	ST(GEP(ptr_exp_info, 1), CONST8(1));
@@ -664,7 +664,7 @@ gen_exp_fn(cpu_t *cpu)
 		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
 		// we don't handle double and triple faults yet, so just abort
-		ABORT();
+		ABORT("A double or triple fault occoured while attempting to deliver another exception in protected mode");
 		UNREACH();
 	}
 	else {
@@ -692,7 +692,7 @@ gen_exp_fn(cpu_t *cpu)
 		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
 		// we don't handle double and triple faults yet, so just abort
-		ABORT();
+		ABORT("A double or triple fault occoured while attempting to deliver another exception in real mode");
 		UNREACH();
 	}
 
@@ -1039,7 +1039,7 @@ lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t
 	swi->SWITCH_add(8, 12, vec_bb[9]); // call gate, 32 bit
 	cpu->bb = vec_bb[8];
 	// we don't support tss and task gates yet, so just abort
-	ABORT();
+	ABORT("Task and tss gates in call instructions are not supported yet");
 	UNREACH();
 
 	// call gate
@@ -1251,7 +1251,7 @@ ljmp_pe_emit(cpu_t *cpu, Value *sel, uint8_t size_mode, uint32_t eip)
 	swi->SWITCH_add(8, 12, vec_bb[9]); // call gate, 32 bit
 	cpu->bb = vec_bb[8];
 	// we don't support tss and task gates yet, so just abort
-	ABORT();
+	ABORT("Task and tss gates in jmp instructions are not supported yet");
 	UNREACH();
 
 	// call gate
@@ -1310,13 +1310,13 @@ ret_pe_emit(cpu_t *cpu, uint8_t size_mode, bool is_iret)
 		BR_COND(vec_bb2[0], vec_bb2[1], ICMP_NE(AND(eflags, CONST32(VM_MASK)), CONST32(0)));
 		cpu->bb = vec_bb2[0];
 		// we don't support virtual 8086 mode, so just abort
-		ABORT();
+		ABORT("Virtual 8086 mode is not supported in ret instructions yet");
 		UNREACH();
 		cpu->bb = vec_bb2[1];
 		BR_COND(vec_bb2[2], vec_bb2[3], ICMP_NE(AND(eflags, CONST32(NT_MASK)), CONST32(0)));
 		cpu->bb = vec_bb2[2];
 		// we don't support task returns yet, so just abort
-		ABORT();
+		ABORT("Task returns are not supported in ret instructions yet");
 		UNREACH();
 		cpu->bb = vec_bb2[3];
 		vec = MEM_POP(3);

@@ -46,7 +46,7 @@ private:
 
 void cpu_init(cpu_t *cpu);
 lc86_status cpu_start(cpu_t *cpu);
-[[noreturn]] void cpu_abort(int32_t code);
+[[noreturn]] void cpu_abort_proxy(int32_t code, uint8_t *str);
 [[noreturn]] void cpu_abort(int32_t code, const char *msg, ...);
 std::string lc86status_to_str(lc86_status status);
 void discard_log(log_level lv, const unsigned count, const char *msg, ...);

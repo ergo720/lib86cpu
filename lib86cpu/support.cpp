@@ -9,9 +9,9 @@
 
 
 void
-cpu_abort(int32_t code)
+cpu_abort_proxy(int32_t code, uint8_t *str)
 {
-	cpu_abort(code, "Unsupported operation encountered while executing the translated code");
+	cpu_abort(code, reinterpret_cast<const char *>(str));
 }
 
 void
