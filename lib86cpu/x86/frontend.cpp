@@ -1888,38 +1888,38 @@ get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum)
 	break;
 
 	case ZYDIS_OPERAND_TYPE_REGISTER: {
-		ZyanU8 reg8;
-
-		switch (operand->encoding)
-		{
-		case ZYDIS_OPERAND_ENCODING_MODRM_RM:
-			reg8 = instr->raw.modrm.rm;
-			break;
-
-		case ZYDIS_OPERAND_ENCODING_MODRM_REG:
-			reg8 = instr->raw.modrm.reg;
-			break;
-
-		case ZYDIS_OPERAND_ENCODING_OPCODE:
-			reg8 = instr->opcode & 7;
-			break;
-
-		case ZYDIS_OPERAND_ENCODING_NONE:
-			assert(operand->reg.value == ZYDIS_REGISTER_AL ||
-				operand->reg.value == ZYDIS_REGISTER_AX ||
-				operand->reg.value == ZYDIS_REGISTER_EAX);
-			reg8 = 0;
-			break;
-
-		default:
-			LIB86CPU_ABORT_msg("Unhandled reg operand encoding %d in %s", operand->encoding, __func__);
-		}
-
 		int idx = GET_REG_idx(operand->reg.value);
 		switch (operand->size)
 		{
-		case 8:
+		case 8: {
+			ZyanU8 reg8;
+			switch (operand->encoding)
+			{
+			case ZYDIS_OPERAND_ENCODING_MODRM_RM:
+				reg8 = instr->raw.modrm.rm;
+				break;
+
+			case ZYDIS_OPERAND_ENCODING_MODRM_REG:
+				reg8 = instr->raw.modrm.reg;
+				break;
+
+			case ZYDIS_OPERAND_ENCODING_OPCODE:
+				reg8 = instr->opcode & 7;
+				break;
+
+			case ZYDIS_OPERAND_ENCODING_NONE:
+				assert(operand->reg.value == ZYDIS_REGISTER_AL ||
+					operand->reg.value == ZYDIS_REGISTER_AX ||
+					operand->reg.value == ZYDIS_REGISTER_EAX);
+				reg8 = 0;
+				break;
+
+			default:
+				LIB86CPU_ABORT_msg("Unhandled reg operand encoding %d in %s", operand->encoding, __func__);
+			}
+
 			return (reg8 < 4) ? GEP_R8L(idx) : GEP_R8H(idx);
+		}
 
 		case 16:
 			return GEP_R16(idx);
