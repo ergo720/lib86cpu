@@ -2999,12 +2999,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			switch (instr.opcode)
 			{
+			case 0xD0:
 			case 0xC0:
 				size_mode = SIZE8;
 				[[fallthrough]];
 
+			case 0xD1:
 			case 0xC1: {
-				uint8_t count = instr.operands[OPNUM_SRC].imm.value.u & 0x1F;
+				uint8_t count = ((instr.opcode == 0xD0) || (instr.opcode == 0xD1)) ? 1 : instr.operands[OPNUM_SRC].imm.value.u & 0x1F;
 				if (count != 0) {
 					Value *val, *rm, *temp, *cf, *of, *of_mask, *cf_mask = CONST32(1 << (count - 1));
 					switch (size_mode)
