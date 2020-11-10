@@ -1812,32 +1812,34 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					translate_next = 0;
 				}
 				else {
-					Function *crN_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_update_crN", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-						getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)));
 					Value *val = LD_REG_val(GET_REG(OPNUM_SRC));
-					CallInst *ci;
 					switch (instr.operands[OPNUM_DST].reg.value)
 					{
 					case ZYDIS_REGISTER_CR0:
 						translate_next = 0;
 						[[fallthrough]];
 
-					case ZYDIS_REGISTER_CR3:
-						ci = CallInst::Create(crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(GET_REG_idx(instr.operands[OPNUM_DST].reg.value) - CR_offset),
+					case ZYDIS_REGISTER_CR3: {
+						Function *crN_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_update_crN", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
+							getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)));
+						CallInst *ci = CallInst::Create(crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(GET_REG_idx(instr.operands[OPNUM_DST].reg.value) - CR_offset),
 							cpu->instr_eip, CONST32(bytes) }, "", cpu->bb);
-						break;
+						std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 1);
+						BR_COND(RAISE(CONST16(0), EXP_GP), vec_bb[0], ICMP_NE(ci, CONST8(0)));
+						cpu->bb = vec_bb[0];
+					}
+					break;
 
 					case ZYDIS_REGISTER_CR2:
+						ST_R32(val, CR2_idx);
+						break;
+
 					case ZYDIS_REGISTER_CR4:
 						BAD;
 
 					default:
 						LIB86CPU_ABORT();
 					}
-
-					std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 1);
-					BR_COND(RAISE(CONST16(0), EXP_GP), vec_bb[0], ICMP_NE(ci, CONST8(0)));
-					cpu->bb = vec_bb[0];
 				}
 			}
 			break;
