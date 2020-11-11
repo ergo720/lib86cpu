@@ -454,8 +454,7 @@ gen_exp_fn(cpu_t *cpu)
 		);
 
 	if (cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
-		std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, func, 39);
-
+		std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, func, 50);
 		Value *cpl = TRUNC16(AND(LD(cpu->ptr_hflags), CONST32(HFLG_CPL)));
 		BR_COND(vec_bb[0], vec_bb[1], ICMP_UGT(ADD(MUL(idx, CONST32(8)), CONST32(7)), LD_SEG_HIDDEN(IDTR_idx, SEG_LIMIT_idx)));
 		cpu->bb = vec_bb[1];
@@ -466,8 +465,8 @@ gen_exp_fn(cpu_t *cpu)
 		ST(type, TRUNC16(AND(SHR(LD(desc), CONST64(40)), CONST64(0x1F))));
 		Value *new_eip = ALLOC32();
 		Value *eflags = ALLOC32();
-		SwitchInst *swi = SWITCH_new(5, LD(type), vec_bb[0]);
-		swi->SWITCH_add(16, 5, vec_bb[0]);  // we don't support task gates yet, so just abort
+		SwitchInst *swi = SWITCH_new(5, LD(type), vec_bb[40]);
+		swi->SWITCH_add(16, 5, vec_bb[39]);  // we don't support task gates yet, so just abort
 		swi->SWITCH_add(16, 6, vec_bb[2]);  // interrupt gate, 16 bit
 		swi->SWITCH_add(16, 14, vec_bb[2]); // interrupt gate, 32 bit
 		swi->SWITCH_add(16, 7, vec_bb[3]);  // trap gate, 16 bit
@@ -481,21 +480,21 @@ gen_exp_fn(cpu_t *cpu)
 		ST(new_eip, TRUNC32(OR(SHR(AND(LD(desc), CONST64(0xFFFF000000000000)), CONST64(32)), AND(LD(desc), CONST64(0xFFFF)))));
 		BR_UNCOND(vec_bb[4]);
 		cpu->bb = vec_bb[4];
-		BR_COND(vec_bb[0], vec_bb[5], ICMP_EQ(AND(LD(desc), CONST64(SEG_DESC_P)), CONST64(0)));
+		BR_COND(vec_bb[41], vec_bb[5], ICMP_EQ(AND(LD(desc), CONST64(SEG_DESC_P)), CONST64(0)));
 		cpu->bb = vec_bb[5];
 		Value *sel = TRUNC16(SHR(AND(LD(desc), CONST64(0xFFFF0000)), CONST64(16)));
-		BR_COND(vec_bb[0], vec_bb[6], ICMP_EQ(AND(LD(desc), CONST64(0xFFFC)), CONST64(0)));
+		BR_COND(vec_bb[42], vec_bb[6], ICMP_EQ(AND(LD(desc), CONST64(0xFFFC)), CONST64(0)));
 		cpu->bb = vec_bb[6];
-		std::vector<Value *> vec = read_seg_desc_emit(cpu, sel, vec_bb[0]);
+		std::vector<Value *> vec = read_seg_desc_emit(cpu, sel, vec_bb[43]);
 		Value *desc_addr = ALLOC32();
 		ST(desc_addr, vec[0]);
 		ST(desc, vec[1]);
 		Value *dpl = ALLOC16();
 		ST(dpl, TRUNC16(SHR(AND(LD(desc), CONST64(SEG_DESC_DPL)), CONST64(45))));
 		// NOTE: can't inject cpl as a constant here or we would have to regenerate this function every time the cpl changes, which we don't want
-		BR_COND(vec_bb[0], vec_bb[7], ICMP_UGT(LD(dpl), cpl));
+		BR_COND(vec_bb[44], vec_bb[7], ICMP_UGT(LD(dpl), cpl));
 		cpu->bb = vec_bb[7];
-		BR_COND(vec_bb[0], vec_bb[8], ICMP_EQ(AND(LD(desc), CONST64(SEG_DESC_P)), CONST64(0)));
+		BR_COND(vec_bb[45], vec_bb[8], ICMP_EQ(AND(LD(desc), CONST64(SEG_DESC_P)), CONST64(0)));
 		cpu->bb = vec_bb[8];
 		BR_COND(vec_bb[9], vec_bb[10], ICMP_NE(AND(LD(desc), CONST64(SEG_DESC_C)), CONST64(0)));
 		cpu->bb = vec_bb[9];
@@ -515,15 +514,15 @@ gen_exp_fn(cpu_t *cpu)
 		BR_COND(vec_bb[11], vec_bb[12], ICMP_ULT(LD(dpl), cpl));
 		// more privileged
 		cpu->bb = vec_bb[11];
-		vec = read_stack_ptr_from_tss_emit(cpu, cpl, vec_bb[0]);
+		vec = read_stack_ptr_from_tss_emit(cpu, cpl, vec_bb[46]);
 		ST(new_esp, vec[0]);
 		ST(new_ss, vec[1]);
-		BR_COND(vec_bb[0], vec_bb[13], ICMP_EQ(SHR(LD(new_ss), CONST16(2)), CONST16(0)));
+		BR_COND(vec_bb[47], vec_bb[13], ICMP_EQ(SHR(LD(new_ss), CONST16(2)), CONST16(0)));
 		cpu->bb = vec_bb[13];
-		vec = read_seg_desc_emit(cpu, LD(new_ss), vec_bb[0]);
+		vec = read_seg_desc_emit(cpu, LD(new_ss), vec_bb[48]);
 		ST(desc_addr, vec[0]);
 		ST(desc, vec[1]);
-		check_ss_desc_priv_emit(cpu, LD(new_ss), nullptr, cpl, vec_bb[0]);
+		check_ss_desc_priv_emit(cpu, LD(new_ss), nullptr, cpl, vec_bb[49]);
 		set_access_flg_seg_desc_emit(cpu, LD(desc), LD(desc_addr));
 		ST(stack_switch, CONSTs(1, 1));
 		BR_COND(vec_bb[14], vec_bb[15], ICMP_NE(AND(LD(desc), CONST64(SEG_DESC_DB)), CONST64(0)));
@@ -662,8 +661,40 @@ gen_exp_fn(cpu_t *cpu)
 		ST(GEP(ptr_exp_info, 1), CONST8(0));
 		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
-		// we don't handle double and triple faults yet, so just abort
-		ABORT("A double or triple fault occoured while attempting to deliver another exception in protected mode");
+		ABORT("IDT limit exceeded (protected mode)");
+		UNREACH();
+		cpu->bb = vec_bb[39];
+		ABORT("Task gate descriptors are not supported yet while delivering an exception");
+		UNREACH();
+		cpu->bb = vec_bb[40];
+		ABORT("Attempted to use an unknown descriptor while delivering an exception");
+		UNREACH();
+		cpu->bb = vec_bb[41];
+		ABORT("Descriptor used by the exception handler has the present bit clear");
+		UNREACH();
+		cpu->bb = vec_bb[42];
+		ABORT("???");
+		UNREACH();
+		cpu->bb = vec_bb[43];
+		ABORT("Destination code segment for the exception handler is outside of descriptor table limit");
+		UNREACH();
+		cpu->bb = vec_bb[44];
+		ABORT("Exception handler destination code segment's dpl > cpl");
+		UNREACH();
+		cpu->bb = vec_bb[45];
+		ABORT("The destination code segment used by the exception handler has the present bit clear");
+		UNREACH();
+		cpu->bb = vec_bb[46];
+		ABORT("An exception occured while reading the stack pointer from the tss used by the exception handler");
+		UNREACH();
+		cpu->bb = vec_bb[47];
+		ABORT("The stack segment selector used by the exception handler is zero");
+		UNREACH();
+		cpu->bb = vec_bb[48];
+		ABORT("An exception occured while reading the stack segment descriptor used by the exception handler");
+		UNREACH();
+		cpu->bb = vec_bb[49];
+		ABORT("An exception occured while performing the privilege checks on the stack segment descriptor used by the exception handler");
 		UNREACH();
 	}
 	else {
@@ -691,7 +722,7 @@ gen_exp_fn(cpu_t *cpu)
 		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
 		// we don't handle double and triple faults yet, so just abort
-		ABORT("A double or triple fault occoured while attempting to deliver another exception in real mode");
+		ABORT("IDT limit exceeded (real mode)");
 		UNREACH();
 	}
 
