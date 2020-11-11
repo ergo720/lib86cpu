@@ -11,123 +11,6 @@
 #include <fstream>
 
 
-static const std::unordered_map<int, std::function<void(uint32_t *, uint32_t *)>> gpr_func_table_r = {
-	{ REG32, [](uint32_t *reg, uint32_t *out) { *out = *reg; } },
-	{ REG16, [](uint32_t *reg, uint32_t *out) { *out = *reg & 0xFFFF; } },
-	{ REG8H, [](uint32_t *reg, uint32_t *out) { *out = (*reg & 0xFF00) >> 8; } },
-	{ REG8L, [](uint32_t *reg, uint32_t *out) { *out = *reg & 0xFF; } },
-};
-
-static const std::unordered_map<int, std::function<void(uint16_t *, uint32_t *)>> sel_func_table_r = {
-	{ SEG_SEL, [](uint16_t *reg, uint32_t *out) { *out = *reg; } },
-	{ SEG_BASE, [](uint16_t *reg, uint32_t *out) { *out = *(uint32_t *)((uint8_t *)reg + 4); } },
-	{ SEG_LIMIT, [](uint16_t *reg, uint32_t *out) { *out = *(uint32_t *)((uint8_t *)reg + 8); } },
-	{ SEG_FLG, [](uint16_t *reg, uint32_t *out) { *out = *(uint32_t *)((uint8_t *)reg + 12); } },
-};
-
-static const std::unordered_map<int, std::function<lc86_status(cpu_t *, int, uint32_t *)>> reg_func_table_r = {
-	{ EAX_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { gpr_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.eax, out); return lc86_status::success; } },
-	{ ECX_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { gpr_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.ecx, out); return lc86_status::success; } },
-	{ EDX_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { gpr_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.edx, out); return lc86_status::success; } },
-	{ EBX_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { gpr_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.ebx, out); return lc86_status::success; } },
-	{ ESP_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { gpr_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.esp, out); return lc86_status::success; } },
-	{ EBP_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { gpr_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.ebp, out); return lc86_status::success; } },
-	{ ESI_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { gpr_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.esi, out); return lc86_status::success; } },
-	{ EDI_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { gpr_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.edi, out); return lc86_status::success; } },
-	{ EFLAGS_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) {
-		if ((size_or_sel == REG8H) || (size_or_sel == REG8L)) { return set_last_error(lc86_status::invalid_parameter); }
-		gpr_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.eflags, out); return lc86_status::success; } },
-	{ EIP_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) {
-		if ((size_or_sel == REG8H) || (size_or_sel == REG8L)) { return set_last_error(lc86_status::invalid_parameter); }
-		gpr_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.eip, out); return lc86_status::success; } },
-	{ ES_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { sel_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.es, out); return lc86_status::success; } },
-	{ CS_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { sel_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.cs, out); return lc86_status::success; } },
-	{ SS_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { sel_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.ss, out); return lc86_status::success; } },
-	{ DS_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { sel_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.ds, out); return lc86_status::success; } },
-	{ FS_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { sel_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.fs, out); return lc86_status::success; } },
-	{ GS_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { sel_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.gs, out); return lc86_status::success; } },
-	{ GDTR_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) {
-		if ((size_or_sel == SEG_SEL) || (size_or_sel == SEG_FLG)) { return set_last_error(lc86_status::invalid_parameter); }
-		sel_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.gdtr, out); return lc86_status::success; }, },
-	{ LDTR_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { sel_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.ldtr, out); return lc86_status::success; } },
-	{ IDTR_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) {
-		if ((size_or_sel == SEG_SEL) || (size_or_sel == SEG_FLG)) { return set_last_error(lc86_status::invalid_parameter); }
-		sel_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.idtr, out); return lc86_status::success; }, },
-	{ TR_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { sel_func_table_r.find(size_or_sel)->second(&cpu->cpu_ctx.regs.tr, out); return lc86_status::success; }},
-	{ CR0_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { *out = cpu->cpu_ctx.regs.cr0; return lc86_status::success; } },
-	{ CR1_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { *out = cpu->cpu_ctx.regs.cr1; return lc86_status::success; } },
-	{ CR2_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { *out = cpu->cpu_ctx.regs.cr2; return lc86_status::success; } },
-	{ CR3_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { *out = cpu->cpu_ctx.regs.cr3; return lc86_status::success; } },
-	{ CR4_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { *out = cpu->cpu_ctx.regs.cr4; return lc86_status::success; } },
-	{ DR0_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { *out = cpu->cpu_ctx.regs.dr0; return lc86_status::success; } },
-	{ DR1_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { *out = cpu->cpu_ctx.regs.dr1; return lc86_status::success; } },
-	{ DR2_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { *out = cpu->cpu_ctx.regs.dr2; return lc86_status::success; } },
-	{ DR3_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { *out = cpu->cpu_ctx.regs.dr3; return lc86_status::success; } },
-	{ DR4_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { *out = cpu->cpu_ctx.regs.dr4; return lc86_status::success; } },
-	{ DR5_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { *out = cpu->cpu_ctx.regs.dr5; return lc86_status::success; } },
-	{ DR6_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { *out = cpu->cpu_ctx.regs.dr6; return lc86_status::success; } },
-	{ DR7_idx, [](cpu_t *cpu, int size_or_sel, uint32_t *out) { *out = cpu->cpu_ctx.regs.dr7; return lc86_status::success; } }
-};
-
-static const std::unordered_map<int, std::function<void(uint32_t *, uint32_t)>> gpr_func_table_w = {
-	{ REG32, [](uint32_t *reg, uint32_t val) { *reg = val; } },
-	{ REG16, [](uint32_t *reg, uint32_t val) { (*reg &= 0xFFFF0000) |= (val & 0xFFFF); } },
-	{ REG8H, [](uint32_t *reg, uint32_t val) { (*reg &= 0xFFFF00FF) |= ((val & 0xFF) << 8); } },
-	{ REG8L, [](uint32_t *reg, uint32_t val) { (*reg &= 0xFFFFFF00) |= (val & 0xFF); } },
-};
-
-static const std::unordered_map<int, std::function<void(uint16_t *, uint32_t)>> sel_func_table_w = {
-	{ SEG_SEL, [](uint16_t *reg, uint32_t val) { *reg = (val & 0xFFFF); } },
-	{ SEG_BASE, [](uint16_t *reg, uint32_t val) { *(uint32_t *)((uint8_t *)reg + 4) = val; } },
-	{ SEG_LIMIT, [](uint16_t *reg, uint32_t val) { *(uint32_t *)((uint8_t *)reg + 8) = val; } },
-	{ SEG_FLG, [](uint16_t *reg, uint32_t val) { *(uint32_t *)((uint8_t *)reg + 12) = val; } },
-};
-
-static const std::unordered_map<int, std::function<lc86_status(cpu_t *, int, uint32_t)>> reg_func_table_w = {
-	{ EAX_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { gpr_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.eax, val); return lc86_status::success; } },
-	{ ECX_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { gpr_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.ecx, val); return lc86_status::success; } },
-	{ EDX_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { gpr_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.edx, val); return lc86_status::success; } },
-	{ EBX_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { gpr_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.ebx, val); return lc86_status::success; } },
-	{ ESP_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { gpr_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.esp, val); return lc86_status::success; } },
-	{ EBP_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { gpr_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.ebp, val); return lc86_status::success; } },
-	{ ESI_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { gpr_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.esi, val); return lc86_status::success; } },
-	{ EDI_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { gpr_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.edi, val); return lc86_status::success; } },
-	{ EFLAGS_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) {
-		if ((size_or_sel == REG8H) || (size_or_sel == REG8L)) { return set_last_error(lc86_status::invalid_parameter); }
-		gpr_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.eflags, val); return lc86_status::success; } },
-	{ EIP_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) {
-		if ((size_or_sel == REG8H) || (size_or_sel == REG8L)) { return set_last_error(lc86_status::invalid_parameter); }
-		gpr_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.eip, val); return lc86_status::success; } },
-	{ ES_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { sel_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.es, val); return lc86_status::success; } },
-	{ CS_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { sel_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.cs, val); return lc86_status::success; } },
-	{ SS_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { sel_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.ss, val); return lc86_status::success; } },
-	{ DS_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { sel_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.ds, val); return lc86_status::success; } },
-	{ FS_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { sel_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.fs, val); return lc86_status::success; } },
-	{ GS_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { sel_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.gs, val); return lc86_status::success; } },
-	{ GDTR_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) {
-		if ((size_or_sel == SEG_SEL) || (size_or_sel == SEG_FLG)) { return set_last_error(lc86_status::invalid_parameter); }
-		sel_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.gdtr, val); return lc86_status::success; }, },
-	{ LDTR_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { sel_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.ldtr, val); return lc86_status::success; } },
-	{ IDTR_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) {
-		if ((size_or_sel == SEG_SEL) || (size_or_sel == SEG_FLG)) { return set_last_error(lc86_status::invalid_parameter); }
-		sel_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.idtr, val); return lc86_status::success; }, },
-	{ TR_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { sel_func_table_w.find(size_or_sel)->second(&cpu->cpu_ctx.regs.tr, val); return lc86_status::success; }},
-	{ CR0_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { cpu->cpu_ctx.regs.cr0 = val; return lc86_status::success; } },
-	{ CR1_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { cpu->cpu_ctx.regs.cr1 = val; return lc86_status::success; } },
-	{ CR2_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { cpu->cpu_ctx.regs.cr2 = val; return lc86_status::success; } },
-	{ CR3_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { cpu->cpu_ctx.regs.cr3 = val; return lc86_status::success; } },
-	{ CR4_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { cpu->cpu_ctx.regs.cr4 = val; return lc86_status::success; } },
-	{ DR0_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { cpu->cpu_ctx.regs.dr0 = val; return lc86_status::success; } },
-	{ DR1_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { cpu->cpu_ctx.regs.dr1 = val; return lc86_status::success; } },
-	{ DR2_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { cpu->cpu_ctx.regs.dr2 = val; return lc86_status::success; } },
-	{ DR3_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { cpu->cpu_ctx.regs.dr3 = val; return lc86_status::success; } },
-	{ DR4_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { cpu->cpu_ctx.regs.dr4 = val; return lc86_status::success; } },
-	{ DR5_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { cpu->cpu_ctx.regs.dr5 = val; return lc86_status::success; } },
-	{ DR6_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { cpu->cpu_ctx.regs.dr6 = val; return lc86_status::success; } },
-	{ DR7_idx, [](cpu_t *cpu, int size_or_sel, uint32_t val) { cpu->cpu_ctx.regs.dr7 = val; return lc86_status::success; } }
-};
-
-
 lc86_status
 cpu_new(size_t ramsize, cpu_t *&out)
 {
@@ -243,28 +126,6 @@ cpu_set_flags(cpu_t *cpu, uint32_t flags)
 	set_instr_format(cpu);
 
 	return lc86_status::success;
-}
-
-lc86_status
-read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
-{
-	if ((reg >= REG_EAX) && (reg <= REG_TR) && (size_or_sel >= REG32) && (size_or_sel <= REG8L)) {
-		return reg_func_table_r.find(reg)->second(cpu, size_or_sel, value);
-	}
-	else {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
-}
-
-lc86_status
-write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
-{
-	if ((reg >= REG_EAX) && (reg <= REG_TR) && (size_or_sel >= REG32) && (size_or_sel <= REG8L)) {
-		return reg_func_table_w.find(reg)->second(cpu, size_or_sel, value);
-	}
-	else {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
 }
 
 void
@@ -828,4 +689,958 @@ trampoline_call(cpu_t *cpu, addr_t addr, std::any &ret, std::vector<std::any> ar
 	}
 
 	return cpu_exec_trampoline(cpu, addr, it->second.get(), ret, args);
+}
+
+lc86_status
+read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
+{
+	switch (reg)
+	{
+	case REG_EAX:
+		switch (size_or_sel)
+		{
+		case REG32:
+			*value = cpu->cpu_ctx.regs.eax;
+			break;
+
+		case REG16:
+			*value = (cpu->cpu_ctx.regs.eax & 0xFFFF);
+			break;
+
+		case REG8H:
+			*value = ((cpu->cpu_ctx.regs.eax & 0xFF00) >> 8);
+			break;
+
+		case REG8L:
+			*value = (cpu->cpu_ctx.regs.eax & 0xFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_ECX:
+		switch (size_or_sel)
+		{
+		case REG32:
+			*value = cpu->cpu_ctx.regs.ecx;
+			break;
+
+		case REG16:
+			*value = (cpu->cpu_ctx.regs.ecx & 0xFFFF);
+			break;
+
+		case REG8H:
+			*value = ((cpu->cpu_ctx.regs.ecx & 0xFF00) >> 8);
+			break;
+
+		case REG8L:
+			*value = (cpu->cpu_ctx.regs.ecx & 0xFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_EDX:
+		switch (size_or_sel)
+		{
+		case REG32:
+			*value = cpu->cpu_ctx.regs.edx;
+			break;
+
+		case REG16:
+			*value = (cpu->cpu_ctx.regs.edx & 0xFFFF);
+			break;
+
+		case REG8H:
+			*value = ((cpu->cpu_ctx.regs.edx & 0xFF00) >> 8);
+			break;
+
+		case REG8L:
+			*value = (cpu->cpu_ctx.regs.edx & 0xFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_EBX:
+		switch (size_or_sel)
+		{
+		case REG32:
+			*value = cpu->cpu_ctx.regs.ebx;
+			break;
+
+		case REG16:
+			*value = (cpu->cpu_ctx.regs.ebx & 0xFFFF);
+			break;
+
+		case REG8H:
+			*value = ((cpu->cpu_ctx.regs.ebx & 0xFF00) >> 8);
+			break;
+
+		case REG8L:
+			*value = (cpu->cpu_ctx.regs.ebx & 0xFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_ESP:
+		switch (size_or_sel)
+		{
+		case REG32:
+			*value = cpu->cpu_ctx.regs.esp;
+			break;
+
+		case REG16:
+			*value = (cpu->cpu_ctx.regs.esp & 0xFFFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_EBP:
+		switch (size_or_sel)
+		{
+		case REG32:
+			*value = cpu->cpu_ctx.regs.ebp;
+			break;
+
+		case REG16:
+			*value = (cpu->cpu_ctx.regs.ebp & 0xFFFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_ESI:
+		switch (size_or_sel)
+		{
+		case REG32:
+			*value = cpu->cpu_ctx.regs.esi;
+			break;
+
+		case REG16:
+			*value = (cpu->cpu_ctx.regs.esi & 0xFFFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_EDI:
+		switch (size_or_sel)
+		{
+		case REG32:
+			*value = cpu->cpu_ctx.regs.edi;
+			break;
+
+		case REG16:
+			*value = (cpu->cpu_ctx.regs.edi & 0xFFFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_ES:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			*value = cpu->cpu_ctx.regs.es;
+			break;
+
+		case SEG_BASE:
+			*value = cpu->cpu_ctx.regs.es_hidden.base;
+			break;
+
+		case SEG_LIMIT:
+			*value = cpu->cpu_ctx.regs.es_hidden.limit;
+			break;
+
+		case SEG_FLG:
+			*value = cpu->cpu_ctx.regs.es_hidden.flags;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_CS:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			*value = cpu->cpu_ctx.regs.cs;
+			break;
+
+		case SEG_BASE:
+			*value = cpu->cpu_ctx.regs.cs_hidden.base;
+			break;
+
+		case SEG_LIMIT:
+			*value = cpu->cpu_ctx.regs.cs_hidden.limit;
+			break;
+
+		case SEG_FLG:
+			*value = cpu->cpu_ctx.regs.cs_hidden.flags;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_SS:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			*value = cpu->cpu_ctx.regs.ss;
+			break;
+
+		case SEG_BASE:
+			*value = cpu->cpu_ctx.regs.ss_hidden.base;
+			break;
+
+		case SEG_LIMIT:
+			*value = cpu->cpu_ctx.regs.ss_hidden.limit;
+			break;
+
+		case SEG_FLG:
+			*value = cpu->cpu_ctx.regs.ss_hidden.flags;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_DS:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			*value = cpu->cpu_ctx.regs.ds;
+			break;
+
+		case SEG_BASE:
+			*value = cpu->cpu_ctx.regs.ds_hidden.base;
+			break;
+
+		case SEG_LIMIT:
+			*value = cpu->cpu_ctx.regs.ds_hidden.limit;
+			break;
+
+		case SEG_FLG:
+			*value = cpu->cpu_ctx.regs.ds_hidden.flags;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_FS:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			*value = cpu->cpu_ctx.regs.fs;
+			break;
+
+		case SEG_BASE:
+			*value = cpu->cpu_ctx.regs.fs_hidden.base;
+			break;
+
+		case SEG_LIMIT:
+			*value = cpu->cpu_ctx.regs.fs_hidden.limit;
+			break;
+
+		case SEG_FLG:
+			*value = cpu->cpu_ctx.regs.fs_hidden.flags;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_GS:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			*value = cpu->cpu_ctx.regs.gs;
+			break;
+
+		case SEG_BASE:
+			*value = cpu->cpu_ctx.regs.gs_hidden.base;
+			break;
+
+		case SEG_LIMIT:
+			*value = cpu->cpu_ctx.regs.gs_hidden.limit;
+			break;
+
+		case SEG_FLG:
+			*value = cpu->cpu_ctx.regs.gs_hidden.flags;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_CR0:
+		*value = cpu->cpu_ctx.regs.cr0;
+		break;
+
+	case REG_CR1:
+		*value = cpu->cpu_ctx.regs.cr1;
+		break;
+
+	case REG_CR2:
+		*value = cpu->cpu_ctx.regs.cr2;
+		break;
+
+	case REG_CR3:
+		*value = cpu->cpu_ctx.regs.cr3;
+		break;
+
+	case REG_CR4:
+		*value = cpu->cpu_ctx.regs.cr4;
+		break;
+
+	case REG_DR0:
+		*value = cpu->cpu_ctx.regs.dr0;
+		break;
+
+	case REG_DR1:
+		*value = cpu->cpu_ctx.regs.dr1;
+		break;
+
+	case REG_DR2:
+		*value = cpu->cpu_ctx.regs.dr2;
+		break;
+
+	case REG_DR3:
+		*value = cpu->cpu_ctx.regs.dr3;
+		break;
+
+	case REG_DR4:
+		*value = cpu->cpu_ctx.regs.dr4;
+		break;
+
+	case REG_DR5:
+		*value = cpu->cpu_ctx.regs.dr5;
+		break;
+
+	case REG_DR6:
+		*value = cpu->cpu_ctx.regs.dr6;
+		break;
+
+	case REG_DR7:
+		*value = cpu->cpu_ctx.regs.dr7;
+		break;
+
+	case REG_EFLAGS:
+		switch (size_or_sel)
+		{
+		case REG32:
+			*value = cpu->cpu_ctx.regs.eflags;
+			break;
+
+		case REG16:
+			*value = (cpu->cpu_ctx.regs.eflags & 0xFFFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_EIP:
+		switch (size_or_sel)
+		{
+		case REG32:
+			*value = cpu->cpu_ctx.regs.eip;
+			break;
+
+		case REG16:
+			*value = (cpu->cpu_ctx.regs.eip & 0xFFFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_IDTR:
+		switch (size_or_sel)
+		{
+		case SEG_BASE:
+			*value = cpu->cpu_ctx.regs.idtr_hidden.base;
+			break;
+
+		case SEG_LIMIT:
+			*value = cpu->cpu_ctx.regs.idtr_hidden.limit;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_GDTR:
+		switch (size_or_sel)
+		{
+		case SEG_BASE:
+			*value = cpu->cpu_ctx.regs.gdtr_hidden.base;
+			break;
+
+		case SEG_LIMIT:
+			*value = cpu->cpu_ctx.regs.gdtr_hidden.limit;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_LDTR:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			*value = cpu->cpu_ctx.regs.ldtr;
+			break;
+
+		case SEG_BASE:
+			*value = cpu->cpu_ctx.regs.ldtr_hidden.base;
+			break;
+
+		case SEG_LIMIT:
+			*value = cpu->cpu_ctx.regs.ldtr_hidden.limit;
+			break;
+
+		case SEG_FLG:
+			*value = cpu->cpu_ctx.regs.ldtr_hidden.flags;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_TR:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			*value = cpu->cpu_ctx.regs.tr;
+			break;
+
+		case SEG_BASE:
+			*value = cpu->cpu_ctx.regs.tr_hidden.base;
+			break;
+
+		case SEG_LIMIT:
+			*value = cpu->cpu_ctx.regs.tr_hidden.limit;
+			break;
+
+		case SEG_FLG:
+			*value = cpu->cpu_ctx.regs.tr_hidden.flags;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+	}
+
+	return lc86_status::success;
+}
+
+lc86_status
+write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
+{
+	switch (reg)
+	{
+	case REG_EAX:
+		switch (size_or_sel)
+		{
+		case REG32:
+			cpu->cpu_ctx.regs.eax = value;
+			break;
+
+		case REG16:
+			(cpu->cpu_ctx.regs.eax &= 0xFFFF0000) |= (value & 0xFFFF);
+			break;
+
+		case REG8H:
+			(cpu->cpu_ctx.regs.eax &= 0xFFFF00FF) |= (value & 0xFF00);
+			break;
+
+		case REG8L:
+			(cpu->cpu_ctx.regs.eax &= 0xFFFFFF00) |= (value & 0xFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_ECX:
+		switch (size_or_sel)
+		{
+		case REG32:
+			cpu->cpu_ctx.regs.ecx = value;
+			break;
+
+		case REG16:
+			(cpu->cpu_ctx.regs.ecx &= 0xFFFF0000) |= (value & 0xFFFF);
+			break;
+
+		case REG8H:
+			(cpu->cpu_ctx.regs.ecx &= 0xFFFF00FF) |= (value & 0xFF00);
+			break;
+
+		case REG8L:
+			(cpu->cpu_ctx.regs.ecx &= 0xFFFFFF00) |= (value & 0xFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_EDX:
+		switch (size_or_sel)
+		{
+		case REG32:
+			cpu->cpu_ctx.regs.edx = value;
+			break;
+
+		case REG16:
+			(cpu->cpu_ctx.regs.edx &= 0xFFFF0000) |= (value & 0xFFFF);
+			break;
+
+		case REG8H:
+			(cpu->cpu_ctx.regs.edx &= 0xFFFF00FF) |= (value & 0xFF00);
+			break;
+
+		case REG8L:
+			(cpu->cpu_ctx.regs.edx &= 0xFFFFFF00) |= (value & 0xFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_EBX:
+		switch (size_or_sel)
+		{
+		case REG32:
+			cpu->cpu_ctx.regs.ebx = value;
+			break;
+
+		case REG16:
+			(cpu->cpu_ctx.regs.ebx &= 0xFFFF0000) |= (value & 0xFFFF);
+			break;
+
+		case REG8H:
+			(cpu->cpu_ctx.regs.ebx &= 0xFFFF00FF) |= (value & 0xFF00);
+			break;
+
+		case REG8L:
+			(cpu->cpu_ctx.regs.ebx &= 0xFFFFFF00) |= (value & 0xFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_ESP:
+		switch (size_or_sel)
+		{
+		case REG32:
+			cpu->cpu_ctx.regs.esp = value;
+			break;
+
+		case REG16:
+			(cpu->cpu_ctx.regs.esp &= 0xFFFF0000) |= (value & 0xFFFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_EBP:
+		switch (size_or_sel)
+		{
+		case REG32:
+			cpu->cpu_ctx.regs.ebp = value;
+			break;
+
+		case REG16:
+			(cpu->cpu_ctx.regs.ebp &= 0xFFFF0000) |= (value & 0xFFFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_ESI:
+		switch (size_or_sel)
+		{
+		case REG32:
+			cpu->cpu_ctx.regs.esi = value;
+			break;
+
+		case REG16:
+			(cpu->cpu_ctx.regs.esi &= 0xFFFF0000) |= (value & 0xFFFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_EDI:
+		switch (size_or_sel)
+		{
+		case REG32:
+			cpu->cpu_ctx.regs.edi = value;
+			break;
+
+		case REG16:
+			(cpu->cpu_ctx.regs.edi &= 0xFFFF0000) |= (value & 0xFFFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_ES:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			cpu->cpu_ctx.regs.es = (value & 0xFFFF);
+			break;
+
+		case SEG_BASE:
+			cpu->cpu_ctx.regs.es_hidden.base = value;
+			break;
+
+		case SEG_LIMIT:
+			cpu->cpu_ctx.regs.es_hidden.limit = value;
+			break;
+
+		case SEG_FLG:
+			cpu->cpu_ctx.regs.es_hidden.flags = value;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_CS:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			cpu->cpu_ctx.regs.cs = (value & 0xFFFF);
+			break;
+
+		case SEG_BASE:
+			cpu->cpu_ctx.regs.cs_hidden.base = value;
+			break;
+
+		case SEG_LIMIT:
+			cpu->cpu_ctx.regs.cs_hidden.limit = value;
+			break;
+
+		case SEG_FLG:
+			cpu->cpu_ctx.regs.cs_hidden.flags = value;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_SS:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			cpu->cpu_ctx.regs.ss = (value & 0xFFFF);
+			break;
+
+		case SEG_BASE:
+			cpu->cpu_ctx.regs.ss_hidden.base = value;
+			break;
+
+		case SEG_LIMIT:
+			cpu->cpu_ctx.regs.ss_hidden.limit = value;
+			break;
+
+		case SEG_FLG:
+			cpu->cpu_ctx.regs.ss_hidden.flags = value;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_DS:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			cpu->cpu_ctx.regs.ds = (value & 0xFFFF);
+			break;
+
+		case SEG_BASE:
+			cpu->cpu_ctx.regs.ds_hidden.base = value;
+			break;
+
+		case SEG_LIMIT:
+			cpu->cpu_ctx.regs.ds_hidden.limit = value;
+			break;
+
+		case SEG_FLG:
+			cpu->cpu_ctx.regs.ds_hidden.flags = value;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_FS:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			cpu->cpu_ctx.regs.fs = (value & 0xFFFF);
+			break;
+
+		case SEG_BASE:
+			cpu->cpu_ctx.regs.fs_hidden.base = value;
+			break;
+
+		case SEG_LIMIT:
+			cpu->cpu_ctx.regs.fs_hidden.limit = value;
+			break;
+
+		case SEG_FLG:
+			cpu->cpu_ctx.regs.fs_hidden.flags = value;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_GS:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			cpu->cpu_ctx.regs.gs = (value & 0xFFFF);
+			break;
+
+		case SEG_BASE:
+			cpu->cpu_ctx.regs.gs_hidden.base = value;
+			break;
+
+		case SEG_LIMIT:
+			cpu->cpu_ctx.regs.gs_hidden.limit = value;
+			break;
+
+		case SEG_FLG:
+			cpu->cpu_ctx.regs.gs_hidden.flags = value;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_CR0:
+		cpu->cpu_ctx.regs.cr0 = value;
+		break;
+
+	case REG_CR1:
+		cpu->cpu_ctx.regs.cr1 = value;
+		break;
+
+	case REG_CR2:
+		cpu->cpu_ctx.regs.cr2 = value;
+		break;
+
+	case REG_CR3:
+		cpu->cpu_ctx.regs.cr3 = value;
+		break;
+
+	case REG_CR4:
+		cpu->cpu_ctx.regs.cr4 = value;
+		break;
+
+	case REG_DR0:
+		cpu->cpu_ctx.regs.dr0 = value;
+		break;
+
+	case REG_DR1:
+		cpu->cpu_ctx.regs.dr1 = value;
+		break;
+
+	case REG_DR2:
+		cpu->cpu_ctx.regs.dr2 = value;
+		break;
+
+	case REG_DR3:
+		cpu->cpu_ctx.regs.dr3 = value;
+		break;
+
+	case REG_DR4:
+		cpu->cpu_ctx.regs.dr4 = value;
+		break;
+
+	case REG_DR5:
+		cpu->cpu_ctx.regs.dr5 = value;
+		break;
+
+	case REG_DR6:
+		cpu->cpu_ctx.regs.dr6 = value;
+		break;
+
+	case REG_DR7:
+		cpu->cpu_ctx.regs.dr7 = value;
+		break;
+
+	case REG_EFLAGS:
+		switch (size_or_sel)
+		{
+		case REG32:
+			cpu->cpu_ctx.regs.eflags = value;
+			break;
+
+		case REG16:
+			(cpu->cpu_ctx.regs.eflags &= 0xFFFF0000) |= (value & 0xFFFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_EIP:
+		switch (size_or_sel)
+		{
+		case REG32:
+			cpu->cpu_ctx.regs.eip = value;
+			break;
+
+		case REG16:
+			(cpu->cpu_ctx.regs.eip &= 0xFFFF0000) |= (value & 0xFFFF);
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_IDTR:
+		switch (size_or_sel)
+		{
+		case SEG_BASE:
+			cpu->cpu_ctx.regs.idtr_hidden.base = value;
+			break;
+
+		case SEG_LIMIT:
+			cpu->cpu_ctx.regs.idtr_hidden.limit = value;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_GDTR:
+		switch (size_or_sel)
+		{
+		case SEG_BASE:
+			cpu->cpu_ctx.regs.gdtr_hidden.base = value;
+			break;
+
+		case SEG_LIMIT:
+			cpu->cpu_ctx.regs.gdtr_hidden.limit = value;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_LDTR:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			cpu->cpu_ctx.regs.ldtr = (value & 0xFFFF);
+			break;
+
+		case SEG_BASE:
+			cpu->cpu_ctx.regs.ldtr_hidden.base = value;
+			break;
+
+		case SEG_LIMIT:
+			cpu->cpu_ctx.regs.ldtr_hidden.limit = value;
+			break;
+
+		case SEG_FLG:
+			cpu->cpu_ctx.regs.ldtr_hidden.flags = value;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+
+	case REG_TR:
+		switch (size_or_sel)
+		{
+		case SEG_SEL:
+			cpu->cpu_ctx.regs.tr = (value & 0xFFFF);
+			break;
+
+		case SEG_BASE:
+			cpu->cpu_ctx.regs.tr_hidden.base = value;
+			break;
+
+		case SEG_LIMIT:
+			cpu->cpu_ctx.regs.tr_hidden.limit = value;
+			break;
+
+		case SEG_FLG:
+			cpu->cpu_ctx.regs.tr_hidden.flags = value;
+			break;
+
+		default:
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+		break;
+	}
+
+	return lc86_status::success;
 }

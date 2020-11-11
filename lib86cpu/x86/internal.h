@@ -102,7 +102,7 @@ uint8_t cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_
 #define CR_offset   CR0_idx
 
 #define SEG_SEL_idx     0
-#define SEG_HIDDEN_idx  2
+#define SEG_HIDDEN_idx  1
 #define SEG_BASE_idx    0
 #define SEG_LIMIT_idx   1
 #define SEG_FLG_idx     2
