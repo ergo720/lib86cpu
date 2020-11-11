@@ -454,7 +454,7 @@ gen_exp_fn(cpu_t *cpu)
 		);
 
 	if (cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
-		std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, func, 50);
+		std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, func, 49);
 		Value *cpl = TRUNC16(AND(LD(cpu->ptr_hflags), CONST32(HFLG_CPL)));
 		BR_COND(vec_bb[0], vec_bb[1], ICMP_UGT(ADD(MUL(idx, CONST32(8)), CONST32(7)), LD_SEG_HIDDEN(IDTR_idx, SEG_LIMIT_idx)));
 		cpu->bb = vec_bb[1];
@@ -483,7 +483,7 @@ gen_exp_fn(cpu_t *cpu)
 		BR_COND(vec_bb[41], vec_bb[5], ICMP_EQ(AND(LD(desc), CONST64(SEG_DESC_P)), CONST64(0)));
 		cpu->bb = vec_bb[5];
 		Value *sel = TRUNC16(SHR(AND(LD(desc), CONST64(0xFFFF0000)), CONST64(16)));
-		BR_COND(vec_bb[42], vec_bb[6], ICMP_EQ(AND(LD(desc), CONST64(0xFFFC)), CONST64(0)));
+		BR_COND(vec_bb[42], vec_bb[6], ICMP_EQ(AND(sel, CONST16(0xFFFC)), CONST16(0)));
 		cpu->bb = vec_bb[6];
 		std::vector<Value *> vec = read_seg_desc_emit(cpu, sel, vec_bb[43]);
 		Value *desc_addr = ALLOC32();
@@ -519,10 +519,9 @@ gen_exp_fn(cpu_t *cpu)
 		ST(new_ss, vec[1]);
 		BR_COND(vec_bb[47], vec_bb[13], ICMP_EQ(SHR(LD(new_ss), CONST16(2)), CONST16(0)));
 		cpu->bb = vec_bb[13];
-		vec = read_seg_desc_emit(cpu, LD(new_ss), vec_bb[48]);
+		vec = check_ss_desc_priv_emit(cpu, LD(new_ss), nullptr, cpl, vec_bb[48]);
 		ST(desc_addr, vec[0]);
 		ST(desc, vec[1]);
-		check_ss_desc_priv_emit(cpu, LD(new_ss), nullptr, cpl, vec_bb[49]);
 		set_access_flg_seg_desc_emit(cpu, LD(desc), LD(desc_addr));
 		ST(stack_switch, CONSTs(1, 1));
 		BR_COND(vec_bb[14], vec_bb[15], ICMP_NE(AND(LD(desc), CONST64(SEG_DESC_DB)), CONST64(0)));
@@ -673,7 +672,7 @@ gen_exp_fn(cpu_t *cpu)
 		ABORT("Descriptor used by the exception handler has the present bit clear");
 		UNREACH();
 		cpu->bb = vec_bb[42];
-		ABORT("???");
+		ABORT("The segment selector specified by the gate used by the exception handler is zero");
 		UNREACH();
 		cpu->bb = vec_bb[43];
 		ABORT("Destination code segment for the exception handler is outside of descriptor table limit");
@@ -691,15 +690,11 @@ gen_exp_fn(cpu_t *cpu)
 		ABORT("The stack segment selector used by the exception handler is zero");
 		UNREACH();
 		cpu->bb = vec_bb[48];
-		ABORT("An exception occured while reading the stack segment descriptor used by the exception handler");
-		UNREACH();
-		cpu->bb = vec_bb[49];
-		ABORT("An exception occured while performing the privilege checks on the stack segment descriptor used by the exception handler");
+		ABORT("An exception occured while reading the stack segment descriptor used by the exception handler or when performing the privilege checks on it");
 		UNREACH();
 	}
 	else {
 		std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, func, 2);
-
 		BR_COND(vec_bb[0], vec_bb[1], ICMP_UGT(ADD(MUL(idx, CONST32(4)), CONST32(3)), LD_SEG_HIDDEN(IDTR_idx, SEG_LIMIT_idx)));
 		cpu->bb = vec_bb[1];
 		Value *vec_entry = LD_MEM(MEM_LD32_idx, ADD(LD_SEG_HIDDEN(IDTR_idx, SEG_BASE_idx), MUL(idx, CONST32(4))));
