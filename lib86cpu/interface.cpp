@@ -1185,7 +1185,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		case REG8H:
-			(cpu->cpu_ctx.regs.eax &= 0xFFFF00FF) |= (value & 0xFF00);
+			(cpu->cpu_ctx.regs.eax &= 0xFFFF00FF) |= ((value & 0xFF) << 8);
 			break;
 
 		case REG8L:
@@ -1209,7 +1209,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		case REG8H:
-			(cpu->cpu_ctx.regs.ecx &= 0xFFFF00FF) |= (value & 0xFF00);
+			(cpu->cpu_ctx.regs.ecx &= 0xFFFF00FF) |= ((value & 0xFF) << 8);
 			break;
 
 		case REG8L:
@@ -1233,7 +1233,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		case REG8H:
-			(cpu->cpu_ctx.regs.edx &= 0xFFFF00FF) |= (value & 0xFF00);
+			(cpu->cpu_ctx.regs.edx &= 0xFFFF00FF) |= ((value & 0xFF) << 8);
 			break;
 
 		case REG8L:
@@ -1257,7 +1257,7 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			break;
 
 		case REG8H:
-			(cpu->cpu_ctx.regs.ebx &= 0xFFFF00FF) |= (value & 0xFF00);
+			(cpu->cpu_ctx.regs.ebx &= 0xFFFF00FF) |= ((value & 0xFF) << 8);
 			break;
 
 		case REG8L:
