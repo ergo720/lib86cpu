@@ -514,12 +514,12 @@ gen_exp_fn(cpu_t *cpu)
 		BR_COND(vec_bb[11], vec_bb[12], ICMP_ULT(LD(dpl), cpl));
 		// more privileged
 		cpu->bb = vec_bb[11];
-		vec = read_stack_ptr_from_tss_emit(cpu, cpl, vec_bb[46]);
+		vec = read_stack_ptr_from_tss_emit(cpu, LD(dpl), vec_bb[46]);
 		ST(new_esp, vec[0]);
 		ST(new_ss, vec[1]);
 		BR_COND(vec_bb[47], vec_bb[13], ICMP_EQ(SHR(LD(new_ss), CONST16(2)), CONST16(0)));
 		cpu->bb = vec_bb[13];
-		vec = check_ss_desc_priv_emit(cpu, LD(new_ss), nullptr, cpl, vec_bb[48]);
+		vec = check_ss_desc_priv_emit(cpu, LD(new_ss), nullptr, LD(dpl), vec_bb[48]);
 		ST(desc_addr, vec[0]);
 		ST(desc, vec[1]);
 		set_access_flg_seg_desc_emit(cpu, LD(desc), LD(desc_addr));
