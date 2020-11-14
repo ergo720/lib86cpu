@@ -640,7 +640,23 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_BSR:         BAD;
+		case ZYDIS_MNEMONIC_BSR: {
+			Value *rm, *src;
+			std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+			GET_RM(OPNUM_SRC, src = LD_REG_val(rm);, src = LD_MEM(fn_idx[size_mode], rm););
+			BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(src, CONSTs(instr.operands[OPNUM_SRC].size, 0)));
+			cpu->bb = vec_bb[0];
+			ST_FLG_RES(CONST32(0));
+			BR_UNCOND(vec_bb[2]);
+			cpu->bb = vec_bb[1];
+			ST_REG_val(SUB(CONSTs(instr.operands[OPNUM_SRC].size, instr.operands[OPNUM_SRC].size - 1),
+				INTRINSIC_ty(ctlz, getIntegerType(instr.operands[OPNUM_SRC].size), (std::vector<Value *> { src, CONSTs(1, 1) }))), GET_REG(OPNUM_DST));
+			ST_FLG_RES(CONST32(1));
+			BR_UNCOND(vec_bb[2]);
+			cpu->bb = vec_bb[2];
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_BSWAP:       BAD;
 		case ZYDIS_MNEMONIC_BT:          BAD;
 		case ZYDIS_MNEMONIC_BTC:         BAD;
