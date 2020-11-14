@@ -17,7 +17,8 @@ tlb_gen_access_mask(cpu_t *cpu, uint8_t user, uint8_t is_write)
 	switch (user)
 	{
 	case 0:
-		mask = is_write ? (TLB_SUP_READ | TLB_SUP_WRITE) : TLB_SUP_READ;
+		mask = is_write ? (TLB_SUP_READ | TLB_SUP_WRITE) : (cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK) != 0 ?
+			TLB_SUP_READ : (TLB_SUP_READ | TLB_SUP_WRITE);
 		break;
 
 	case 4:
@@ -84,21 +85,24 @@ int8_t
 check_page_access(cpu_t *cpu, uint8_t access_level, uint8_t mem_access)
 {
 	// 0 = access denied, 1 = access granted, -1 = error
-	static const int8_t level_zero[7] = {
-		1, -1, 0, -1, 0, -1, 0,
+
+	// two rows because when wp flag of cr0 is 1, then supervisor cannot write to supervisor read only pages
+	static const int8_t level_zero[2][7] = { // s/r page
+		{ 1, -1, 1, -1, 0, -1, 0 },
+		{ 1, -1, 0, -1, 0, -1, 0 },
 	};
 
-	static const int8_t level_two[7] = {
+	static const int8_t level_two[7] = { // s/w page
 		1, -1, 1, -1, 0, -1, 0,
 	};
 
 	// two rows because when wp flag of cr0 is 1, then supervisor cannot write to user read only pages
-	static const int8_t level_four[2][7] = {
+	static const int8_t level_four[2][7] = { // u/r page
 		{ 1, -1, 1, -1, 1, -1, 0 },
 		{ 1, -1, 0, -1, 1, -1, 0 },
 	};
 
-	static const int8_t level_six[7] = {
+	static const int8_t level_six[7] = { // u/w page
 		1, -1, 1, -1, 1, -1, 1,
 	};
 
@@ -107,7 +111,7 @@ check_page_access(cpu_t *cpu, uint8_t access_level, uint8_t mem_access)
 	switch (access_level)
 	{
 	case 0:
-		access = level_zero[mem_access];
+		access = level_zero[(cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK) >> 16][mem_access];
 		break;
 
 	case 2:
@@ -227,15 +231,16 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, 
 		err_code = 1;
 
 	page_fault:
+		// NOTE: the u/s bit of the error code should reflect the actual cpl even if the memory access is privileged
 		if constexpr (raise_host_exp) {
 			assert(disas_ctx == nullptr);
-			exp_data_t exp_data{ addr, err_code | (is_write << 1) | (cpu_lv >> 3), EXP_PF, eip };
+			exp_data_t exp_data{ addr, err_code | (is_write << 1) | cpu_lv, EXP_PF, eip };
 			throw exp_data;
 		}
 		else {
 			assert(disas_ctx != nullptr);
 			disas_ctx->pf_info.fault_addr = addr;
-			disas_ctx->pf_info.code = err_code | (is_write << 1) | (cpu_lv >> 3);
+			disas_ctx->pf_info.code = err_code | (is_write << 1) | cpu_lv;
 			disas_ctx->pf_info.idx = EXP_PF;
 			disas_ctx->pf_info.eip = eip;
 			return 0;
@@ -247,7 +252,7 @@ addr_t
 get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip)
 {
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
-	if ((tlb_access[0][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) ^ (tlb_entry & (tlb_access[0][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]))) {
+	if ((tlb_entry & (tlb_access[0][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv])) == 0) {
 		return mmu_translate_addr<true>(cpu, addr, is_priv, eip);
 	}
 
@@ -257,13 +262,12 @@ get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip)
 addr_t
 get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *is_code)
 {
-	*is_code = 0;
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
+	*is_code = tlb_entry & TLB_CODE;
 	if (((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) | TLB_DIRTY) ^ (tlb_entry & ((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) | TLB_DIRTY))) {
 		return mmu_translate_addr<true>(cpu, addr, 1 | is_priv, eip);
 	}
 
-	*is_code = tlb_entry & TLB_CODE;
 	return (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
 }
 
@@ -273,7 +277,7 @@ get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx)
 	// this is only used for ram fetching, so we don't need to check for privileged accesses and is_write
 
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
-	if ((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) ^ (tlb_entry & (tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]))) {
+	if ((tlb_entry & (tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL])) == 0) {
 		return mmu_translate_addr<false>(cpu, addr, TLB_CODE, eip, disas_ctx);
 	}
 
