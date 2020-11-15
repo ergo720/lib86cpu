@@ -659,7 +659,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 		case ZYDIS_MNEMONIC_BSWAP:       BAD;
 		case ZYDIS_MNEMONIC_BT:
-		case ZYDIS_MNEMONIC_BTC: {
+		case ZYDIS_MNEMONIC_BTC:
+		case ZYDIS_MNEMONIC_BTR: {
 			Value *rm, *base, *offset, *idx, *cf, *cf2;
 			size_t op_size = instr.operands[OPNUM_DST].size;
 			if (instr.opcode != 0xBA) {
@@ -691,6 +692,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				case ZYDIS_MNEMONIC_BTC:
 					ST_REG_val(OR(AND(base, NOT(SHL(CONSTs(op_size, 1), offset))), SHL(AND(NOT(cf), CONSTs(op_size, 1)), offset)), rm);
 					break;
+
+				case ZYDIS_MNEMONIC_BTR:
+					ST_REG_val(AND(base, NOT(SHL(CONSTs(op_size, 1), offset))), rm);
+					break;
 				}
 				break;
 
@@ -699,6 +704,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				{
 				case ZYDIS_MNEMONIC_BTC:
 					ST_MEM(fn_idx[size_mode], ADD(rm, idx), OR(AND(base, NOT(SHL(CONSTs(op_size, 1), offset))), SHL(AND(NOT(cf), CONSTs(op_size, 1)), offset)));
+					break;
+
+				case ZYDIS_MNEMONIC_BTR:
+					ST_MEM(fn_idx[size_mode], ADD(rm, idx), AND(base, NOT(SHL(CONSTs(op_size, 1), offset))));
 					break;
 				}
 				break;
@@ -712,7 +721,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_BTR:         BAD;
 		case ZYDIS_MNEMONIC_BTS:         BAD;
 		case ZYDIS_MNEMONIC_CALL: {
 			switch (instr.opcode)
