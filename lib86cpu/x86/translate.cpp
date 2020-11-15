@@ -658,12 +658,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		break;
 
 		case ZYDIS_MNEMONIC_BSWAP:       BAD;
-		case ZYDIS_MNEMONIC_BT: {
-			assert((instr.opcode == 0xA3) || (instr.opcode == 0xBA));
-
-			Value *rm, *base, *offset, *idx, *cf;
+		case ZYDIS_MNEMONIC_BT:
+		case ZYDIS_MNEMONIC_BTC: {
+			Value *rm, *base, *offset, *idx, *cf, *cf2;
 			size_t op_size = instr.operands[OPNUM_DST].size;
-			if (instr.opcode == 0xA3) {
+			if (instr.opcode != 0xBA) {
 				offset = LD_REG_val(GET_REG(OPNUM_SRC));
 			}
 			else {
@@ -677,16 +676,42 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				idx = (op_size == 16) ? ZEXT32(idx) : idx; base = LD_MEM(fn_idx[size_mode], ADD(rm, idx)););
 			if (op_size == 16) {
 				cf = AND(SHR(base, offset), CONST16(1));
-				ST_FLG_AUX(SHL(ZEXT32(cf), CONST32(31)));
+				cf2 = ZEXT32(cf);
 			}
 			else {
 				cf = AND(SHR(base, offset), CONST32(1));
-				ST_FLG_AUX(SHL(cf, CONST32(31)));
+				cf2 = cf;
 			}
+
+			switch (instr.operands[OPNUM_DST].type)
+			{
+			case ZYDIS_OPERAND_TYPE_REGISTER:
+				switch (instr.mnemonic)
+				{
+				case ZYDIS_MNEMONIC_BTC:
+					ST_REG_val(OR(AND(base, NOT(SHL(CONSTs(op_size, 1), offset))), SHL(AND(NOT(cf), CONSTs(op_size, 1)), offset)), rm);
+					break;
+				}
+				break;
+
+			case ZYDIS_OPERAND_TYPE_MEMORY:
+				switch (instr.mnemonic)
+				{
+				case ZYDIS_MNEMONIC_BTC:
+					ST_MEM(fn_idx[size_mode], ADD(rm, idx), OR(AND(base, NOT(SHL(CONSTs(op_size, 1), offset))), SHL(AND(NOT(cf), CONSTs(op_size, 1)), offset)));
+					break;
+				}
+				break;
+
+			default:
+				LIB86CPU_ABORT_msg("Invalid operand type used in GET_RM macro!");
+			}
+
+
+			ST_FLG_AUX(SHL(cf2, CONST32(31)));
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_BTC:         BAD;
 		case ZYDIS_MNEMONIC_BTR:         BAD;
 		case ZYDIS_MNEMONIC_BTS:         BAD;
 		case ZYDIS_MNEMONIC_CALL: {
