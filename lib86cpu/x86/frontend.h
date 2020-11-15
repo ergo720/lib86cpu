@@ -28,6 +28,7 @@ std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsign
 void link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr);
 void link_dst_only_emit(cpu_t *cpu);
 Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
+Value *floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits);
 void raise_exp_inline_emit(cpu_t *cpu, std::vector<Value *> &exp_data);
 BasicBlock *raise_exception_emit(cpu_t *cpu, std::vector<Value *> &exp_data);
 void lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t ret_eip, uint32_t call_eip);
@@ -143,7 +144,10 @@ default: \
 #define SUB(a, b) BinaryOperator::Create(Instruction::Sub, a, b, "", cpu->bb)
 #define MUL(a, b) BinaryOperator::Create(Instruction::Mul, a, b, "", cpu->bb)
 #define UDIV(a, b) BinaryOperator::Create(Instruction::UDiv, a, b, "", cpu->bb)
+#define SDIV(a, b) BinaryOperator::Create(Instruction::SDiv, a, b, "", cpu->bb)
+#define FLOOR_DIV(a, b, bits) floor_division_emit(cpu, a, b, bits)
 #define UREM(a, b) BinaryOperator::Create(Instruction::URem, a, b, "", cpu->bb)
+#define SREM(a, b) BinaryOperator::Create(Instruction::SRem, a, b, "", cpu->bb)
 #define AND(a, b) BinaryOperator::Create(Instruction::And, a, b, "", cpu->bb)
 #define XOR(a, b) BinaryOperator::Create(Instruction::Xor, a, b, "", cpu->bb)
 #define OR(a, b) BinaryOperator::Create(Instruction::Or, a, b, "", cpu->bb)
@@ -159,6 +163,7 @@ default: \
 #define ICMP_UGE(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_UGE, a, b, "")
 #define ICMP_ULT(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_ULT, a, b, "")
 #define ICMP_SGE(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_SGE, a, b, "")
+#define ICMP_SGT(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_SGT, a, b, "")
 #define NOT_ZERO(s, v) AND(SHR(OR(v, SUB(CONSTs(s, 0), v)), CONSTs(s, s-1)), CONSTs(s, 1))
 #define SWITCH_new(n, v, def) SwitchInst::Create(v, def, n, cpu->bb)
 #define SWITCH_add(s, v, bb) addCase(CONSTs(s, v), bb)

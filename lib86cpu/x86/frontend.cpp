@@ -227,6 +227,24 @@ calc_next_pc_emit(cpu_t *cpu, size_t instr_size)
 	return BinaryOperator::Create(Instruction::Add, CONST32(cpu->cpu_ctx.regs.cs_hidden.base), next_eip, "", cpu->bb);
 }
 
+Value *
+floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits)
+{
+	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+	Value *ret = ALLOCs(q_bits);
+	Value *q = SDIV(D, d);
+	Value *r = SREM(D, d);
+	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(ICMP_SGT(r, CONSTs(q_bits, 0)), ICMP_SGT(d, CONSTs(q_bits, 0))), CONSTs(1, 1)));
+	cpu->bb = vec_bb[0];
+	ST(ret, SUB(q, CONSTs(q_bits, 1)));
+	BR_UNCOND(vec_bb[2]);
+	cpu->bb = vec_bb[1];
+	ST(ret, q);
+	BR_UNCOND(vec_bb[2]);
+	cpu->bb = vec_bb[2];
+	return LD(ret);
+}
+
 void
 link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 {

@@ -658,7 +658,34 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		break;
 
 		case ZYDIS_MNEMONIC_BSWAP:       BAD;
-		case ZYDIS_MNEMONIC_BT:          BAD;
+		case ZYDIS_MNEMONIC_BT: {
+			assert((instr.opcode == 0xA3) || (instr.opcode == 0xBA));
+
+			Value *rm, *base, *offset, *idx, *cf;
+			size_t op_size = instr.operands[OPNUM_DST].size;
+			if (instr.opcode == 0xA3) {
+				offset = LD_REG_val(GET_REG(OPNUM_SRC));
+			}
+			else {
+				offset = ZEXT(op_size, GET_IMM8());
+			}
+
+			// NOTE: we can't use llvm's SDIV when the base is a memory operand because that rounds towards zero, while the instructions rounds the
+			// offset towards negative infinity, that is, it does a floored division
+			GET_RM(OPNUM_DST, base = LD_REG_val(rm); offset = UREM(offset, CONSTs(op_size, op_size));,
+				offset = UREM(offset, CONSTs(op_size, 8)); idx = FLOOR_DIV(offset, CONSTs(op_size, 8), op_size);
+				idx = (op_size == 16) ? ZEXT32(idx) : idx; base = LD_MEM(fn_idx[size_mode], ADD(rm, idx)););
+			if (op_size == 16) {
+				cf = AND(SHR(base, offset), CONST16(1));
+				ST_FLG_AUX(SHL(ZEXT32(cf), CONST32(31)));
+			}
+			else {
+				cf = AND(SHR(base, offset), CONST32(1));
+				ST_FLG_AUX(SHL(cf, CONST32(31)));
+			}
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_BTC:         BAD;
 		case ZYDIS_MNEMONIC_BTR:         BAD;
 		case ZYDIS_MNEMONIC_BTS:         BAD;
