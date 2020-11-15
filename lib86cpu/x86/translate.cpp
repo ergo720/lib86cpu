@@ -1041,7 +1041,59 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_CWDE:        BAD;
 		case ZYDIS_MNEMONIC_DAA:         BAD;
 		case ZYDIS_MNEMONIC_DAS:         BAD;
-		case ZYDIS_MNEMONIC_DEC:         BAD;
+		case ZYDIS_MNEMONIC_DEC: {
+			switch (instr.opcode)
+			{
+			case 0xFE:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x48:
+			case 0x49:
+			case 0x4A:
+			case 0x4B:
+			case 0x4C:
+			case 0x4D:
+			case 0x4E:
+			case 0x4F:
+			case 0xFF: {
+				Value *sub, *val, *one, *cf_old, *rm;
+				switch (size_mode)
+				{
+				case SIZE8:
+					one = CONST8(1);
+					GET_RM(OPNUM_SINGLE, val = LD_REG_val(rm); sub = SUB(val, one); ST_REG_val(sub, rm);,
+						val = LD_MEM(fn_idx[size_mode], rm); sub = SUB(val, one); ST_MEM(fn_idx[size_mode], rm, sub););
+					break;
+
+				case SIZE16:
+					one = CONST16(1);
+					GET_RM(OPNUM_SINGLE, val = LD_REG_val(rm); sub = SUB(val, one); ST_REG_val(sub, rm);,
+						val = LD_MEM(fn_idx[size_mode], rm); sub = SUB(val, one); ST_MEM(fn_idx[size_mode], rm, sub););
+					break;
+
+				case SIZE32:
+					one = CONST32(1);
+					GET_RM(OPNUM_SINGLE, val = LD_REG_val(rm); sub = SUB(val, one); ST_REG_val(sub, rm);,
+						val = LD_MEM(fn_idx[size_mode], rm); sub = SUB(val, one); ST_MEM(fn_idx[size_mode], rm, sub););
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+
+				cf_old = LD_CF();
+				SET_FLG_SUM(sub, val, one);
+				ST_FLG_AUX(OR(OR(cf_old, SHR(XOR(cf_old, LD_OF()), CONST32(1))), AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF))));
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_DIV: {
 			switch (instr.opcode)
 			{
