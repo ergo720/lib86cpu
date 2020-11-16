@@ -164,6 +164,7 @@ default: \
 #define ICMP_ULT(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_ULT, a, b, "")
 #define ICMP_SGE(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_SGE, a, b, "")
 #define ICMP_SGT(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_SGT, a, b, "")
+#define ICMP_SLT(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_SLT, a, b, "")
 #define NOT_ZERO(s, v) AND(SHR(OR(v, SUB(CONSTs(s, 0), v)), CONSTs(s, s-1)), CONSTs(s, 1))
 #define SWITCH_new(n, v, def) SwitchInst::Create(v, def, n, cpu->bb)
 #define SWITCH_add(s, v, bb) addCase(CONSTs(s, v), bb)

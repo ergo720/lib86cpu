@@ -650,7 +650,26 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_BOUND:       BAD;
+		case ZYDIS_MNEMONIC_BOUND: {
+			if (instr.operands[OPNUM_SRC].type != ZYDIS_OPERAND_TYPE_MEMORY) {
+				RAISEin0(EXP_UD);
+				translate_next = 0;
+			}
+			else {
+				Value *idx = LD_REG_val(GET_REG(OPNUM_DST));
+				Value *idx_addr = GET_OP(OPNUM_SRC);
+				Value *lower_idx = LD_MEM(fn_idx[size_mode], idx_addr);
+				Value *upper_idx = LD_MEM(fn_idx[size_mode], ADD(idx_addr, (size_mode == SIZE16) ? CONST32(2) : CONST32(4)));
+				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+				BR_COND(vec_bb[0], vec_bb[1], OR(ICMP_SLT(idx, lower_idx), ICMP_SGT(idx, upper_idx)));
+				cpu->bb = vec_bb[0];
+				RAISEin0(EXP_BR);
+				UNREACH();
+				cpu->bb = vec_bb[1];
+			}
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_BSF: {
 			Value *rm, *src;
 			std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
