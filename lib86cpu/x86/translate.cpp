@@ -622,7 +622,34 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_ARPL:        BAD;
+		case ZYDIS_MNEMONIC_ARPL: {
+			if (!(cpu_ctx->hflags & HFLG_PE_MODE)) {
+				RAISEin0(EXP_UD);
+				translate_next = 0;
+			}
+			else {
+				assert((instr.operands[OPNUM_DST].size == 16) && (instr.operands[OPNUM_SRC].size == 16));
+
+				Value *rm, *rpl_dst, *rpl_src = LD_REG_val(GET_REG(OPNUM_SRC));
+				GET_RM(OPNUM_DST, rpl_dst = LD_REG_val(rm);, rpl_dst = LD_MEM(MEM_LD16_idx, rm););
+				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_ULT(AND(rpl_dst, CONST16(3)), AND(rpl_src, CONST16(3))));
+				cpu->bb = vec_bb[0];
+				Value *new_rpl = OR(AND(rpl_dst, CONST16(0xFFFC)), AND(rpl_src, CONST16(3)));
+				(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(new_rpl, rm) : ST_MEM(MEM_LD16_idx, rm, new_rpl);
+				Value *new_sfd = XOR(LD_SF(), CONST32(0));
+				Value *new_pdb = SHL(XOR(AND(XOR(LD_FLG_RES(), SHR(LD_FLG_AUX(), CONST32(8))), CONST32(0xFF)), CONST32(0)), CONST32(8));
+				ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0xFFFF00FE)), OR(new_sfd, new_pdb)));
+				ST_FLG_RES(CONST32(0));
+				BR_UNCOND(vec_bb[2]);
+				cpu->bb = vec_bb[1];
+				ST_FLG_RES(OR(LD_FLG_RES(), CONST32(0x100)));
+				BR_UNCOND(vec_bb[2]);
+				cpu->bb = vec_bb[2];
+			}
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_BOUND:       BAD;
 		case ZYDIS_MNEMONIC_BSF: {
 			Value *rm, *src;
