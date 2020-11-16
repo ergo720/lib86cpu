@@ -671,7 +671,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				offset = ZEXT(op_size, GET_IMM8());
 			}
 
-			// NOTE: we can't use llvm's SDIV when the base is a memory operand because that rounds towards zero, while the instructions rounds the
+			// NOTE: we can't use llvm's SDIV when the base is a memory operand because that rounds towards zero, while the instruction rounds the
 			// offset towards negative infinity, that is, it does a floored division
 			GET_RM(OPNUM_DST, base = LD_REG_val(rm); offset = UREM(offset, CONSTs(op_size, op_size));,
 				offset = UREM(offset, CONSTs(op_size, 8)); idx = FLOOR_DIV(offset, CONSTs(op_size, 8), op_size);

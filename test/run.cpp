@@ -96,7 +96,7 @@ test386_write_handler(addr_t addr, size_t size, const void *buffer, void *opaque
 	{
 	case TEST386_POST_PORT: {
 		if (size == 1) {
-			printf("Test number is %u\n", *static_cast<const uint8_t *>(buffer));
+			printf("Test number is 0x%X\n", *static_cast<const uint8_t *>(buffer));
 		}
 		else {
 			printf("Unhandled i/o port size at port %d\n", TEST386_POST_PORT);
