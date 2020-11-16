@@ -748,7 +748,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					eip = CONST32(ret_eip);
 				}
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
-					lcall_pe_emit(cpu, std::vector<Value *> { CONST16(new_sel), cs, eip }, size_mode, ret_eip, call_eip);
+					lcall_pe_emit(cpu, std::vector<Value *> { CONST16(new_sel), CONST32(call_eip), cs, eip }, size_mode, ret_eip);
 					cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
 				}
 				else {
@@ -795,15 +795,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
 				}
 				else if (instr.raw.modrm.reg == 3) {
-					if (cpu_ctx->hflags & HFLG_PE_MODE) {
-						BAD;
-					}
 					assert(instr.operands[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_MEMORY);
 
-					Value *temp, *cs, *eip , *call_eip, *call_cs, *cs_addr, *offset_addr = GET_OP(OPNUM_SINGLE);
+					Value *cs, *eip, *call_eip, *call_cs, *cs_addr, *offset_addr = GET_OP(OPNUM_SINGLE);
 					addr_t ret_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes;
 					if (size_mode == SIZE16) {
-						temp = LD_MEM(MEM_LD16_idx, offset_addr);
+						Value *temp = LD_MEM(MEM_LD16_idx, offset_addr);
 						call_eip = ZEXT32(temp);
 						cs_addr = ADD(offset_addr, CONST32(2));
 						cs = CONST16(cpu_ctx->regs.cs);
@@ -816,14 +813,18 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						eip = CONST32(ret_eip);
 					}
 					call_cs = LD_MEM(MEM_LD16_idx, cs_addr);
-
-					std::vector<Value *> vec;
-					vec.push_back(cs);
-					vec.push_back(eip);
-					MEM_PUSH(vec);
-					ST_SEG(call_cs, CS_idx);
-					ST_R32(call_eip, EIP_idx);
-					ST_SEG_HIDDEN(SHL(ZEXT32(call_cs), CONST32(4)), CS_idx, SEG_BASE_idx);
+					if (cpu_ctx->hflags & HFLG_PE_MODE) {
+						lcall_pe_emit(cpu, std::vector<Value *> { call_cs, call_eip, cs, eip }, size_mode, ret_eip);
+					}
+					else {
+						std::vector<Value *> vec;
+						vec.push_back(cs);
+						vec.push_back(eip);
+						MEM_PUSH(vec);
+						ST_SEG(call_cs, CS_idx);
+						ST_R32(call_eip, EIP_idx);
+						ST_SEG_HIDDEN(SHL(ZEXT32(call_cs), CONST32(4)), CS_idx, SEG_BASE_idx);
+					}
 					cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
 				}
 				else {
@@ -1545,19 +1546,25 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 			case 0xFF: {
-				assert(instr.raw.modrm.reg == 4);
-
-				Value *rm, *offset, *new_eip;
-				GET_RM(OPNUM_SINGLE, offset = LD_REG_val(rm);, offset = LD_MEM(fn_idx[size_mode], rm););
-				if (size_mode == SIZE16) {
-					new_eip = ZEXT32(offset);
-					ST_R32(new_eip, EIP_idx);
+				if (instr.raw.modrm.reg == 4) {
+					Value *rm, *offset, *new_eip;
+					GET_RM(OPNUM_SINGLE, offset = LD_REG_val(rm); , offset = LD_MEM(fn_idx[size_mode], rm););
+					if (size_mode == SIZE16) {
+						new_eip = ZEXT32(offset);
+						ST_R32(new_eip, EIP_idx);
+					}
+					else {
+						new_eip = offset;
+						ST_R32(new_eip, EIP_idx);
+					}
+					cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
+				}
+				else if (instr.raw.modrm.reg == 5) {
+					BAD;
 				}
 				else {
-					new_eip = offset;
-					ST_R32(new_eip, EIP_idx);
+					LIB86CPU_ABORT();
 				}
-				cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
 			}
 			break;
 

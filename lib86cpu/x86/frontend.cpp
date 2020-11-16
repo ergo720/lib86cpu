@@ -1017,11 +1017,13 @@ check_seg_desc_priv_emit(cpu_t *cpu, Value *sel)
 }
 
 void
-lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t ret_eip, uint32_t call_eip)
+lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t ret_eip)
 {
 	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 38);
 	BasicBlock *bb_exp = RAISE0(EXP_GP);
 	Value *sel = vec[0];
+	Value *call_eip = vec[1];
+	vec.erase(vec.begin());
 	vec.erase(vec.begin());
 	Value *cpl = CONST16(cpu->cpu_ctx.hflags & HFLG_CPL);
 	Value *dpl = ALLOC16();
@@ -1067,7 +1069,7 @@ lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t
 	set_access_flg_seg_desc_emit(cpu, LD(desc), LD(desc_addr));
 	write_seg_reg_emit(cpu, CS_idx, std::vector<Value *> { OR(AND(sel, CONST16(0xFFFC)), cpl), read_seg_desc_base_emit(cpu, LD(desc)),
 		read_seg_desc_limit_emit(cpu, LD(desc)), read_seg_desc_flags_emit(cpu, LD(desc))});
-	ST_R32(CONST32(call_eip), EIP_idx);
+	ST_R32(call_eip, EIP_idx);
 	BR_UNCOND(vec_bb[37]);
 
 	// system desc
