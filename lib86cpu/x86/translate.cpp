@@ -3063,22 +3063,107 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_SETB:        BAD;
-		case ZYDIS_MNEMONIC_SETBE:       BAD;
-		case ZYDIS_MNEMONIC_SETL:        BAD;
-		case ZYDIS_MNEMONIC_SETLE:       BAD;
-		case ZYDIS_MNEMONIC_SETNB:       BAD;
-		case ZYDIS_MNEMONIC_SETNBE:      BAD;
-		case ZYDIS_MNEMONIC_SETNL:       BAD;
-		case ZYDIS_MNEMONIC_SETNLE:      BAD;
-		case ZYDIS_MNEMONIC_SETNO:       BAD;
-		case ZYDIS_MNEMONIC_SETNP:       BAD;
-		case ZYDIS_MNEMONIC_SETNS:       BAD;
-		case ZYDIS_MNEMONIC_SETNZ:       BAD;
-		case ZYDIS_MNEMONIC_SETO:        BAD;
-		case ZYDIS_MNEMONIC_SETP:        BAD;
-		case ZYDIS_MNEMONIC_SETS:        BAD;
-		case ZYDIS_MNEMONIC_SETZ:        BAD;
+		case ZYDIS_MNEMONIC_SETB:
+		case ZYDIS_MNEMONIC_SETBE:
+		case ZYDIS_MNEMONIC_SETL:
+		case ZYDIS_MNEMONIC_SETLE:
+		case ZYDIS_MNEMONIC_SETNB:
+		case ZYDIS_MNEMONIC_SETNBE:
+		case ZYDIS_MNEMONIC_SETNL:
+		case ZYDIS_MNEMONIC_SETNLE:
+		case ZYDIS_MNEMONIC_SETNO:
+		case ZYDIS_MNEMONIC_SETNP:
+		case ZYDIS_MNEMONIC_SETNS:
+		case ZYDIS_MNEMONIC_SETNZ:
+		case ZYDIS_MNEMONIC_SETO:
+		case ZYDIS_MNEMONIC_SETP:
+		case ZYDIS_MNEMONIC_SETS:
+		case ZYDIS_MNEMONIC_SETZ: {
+			Value *val;
+			switch (instr.opcode)
+			{
+			case 0x90:
+				val = ICMP_NE(LD_OF(), CONST32(0)); // OF != 0
+				break;
+
+			case 0x91:
+				val = ICMP_EQ(LD_OF(), CONST32(0)); // OF == 0
+				break;
+
+			case 0x92:
+				val = ICMP_NE(LD_CF(), CONST32(0)); // CF != 0
+				break;
+
+			case 0x93:
+				val = ICMP_EQ(LD_CF(), CONST32(0)); // CF == 0
+				break;
+
+			case 0x94:
+				val = ICMP_EQ(LD_ZF(), CONST32(0)); // ZF != 0
+				break;
+
+			case 0x95:
+				val = ICMP_NE(LD_ZF(), CONST32(0)); // ZF == 0
+				break;
+
+			case 0x96:
+				val = OR(ICMP_NE(LD_CF(), CONST32(0)), ICMP_EQ(LD_ZF(), CONST32(0))); // CF != 0 OR ZF != 0
+				break;
+
+			case 0x97:
+				val = AND(ICMP_EQ(LD_CF(), CONST32(0)), ICMP_NE(LD_ZF(), CONST32(0))); // CF == 0 AND ZF == 0
+				break;
+
+			case 0x98:
+				val = ICMP_NE(LD_SF(), CONST32(0)); // SF != 0
+				break;
+
+			case 0x99:
+				val = ICMP_EQ(LD_SF(), CONST32(0)); // SF == 0
+				break;
+
+			case 0x9A:
+				val = ICMP_EQ(LD_PARITY(LD_PF()), CONST8(0)); // PF != 0
+				break;
+
+			case 0x9B:
+				val = ICMP_NE(LD_PARITY(LD_PF()), CONST8(0)); // PF == 0
+				break;
+
+			case 0x9C:
+				val = ICMP_NE(LD_SF(), SHR(LD_OF(), CONST32(31))); // SF != OF
+				break;
+
+			case 0x9D:
+				val = ICMP_EQ(LD_SF(), SHR(LD_OF(), CONST32(31))); // SF == OF
+				break;
+
+			case 0x9E:
+				val = OR(ICMP_EQ(LD_ZF(), CONST32(0)), ICMP_NE(LD_SF(), SHR(LD_OF(), CONST32(31)))); // ZF != 0 OR SF != OF
+				break;
+
+			case 0x9F:
+				val = AND(ICMP_NE(LD_ZF(), CONST32(0)), ICMP_EQ(LD_SF(), SHR(LD_OF(), CONST32(31)))); // ZF == 0 AND SF == OF
+				break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+
+			std::vector<BasicBlock *>vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+			Value *rm, *byte = ALLOC8();
+			BR_COND(vec_bb[0], vec_bb[1], val);
+			cpu->bb = vec_bb[0];
+			ST(byte, CONST8(1));
+			BR_UNCOND(vec_bb[2]);
+			cpu->bb = vec_bb[1];
+			ST(byte, CONST8(0));
+			BR_UNCOND(vec_bb[2]);
+			cpu->bb = vec_bb[2];
+			GET_RM(OPNUM_SINGLE, ST_REG_val(LD(byte), rm);, ST_MEM(MEM_LD8_idx, rm, LD(byte)););
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_SGDT:        BAD;
 		case ZYDIS_MNEMONIC_SHL: {
 			assert(instr.raw.modrm.reg == 4);
