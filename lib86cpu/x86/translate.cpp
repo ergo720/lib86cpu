@@ -1478,12 +1478,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			case 0x7A:
 			case 0x8A:
-				val = ICMP_EQ(LD_PARITY(LD_PF()), CONST8(0)); // PF != 0
+				val = ICMP_EQ(LD_PF(), CONST8(0)); // PF != 0
 				break;
 
 			case 0x7B:
 			case 0x8B:
-				val = ICMP_NE(LD_PARITY(LD_PF()), CONST8(0)); // PF == 0
+				val = ICMP_NE(LD_PF(), CONST8(0)); // PF == 0
 				break;
 
 			case 0x7C:
@@ -3157,11 +3157,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				break;
 
 			case 0x9A:
-				val = ICMP_EQ(LD_PARITY(LD_PF()), CONST8(0)); // PF != 0
+				val = ICMP_EQ(LD_PF(), CONST8(0)); // PF != 0
 				break;
 
 			case 0x9B:
-				val = ICMP_NE(LD_PARITY(LD_PF()), CONST8(0)); // PF == 0
+				val = ICMP_NE(LD_PF(), CONST8(0)); // PF == 0
 				break;
 
 			case 0x9C:
