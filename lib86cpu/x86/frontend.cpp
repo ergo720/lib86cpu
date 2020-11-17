@@ -466,7 +466,7 @@ gen_exp_fn(cpu_t *cpu)
 		SHR(LD_CF(), CONST32(31))),
 		SHL(XOR(ZEXT32(LD_PF()), CONST32(1)), CONST32(2))),
 		SHL(LD_AF(), CONST32(1))),
-		SHL(LD_ZF(), CONST32(6))),
+		SHL(XOR(NOT_ZERO(32, LD_ZF()), CONST32(1)), CONST32(6))),
 		SHL(LD_SF(), CONST32(7))),
 		SHR(LD_OF(), CONST32(20))
 		);
@@ -1387,9 +1387,9 @@ ret_pe_emit(cpu_t *cpu, uint8_t size_mode, bool is_iret)
 
 		if (cpl == 0) {
 			mask = OR(mask, CONST32(VIP_MASK | VIF_MASK | VM_MASK | IOPL_MASK));
-			vec_bb2.push_back(BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0));
-			BR_COND(vec_bb2[0], vec_bb2[4], ICMP_NE(AND(temp_eflags, CONST32(VM_MASK)), CONST32(0)));
-			cpu->bb = vec_bb2[4];
+			BasicBlock *bb = BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0);
+			BR_COND(vec_bb2[0], bb, ICMP_NE(AND(temp_eflags, CONST32(VM_MASK)), CONST32(0)));
+			cpu->bb = bb;
 		}
 	}
 	else {
