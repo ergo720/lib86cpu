@@ -1229,7 +1229,79 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_ENTER:       BAD;
+		case ZYDIS_MNEMONIC_ENTER: {
+			uint32_t nesting_lv = instr.operands[OPNUM_SRC].imm.value.u % 32;
+			uint32_t stack_sub, push_tot_size = 0;
+			Value *frame_esp, *ebp_addr, *esp_ptr, *ebp_ptr;
+			std::vector<Value *> args;
+
+			switch ((size_mode << 1) | ((cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
+			{
+			case 0: { // sp, push 32
+				stack_sub = 4;
+				esp_ptr = GEP_R32(ESP_idx);
+				ebp_ptr = GEP_R32(EBP_idx);
+				ebp_addr = ALLOC32();
+				ST(ebp_addr, ZEXT32(LD_R16(EBP_idx)));
+				frame_esp = OR(ZEXT32(SUB(LD_R16(ESP_idx), CONST16(4))), AND(LD_R32(ESP_idx), CONST32(0xFFFF0000)));
+				args.push_back(LD_R32(EBP_idx));
+			}
+			break;
+
+			case 1: { // esp, push 32
+				stack_sub = 4;
+				esp_ptr = GEP_R32(ESP_idx);
+				ebp_ptr = GEP_R32(EBP_idx);
+				ebp_addr = ALLOC32();
+				ST(ebp_addr, LD_R32(EBP_idx));
+				frame_esp = SUB(LD_R32(ESP_idx), CONST32(4));
+				args.push_back(LD_R32(EBP_idx));
+			}
+			break;
+
+			case 2: { // sp, push 16
+				stack_sub = 2;
+				esp_ptr = GEP_R16(ESP_idx);
+				ebp_ptr = GEP_R16(EBP_idx);
+				ebp_addr = ALLOC32();
+				ST(ebp_addr, ZEXT32(LD_R16(EBP_idx)));
+				frame_esp = SUB(LD_R16(ESP_idx), CONST16(2));
+				args.push_back(LD_R16(EBP_idx));
+			}
+			break;
+
+			case 3: { // esp, push 16
+				stack_sub = 2;
+				esp_ptr = GEP_R16(ESP_idx);
+				ebp_ptr = GEP_R16(EBP_idx);
+				ebp_addr = ALLOC32();
+				ST(ebp_addr, LD_R32(EBP_idx));
+				frame_esp = TRUNC16(SUB(LD_R32(ESP_idx), CONST32(2)));
+				args.push_back(LD_R16(EBP_idx));
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+
+			if (nesting_lv > 0) {
+				for (uint32_t i = 1; i < nesting_lv; ++i) {
+					ST(ebp_addr, SUB(LD(ebp_addr), CONST32(stack_sub)));
+					Value *new_ebp = LD_MEM(fn_idx[size_mode], ADD(LD(ebp_addr), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
+					args.push_back(new_ebp);
+					push_tot_size += stack_sub;
+				}
+				args.push_back(frame_esp);
+				push_tot_size += stack_sub;
+			}
+			MEM_PUSH(args);
+
+			ST(ebp_ptr, frame_esp);
+			ST(esp_ptr, SUB(SUB(frame_esp, CONSTs(stack_sub << 3, push_tot_size)), CONSTs(stack_sub << 3, instr.operands[OPNUM_DST].imm.value.u)));
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_HLT: {
 			if (cpu_ctx->hflags & HFLG_CPL) {
 				RAISEin0(EXP_GP);
