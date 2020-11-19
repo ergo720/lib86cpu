@@ -44,9 +44,11 @@ uint8_t cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_
 
 // segment descriptor flags
 #define SEG_DESC_TY   (15ULL << 40) // type
+#define SEG_DESC_TYC  (3ULL << 42)  // type/conf bits
+#define SEG_DESC_DCRW (5ULL << 41)  // data/code read/write
 #define SEG_DESC_A    (1ULL << 40)  // accessed
-#define SEG_DESC_W    (1ULL << 41)  // write
-#define SEG_DESC_R    SEG_DESC_W    // read
+#define SEG_DESC_W    (1ULL << 41)  // write, data desc
+#define SEG_DESC_R    SEG_DESC_W    // read, code desc
 #define SEG_DESC_BY   SEG_DESC_W    // busy
 #define SEG_DESC_C    (1ULL << 42)  // conforming
 #define SEG_DESC_DC   (1ULL << 43)  // data/code
