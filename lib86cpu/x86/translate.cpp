@@ -2617,7 +2617,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				[[fallthrough]];
 
 			case 0xE7: {
-				Value *port = GET_IMM8();
+				Value *port = CONST8(instr.operands[OPNUM_DST].imm.value.u);
 				check_io_priv_emit(cpu, ZEXT32(port), size_mode);
 				ST_IO(fn_io_idx[size_mode], ZEXT16(port), size_mode == SIZE16 ? LD_R16(EAX_idx) : size_mode == SIZE32 ? LD_R32(EAX_idx) : LD_R8L(EAX_idx));
 			}
