@@ -1730,7 +1730,47 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_LEAVE:       BAD;
+		case ZYDIS_MNEMONIC_LEAVE: {
+			switch ((size_mode << 1) | ((cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
+			{
+			case 0: { // sp, pop 32
+				ST_R16(LD_R16(EBP_idx), ESP_idx);
+				std::vector<Value *> vec_pop = MEM_POP(1);
+				ST_R32(vec_pop[0], EBP_idx);
+				ST_R16(vec_pop[1], ESP_idx);
+			}
+			break;
+
+			case 1: { // esp, pop 32
+				ST_R32(LD_R32(EBP_idx), ESP_idx);
+				std::vector<Value *> vec_pop = MEM_POP(1);
+				ST_R32(vec_pop[0], EBP_idx);
+				ST_R32(vec_pop[1], ESP_idx);
+			}
+			break;
+
+			case 2: { // sp, pop 16
+				ST_R16(LD_R16(EBP_idx), ESP_idx);
+				std::vector<Value *> vec_pop = MEM_POP(1);
+				ST_R16(vec_pop[0], EBP_idx);
+				ST_R16(vec_pop[1], ESP_idx);
+			}
+			break;
+
+			case 3: { // esp, pop 16
+				ST_R32(LD_R32(EBP_idx), ESP_idx);
+				std::vector<Value *> vec_pop = MEM_POP(1);
+				ST_R16(vec_pop[0], EBP_idx);
+				ST_R32(vec_pop[1], ESP_idx);
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_LGDT:
 		case ZYDIS_MNEMONIC_LIDT: {
 			Value *rm, *limit, *base;
