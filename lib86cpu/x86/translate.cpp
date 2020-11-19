@@ -3400,56 +3400,85 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_SHR: {
 			assert(instr.raw.modrm.reg == 5);
 
+			Value *count;
 			switch (instr.opcode)
 			{
 			case 0xD0:
-			case 0xC0:
+				count = CONST32(1);
 				size_mode = SIZE8;
-				[[fallthrough]];
+				break;
+
+			case 0xD2:
+				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				size_mode = SIZE8;
+				break;
+
+			case 0xC0:
+				count = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
+				size_mode = SIZE8;
+				break;
 
 			case 0xD1:
-			case 0xC1: {
-				uint8_t count = ((instr.opcode == 0xD0) || (instr.opcode == 0xD1)) ? 1 : instr.operands[OPNUM_SRC].imm.value.u & 0x1F;
-				if (count != 0) {
-					Value *val, *rm, *temp, *cf, *of, *of_mask, *cf_mask = CONST32(1 << (count - 1));
-					switch (size_mode)
-					{
-					case SIZE8:
-						of_mask = CONST32(1 << 7);
-						GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(7)); val = TRUNC8(SHR(val, CONST32(count)));
-						ST_REG_val(val, rm);,
-						temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(7));
-						val = TRUNC8(SHR(val, CONST32(count))); ST_MEM(fn_idx[size_mode], rm, val););
-						break;
+				count = CONST32(1);
+				break;
 
-					case SIZE16:
-						of_mask = CONST32(1 << 15);
-						GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(15)); val = TRUNC16(SHR(val, CONST32(count)));
-						ST_REG_val(val, rm);,
-						temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(15));
-						val = TRUNC16(SHR(val, CONST32(count))); ST_MEM(fn_idx[size_mode], rm, val););
-						break;
+			case 0xD3:
+				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				break;
 
-					case SIZE32:
-						of_mask = CONST32(1 << 31);
-						GET_RM(OPNUM_DST, val = LD_REG_val(rm); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(31)); val = SHR(val, CONST32(count));
-						ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(31));
-						val = SHR(val, CONST32(count)); ST_MEM(fn_idx[size_mode], rm, val););
-						break;
-
-					default:
-						LIB86CPU_ABORT();
-					}
-
-					of = count == 1 ? SHL(XOR(SHR(cf, CONST32(count - 1)), of), CONST32(30)) : AND(LD_FLG_AUX(), CONST32(1 << 30));
-					SET_FLG(val, OR(SHL(cf, CONST32(31 - (count - 1))), of));
-				}
-			}
-			break;
+			case 0xC1:
+				count = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
+				break;
 
 			default:
-				BAD;
+				LIB86CPU_ABORT();
 			}
+
+			std::vector<BasicBlock *>vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 5);
+			BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
+			cpu->bb = vec_bb[1];
+			Value *val, *rm, *temp, *cf, *of, *of_mask, *cf_mask = SHL(CONST32(1), SUB(count, CONST32(1)));
+			of = ALLOC32();
+			switch (size_mode)
+			{
+			case SIZE8:
+				of_mask = CONST32(1 << 7);
+				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = AND(val, cf_mask); ST(of, SHR(AND(val, of_mask), CONST32(7))); val = TRUNC8(SHR(val, count));
+				ST_REG_val(val, rm);,
+					temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = AND(val, cf_mask); ST(of, SHR(AND(val, of_mask), CONST32(7)));
+				val = TRUNC8(SHR(val, count)); ST_MEM(fn_idx[size_mode], rm, val););
+				break;
+
+			case SIZE16:
+				of_mask = CONST32(1 << 15);
+				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = AND(val, cf_mask); ST(of, SHR(AND(val, of_mask), CONST32(15))); val = TRUNC16(SHR(val, count));
+				ST_REG_val(val, rm);,
+					temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = AND(val, cf_mask); ST(of, SHR(AND(val, of_mask), CONST32(15)));
+				val = TRUNC16(SHR(val, count)); ST_MEM(fn_idx[size_mode], rm, val););
+				break;
+
+			case SIZE32:
+				of_mask = CONST32(1 << 31);
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); cf = AND(val, cf_mask); ST(of, SHR(AND(val, of_mask), CONST32(31))); val = SHR(val, count);
+				ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm); cf = AND(val, cf_mask); ST(of, SHR(AND(val, of_mask), CONST32(31)));
+				val = SHR(val, count); ST_MEM(fn_idx[size_mode], rm, val););
+				break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+
+			BR_COND(vec_bb[2], vec_bb[3], ICMP_EQ(count, CONST32(1)));
+			cpu->bb = vec_bb[2];
+			ST(of, SHL(XOR(SHR(cf, SUB(count, CONST32(1))), LD(of)), CONST32(30)));
+			BR_UNCOND(vec_bb[4]);
+			cpu->bb = vec_bb[3];
+			ST(of, AND(LD_FLG_AUX(), CONST32(1 << 30)));
+			BR_UNCOND(vec_bb[4]);
+			cpu->bb = vec_bb[4];
+			SET_FLG(val, OR(SHL(cf, SUB(CONST32(32), count)), LD(of)));
+			BR_UNCOND(vec_bb[0]);
+			cpu->bb = vec_bb[0];
 		}
 		break;
 
