@@ -13,6 +13,7 @@
 #include <iostream>
 
 #define TEST386_POST_PORT 0x190
+#define TEST386_EE_PORT 0x55
 cpu_t *cpu = nullptr;
 uint8_t *ram = nullptr;
 
@@ -104,6 +105,16 @@ test386_write_handler(addr_t addr, size_t size, const void *buffer, void *opaque
 	}
 	break;
 
+	case TEST386_EE_PORT: {
+		if (size == 1) {
+			printf("%c", *static_cast<const char *>(buffer));
+		}
+		else {
+			printf("Unhandled i/o port size at port %d\n", TEST386_EE_PORT);
+		}
+	}
+	break;
+
 	default:
 		printf("Unhandled i/o write at port %d\n", addr);
 	}
@@ -184,6 +195,11 @@ gen_test386asm_test(const std::string &executable)
 
 	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_io(cpu, TEST386_POST_PORT, 0x1, true, nullptr, test386_write_handler, nullptr, 1))) {
 		printf("Failed to initialize post i/o port for test386.asm!\n");
+		return false;
+	}
+
+	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_io(cpu, TEST386_EE_PORT, 0x1, true, nullptr, test386_write_handler, nullptr, 1))) {
+		printf("Failed to initialize i/o port used by test 0xEE for test386.asm!\n");
 		return false;
 	}
 
