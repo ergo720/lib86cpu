@@ -1127,7 +1127,34 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_CPUID:       BAD;
 		case ZYDIS_MNEMONIC_CWD:         BAD;
 		case ZYDIS_MNEMONIC_CWDE:        BAD;
-		case ZYDIS_MNEMONIC_DAA:         BAD;
+		case ZYDIS_MNEMONIC_DAA: {
+			Value *old_al = LD_R8L(EAX_idx);
+			Value *old_cf = LD_CF();
+			ST_FLG_AUX(AND(LD_FLG_AUX(), CONST32(8)));
+			std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 6);
+			BR_COND(vec_bb[0], vec_bb[1], OR(ICMP_UGT(AND(old_al, CONST8(0xF)), CONST8(9)), ICMP_NE(LD_AF(), CONST32(0))));
+			cpu->bb = vec_bb[0];
+			Value *sum = ADD(old_al, CONST8(6));
+			ST_R8L(sum, EAX_idx);
+			ST_FLG_AUX(OR(OR(AND(GEN_SUM_VEC8(old_al, CONST8(6), sum), CONST32(0x80000000)), old_cf), CONST32(8)));
+			BR_UNCOND(vec_bb[2]);
+			cpu->bb = vec_bb[1];
+			ST_FLG_AUX(CONST32(0));
+			BR_UNCOND(vec_bb[2]);
+			cpu->bb = vec_bb[2];
+			BR_COND(vec_bb[3], vec_bb[4], OR(ICMP_UGT(old_al, CONST8(0x99)), ICMP_NE(old_cf, CONST32(0))));
+			cpu->bb = vec_bb[3];
+			ST_R8L(ADD(LD_R8L(EAX_idx), CONST8(0x60)), EAX_idx);
+			ST_FLG_AUX(OR(LD_FLG_AUX(), CONST32(0x80000000)));
+			BR_UNCOND(vec_bb[5]);
+			cpu->bb = vec_bb[4];
+			ST_FLG_AUX(AND(LD_FLG_AUX(), CONST32(0x7FFFFFFF)));
+			BR_UNCOND(vec_bb[5]);
+			cpu->bb = vec_bb[5];
+			ST_FLG_RES_ext(LD_R8L(EAX_idx));
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_DAS:         BAD;
 		case ZYDIS_MNEMONIC_DEC: {
 			switch (instr.opcode)
