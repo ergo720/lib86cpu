@@ -230,7 +230,7 @@ calc_next_pc_emit(cpu_t *cpu, size_t instr_size)
 Value *
 floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits)
 {
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+	std::vector<BasicBlock *> vec_bb = BBs(3);
 	Value *ret = ALLOCs(q_bits);
 	Value *q = SDIV(D, d);
 	Value *r = SREM(D, d);
@@ -287,7 +287,7 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 	case 1: {
 		if (vec_addr.size() == 3) { // if(dst_pc) -> cond jmp dst_pc; if(next_pc) -> cond jmp next_pc
 			if (dst) {
-				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+				std::vector<BasicBlock *> vec_bb = BBs(2);
 				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[1])));
 				cpu->bb = vec_bb[0];
 				ST(tc_flg_ptr, AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)));
@@ -299,7 +299,7 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_RET << 4)));
 			}
 			else {
-				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+				std::vector<BasicBlock *> vec_bb = BBs(2);
 				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[2])));
 				cpu->bb = vec_bb[0];
 				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_NEXT_PC << 4)));
@@ -323,7 +323,7 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 	break;
 
 	case 2: { // cond jmp next_pc + uncond jmp dst_pc
-		std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+		std::vector<BasicBlock *> vec_bb = BBs(3);
 		BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[2])));
 		cpu->bb = vec_bb[0];
 		ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_NEXT_PC << 4)));
@@ -806,7 +806,7 @@ write_eflags(cpu_t *cpu, Value *eflags, Value *mask)
 static void
 validate_seg_emit(cpu_t *cpu, const unsigned reg)
 {
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+	std::vector<BasicBlock *> vec_bb = BBs(2);
 	Value *flags = LD_SEG_HIDDEN(reg, SEG_FLG_idx);
 	Value *c = AND(flags, CONST32(1 << 10));
 	Value *d = AND(flags, CONST32(1 << 11));
@@ -839,7 +839,7 @@ write_seg_reg_emit(cpu_t *cpu, const unsigned reg, std::vector<Value *> &vec)
 void
 set_access_flg_seg_desc_emit(cpu_t *cpu, Value *desc, Value *desc_addr)
 {
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+	std::vector<BasicBlock *> vec_bb = BBs(2);
 	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(OR(SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(44)), SHR(AND(desc, CONST64(SEG_DESC_A)), CONST64(39))), CONST64(1)));
 	cpu->bb = vec_bb[0];
 	ST_MEM_PRIV(MEM_ST64_idx, desc_addr, OR(desc, CONST64(SEG_DESC_A)));
@@ -862,7 +862,7 @@ read_seg_desc_flags_emit(cpu_t *cpu, Value *desc)
 Value *
 read_seg_desc_limit_emit(cpu_t *cpu, Value *desc)
 {
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+	std::vector<BasicBlock *> vec_bb = BBs(2);
 	Value *limit = ALLOC32();
 	ST(limit, TRUNC32(OR(AND(desc, CONST64(0xFFFF)), SHR(AND(desc, CONST64(0xF000000000000)), CONST64(32)))));
 	BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(desc, CONST64(SEG_DESC_G)), CONST64(0)));
@@ -877,7 +877,7 @@ std::vector<Value *>
 read_seg_desc_emit(cpu_t *cpu, Value *sel, BasicBlock *bb_exp)
 {
 	std::vector<Value *> vec;
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 4);
+	std::vector<BasicBlock *> vec_bb = BBs(4);
 	Value *base = ALLOC32();
 	Value *limit = ALLOC32();
 	Value *idx = SHR(sel, CONST16(3));
@@ -906,7 +906,7 @@ std::vector<Value *>
 read_tss_desc_emit(cpu_t *cpu, Value *sel)
 {
 	std::vector<Value *> vec;
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+	std::vector<BasicBlock *> vec_bb = BBs(2);
 	Value *idx = SHR(sel, CONST16(3));
 	Value *ti = SHR(AND(sel, CONST16(4)), CONST16(2));
 	BasicBlock *bb_exp = RAISE(AND(sel, CONST16(0xFFFC)), EXP_GP);
@@ -927,7 +927,7 @@ std::vector<Value *>
 read_stack_ptr_from_tss_emit(cpu_t *cpu, Value *cpl, BasicBlock *bb_exp)
 {
 	std::vector<Value *> vec;
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 4);
+	std::vector<BasicBlock *> vec_bb = BBs(4);
 	Value *esp = ALLOC32();
 	Value *ss = ALLOC16();
 	Value *type = SHR(AND(LD_SEG_HIDDEN(TR_idx, SEG_FLG_idx), CONST32(SEG_HIDDEN_TSS_TY)), CONST32(11));
@@ -957,7 +957,7 @@ read_stack_ptr_from_tss_emit(cpu_t *cpu, Value *cpl, BasicBlock *bb_exp)
 std::vector<Value *>
 check_ss_desc_priv_emit(cpu_t *cpu, Value *sel, Value *cs, Value *cpl, BasicBlock *bb_exp)
 {
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+	std::vector<BasicBlock *> vec_bb = BBs(3);
 	BR_COND(bb_exp ? bb_exp : RAISE(CONST16(0), EXP_GP),
 		vec_bb[0], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0))); // sel == NULL
 	cpu->bb = vec_bb[0];
@@ -991,7 +991,7 @@ check_ss_desc_priv_emit(cpu_t *cpu, Value *sel, Value *cs, Value *cpl, BasicBloc
 std::vector<Value *>
 check_seg_desc_priv_emit(cpu_t *cpu, Value *sel)
 {
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 5);
+	std::vector<BasicBlock *> vec_bb = BBs(5);
 	std::vector<Value *> vec = read_seg_desc_emit(cpu, sel);
 	Value *desc = vec[1];
 	Value *s = AND(desc, CONST64(SEG_DESC_S));
@@ -1019,7 +1019,7 @@ check_seg_desc_priv_emit(cpu_t *cpu, Value *sel)
 void
 lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t ret_eip)
 {
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 38);
+	std::vector<BasicBlock *> vec_bb = BBs(38);
 	BasicBlock *bb_exp = RAISE0(EXP_GP);
 	Value *sel = vec[0];
 	Value *call_eip = vec[1];
@@ -1241,7 +1241,7 @@ lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t
 void
 ljmp_pe_emit(cpu_t *cpu, Value *sel, uint8_t size_mode, uint32_t eip)
 {
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 18);
+	std::vector<BasicBlock *> vec_bb = BBs(18);
 	BasicBlock *bb_exp = RAISE0(EXP_GP);
 	Value *cpl = CONST16(cpu->cpu_ctx.hflags & HFLG_CPL);
 	Value *dpl = ALLOC16();
@@ -1345,11 +1345,11 @@ ret_pe_emit(cpu_t *cpu, uint8_t size_mode, bool is_iret)
 {
 	std::vector<Value *> vec;
 	Value *eip, *cs, *eflags, *mask, *temp_eflags, *esp_old, *esp_old_ptr;
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 11);
+	std::vector<BasicBlock *> vec_bb = BBs(11);
 	uint16_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
 	unsigned pop_at;
 	if (is_iret) {
-		std::vector<BasicBlock *> vec_bb2 = gen_bbs(cpu, cpu->bb->getParent(), 4);
+		std::vector<BasicBlock *> vec_bb2 = BBs(4);
 		pop_at = 3;
 		eflags = LD_R32(EFLAGS_idx);
 		BR_COND(vec_bb2[0], vec_bb2[1], ICMP_NE(AND(eflags, CONST32(VM_MASK)), CONST32(0)));
@@ -1489,7 +1489,7 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_pri
 	const uint8_t mem_idx = idx_remap[idx];
 	const uint8_t mem_size = idx_to_size[mem_idx];
 
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 5);
+	std::vector<BasicBlock *> vec_bb = BBs(5);
 	Value *ret = ALLOCs(mem_size);
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
@@ -1540,7 +1540,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	const uint8_t mem_idx = idx_remap[idx];
 	const uint8_t mem_size = idx_to_size[mem_idx];
 
-	std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), (cpu->cpu_flags & CPU_ALLOW_CODE_WRITE) ? 5 : 6);
+	std::vector<BasicBlock *> vec_bb = BBs((cpu->cpu_flags & CPU_ALLOW_CODE_WRITE) ? 5 : 6);
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
 	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
@@ -1597,7 +1597,7 @@ check_io_priv_emit(cpu_t *cpu, Value *port, uint8_t size_mode)
 	static const uint8_t op_size_to_mem_size[3] = { 4, 2, 1 };
 
 	if ((cpu->cpu_ctx.hflags & HFLG_PE_MODE) && ((cpu->cpu_ctx.hflags & HFLG_CPL) > ((cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12))) {
-		std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+		std::vector<BasicBlock *> vec_bb = BBs(3);
 		BasicBlock *bb_exp = RAISE0(EXP_GP);
 		Value *base = LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx);
 		Value *limit = LD_SEG_HIDDEN(TR_idx, SEG_LIMIT_idx);

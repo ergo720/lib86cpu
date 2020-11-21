@@ -632,7 +632,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 				Value *rm, *rpl_dst, *rpl_src = LD_REG_val(GET_REG(OPNUM_SRC));
 				GET_RM(OPNUM_DST, rpl_dst = LD_REG_val(rm);, rpl_dst = LD_MEM(MEM_LD16_idx, rm););
-				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+				std::vector<BasicBlock *> vec_bb = BBs(3);
 				BR_COND(vec_bb[0], vec_bb[1], ICMP_ULT(AND(rpl_dst, CONST16(3)), AND(rpl_src, CONST16(3))));
 				cpu->bb = vec_bb[0];
 				Value *new_rpl = OR(AND(rpl_dst, CONST16(0xFFFC)), AND(rpl_src, CONST16(3)));
@@ -660,7 +660,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *idx_addr = GET_OP(OPNUM_SRC);
 				Value *lower_idx = LD_MEM(fn_idx[size_mode], idx_addr);
 				Value *upper_idx = LD_MEM(fn_idx[size_mode], ADD(idx_addr, (size_mode == SIZE16) ? CONST32(2) : CONST32(4)));
-				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+				std::vector<BasicBlock *> vec_bb = BBs(2);
 				BR_COND(vec_bb[0], vec_bb[1], OR(ICMP_SLT(idx, lower_idx), ICMP_SGT(idx, upper_idx)));
 				cpu->bb = vec_bb[0];
 				RAISEin0(EXP_BR);
@@ -672,7 +672,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 		case ZYDIS_MNEMONIC_BSF: {
 			Value *rm, *src;
-			std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+			std::vector<BasicBlock *> vec_bb = BBs(3);
 			GET_RM(OPNUM_SRC, src = LD_REG_val(rm);, src = LD_MEM(fn_idx[size_mode], rm););
 			BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(src, CONSTs(instr.operands[OPNUM_SRC].size, 0)));
 			cpu->bb = vec_bb[0];
@@ -688,7 +688,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 		case ZYDIS_MNEMONIC_BSR: {
 			Value *rm, *src;
-			std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+			std::vector<BasicBlock *> vec_bb = BBs(3);
 			GET_RM(OPNUM_SRC, src = LD_REG_val(rm);, src = LD_MEM(fn_idx[size_mode], rm););
 			BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(src, CONSTs(instr.operands[OPNUM_SRC].size, 0)));
 			cpu->bb = vec_bb[0];
@@ -1024,7 +1024,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			case 0xA7: {
 				Value *val, *df, *sub, *addr1, *addr2, *src1, *src2, *esi, *edi;
-				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+				std::vector<BasicBlock *> vec_bb = BBs(3);
 
 				if ((instr.attributes & ZYDIS_ATTRIB_HAS_REPNZ) || (instr.attributes & ZYDIS_ATTRIB_HAS_REPZ)) {
 					REP_start();
@@ -1131,7 +1131,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			Value *old_al = LD_R8L(EAX_idx);
 			Value *old_cf = LD_CF();
 			ST_FLG_AUX(AND(LD_FLG_AUX(), CONST32(8)));
-			std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 6);
+			std::vector<BasicBlock *> vec_bb = BBs(6);
 			BR_COND(vec_bb[0], vec_bb[1], OR(ICMP_UGT(AND(old_al, CONST8(0xF)), CONST8(9)), ICMP_NE(LD_AF(), CONST32(0))));
 			cpu->bb = vec_bb[0];
 			Value *sum = ADD(old_al, CONST8(6));
@@ -1633,7 +1633,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 
 			Value *dst_pc = ALLOC32();
-			std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+			std::vector<BasicBlock *> vec_bb = BBs(3);
 			BR_COND(vec_bb[0], vec_bb[1], val);
 
 			cpu->bb = vec_bb[1];
@@ -1832,7 +1832,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			else {
 				Value *sel, *rm;
-				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 5);
+				std::vector<BasicBlock *> vec_bb = BBs(5);
 				GET_RM(OPNUM_SINGLE, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
 				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
 				cpu->bb = vec_bb[0];
@@ -1869,7 +1869,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			case 0xAD: {
 				Value *val, *df, *addr, *src, *esi;
-				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+				std::vector<BasicBlock *> vec_bb = BBs(3);
 				if (instr.attributes & ZYDIS_ATTRIB_HAS_REP) {
 					REP_start();
 				}
@@ -1988,7 +1988,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 
 			Value *dst_pc = ALLOC32();
-			std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+			std::vector<BasicBlock *> vec_bb = BBs(3);
 			BR_COND(vec_bb[0], vec_bb[1], AND(ICMP_NE(val, zero), zf));
 
 			cpu->bb = vec_bb[1];
@@ -2061,7 +2061,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
 					ST_REG_val(offset, GET_REG(OPNUM_DST));
 					if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
-						std:: vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+						std:: vector<BasicBlock *> vec_bb = BBs(2);
 						BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(CONST32(cpu->cpu_ctx.hflags & HFLG_SS32), AND(LD(cpu->ptr_hflags), CONST32(HFLG_SS32))));
 						cpu->bb = vec_bb[0];
 						link_dst_only_emit(cpu);
@@ -2071,7 +2071,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					translate_next = 0;
 				}
 				else {
-					std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+					std::vector<BasicBlock *> vec_bb = BBs(3);
 					BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
 					cpu->bb = vec_bb[0];
 					write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, CONST32(0), CONST32(0), CONST32(0) });
@@ -2107,7 +2107,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			else {
 				Value *sel, *rm;
-				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 5);
+				std::vector<BasicBlock *> vec_bb = BBs(5);
 				GET_RM(OPNUM_SINGLE, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
 				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
 				cpu->bb = vec_bb[0];
@@ -2167,7 +2167,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)));
 						CallInst *ci = CallInst::Create(crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(GET_REG_idx(instr.operands[OPNUM_DST].reg.value) - CR_offset),
 							cpu->instr_eip, CONST32(bytes) }, "", cpu->bb);
-						std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 1);
+						std::vector<BasicBlock *> vec_bb = BBs(1);
 						BR_COND(RAISE(CONST16(0), EXP_GP), vec_bb[0], ICMP_NE(ci, CONST8(0)));
 						cpu->bb = vec_bb[0];
 					}
@@ -2231,7 +2231,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
 						ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
 						if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
-							std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+							std::vector<BasicBlock *> vec_bb = BBs(2);
 							BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(CONST32(cpu->cpu_ctx.hflags & HFLG_SS32), AND(LD(cpu->ptr_hflags), CONST32(HFLG_SS32))));
 							cpu->bb = vec_bb[0];
 							link_dst_only_emit(cpu);
@@ -2241,7 +2241,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						translate_next = 0;
 					}
 					else {
-						std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+						std::vector<BasicBlock *> vec_bb = BBs(3);
 						BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
 						cpu->bb = vec_bb[0];
 						write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, CONST32(0), CONST32(0), CONST32(0) });
@@ -2328,7 +2328,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			case 0xA5: {
 				Value *val, *df, *addr1, *addr2, *src, *esi, *edi;
-				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+				std::vector<BasicBlock *> vec_bb = BBs(3);
 
 				if (instr.attributes & ZYDIS_ATTRIB_HAS_REP) {
 					REP_start();
@@ -2734,7 +2734,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
 							ST_REG_val(vec_pop[1], vec_pop[2]);
 							if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
-								std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+								std::vector<BasicBlock *> vec_bb = BBs(2);
 								BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(CONST32(cpu->cpu_ctx.hflags & HFLG_SS32), AND(LD(cpu->ptr_hflags), CONST32(HFLG_SS32))));
 								cpu->bb = vec_bb[0];
 								link_dst_only_emit(cpu);
@@ -2744,7 +2744,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							translate_next = 0;
 						}
 						else {
-							std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+							std::vector<BasicBlock *> vec_bb = BBs(3);
 							BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
 							cpu->bb = vec_bb[0];
 							write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, CONST32(0), CONST32(0), CONST32(0) });
@@ -2863,7 +2863,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			ST_REG_val(vec[1], vec[2]);
 			ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
 			if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
-				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 2);
+				std::vector<BasicBlock *> vec_bb = BBs(2);
 				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(CONST32(cpu->cpu_ctx.regs.eflags & mask2), AND(LD_R32(EFLAGS_idx), CONST32(mask2))));
 				cpu->bb = vec_bb[0];
 				link_dst_only_emit(cpu);
@@ -3165,7 +3165,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			case 0xAF: {
 				Value *val, *df, *sub, *addr, *src, *edi, *eax;
-				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+				std::vector<BasicBlock *> vec_bb = BBs(3);
 
 				if ((instr.attributes & ZYDIS_ATTRIB_HAS_REPNZ) || (instr.attributes & ZYDIS_ATTRIB_HAS_REPZ)) {
 					REP_start();
@@ -3342,7 +3342,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT();
 			}
 
-			std::vector<BasicBlock *>vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+			std::vector<BasicBlock *>vec_bb = BBs(3);
 			Value *rm, *byte = ALLOC8();
 			BR_COND(vec_bb[0], vec_bb[1], val);
 			cpu->bb = vec_bb[0];
@@ -3461,7 +3461,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT();
 			}
 
-			std::vector<BasicBlock *>vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 5);
+			std::vector<BasicBlock *>vec_bb = BBs(5);
 			BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
 			cpu->bb = vec_bb[1];
 			Value *val, *rm, *temp, *cf, *of, *of_mask, *cf_mask = SHL(CONST32(1), SUB(count, CONST32(1)));
@@ -3563,7 +3563,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			case 0xAB: {
 				Value *val, *df, *addr, *edi;
-				std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 3);
+				std::vector<BasicBlock *> vec_bb = BBs(3);
 
 				if (instr.attributes & ZYDIS_ATTRIB_HAS_REP) {
 					REP_start();
@@ -3717,7 +3717,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			Value *rm, *sel;
 			GET_RM(OPNUM_SINGLE, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
-			std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, cpu->bb->getParent(), 5);
+			std::vector<BasicBlock *> vec_bb = BBs(5);
 			BasicBlock *bb_fail = vec_bb[0];
 			BR_COND(bb_fail, vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0))); // sel == NULL
 			cpu->bb = vec_bb[1];
