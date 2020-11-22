@@ -106,8 +106,15 @@ test386_write_handler(addr_t addr, size_t size, const void *buffer, void *opaque
 	break;
 
 	case TEST386_EE_PORT: {
+		static std::string str = "";
 		if (size == 1) {
-			printf("%c", *static_cast<const char *>(buffer));
+			if (*static_cast<const char *>(buffer) == '\n') {
+				printf("%s", (str + '\n').c_str());
+				str.clear();
+			}
+			else {
+				str += *static_cast<const char *>(buffer);
+			}
 		}
 		else {
 			printf("Unhandled i/o port size at port %d\n", TEST386_EE_PORT);
