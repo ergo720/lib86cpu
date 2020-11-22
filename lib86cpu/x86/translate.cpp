@@ -490,7 +490,16 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_AAD:         BAD;
+		case ZYDIS_MNEMONIC_AAD: {
+			Value *al = LD_R8L(EAX_idx);
+			Value *ah = LD_R8H(EAX_idx);
+			ST_R8L(ADD(al, MUL(ah, CONST8(instr.operands[OPNUM_SINGLE].imm.value.u))), EAX_idx);
+			ST_R8H(CONST8(0), EAX_idx);
+			ST_FLG_RES_ext(LD_R8L(EAX_idx));
+			ST_FLG_AUX(CONST32(0));
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_AAM: {
 			if (instr.operands[OPNUM_SINGLE].imm.value.u == 0) {
 				RAISEin0(EXP_DE);
