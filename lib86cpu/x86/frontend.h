@@ -233,7 +233,7 @@ default: \
 #define LD_IO(idx, port) CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, port }, "", cpu->bb)
 #define ST_IO(idx, port, val) CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, port, val }, "", cpu->bb)
 
-#define LD_PARITY(idx) LD(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST8(0), idx }, "", cpu->bb))
+#define LD_PARITY(idx) LD(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST32(0), idx }, "", cpu->bb))
 #define RAISE(code, idx) raise_exception_emit(cpu, std::vector<Value *> { CONST32(0), code, CONST16(idx), cpu->instr_eip })
 #define RAISE0(idx) raise_exception_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(idx), cpu->instr_eip })
 #define RAISEin(addr, code, idx, eip) raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(addr), CONST16(code), CONST16(idx), CONST32(eip) }); \
@@ -337,7 +337,7 @@ BR_COND(vec_bb[3], vec_bb[2], AND(ICMP_NE(ecx, zero), ICMP_EQ(LD_ZF(), CONST32(0
 #define LD_OF() AND(XOR(LD_FLG_AUX(), SHL(LD_FLG_AUX(), CONST32(1))), CONST32(0x80000000))
 #define LD_ZF() LD_FLG_RES()
 #define LD_SF() XOR(SHR(LD_FLG_RES(), CONST32(31)), AND(LD_FLG_AUX(), CONST32(1)))
-#define LD_PF() LD_PARITY(TRUNC8(XOR(LD_FLG_RES(), SHR(LD_FLG_AUX(), CONST32(8)))))
+#define LD_PF() LD_PARITY(AND(XOR(LD_FLG_RES(), SHR(LD_FLG_AUX(), CONST32(8))), CONST32(0xFF)))
 #define LD_AF() AND(LD_FLG_AUX(), CONST32(8))
 
 #define ABORT(str) \
