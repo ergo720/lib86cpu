@@ -492,7 +492,22 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 		case ZYDIS_MNEMONIC_AAD:         BAD;
 		case ZYDIS_MNEMONIC_AAM:         BAD;
-		case ZYDIS_MNEMONIC_AAS:         BAD;
+		case ZYDIS_MNEMONIC_AAS: {
+			std::vector<BasicBlock *> vec_bb = BBs(3);
+			BR_COND(vec_bb[0], vec_bb[1], OR(ICMP_UGT(AND(LD_R8L(EAX_idx), CONST8(0xF)), CONST8(9)), ICMP_NE(LD_AF(), CONST32(0))));
+			cpu->bb = vec_bb[0];
+			ST_R16(SUB(LD_R16(EAX_idx), CONST16(6)), EAX_idx);
+			ST_R8H(SUB(LD_R8H(EAX_idx), CONST8(1)), EAX_idx);
+			ST_FLG_AUX(CONST32(0x80000008));
+			BR_UNCOND(vec_bb[2]);
+			cpu->bb = vec_bb[1];
+			ST_FLG_AUX(CONST32(0));
+			BR_UNCOND(vec_bb[2]);
+			cpu->bb = vec_bb[2];
+			ST_R8L(AND(LD_R8L(EAX_idx), CONST8(0xF)), EAX_idx);
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_ADC:         BAD;
 		case ZYDIS_MNEMONIC_ADD: {
 			switch (instr.opcode)
