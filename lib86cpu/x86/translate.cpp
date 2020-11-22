@@ -491,7 +491,21 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		break;
 
 		case ZYDIS_MNEMONIC_AAD:         BAD;
-		case ZYDIS_MNEMONIC_AAM:         BAD;
+		case ZYDIS_MNEMONIC_AAM: {
+			if (instr.operands[OPNUM_SINGLE].imm.value.u == 0) {
+				RAISEin0(EXP_DE);
+				translate_next = 0;
+			}
+			else {
+				Value *al = LD_R8L(EAX_idx);
+				ST_R8H(UDIV(al, CONST8(instr.operands[OPNUM_SINGLE].imm.value.u)), EAX_idx);
+				ST_R8L(UREM(al, CONST8(instr.operands[OPNUM_SINGLE].imm.value.u)), EAX_idx);
+				ST_FLG_RES_ext(LD_R8L(EAX_idx));
+				ST_FLG_AUX(CONST32(0));
+			}
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_AAS: {
 			std::vector<BasicBlock *> vec_bb = BBs(3);
 			BR_COND(vec_bb[0], vec_bb[1], OR(ICMP_UGT(AND(LD_R8L(EAX_idx), CONST8(0xF)), CONST8(9)), ICMP_NE(LD_AF(), CONST32(0))));
