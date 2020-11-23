@@ -3719,23 +3719,66 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_SUB: {
 			switch (instr.opcode)
 			{
+			case 0x2C:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x2D: {
+				Value *dst, *sub, *src = GET_IMM();
+				dst = LD_REG_val(GET_REG(OPNUM_DST));
+				sub = SUB(dst, src);
+				SET_FLG_SUB(sub, dst, src);
+			}
+			break;
+
 			case 0x80:
 				size_mode = SIZE8;
 				[[fallthrough]];
 
+			case 0x81:
 			case 0x83: {
 				assert(instr.raw.modrm.reg == 5);
 
-				Value *rm, *dst, *sub, *val = GET_IMM8();
-				val = size_mode == SIZE16 ? SEXT16(val) : size_mode == SIZE32 ? SEXT32(val) : val;
+				Value *rm, *dst, *sub, *val;
+				if (instr.opcode == 0x83) {
+					val = size_mode == SIZE16 ? SEXT16(GET_IMM8()) : SEXT32(GET_IMM8());
+				}
+				else {
+					val = GET_IMM();
+				}
+
 				GET_RM(OPNUM_DST, dst = LD_REG_val(rm); sub = SUB(dst, val); ST_REG_val(sub, rm);,
 				dst = LD_MEM(fn_idx[size_mode], rm); sub = SUB(dst, val); ST_MEM(fn_idx[size_mode], rm, sub););
 				SET_FLG_SUB(sub, dst, val);
 			}
 			break;
 
+			case 0x28:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x29: {
+				Value *rm, *dst, *sub, *src = LD_REG_val(GET_REG(OPNUM_SRC));
+				GET_RM(OPNUM_DST, dst = LD_REG_val(rm); sub = SUB(dst, src); ST_REG_val(sub, rm);,
+					dst = LD_MEM(fn_idx[size_mode], rm); sub = SUB(dst, src); ST_MEM(fn_idx[size_mode], rm, sub););
+				SET_FLG_SUB(sub, dst, src);
+			}
+			break;
+
+			case 0x2A:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x2B: {
+				Value *rm, *src, *sub, *dst = LD_REG_val(GET_REG(OPNUM_DST));
+				GET_RM(OPNUM_SRC, src = LD_REG_val(rm); sub = SUB(dst, src); ST_REG_val(sub, rm);,
+					src = LD_MEM(fn_idx[size_mode], rm); sub = SUB(dst, src); ST_MEM(fn_idx[size_mode], rm, sub););
+				SET_FLG_SUB(sub, dst, src);
+			}
+			break;
+
 			default:
-				BAD;
+				LIB86CPU_ABORT();
 			}
 		}
 		break;
