@@ -531,7 +531,132 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_ADC:         BAD;
+		case ZYDIS_MNEMONIC_ADC: {
+			Value *src, *sum1, *sum2, *dst, *rm, *cf, *sum1_cout, *sum2_cout;
+			switch (instr.opcode)
+			{
+			case 0x14:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x15: {
+				switch (size_mode)
+				{
+				case SIZE8:
+					src = CONST8(instr.operands[OPNUM_SRC].imm.value.u);
+					rm = GEP_R8L(EAX_idx);
+					dst = LD(dst);
+					break;
+
+				case SIZE16:
+					src = CONST16(instr.operands[OPNUM_SRC].imm.value.u);
+					rm = GEP_R16(EAX_idx);
+					dst = LD(dst);
+					break;
+
+				case SIZE32:
+					src = CONST32(instr.operands[OPNUM_SRC].imm.value.u);
+					rm = GEP_R32(EAX_idx);
+					dst = LD(dst);
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+			}
+			break;
+
+			case 0x80:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x81:
+			case 0x83: {
+				assert(instr.raw.modrm.reg == 2);
+
+				if (instr.opcode == 0x83) {
+					src = (size_mode == SIZE16) ? SEXT16(CONST8(instr.operands[OPNUM_SRC].imm.value.u)) :
+						SEXT32(CONST8(instr.operands[OPNUM_SRC].imm.value.u));
+				}
+				else {
+					src = GET_IMM();
+				}
+
+				GET_RM(OPNUM_DST, dst = LD_REG_val(rm);, dst = LD_MEM(fn_idx[size_mode], rm););
+			}
+			break;
+
+			case 0x10:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x11: {
+				src = LD_REG_val(GET_REG(OPNUM_SRC));
+				GET_RM(OPNUM_DST, dst = LD_REG_val(rm);, dst = LD_MEM(fn_idx[size_mode], rm););
+			}
+			break;
+
+			case 0x12:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x13: {
+				GET_RM(OPNUM_SRC, src = LD_REG_val(rm);, src = LD_MEM(fn_idx[size_mode], rm););
+				rm = GET_REG(OPNUM_DST);
+				dst = LD_REG_val(rm);
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+
+			switch (size_mode)
+			{
+			case SIZE8:
+				cf = TRUNC8(SHR(LD_CF(), CONST32(31)));
+				sum1 = ADD(dst, src);
+				sum2 = ADD(sum1, cf);
+				sum1_cout = GEN_SUM_VEC8(dst, src, sum1);
+				sum2_cout = GEN_SUM_VEC8(sum1, cf, sum2);
+				break;
+
+			case SIZE16:
+				cf = TRUNC16(SHR(LD_CF(), CONST32(31)));
+				sum1 = ADD(dst, src);
+				sum2 = ADD(sum1, cf);
+				sum1_cout = GEN_SUM_VEC16(dst, src, sum1);
+				sum2_cout = GEN_SUM_VEC16(sum1, cf, sum2);
+				break;
+
+			case SIZE32:
+				cf = SHR(LD_CF(), CONST32(31));
+				sum1 = ADD(dst, src);
+				sum2 = ADD(sum1, cf);
+				sum1_cout = GEN_SUM_VEC32(dst, src, sum1);
+				sum2_cout = GEN_SUM_VEC32(sum1, cf, sum2);
+				break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+
+			if (instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+				ST_REG_val(sum2, rm);
+			}
+			else {
+				ST_MEM(fn_idx[size_mode], rm, sum2);
+			}
+
+			(size_mode != SIZE32) ? ST_FLG_RES_ext(sum2) : ST_FLG_RES(sum2);
+			Value *res_caf = OR(sum1_cout, sum2_cout);
+			Value *res_cf = AND(res_caf, CONST32(0x80000000));
+			Value *res_af = AND(res_caf, CONST32(8));
+			Value *res_of = AND(OR(XOR(sum1_cout, SHR(sum1_cout, CONST32(1))), XOR(sum2_cout, SHR(sum2_cout, CONST32(1)))), CONST32(0x40000000));
+			ST_FLG_AUX(OR(OR(res_cf, res_af), XOR(SHR(res_cf, CONST32(1)), res_of)));
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_ADD: {
 			switch (instr.opcode)
 			{
