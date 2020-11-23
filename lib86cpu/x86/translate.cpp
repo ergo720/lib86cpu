@@ -939,7 +939,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_CBW:         BAD;
+		case ZYDIS_MNEMONIC_CBW: {
+			ST_R16(SEXT16(LD_R8L(EAX_idx)), EAX_idx);
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_CDQ:         BAD;
 		case ZYDIS_MNEMONIC_CLC: {
 			assert(instr.opcode == 0xF8);
@@ -1178,7 +1182,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_CMPXCHG:     BAD;
 		case ZYDIS_MNEMONIC_CPUID:       BAD;
 		case ZYDIS_MNEMONIC_CWD:         BAD;
-		case ZYDIS_MNEMONIC_CWDE:        BAD;
+		case ZYDIS_MNEMONIC_CWDE: {
+			ST_R32(SEXT32(LD_R16(EAX_idx)), EAX_idx);
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_DAA: {
 			Value *old_al = LD_R8L(EAX_idx);
 			Value *old_cf = LD_CF();
