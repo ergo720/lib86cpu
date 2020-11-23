@@ -1424,28 +1424,52 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0xF7: {
 				assert(instr.raw.modrm.reg == 6);
 
-				// TODO: division exceptions. This will happily try to divide by zero and doesn't care about overflows
-				Value *val, *reg, *rm;
+				Value *val, *reg, *rm, *div;
+				std::vector<BasicBlock *> vec_bb = BBs(3);
 				switch (size_mode)
 				{
 				case SIZE8:
 					reg = LD_R16(EAX_idx);
 					GET_RM(OPNUM_SINGLE, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-					ST_REG_val(TRUNC8(UDIV(reg, ZEXT16(val))), GEP_R8L(EAX_idx));
+					BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(val, CONST8(0)));
+					cpu->bb = vec_bb[0];
+					RAISEin0(EXP_DE);
+					UNREACH();
+					cpu->bb = vec_bb[1];
+					div = UDIV(reg, ZEXT16(val));
+					BR_COND(vec_bb[0], vec_bb[2], ICMP_UGT(div, CONST16(0xFF)));
+					cpu->bb = vec_bb[2];
+					ST_REG_val(TRUNC8(div), GEP_R8L(EAX_idx));
 					ST_REG_val(TRUNC8(UREM(reg, ZEXT16(val))), GEP_R8H(EAX_idx));
 					break;
 
 				case SIZE16:
 					reg = OR(SHL(ZEXT32(LD_R16(EDX_idx)), CONST32(16)), ZEXT32(LD_R16(EAX_idx)));
 					GET_RM(OPNUM_SINGLE, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-					ST_REG_val(TRUNC16(UDIV(reg, ZEXT32(val))), GEP_R16(EAX_idx));
+					BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(val, CONST16(0)));
+					cpu->bb = vec_bb[0];
+					RAISEin0(EXP_DE);
+					UNREACH();
+					cpu->bb = vec_bb[1];
+					div = UDIV(reg, ZEXT32(val));
+					BR_COND(vec_bb[0], vec_bb[2], ICMP_UGT(div, CONST32(0xFFFF)));
+					cpu->bb = vec_bb[2];
+					ST_REG_val(TRUNC16(div), GEP_R16(EAX_idx));
 					ST_REG_val(TRUNC16(UREM(reg, ZEXT32(val))), GEP_R16(EDX_idx));
 					break;
 
 				case SIZE32:
 					reg = OR(SHL(ZEXT64(LD_R32(EDX_idx)), CONST64(32)), ZEXT64(LD_R32(EAX_idx)));
 					GET_RM(OPNUM_SINGLE, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-					ST_REG_val(TRUNC32(UDIV(reg, ZEXT64(val))), GEP_R32(EAX_idx));
+					BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(val, CONST32(0)));
+					cpu->bb = vec_bb[0];
+					RAISEin0(EXP_DE);
+					UNREACH();
+					cpu->bb = vec_bb[1];
+					div = UDIV(reg, ZEXT64(val));
+					BR_COND(vec_bb[0], vec_bb[2], ICMP_UGT(div, CONST64(0xFFFFFFFF)));
+					cpu->bb = vec_bb[2];
+					ST_REG_val(TRUNC32(div), GEP_R32(EAX_idx));
 					ST_REG_val(TRUNC32(UREM(reg, ZEXT64(val))), GEP_R32(EDX_idx));
 					break;
 
