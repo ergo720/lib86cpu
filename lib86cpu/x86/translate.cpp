@@ -675,50 +675,38 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		break;
 
 		case ZYDIS_MNEMONIC_ARPL: {
-			if (!(cpu_ctx->hflags & HFLG_PE_MODE)) {
-				RAISEin0(EXP_UD);
-				translate_next = 0;
-			}
-			else {
-				assert((instr.operands[OPNUM_DST].size == 16) && (instr.operands[OPNUM_SRC].size == 16));
+			assert((instr.operands[OPNUM_DST].size == 16) && (instr.operands[OPNUM_SRC].size == 16));
 
-				Value *rm, *rpl_dst, *rpl_src = LD_REG_val(GET_REG(OPNUM_SRC));
-				GET_RM(OPNUM_DST, rpl_dst = LD_REG_val(rm);, rpl_dst = LD_MEM(MEM_LD16_idx, rm););
-				std::vector<BasicBlock *> vec_bb = BBs(3);
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_ULT(AND(rpl_dst, CONST16(3)), AND(rpl_src, CONST16(3))));
-				cpu->bb = vec_bb[0];
-				Value *new_rpl = OR(AND(rpl_dst, CONST16(0xFFFC)), AND(rpl_src, CONST16(3)));
-				(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(new_rpl, rm) : ST_MEM(MEM_LD16_idx, rm, new_rpl);
-				Value *new_sfd = XOR(LD_SF(), CONST32(0));
-				Value *new_pdb = SHL(XOR(AND(XOR(LD_FLG_RES(), SHR(LD_FLG_AUX(), CONST32(8))), CONST32(0xFF)), CONST32(0)), CONST32(8));
-				ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0xFFFF00FE)), OR(new_sfd, new_pdb)));
-				ST_FLG_RES(CONST32(0));
-				BR_UNCOND(vec_bb[2]);
-				cpu->bb = vec_bb[1];
-				ST_FLG_RES(OR(LD_FLG_RES(), CONST32(0x100)));
-				BR_UNCOND(vec_bb[2]);
-				cpu->bb = vec_bb[2];
-			}
+			Value *rm, *rpl_dst, *rpl_src = LD_REG_val(GET_REG(OPNUM_SRC));
+			GET_RM(OPNUM_DST, rpl_dst = LD_REG_val(rm);, rpl_dst = LD_MEM(MEM_LD16_idx, rm););
+			std::vector<BasicBlock *> vec_bb = BBs(3);
+			BR_COND(vec_bb[0], vec_bb[1], ICMP_ULT(AND(rpl_dst, CONST16(3)), AND(rpl_src, CONST16(3))));
+			cpu->bb = vec_bb[0];
+			Value *new_rpl = OR(AND(rpl_dst, CONST16(0xFFFC)), AND(rpl_src, CONST16(3)));
+			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(new_rpl, rm) : ST_MEM(MEM_LD16_idx, rm, new_rpl);
+			Value *new_sfd = XOR(LD_SF(), CONST32(0));
+			Value *new_pdb = SHL(XOR(AND(XOR(LD_FLG_RES(), SHR(LD_FLG_AUX(), CONST32(8))), CONST32(0xFF)), CONST32(0)), CONST32(8));
+			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0xFFFF00FE)), OR(new_sfd, new_pdb)));
+			ST_FLG_RES(CONST32(0));
+			BR_UNCOND(vec_bb[2]);
+			cpu->bb = vec_bb[1];
+			ST_FLG_RES(OR(LD_FLG_RES(), CONST32(0x100)));
+			BR_UNCOND(vec_bb[2]);
+			cpu->bb = vec_bb[2];
 		}
 		break;
 
 		case ZYDIS_MNEMONIC_BOUND: {
-			if (instr.operands[OPNUM_SRC].type != ZYDIS_OPERAND_TYPE_MEMORY) {
-				RAISEin0(EXP_UD);
-				translate_next = 0;
-			}
-			else {
-				Value *idx = LD_REG_val(GET_REG(OPNUM_DST));
-				Value *idx_addr = GET_OP(OPNUM_SRC);
-				Value *lower_idx = LD_MEM(fn_idx[size_mode], idx_addr);
-				Value *upper_idx = LD_MEM(fn_idx[size_mode], ADD(idx_addr, (size_mode == SIZE16) ? CONST32(2) : CONST32(4)));
-				std::vector<BasicBlock *> vec_bb = BBs(2);
-				BR_COND(vec_bb[0], vec_bb[1], OR(ICMP_SLT(idx, lower_idx), ICMP_SGT(idx, upper_idx)));
-				cpu->bb = vec_bb[0];
-				RAISEin0(EXP_BR);
-				UNREACH();
-				cpu->bb = vec_bb[1];
-			}
+			Value *idx = LD_REG_val(GET_REG(OPNUM_DST));
+			Value *idx_addr = GET_OP(OPNUM_SRC);
+			Value *lower_idx = LD_MEM(fn_idx[size_mode], idx_addr);
+			Value *upper_idx = LD_MEM(fn_idx[size_mode], ADD(idx_addr, (size_mode == SIZE16) ? CONST32(2) : CONST32(4)));
+			std::vector<BasicBlock *> vec_bb = BBs(2);
+			BR_COND(vec_bb[0], vec_bb[1], OR(ICMP_SLT(idx, lower_idx), ICMP_SGT(idx, upper_idx)));
+			cpu->bb = vec_bb[0];
+			RAISEin0(EXP_BR);
+			UNREACH();
+			cpu->bb = vec_bb[1];
 		}
 		break;
 
@@ -1914,11 +1902,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_LLDT: {
 			assert(instr.raw.modrm.reg == 2);
 
-			if (!(cpu_ctx->hflags & HFLG_PE_MODE)) {
-				RAISEin0(EXP_UD);
-				translate_next = 0;
-			}
-			else if (cpu_ctx->hflags & HFLG_CPL) {
+			if (cpu_ctx->hflags & HFLG_CPL) {
 				RAISEin0(EXP_GP);
 				translate_next = 0;
 			}
@@ -2189,11 +2173,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_LTR: {
 			assert(instr.raw.modrm.reg == 3);
 
-			if (!(cpu_ctx->hflags & HFLG_PE_MODE)) {
-				RAISEin0(EXP_UD);
-				translate_next = 0;
-			}
-			else if (cpu_ctx->hflags & HFLG_CPL) {
+			if (cpu_ctx->hflags & HFLG_CPL) {
 				RAISEin0(EXP_GP);
 				translate_next = 0;
 			}
