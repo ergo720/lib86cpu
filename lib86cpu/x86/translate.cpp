@@ -1565,7 +1565,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					GET_RM(OPNUM_SINGLE, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
 					out = MUL(SEXT16(reg), SEXT16(val));
 					ST_REG_val(out, GEP_R16(EAX_idx));
-					ST_FLG_AUX(SHL(ZEXT32(NOT_ZERO(16, XOR(out, LD_R8L(EAX_idx)))), CONST32(31)));
+					ST_FLG_AUX(SHL(ZEXT32(NOT_ZERO(16, XOR(SEXT16(LD_R8L(EAX_idx)), out))), CONST32(31)));
 					break;
 
 				case SIZE16:
@@ -1583,7 +1583,63 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					out = MUL(SEXT64(reg), SEXT64(val));
 					ST_REG_val(TRUNC32(SHR(out, CONST64(32))), GEP_R32(EDX_idx));
 					ST_REG_val(TRUNC32(out), GEP_R32(EAX_idx));
-					ST_FLG_AUX(SHL(TRUNC32(NOT_ZERO(64, XOR(ZEXT64(LD_R32(EAX_idx)), out))), CONST32(31)));
+					ST_FLG_AUX(SHL(TRUNC32(NOT_ZERO(64, XOR(SEXT64(LD_R32(EAX_idx)), out))), CONST32(31)));
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+			}
+			break;
+
+			case 0xAF: {
+				Value *val, *reg, *reg_ptr, *rm, *out;
+				switch (size_mode)
+				{
+				case SIZE16:
+					reg_ptr = GET_REG(OPNUM_DST);
+					reg = LD_REG_val(reg_ptr);
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					out = MUL(SEXT32(reg), SEXT32(val));
+					ST_REG_val(TRUNC16(out), reg_ptr);
+					ST_FLG_AUX(SHL(NOT_ZERO(32, XOR(SEXT32(LD_REG_val(reg_ptr)), out)), CONST32(31)));
+					break;
+
+				case SIZE32:
+					reg_ptr = GET_REG(OPNUM_DST);
+					reg = LD_REG_val(reg_ptr);
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					out = MUL(SEXT64(reg), SEXT64(val));
+					ST_REG_val(TRUNC32(out), reg_ptr);
+					ST_FLG_AUX(SHL(TRUNC32(NOT_ZERO(64, XOR(SEXT64(LD_REG_val(reg_ptr)), out))), CONST32(31)));
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+			}
+			break;
+
+			case 0x6B:
+			case 0x69: {
+				Value *imm = CONSTs(instr.operands[OPNUM_THIRD].size, instr.operands[OPNUM_THIRD].imm.value.u);
+				Value *val, *reg_ptr, *rm, *out;
+				switch (size_mode)
+				{
+				case SIZE16:
+					reg_ptr = GET_REG(OPNUM_DST);
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					out = MUL(SEXT32(val), SEXT32(imm));
+					ST_REG_val(TRUNC16(out), reg_ptr);
+					ST_FLG_AUX(SHL(NOT_ZERO(32, XOR(SEXT32(LD_REG_val(reg_ptr)), out)), CONST32(31)));
+					break;
+
+				case SIZE32:
+					reg_ptr = GET_REG(OPNUM_DST);
+					GET_RM(OPNUM_SRC, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					out = MUL(SEXT64(val), SEXT64(imm));
+					ST_REG_val(TRUNC32(out), reg_ptr);
+					ST_FLG_AUX(SHL(TRUNC32(NOT_ZERO(64, XOR(SEXT64(LD_REG_val(reg_ptr)), out))), CONST32(31)));
 					break;
 
 				default:
@@ -1593,7 +1649,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 			default:
-				BAD;
+				LIB86CPU_ABORT();
 			}
 		}
 		break;
