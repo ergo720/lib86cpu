@@ -1570,7 +1570,77 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_IDIV:        BAD;
+		case ZYDIS_MNEMONIC_IDIV: {
+			switch (instr.opcode)
+			{
+			case 0xF6:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0xF7: {
+				assert(instr.raw.modrm.reg == 7);
+
+				Value *val, *reg, *rm, *div;
+				std::vector<BasicBlock *> vec_bb = BBs(3);
+				switch (size_mode)
+				{
+				case SIZE8:
+					reg = LD_R16(EAX_idx);
+					GET_RM(OPNUM_SINGLE, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(val, CONST8(0)));
+					cpu->bb = vec_bb[0];
+					RAISEin0(EXP_DE);
+					UNREACH();
+					cpu->bb = vec_bb[1];
+					div = SDIV(reg, SEXT16(val));
+					BR_COND(vec_bb[0], vec_bb[2], OR(ICMP_SGT(div, CONST16(0x7F)), ICMP_SLT(div, CONST16(0x80))));
+					cpu->bb = vec_bb[2];
+					ST_REG_val(TRUNC8(div), GEP_R8L(EAX_idx));
+					ST_REG_val(TRUNC8(SREM(reg, SEXT16(val))), GEP_R8H(EAX_idx));
+					break;
+
+				case SIZE16:
+					reg = OR(SHL(ZEXT32(LD_R16(EDX_idx)), CONST32(16)), ZEXT32(LD_R16(EAX_idx)));
+					GET_RM(OPNUM_SINGLE, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(val, CONST16(0)));
+					cpu->bb = vec_bb[0];
+					RAISEin0(EXP_DE);
+					UNREACH();
+					cpu->bb = vec_bb[1];
+					div = SDIV(reg, SEXT32(val));
+					BR_COND(vec_bb[0], vec_bb[2], OR(ICMP_SGT(div, CONST32(0x7FFF)), ICMP_SLT(div, CONST32(0x8000))));
+					cpu->bb = vec_bb[2];
+					ST_REG_val(TRUNC16(div), GEP_R16(EAX_idx));
+					ST_REG_val(TRUNC16(SREM(reg, SEXT32(val))), GEP_R16(EDX_idx));
+					break;
+
+				case SIZE32:
+					reg = OR(SHL(ZEXT64(LD_R32(EDX_idx)), CONST64(32)), ZEXT64(LD_R32(EAX_idx)));
+					GET_RM(OPNUM_SINGLE, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+					BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(val, CONST32(0)));
+					cpu->bb = vec_bb[0];
+					RAISEin0(EXP_DE);
+					UNREACH();
+					cpu->bb = vec_bb[1];
+					div = SDIV(reg, SEXT64(val));
+					BR_COND(vec_bb[0], vec_bb[2], OR(ICMP_SGT(div, CONST64(0x7FFFFFFF)), ICMP_SLT(div, CONST64(0x80000000))));
+					cpu->bb = vec_bb[2];
+					ST_REG_val(TRUNC32(div), GEP_R32(EAX_idx));
+					ST_REG_val(TRUNC32(SREM(reg, SEXT64(val))), GEP_R32(EDX_idx));
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_IMUL: {
 			switch (instr.opcode)
 			{
