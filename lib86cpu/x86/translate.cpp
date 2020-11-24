@@ -3499,7 +3499,74 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_SAR:         BAD;
+		case ZYDIS_MNEMONIC_SAR: {
+			assert(instr.raw.modrm.reg == 7);
+
+			Value *count;
+			switch (instr.opcode)
+			{
+			case 0xD0:
+				count = CONST32(1);
+				size_mode = SIZE8;
+				break;
+
+			case 0xD2:
+				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				size_mode = SIZE8;
+				break;
+
+			case 0xC0:
+				count = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
+				size_mode = SIZE8;
+				break;
+
+			case 0xD1:
+				count = CONST32(1);
+				break;
+
+			case 0xD3:
+				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				break;
+
+			case 0xC1:
+				count = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
+				break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+
+			std::vector<BasicBlock *>vec_bb = BBs(5);
+			BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
+			cpu->bb = vec_bb[1];
+			Value *val, *rm, *temp, *cf, *cf_mask = SHL(CONST32(1), SUB(count, CONST32(1)));
+			switch (size_mode)
+			{
+			case SIZE8:
+				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = AND(val, cf_mask); val = TRUNC8(ASHR(val, count)); ST_REG_val(val, rm);,
+				temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = AND(val, cf_mask); val = TRUNC8(ASHR(val, count)); ST_MEM(fn_idx[size_mode], rm, val););
+				break;
+
+			case SIZE16:
+				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = AND(val, cf_mask); val = TRUNC16(ASHR(val, count)); ST_REG_val(val, rm);,
+				temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = AND(val, cf_mask); val = TRUNC16(ASHR(val, count)); ST_MEM(fn_idx[size_mode], rm, val););
+				break;
+
+			case SIZE32:
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); cf = AND(val, cf_mask); val = ASHR(val, count); ST_REG_val(val, rm);,
+				val = LD_MEM(fn_idx[size_mode], rm); cf = AND(val, cf_mask); val = ASHR(val, count); ST_MEM(fn_idx[size_mode], rm, val););
+				break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+
+			SET_FLG(val, OR(SHL(cf, SUB(CONST32(32), count)), SHL(cf, SUB(CONST32(31), count))));
+			BR_UNCOND(vec_bb[0]);
+			cpu->bb = vec_bb[0];
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_SBB: {
 			Value *src, *sub, *sum, *dst, *rm, *cf, *sub_cout, *sum_cout;
 			switch (instr.opcode)
