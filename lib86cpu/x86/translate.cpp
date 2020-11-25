@@ -879,7 +879,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				offset = LD_REG_val(GET_REG(OPNUM_SRC));
 			}
 			else {
-				offset = ZEXT(op_size, GET_IMM8());
+				offset = ZEXTs(op_size, GET_IMM8());
 			}
 
 			// NOTE: we can't use llvm's SDIV when the base is a memory operand because that rounds towards zero, while the instruction rounds the
@@ -1174,7 +1174,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0x83:
 				assert(instr.raw.modrm.reg == 7);
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-				cmp = SEXT(size_mode == SIZE16 ? 16 : 32, GET_IMM8());
+				cmp = SEXTs(size_mode == SIZE16 ? 16 : 32, GET_IMM8());
 				break;
 
 			default:
@@ -3415,7 +3415,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				cpu->bb = vec_bb[1];
 				GET_RM(OPNUM_DST, val2 = LD_REG_val(rm);, val2 = LD_MEM(fn_idx[size_mode], rm););
 				val = ALLOCs(33);
-				ST(val, OR(ZEXTs(33, val2), SHL(ZEXTs(33, LD_CF()), CONST32(1))));
+				ST(val, OR(ZEXTs(33, val2), SHL(ZEXTs(33, LD_CF()), CONSTs(33, 1))));
 				ST(val, INTRINSIC_ty(fshl, getIntegerType(33), (std::vector<Value *> { LD(val), LD(val), ZEXTs(33, count) })));
 				Value *cf = TRUNC32(AND(LD(val), CONSTs(33, 1)));
 				Value *of = TRUNC32(SHR(AND(LD(val), CONSTs(33, 1 << 32)), CONSTs(33, 2)));
@@ -3435,7 +3435,103 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_RCR:         BAD;
+		case ZYDIS_MNEMONIC_RCR: {
+			assert(instr.raw.modrm.reg == 3);
+
+			Value *count2, *count;
+			switch (instr.opcode)
+			{
+			case 0xD0:
+				count2 = CONST32(1);
+				size_mode = SIZE8;
+				break;
+
+			case 0xD2:
+				count2 = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				size_mode = SIZE8;
+				break;
+
+			case 0xC0:
+				count2 = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
+				size_mode = SIZE8;
+				break;
+
+			case 0xD1:
+				count2 = CONST32(1);
+				break;
+
+			case 0xD3:
+				count2 = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				break;
+
+			case 0xC1:
+				count2 = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
+				break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+
+			std::vector<BasicBlock *>vec_bb = BBs(2);
+			Value *val, *val2, *rm, *flg;
+			switch (size_mode)
+			{
+			case SIZE8: {
+				count = UREM(count2, CONST32(9));
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
+				cpu->bb = vec_bb[1];
+				GET_RM(OPNUM_DST, val2 = LD_REG_val(rm);, val2 = LD_MEM(fn_idx[size_mode], rm););
+				val = ALLOCs(9);
+				ST(val, OR(SHL(ZEXTs(9, val2), CONSTs(9, 1)), TRUNCs(9, SHR(LD_CF(), CONST32(31)))));
+				ST(val, INTRINSIC_ty(fshr, getIntegerType(9), (std::vector<Value *> { LD(val), LD(val), TRUNCs(9, count) })));
+				Value *cf = ZEXT32(AND(LD(val), CONSTs(9, 1 << 8)));
+				Value *of = ZEXT32(AND(LD(val), CONSTs(9, 1 << 7)));
+				flg = OR(SHL(cf, CONST32(23)), SHL(of, CONST32(23)));
+				ST(val, TRUNC8(SHR(LD(val), CONSTs(9, 1))));
+			}
+			break;
+
+			case SIZE16: {
+				count = UREM(count2, CONST32(17));
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
+				cpu->bb = vec_bb[1];
+				GET_RM(OPNUM_DST, val2 = LD_REG_val(rm);, val2 = LD_MEM(fn_idx[size_mode], rm););
+				val = ALLOCs(17);
+				ST(val, OR(SHL(ZEXTs(17, val2), CONSTs(17, 1)), TRUNCs(17, SHR(LD_CF(), CONST32(31)))));
+				ST(val, INTRINSIC_ty(fshr, getIntegerType(17), (std::vector<Value *> { LD(val), LD(val), TRUNCs(17, count) })));
+				Value *cf = ZEXT32(AND(LD(val), CONSTs(17, 1 << 16)));
+				Value *of = ZEXT32(AND(LD(val), CONSTs(17, 1 << 15)));
+				flg = OR(SHL(cf, CONST32(15)), SHL(of, CONST32(15)));
+				ST(val, TRUNC16(SHR(LD(val), CONSTs(17, 1))));
+			}
+			break;
+
+			case SIZE32: {
+				count = count2;
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
+				cpu->bb = vec_bb[1];
+				GET_RM(OPNUM_DST, val2 = LD_REG_val(rm);, val2 = LD_MEM(fn_idx[size_mode], rm););
+				val = ALLOCs(33);
+				ST(val, OR(SHL(ZEXTs(33, val2), CONSTs(33, 1)), SHL(ZEXTs(33, LD_CF()), CONSTs(33, 31))));
+				ST(val, INTRINSIC_ty(fshr, getIntegerType(33), (std::vector<Value *> { LD(val), LD(val), ZEXTs(33, count) })));
+				Value *cf = TRUNC32(SHR(AND(LD(val), CONSTs(33, 1 << 32)), CONSTs(33, 1)));
+				Value *of = TRUNC32(SHR(AND(LD(val), CONSTs(33, 1 << 31)), CONSTs(33, 1)));
+				flg = OR(cf, of);
+				ST(val, TRUNC32(SHR(LD(val), CONSTs(33, 1))));
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+
+			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(LD(val), rm) : ST_MEM(fn_idx[size_mode], rm, LD(val));
+			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF)), flg));
+			BR_UNCOND(vec_bb[0]);
+			cpu->bb = vec_bb[0];
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_RDMSR:       BAD;
 		case ZYDIS_MNEMONIC_RDPMC:       BAD;
 		case ZYDIS_MNEMONIC_RDTSC:       BAD;
