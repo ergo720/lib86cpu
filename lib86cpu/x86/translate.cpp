@@ -4404,6 +4404,63 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
+		case ZYDIS_MNEMONIC_SHRD: {
+			Value *count;
+			switch (instr.opcode)
+			{
+			case 0xAD:
+				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				break;
+
+			case 0xAC:
+				count = CONST32(instr.operands[OPNUM_THIRD].imm.value.u & 0x1F);
+				break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+
+			std::vector<BasicBlock *>vec_bb = BBs(2);
+			Value *dst, *src, *rm, *flg, *val;
+			BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
+			cpu->bb = vec_bb[1];
+
+			switch (size_mode)
+			{
+			case SIZE16: {
+				BasicBlock *bb = BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0);
+				BR_COND(vec_bb[0], bb, ICMP_UGT(count, CONST32(16)));
+				cpu->bb = bb;
+				GET_RM(OPNUM_DST, dst = LD_REG_val(rm);, dst = LD_MEM(fn_idx[size_mode], rm););
+				src = LD_REG_val(GET_REG(OPNUM_SRC));
+				val = INTRINSIC_ty(fshr, getIntegerType(16), (std::vector<Value *> { src, dst, TRUNC16(count) }));
+				Value *cf = SHL(AND(ZEXT32(dst), SHL(CONST32(1), SUB(count, CONST32(1)))), SUB(CONST32(32), count));
+				Value *of = SHL(ZEXT32(XOR(AND(dst, CONST16(1 << 15)), AND(val, CONST16(1 << 15)))), CONST32(15));
+				flg = OR(cf, XOR(SHR(cf, CONST32(1)), of));
+			}
+			break;
+
+			case SIZE32: {
+				GET_RM(OPNUM_DST, dst = LD_REG_val(rm);, dst = LD_MEM(fn_idx[size_mode], rm););
+				src = LD_REG_val(GET_REG(OPNUM_SRC));
+				val = INTRINSIC_ty(fshr, getIntegerType(32), (std::vector<Value *> { src, dst, count }));
+				Value *cf = SHL(AND(dst, SHL(CONST32(1), SUB(count, CONST32(1)))), SUB(CONST32(32), count));
+				Value *of = SHR(XOR(AND(dst, CONST32(1 << 31)), AND(val, CONST32(1 << 31))), CONST32(1));
+				flg = OR(cf, XOR(SHR(cf, CONST32(1)), of));
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+
+			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(val, rm) : ST_MEM(fn_idx[size_mode], rm, val);
+			SET_FLG(val, flg);
+			BR_UNCOND(vec_bb[0]);
+			cpu->bb = vec_bb[0];
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_SIDT:        BAD;
 		case ZYDIS_MNEMONIC_SLDT:        BAD;
 		case ZYDIS_MNEMONIC_SMSW:        BAD;
