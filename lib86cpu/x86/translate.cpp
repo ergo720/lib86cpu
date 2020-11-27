@@ -532,7 +532,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		break;
 
 		case ZYDIS_MNEMONIC_ADC: {
-			Value *src, *sum1, *sum2, *dst, *rm, *cf, *sum1_cout, *sum2_cout;
+			Value *src, *sum1, *sum2, *dst, *rm, *cf, *sum_cout;
 			switch (instr.opcode)
 			{
 			case 0x14:
@@ -545,19 +545,19 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				case SIZE8:
 					src = CONST8(instr.operands[OPNUM_SRC].imm.value.u);
 					rm = GEP_R8L(EAX_idx);
-					dst = LD(dst);
+					dst = LD(rm);
 					break;
 
 				case SIZE16:
 					src = CONST16(instr.operands[OPNUM_SRC].imm.value.u);
 					rm = GEP_R16(EAX_idx);
-					dst = LD(dst);
+					dst = LD(rm);
 					break;
 
 				case SIZE32:
 					src = CONST32(instr.operands[OPNUM_SRC].imm.value.u);
 					rm = GEP_R32(EAX_idx);
-					dst = LD(dst);
+					dst = LD(rm);
 					break;
 
 				default:
@@ -617,24 +617,21 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				cf = TRUNC8(SHR(LD_CF(), CONST32(31)));
 				sum1 = ADD(dst, src);
 				sum2 = ADD(sum1, cf);
-				sum1_cout = GEN_SUM_VEC8(dst, src, sum1);
-				sum2_cout = GEN_SUM_VEC8(sum1, cf, sum2);
+				sum_cout = GEN_SUM_VEC8(dst, src, sum2);
 				break;
 
 			case SIZE16:
 				cf = TRUNC16(SHR(LD_CF(), CONST32(31)));
 				sum1 = ADD(dst, src);
 				sum2 = ADD(sum1, cf);
-				sum1_cout = GEN_SUM_VEC16(dst, src, sum1);
-				sum2_cout = GEN_SUM_VEC16(sum1, cf, sum2);
+				sum_cout = GEN_SUM_VEC16(dst, src, sum2);
 				break;
 
 			case SIZE32:
 				cf = SHR(LD_CF(), CONST32(31));
 				sum1 = ADD(dst, src);
 				sum2 = ADD(sum1, cf);
-				sum1_cout = GEN_SUM_VEC32(dst, src, sum1);
-				sum2_cout = GEN_SUM_VEC32(sum1, cf, sum2);
+				sum_cout = GEN_SUM_VEC32(dst, src, sum2);
 				break;
 
 			default:
@@ -648,12 +645,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				ST_MEM(fn_idx[size_mode], rm, sum2);
 			}
 
-			(size_mode != SIZE32) ? ST_FLG_RES_ext(sum2) : ST_FLG_RES(sum2);
-			Value *res_caf = OR(sum1_cout, sum2_cout);
-			Value *res_cf = AND(res_caf, CONST32(0x80000000));
-			Value *res_af = AND(res_caf, CONST32(8));
-			Value *res_of = AND(OR(XOR(sum1_cout, SHR(sum1_cout, CONST32(1))), XOR(sum2_cout, SHR(sum2_cout, CONST32(1)))), CONST32(0x40000000));
-			ST_FLG_AUX(OR(OR(res_cf, res_af), XOR(SHR(res_cf, CONST32(1)), res_of)));
+			SET_FLG(sum2, sum_cout);
 		}
 		break;
 
@@ -1403,7 +1395,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 
 				cf_old = LD_CF();
-				SET_FLG_SUM(sub, val, one);
+				SET_FLG_SUB(sub, val, one);
 				ST_FLG_AUX(OR(OR(cf_old, SHR(XOR(cf_old, LD_OF()), CONST32(1))), AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF))));
 			}
 			break;
@@ -1592,10 +1584,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					RAISEin0(EXP_DE);
 					UNREACH();
 					cpu->bb = vec_bb[1];
-					div = SDIV(reg, SEXT16(val));
-					BR_COND(vec_bb[0], vec_bb[2], OR(ICMP_SGT(div, CONST16(0x7F)), ICMP_SLT(div, CONST16(0x80))));
+					div = TRUNC8(SDIV(reg, SEXT16(val)));
+					BR_COND(vec_bb[0], vec_bb[2], OR(ICMP_SGT(div, CONST8(0x7F)), ICMP_SLT(div, CONST8(0x80))));
 					cpu->bb = vec_bb[2];
-					ST_REG_val(TRUNC8(div), GEP_R8L(EAX_idx));
+					ST_REG_val(div, GEP_R8L(EAX_idx));
 					ST_REG_val(TRUNC8(SREM(reg, SEXT16(val))), GEP_R8H(EAX_idx));
 					break;
 
@@ -1607,10 +1599,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					RAISEin0(EXP_DE);
 					UNREACH();
 					cpu->bb = vec_bb[1];
-					div = SDIV(reg, SEXT32(val));
-					BR_COND(vec_bb[0], vec_bb[2], OR(ICMP_SGT(div, CONST32(0x7FFF)), ICMP_SLT(div, CONST32(0x8000))));
+					div = TRUNC16(SDIV(reg, SEXT32(val)));
+					BR_COND(vec_bb[0], vec_bb[2], OR(ICMP_SGT(div, CONST16(0x7FFF)), ICMP_SLT(div, CONST16(0x8000))));
 					cpu->bb = vec_bb[2];
-					ST_REG_val(TRUNC16(div), GEP_R16(EAX_idx));
+					ST_REG_val(div, GEP_R16(EAX_idx));
 					ST_REG_val(TRUNC16(SREM(reg, SEXT32(val))), GEP_R16(EDX_idx));
 					break;
 
@@ -1622,10 +1614,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					RAISEin0(EXP_DE);
 					UNREACH();
 					cpu->bb = vec_bb[1];
-					div = SDIV(reg, SEXT64(val));
-					BR_COND(vec_bb[0], vec_bb[2], OR(ICMP_SGT(div, CONST64(0x7FFFFFFF)), ICMP_SLT(div, CONST64(0x80000000))));
+					div = TRUNC32(SDIV(reg, SEXT64(val)));
+					BR_COND(vec_bb[0], vec_bb[2], OR(ICMP_SGT(div, CONST32(0x7FFFFFFF)), ICMP_SLT(div, CONST32(0x80000000))));
 					cpu->bb = vec_bb[2];
-					ST_REG_val(TRUNC32(div), GEP_R32(EAX_idx));
+					ST_REG_val(div, GEP_R32(EAX_idx));
 					ST_REG_val(TRUNC32(SREM(reg, SEXT64(val))), GEP_R32(EDX_idx));
 					break;
 
@@ -3376,7 +3368,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 
 			std::vector<BasicBlock *>vec_bb = BBs(2);
-			Value *val, *val2, *rm, *flg;
+			Value *val, *val2, *rm, *flg, *res;
 			switch (size_mode)
 			{
 			case SIZE8: {
@@ -3390,7 +3382,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *cf = ZEXT32(AND(LD(val), CONSTs(9, 1)));
 				Value *of = ZEXT32(AND(LD(val), CONSTs(9, 1 << 8)));
 				flg = OR(SHL(cf, CONST32(31)), SHL(of, CONST32(22)));
-				ST(val, TRUNC8(LD(val)));
+				res = TRUNC8(LD(val));
 			}
 			break;
 
@@ -3405,7 +3397,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *cf = ZEXT32(AND(LD(val), CONSTs(17, 1)));
 				Value *of = ZEXT32(AND(LD(val), CONSTs(17, 1 << 16)));
 				flg = OR(SHL(cf, CONST32(31)), SHL(of, CONST32(15)));
-				ST(val, TRUNC16(LD(val)));
+				res = TRUNC16(LD(val));
 			}
 			break;
 
@@ -3420,7 +3412,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *cf = TRUNC32(AND(LD(val), CONSTs(33, 1)));
 				Value *of = TRUNC32(SHR(AND(LD(val), CONSTs(33, 1ULL << 32)), CONSTs(33, 2)));
 				flg = OR(SHL(cf, CONST32(31)), of);
-				ST(val, TRUNC32(LD(val)));
+				res = TRUNC32(LD(val));
 			}
 			break;
 
@@ -3428,7 +3420,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT();
 			}
 
-			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(LD(val), rm) : ST_MEM(fn_idx[size_mode], rm, LD(val));
+			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(res, rm) : ST_MEM(fn_idx[size_mode], rm, res);
 			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF)), flg));
 			BR_UNCOND(vec_bb[0]);
 			cpu->bb = vec_bb[0];
@@ -3473,7 +3465,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 
 			std::vector<BasicBlock *>vec_bb = BBs(2);
-			Value *val, *val2, *rm, *flg;
+			Value *val, *val2, *rm, *flg, *res;
 			switch (size_mode)
 			{
 			case SIZE8: {
@@ -3487,7 +3479,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *cf = ZEXT32(AND(LD(val), CONSTs(9, 1 << 8)));
 				Value *of = ZEXT32(AND(LD(val), CONSTs(9, 1 << 7)));
 				flg = OR(SHL(cf, CONST32(23)), SHL(of, CONST32(23)));
-				ST(val, TRUNC8(SHR(LD(val), CONSTs(9, 1))));
+				res = TRUNC8(SHR(LD(val), CONSTs(9, 1)));
 			}
 			break;
 
@@ -3502,7 +3494,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *cf = ZEXT32(AND(LD(val), CONSTs(17, 1 << 16)));
 				Value *of = ZEXT32(AND(LD(val), CONSTs(17, 1 << 15)));
 				flg = OR(SHL(cf, CONST32(15)), SHL(of, CONST32(15)));
-				ST(val, TRUNC16(SHR(LD(val), CONSTs(17, 1))));
+				res = TRUNC16(SHR(LD(val), CONSTs(17, 1)));
 			}
 			break;
 
@@ -3517,7 +3509,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *cf = TRUNC32(SHR(AND(LD(val), CONSTs(33, 1ULL << 32)), CONSTs(33, 1)));
 				Value *of = TRUNC32(SHR(AND(LD(val), CONSTs(33, 1 << 31)), CONSTs(33, 1)));
 				flg = OR(cf, of);
-				ST(val, TRUNC32(SHR(LD(val), CONSTs(33, 1))));
+				res = TRUNC32(SHR(LD(val), CONSTs(33, 1)));
 			}
 			break;
 
@@ -3525,7 +3517,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT();
 			}
 
-			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(LD(val), rm) : ST_MEM(fn_idx[size_mode], rm, LD(val));
+			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(res, rm) : ST_MEM(fn_idx[size_mode], rm, res);
 			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF)), flg));
 			BR_UNCOND(vec_bb[0]);
 			cpu->bb = vec_bb[0];
@@ -3854,7 +3846,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		break;
 
 		case ZYDIS_MNEMONIC_SBB: {
-			Value *src, *sub, *sum, *dst, *rm, *cf, *sub_cout, *sum_cout;
+			Value *src, *sub, *sum, *dst, *rm, *cf, *sub_cout;
 			switch (instr.opcode)
 			{
 			case 0x1C:
@@ -3867,26 +3859,26 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				case SIZE8:
 					src = CONST8(instr.operands[OPNUM_SRC].imm.value.u);
 					rm = GEP_R8L(EAX_idx);
-					dst = LD(dst);
+					dst = LD(rm);
 					break;
 
 				case SIZE16:
 					src = CONST16(instr.operands[OPNUM_SRC].imm.value.u);
 					rm = GEP_R16(EAX_idx);
-					dst = LD(dst);
+					dst = LD(rm);
 					break;
 
 				case SIZE32:
 					src = CONST32(instr.operands[OPNUM_SRC].imm.value.u);
 					rm = GEP_R32(EAX_idx);
-					dst = LD(dst);
+					dst = LD(rm);
 					break;
 
 				default:
 					LIB86CPU_ABORT();
 				}
 			}
-					 break;
+			break;
 
 			case 0x80:
 				size_mode = SIZE8;
@@ -3939,24 +3931,21 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				cf = TRUNC8(SHR(LD_CF(), CONST32(31)));
 				sum = ADD(src, cf);
 				sub = SUB(dst, sum);
-				sum_cout = GEN_SUM_VEC8(src, cf, sum);
-				sub_cout = GEN_SUB_VEC8(dst, sum, sub);
+				sub_cout = GEN_SUB_VEC8(dst, src, sub);
 				break;
 
 			case SIZE16:
 				cf = TRUNC16(SHR(LD_CF(), CONST32(31)));
 				sum = ADD(src, cf);
 				sub = SUB(dst, sum);
-				sum_cout = GEN_SUM_VEC16(src, cf, sum);
-				sub_cout = GEN_SUB_VEC16(dst, sum, sub);
+				sub_cout = GEN_SUB_VEC16(dst, src, sub);
 				break;
 
 			case SIZE32:
 				cf = SHR(LD_CF(), CONST32(31));
 				sum = ADD(src, cf);
 				sub = SUB(dst, sum);
-				sum_cout = GEN_SUM_VEC32(src, cf, sum);
-				sub_cout = GEN_SUB_VEC32(dst, sum, sub);
+				sub_cout = GEN_SUB_VEC32(dst, src, sub);
 				break;
 
 			default:
@@ -3970,12 +3959,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				ST_MEM(fn_idx[size_mode], rm, sub);
 			}
 
-			(size_mode != SIZE32) ? ST_FLG_RES_ext(sub) : ST_FLG_RES(sub);
-			Value *res_caf = OR(sum_cout, sub_cout);
-			Value *res_cf = AND(res_caf, CONST32(0x80000000));
-			Value *res_af = AND(res_caf, CONST32(8));
-			Value *res_of = AND(OR(XOR(sum_cout, SHR(sum_cout, CONST32(1))), XOR(sub_cout, SHR(sub_cout, CONST32(1)))), CONST32(0x40000000));
-			ST_FLG_AUX(OR(OR(res_cf, res_af), XOR(SHR(res_cf, CONST32(1)), res_of)));
+			SET_FLG(sub, sub_cout);
 		}
 		break;
 
@@ -4226,22 +4210,32 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			switch (size_mode)
 			{
 			case SIZE8: {
+				std::vector<BasicBlock *> vec_bb2 = BBs(2);
+				BR_COND(vec_bb2[0], vec_bb2[1], ICMP_ULE(count, CONST32(8)));
+				cpu->bb = vec_bb2[0];
 				cf_mask = SHL(CONST32(1), SUB(CONST32(8), AND(count, CONST32(7))));
 				of_mask = CONST32(1 << 7);
 				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = SHL(AND(val, cf_mask), ADD(AND(count, CONST32(7)), CONST32(23))); val = SHL(val, count);
-				of = SHL(AND(val, of_mask), CONST32(23)); val = TRUNC8(val); ST_REG_val(val, rm);,
+				of = SHL(AND(val, of_mask), CONST32(23)); val = TRUNC8(val); ST_REG_val(val, rm); SET_FLG(val, OR(cf, of)); BR_UNCOND(vec_bb[0]);
+				cpu->bb = vec_bb2[1]; ST_REG_val(CONST8(0), rm); SET_FLG(CONST8(0), CONST32(0)); BR_UNCOND(vec_bb[0]);,
 				temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = SHL(AND(val, cf_mask), ADD(AND(count, CONST32(7)), CONST32(23)));
-				val = SHL(val, count); of = SHL(AND(val, of_mask), CONST32(23)); val = TRUNC8(val); ST_MEM(fn_idx[size_mode], rm, val););
+				val = SHL(val, count); of = SHL(AND(val, of_mask), CONST32(23)); val = TRUNC8(val); ST_MEM(fn_idx[size_mode], rm, val); SET_FLG(val, OR(cf, of));
+				BR_UNCOND(vec_bb[0]); cpu->bb = vec_bb2[1]; ST_MEM(fn_idx[size_mode], rm, CONST8(0)); SET_FLG(CONST8(0), CONST32(0)); BR_UNCOND(vec_bb[0]););
 			}
 			break;
 
 			case SIZE16: {
+				std::vector<BasicBlock *> vec_bb2 = BBs(2);
+				BR_COND(vec_bb2[0], vec_bb2[1], ICMP_ULE(count, CONST32(16)));
+				cpu->bb = vec_bb2[0];
 				cf_mask = SHL(CONST32(1), SUB(CONST32(16), AND(count, CONST32(15))));
 				of_mask = CONST32(1 << 15);
 				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = SHL(AND(val, cf_mask), ADD(AND(count, CONST32(15)), CONST32(15))); val = SHL(val, count);
-				of = SHL(AND(val, of_mask), CONST32(15)); val = TRUNC16(val); ST_REG_val(val, rm);,
+				of = SHL(AND(val, of_mask), CONST32(15)); val = TRUNC16(val); ST_REG_val(val, rm); SET_FLG(val, OR(cf, of)); BR_UNCOND(vec_bb[0]);
+				cpu->bb = vec_bb2[1]; ST_REG_val(CONST16(0), rm); SET_FLG(CONST16(0), CONST32(0)); BR_UNCOND(vec_bb[0]);,
 				temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = SHL(AND(val, cf_mask), ADD(AND(count, CONST32(7)), CONST32(15)));
-				val = SHL(val, count); of = SHL(AND(val, of_mask), CONST32(15)); val = TRUNC16(val); ST_MEM(fn_idx[size_mode], rm, val););
+				val = SHL(val, count); of = SHL(AND(val, of_mask), CONST32(15)); val = TRUNC16(val); ST_MEM(fn_idx[size_mode], rm, val); SET_FLG(val, OR(cf, of));
+				BR_UNCOND(vec_bb[0]); cpu->bb = vec_bb2[1]; ST_MEM(fn_idx[size_mode], rm, CONST16(0)); SET_FLG(CONST16(0), CONST32(0)); BR_UNCOND(vec_bb[0]););
 			}
 			break;
 
@@ -4251,14 +4245,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm); cf = SHL(AND(val, cf_mask), SUB(count, CONST32(1))); val = SHL(val, count); of = SHR(AND(val, of_mask), CONST32(1));
 				ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm); cf = SHL(AND(val, cf_mask), SUB(count, CONST32(1))); val = SHL(val, count);
 				of = SHR(AND(val, of_mask), CONST32(1)); ST_MEM(fn_idx[size_mode], rm, val););
+				SET_FLG(val, OR(cf, of));
+				BR_UNCOND(vec_bb[0]);
 				break;
 
 			default:
 				LIB86CPU_ABORT();
 			}
 
-			SET_FLG(val, OR(cf, of));
-			BR_UNCOND(vec_bb[0]);
 			cpu->bb = vec_bb[0];
 		}
 		break;
@@ -4388,7 +4382,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT();
 			}
 
-			SET_FLG(val, OR(SHL(cf, SUB(CONST32(32), count)), SHL(XOR(SHR(cf, SUB(count, CONST32(1))), LD(of)), CONST32(30))));
+			SET_FLG(val, OR(SHL(cf, SUB(CONST32(32), count)), SHL(XOR(SHR(cf, SUB(count, CONST32(1))), of), CONST32(30))));
 			BR_UNCOND(vec_bb[0]);
 			cpu->bb = vec_bb[0];
 		}
@@ -4829,7 +4823,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 			case 0x83: {
-				Value *rm, *val, *imm = GET_IMM();
+				Value *rm, *val, *imm = GET_IMM8();
 				imm = size_mode == SIZE16 ? SEXT16(imm) : SEXT32(imm);
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = XOR(val, imm); ST_REG_val(val, rm);,
 					val = LD_MEM(fn_idx[size_mode], rm); val = XOR(val, imm); ST_MEM(fn_idx[size_mode], rm, val););

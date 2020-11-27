@@ -164,6 +164,7 @@ default: \
 #define ICMP_UGT(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_UGT, a, b, "")
 #define ICMP_UGE(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_UGE, a, b, "")
 #define ICMP_ULT(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_ULT, a, b, "")
+#define ICMP_ULE(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_ULE, a, b, "")
 #define ICMP_SGE(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_SGE, a, b, "")
 #define ICMP_SGT(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_SGT, a, b, "")
 #define ICMP_SLT(a, b) new ICmpInst(*cpu->bb, ICmpInst::ICMP_SLT, a, b, "")
