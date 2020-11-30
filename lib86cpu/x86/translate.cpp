@@ -1584,10 +1584,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					RAISEin0(EXP_DE);
 					UNREACH();
 					cpu->bb = vec_bb[1];
-					div = TRUNC8(SDIV(reg, SEXT16(val)));
-					BR_COND(vec_bb[0], vec_bb[2], OR(ICMP_SGT(div, CONST8(0x7F)), ICMP_SLT(div, CONST8(0x80))));
+					div = SDIV(reg, SEXT16(val));
+					BR_COND(vec_bb[0], vec_bb[2], ICMP_NE(div, SEXT16(TRUNC8(div))));
 					cpu->bb = vec_bb[2];
-					ST_REG_val(div, GEP_R8L(EAX_idx));
+					ST_REG_val(TRUNC8(div), GEP_R8L(EAX_idx));
 					ST_REG_val(TRUNC8(SREM(reg, SEXT16(val))), GEP_R8H(EAX_idx));
 					break;
 
@@ -1599,10 +1599,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					RAISEin0(EXP_DE);
 					UNREACH();
 					cpu->bb = vec_bb[1];
-					div = TRUNC16(SDIV(reg, SEXT32(val)));
-					BR_COND(vec_bb[0], vec_bb[2], OR(ICMP_SGT(div, CONST16(0x7FFF)), ICMP_SLT(div, CONST16(0x8000))));
+					div = SDIV(reg, SEXT32(val));
+					BR_COND(vec_bb[0], vec_bb[2], ICMP_NE(div, SEXT32(TRUNC16(div))));
 					cpu->bb = vec_bb[2];
-					ST_REG_val(div, GEP_R16(EAX_idx));
+					ST_REG_val(TRUNC16(div), GEP_R16(EAX_idx));
 					ST_REG_val(TRUNC16(SREM(reg, SEXT32(val))), GEP_R16(EDX_idx));
 					break;
 
@@ -1614,10 +1614,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					RAISEin0(EXP_DE);
 					UNREACH();
 					cpu->bb = vec_bb[1];
-					div = TRUNC32(SDIV(reg, SEXT64(val)));
-					BR_COND(vec_bb[0], vec_bb[2], OR(ICMP_SGT(div, CONST32(0x7FFFFFFF)), ICMP_SLT(div, CONST32(0x80000000))));
+					div = SDIV(reg, SEXT64(val));
+					BR_COND(vec_bb[0], vec_bb[2], ICMP_NE(div, SEXT64(TRUNC32(div))));
 					cpu->bb = vec_bb[2];
-					ST_REG_val(div, GEP_R32(EAX_idx));
+					ST_REG_val(TRUNC32(div), GEP_R32(EAX_idx));
 					ST_REG_val(TRUNC32(SREM(reg, SEXT64(val))), GEP_R32(EDX_idx));
 					break;
 
@@ -3333,34 +3333,34 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_RCL: {
 			assert(instr.raw.modrm.reg == 2);
 
-			Value *count2, *count;
+			Value *count;
 			switch (instr.opcode)
 			{
 			case 0xD0:
-				count2 = CONST32(1);
+				count = CONST32(1);
 				size_mode = SIZE8;
 				break;
 
 			case 0xD2:
-				count2 = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
 				size_mode = SIZE8;
 				break;
 
 			case 0xC0:
-				count2 = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
+				count = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
 				size_mode = SIZE8;
 				break;
 
 			case 0xD1:
-				count2 = CONST32(1);
+				count = CONST32(1);
 				break;
 
 			case 0xD3:
-				count2 = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
 				break;
 
 			case 0xC1:
-				count2 = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
+				count = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
 				break;
 
 			default:
@@ -3368,51 +3368,41 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 
 			std::vector<BasicBlock *>vec_bb = BBs(2);
-			Value *val, *val2, *rm, *flg, *res;
+			BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
+			cpu->bb = vec_bb[1];
+			Value *val, *rm, *flg, *res;
 			switch (size_mode)
 			{
 			case SIZE8: {
-				count = UREM(count2, CONST32(9));
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
-				cpu->bb = vec_bb[1];
-				GET_RM(OPNUM_DST, val2 = LD_REG_val(rm);, val2 = LD_MEM(fn_idx[size_mode], rm););
-				val = ALLOCs(9);
-				ST(val, OR(ZEXTs(9, val2), TRUNCs(9, SHR(LD_CF(), CONST32(22)))));
-				ST(val, INTRINSIC_ty(fshl, getIntegerType(9), (std::vector<Value *> { LD(val), LD(val), TRUNCs(9, count) })));
-				Value *cf = ZEXT32(AND(LD(val), CONSTs(9, 1)));
-				Value *of = ZEXT32(AND(LD(val), CONSTs(9, 1 << 8)));
-				flg = OR(SHL(cf, CONST32(31)), SHL(of, CONST32(22)));
-				res = TRUNC8(LD(val));
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				Value *i9 = OR(ZEXTs(9, val), TRUNCs(9, SHR(LD_CF(), CONST32(23))));
+				Value *rotl = INTRINSIC_ty(fshl, getIntegerType(9), (std::vector<Value *> { i9, i9, TRUNCs(9, count) }));
+				Value *cf = ZEXT32(AND(SHR(val, SUB(CONST8(8), TRUNC8(count))), CONST8(1)));
+				Value *of = ZEXT32(AND(rotl, CONSTs(9, 1 << 7)));
+				flg = OR(SHL(cf, CONST32(31)), SHL(of, CONST32(23)));
+				res = TRUNC8(rotl);
 			}
 			break;
 
 			case SIZE16: {
-				count = UREM(count2, CONST32(17));
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
-				cpu->bb = vec_bb[1];
-				GET_RM(OPNUM_DST, val2 = LD_REG_val(rm);, val2 = LD_MEM(fn_idx[size_mode], rm););
-				val = ALLOCs(17);
-				ST(val, OR(ZEXTs(17, val2), TRUNCs(17, SHR(LD_CF(), CONST32(14)))));
-				ST(val, INTRINSIC_ty(fshl, getIntegerType(17), (std::vector<Value *> { LD(val), LD(val), TRUNCs(17, count) })));
-				Value *cf = ZEXT32(AND(LD(val), CONSTs(17, 1)));
-				Value *of = ZEXT32(AND(LD(val), CONSTs(17, 1 << 16)));
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				Value *i17 = OR(ZEXTs(17, val), TRUNCs(17, SHR(LD_CF(), CONST32(15))));
+				Value *rotl = INTRINSIC_ty(fshl, getIntegerType(17), (std::vector<Value *> { i17, i17, TRUNCs(17, count) }));
+				Value *cf = ZEXT32(AND(SHR(val, SUB(CONST16(16), TRUNC16(count))), CONST16(1)));
+				Value *of = ZEXT32(AND(rotl, CONSTs(17, 1 << 15)));
 				flg = OR(SHL(cf, CONST32(31)), SHL(of, CONST32(15)));
-				res = TRUNC16(LD(val));
+				res = TRUNC16(rotl);
 			}
 			break;
 
 			case SIZE32: {
-				count = count2;
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
-				cpu->bb = vec_bb[1];
-				GET_RM(OPNUM_DST, val2 = LD_REG_val(rm);, val2 = LD_MEM(fn_idx[size_mode], rm););
-				val = ALLOCs(33);
-				ST(val, OR(ZEXTs(33, val2), SHL(ZEXTs(33, LD_CF()), CONSTs(33, 1))));
-				ST(val, INTRINSIC_ty(fshl, getIntegerType(33), (std::vector<Value *> { LD(val), LD(val), ZEXTs(33, count) })));
-				Value *cf = TRUNC32(AND(LD(val), CONSTs(33, 1)));
-				Value *of = TRUNC32(SHR(AND(LD(val), CONSTs(33, 1ULL << 32)), CONSTs(33, 2)));
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				Value *i33 = OR(ZEXTs(33, val), SHL(ZEXTs(33, LD_CF()), CONSTs(33, 1)));
+				Value *rotl = INTRINSIC_ty(fshl, getIntegerType(33), (std::vector<Value *> { i33, i33, ZEXTs(33, count) }));
+				Value *cf = AND(SHR(val, SUB(CONST32(32), count)), CONST32(1));
+				Value *of = TRUNC32(SHR(AND(rotl, CONSTs(33, 1ULL << 31)), CONSTs(33, 1)));
 				flg = OR(SHL(cf, CONST32(31)), of);
-				res = TRUNC32(LD(val));
+				res = TRUNC32(rotl);
 			}
 			break;
 
@@ -3430,34 +3420,34 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_RCR: {
 			assert(instr.raw.modrm.reg == 3);
 
-			Value *count2, *count;
+			Value *count;
 			switch (instr.opcode)
 			{
 			case 0xD0:
-				count2 = CONST32(1);
+				count = CONST32(1);
 				size_mode = SIZE8;
 				break;
 
 			case 0xD2:
-				count2 = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
 				size_mode = SIZE8;
 				break;
 
 			case 0xC0:
-				count2 = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
+				count = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
 				size_mode = SIZE8;
 				break;
 
 			case 0xD1:
-				count2 = CONST32(1);
+				count = CONST32(1);
 				break;
 
 			case 0xD3:
-				count2 = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
 				break;
 
 			case 0xC1:
-				count2 = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
+				count = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
 				break;
 
 			default:
@@ -3465,51 +3455,41 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 
 			std::vector<BasicBlock *>vec_bb = BBs(2);
-			Value *val, *val2, *rm, *flg, *res;
+			BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
+			cpu->bb = vec_bb[1];
+			Value *val, *rm, *flg, *res;
 			switch (size_mode)
 			{
 			case SIZE8: {
-				count = UREM(count2, CONST32(9));
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
-				cpu->bb = vec_bb[1];
-				GET_RM(OPNUM_DST, val2 = LD_REG_val(rm);, val2 = LD_MEM(fn_idx[size_mode], rm););
-				val = ALLOCs(9);
-				ST(val, OR(SHL(ZEXTs(9, val2), CONSTs(9, 1)), TRUNCs(9, SHR(LD_CF(), CONST32(31)))));
-				ST(val, INTRINSIC_ty(fshr, getIntegerType(9), (std::vector<Value *> { LD(val), LD(val), TRUNCs(9, count) })));
-				Value *cf = ZEXT32(AND(LD(val), CONSTs(9, 1 << 8)));
-				Value *of = ZEXT32(AND(LD(val), CONSTs(9, 1 << 7)));
-				flg = OR(SHL(cf, CONST32(23)), SHL(of, CONST32(23)));
-				res = TRUNC8(SHR(LD(val), CONSTs(9, 1)));
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				Value *i9 = OR(SHL(ZEXTs(9, val), CONSTs(9, 1)), TRUNCs(9, SHR(LD_CF(), CONST32(31))));
+				Value *rotr = INTRINSIC_ty(fshr, getIntegerType(9), (std::vector<Value *> { val, val, TRUNCs(9, count) }));
+				Value *cf = ZEXT32(AND(SHR(val, SUB(TRUNC8(count), CONST8(1))), CONST8(1)));
+				Value *of = ZEXT32(XOR(AND(rotr, CONSTs(9, 1 << 8)), SHL(AND(rotr, CONSTs(9, 1 << 7)), CONSTs(9, 1))));
+				flg = OR(SHL(cf, CONST32(31)), SHL(XOR(of, SHL(cf, CONST32(8))), CONST32(22)));
+				res = TRUNC8(SHR(val, CONSTs(9, 1)));
 			}
 			break;
 
 			case SIZE16: {
-				count = UREM(count2, CONST32(17));
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
-				cpu->bb = vec_bb[1];
-				GET_RM(OPNUM_DST, val2 = LD_REG_val(rm);, val2 = LD_MEM(fn_idx[size_mode], rm););
-				val = ALLOCs(17);
-				ST(val, OR(SHL(ZEXTs(17, val2), CONSTs(17, 1)), TRUNCs(17, SHR(LD_CF(), CONST32(31)))));
-				ST(val, INTRINSIC_ty(fshr, getIntegerType(17), (std::vector<Value *> { LD(val), LD(val), TRUNCs(17, count) })));
-				Value *cf = ZEXT32(AND(LD(val), CONSTs(17, 1 << 16)));
-				Value *of = ZEXT32(AND(LD(val), CONSTs(17, 1 << 15)));
-				flg = OR(SHL(cf, CONST32(15)), SHL(of, CONST32(15)));
-				res = TRUNC16(SHR(LD(val), CONSTs(17, 1)));
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				Value *i17 = OR(SHL(ZEXTs(17, val), CONSTs(17, 1)), TRUNCs(17, SHR(LD_CF(), CONST32(31))));
+				Value *rotr = INTRINSIC_ty(fshr, getIntegerType(17), (std::vector<Value *> { val, val, TRUNCs(17, count) }));
+				Value *cf = ZEXT32(AND(SHR(val, SUB(TRUNC16(count), CONST16(1))), CONST16(1)));
+				Value *of = ZEXT32(XOR(AND(rotr, CONSTs(17, 1 << 16)), SHL(AND(rotr, CONSTs(17, 1 << 15)), CONSTs(17, 1))));
+				flg = OR(SHL(cf, CONST32(31)), SHL(XOR(of, SHL(cf, CONST32(16))), CONST32(14)));
+				res = TRUNC16(SHR(val, CONSTs(17, 1)));
 			}
 			break;
 
 			case SIZE32: {
-				count = count2;
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
-				cpu->bb = vec_bb[1];
-				GET_RM(OPNUM_DST, val2 = LD_REG_val(rm);, val2 = LD_MEM(fn_idx[size_mode], rm););
-				val = ALLOCs(33);
-				ST(val, OR(SHL(ZEXTs(33, val2), CONSTs(33, 1)), SHL(ZEXTs(33, LD_CF()), CONSTs(33, 31))));
-				ST(val, INTRINSIC_ty(fshr, getIntegerType(33), (std::vector<Value *> { LD(val), LD(val), ZEXTs(33, count) })));
-				Value *cf = TRUNC32(SHR(AND(LD(val), CONSTs(33, 1ULL << 32)), CONSTs(33, 1)));
-				Value *of = TRUNC32(SHR(AND(LD(val), CONSTs(33, 1 << 31)), CONSTs(33, 1)));
-				flg = OR(cf, of);
-				res = TRUNC32(SHR(LD(val), CONSTs(33, 1)));
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				Value *i33 = OR(SHL(ZEXTs(33, val), CONSTs(33, 1)), SHL(ZEXTs(33, LD_CF()), CONSTs(33, 31)));
+				Value *rotr = INTRINSIC_ty(fshr, getIntegerType(33), (std::vector<Value *> { val, val, ZEXTs(33, count) }));
+				Value *cf = AND(SHR(val, SUB(count, CONST32(1))), CONST32(1));
+				Value *of = TRUNC32(XOR(SHR(AND(rotr, CONSTs(33, 1ULL << 32)), CONSTs(33, 1)), AND(rotr, CONSTs(33, 1 << 31))));
+				flg = OR(SHL(cf, CONST32(31)), SHR(XOR(of, SHL(cf, CONST32(31))), CONST32(1)));
+				res = TRUNC32(SHR(val, CONSTs(33, 1)));
 			}
 			break;
 
@@ -3591,34 +3571,34 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_ROL: {
 			assert(instr.raw.modrm.reg == 0);
 
-			Value *count2, *count;
+			Value *count;
 			switch (instr.opcode)
 			{
 			case 0xD0:
-				count2 = CONST32(1);
+				count = CONST32(1);
 				size_mode = SIZE8;
 				break;
 
 			case 0xD2:
-				count2 = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
 				size_mode = SIZE8;
 				break;
 
 			case 0xC0:
-				count2 = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
+				count = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
 				size_mode = SIZE8;
 				break;
 
 			case 0xD1:
-				count2 = CONST32(1);
+				count = CONST32(1);
 				break;
 
 			case 0xD3:
-				count2 = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
 				break;
 
 			case 0xC1:
-				count2 = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
+				count = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
 				break;
 
 			default:
@@ -3626,42 +3606,38 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 
 			std::vector<BasicBlock *>vec_bb = BBs(2);
-			Value *val, *rm, *flg;
+			BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
+			cpu->bb = vec_bb[1];
+			Value *val, *rm, *flg, *res;
 			switch (size_mode)
 			{
 			case SIZE8: {
-				count = AND(count2, CONST32(7));
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
-				cpu->bb = vec_bb[1];
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-				val = INTRINSIC_ty(fshl, getIntegerType(8), (std::vector<Value *> { val, val, TRUNC8(count) }));
-				Value *cf = ZEXT32(AND(val, CONST8(1)));
-				Value *of = ZEXT32(AND(val, CONST8(1 << 7)));
+				Value *rotl = INTRINSIC_ty(fshl, getIntegerType(8), (std::vector<Value *> { val, val, TRUNC8(count) }));
+				Value *cf = ZEXT32(AND(SHR(val, SUB(CONST8(8), TRUNC8(count))), CONST8(1)));
+				Value *of = ZEXT32(AND(rotl, CONST8(1 << 7)));
 				flg = OR(SHL(cf, CONST32(31)), SHL(of, CONST32(23)));
+				res = rotl;
 			}
 			break;
 
 			case SIZE16: {
-				count = AND(count2, CONST32(15));
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
-				cpu->bb = vec_bb[1];
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-				val = INTRINSIC_ty(fshl, getIntegerType(16), (std::vector<Value *> { val, val, TRUNC16(count) }));
-				Value *cf = ZEXT32(AND(val, CONST16(1)));
-				Value *of = ZEXT32(AND(val, CONST16(1 << 15)));
+				Value *rotl = INTRINSIC_ty(fshl, getIntegerType(16), (std::vector<Value *> { val, val, TRUNC16(count) }));
+				Value *cf = ZEXT32(AND(SHR(val, SUB(CONST16(16), TRUNC16(count))), CONST16(1)));
+				Value *of = ZEXT32(AND(rotl, CONST16(1 << 15)));
 				flg = OR(SHL(cf, CONST32(31)), SHL(of, CONST32(15)));
+				res = rotl;
 			}
 			break;
 
 			case SIZE32: {
-				count = count2;
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
-				cpu->bb = vec_bb[1];
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-				val = INTRINSIC_ty(fshl, getIntegerType(32), (std::vector<Value *> { val, val, count }));
-				Value *cf = AND(val, CONST32(1));
-				Value *of = AND(val, CONST32(1 << 31));
+				Value *rotl = INTRINSIC_ty(fshl, getIntegerType(32), (std::vector<Value *> { val, val, count }));
+				Value *cf = AND(SHR(val, SUB(CONST32(32), count)), CONST32(1));
+				Value *of = AND(rotl, CONST32(1 << 31));
 				flg = OR(SHL(cf, CONST32(31)), SHR(of, CONST32(1)));
+				res = rotl;
 			}
 			break;
 
@@ -3669,7 +3645,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT();
 			}
 
-			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(val, rm) : ST_MEM(fn_idx[size_mode], rm, val);
+			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(res, rm) : ST_MEM(fn_idx[size_mode], rm, res);
 			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF)), flg));
 			BR_UNCOND(vec_bb[0]);
 			cpu->bb = vec_bb[0];
@@ -3679,34 +3655,34 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_ROR: {
 			assert(instr.raw.modrm.reg == 1);
 
-			Value *count2, *count;
+			Value *count;
 			switch (instr.opcode)
 			{
 			case 0xD0:
-				count2 = CONST32(1);
+				count = CONST32(1);
 				size_mode = SIZE8;
 				break;
 
 			case 0xD2:
-				count2 = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
 				size_mode = SIZE8;
 				break;
 
 			case 0xC0:
-				count2 = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
+				count = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
 				size_mode = SIZE8;
 				break;
 
 			case 0xD1:
-				count2 = CONST32(1);
+				count = CONST32(1);
 				break;
 
 			case 0xD3:
-				count2 = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
+				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
 				break;
 
 			case 0xC1:
-				count2 = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
+				count = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
 				break;
 
 			default:
@@ -3714,42 +3690,38 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 
 			std::vector<BasicBlock *>vec_bb = BBs(2);
-			Value *val, *rm, *flg;
+			BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
+			cpu->bb = vec_bb[1];
+			Value *val, *rm, *flg, *res;
 			switch (size_mode)
 			{
 			case SIZE8: {
-				count = AND(count2, CONST32(7));
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
-				cpu->bb = vec_bb[1];
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-				val = INTRINSIC_ty(fshr, getIntegerType(8), (std::vector<Value *> { val, val, TRUNC8(count) }));
-				Value *cf = ZEXT32(AND(val, CONST8(1 << 7)));
-				Value *of = ZEXT32(AND(val, CONST8(1 << 6)));
-				flg = OR(SHL(cf, CONST32(24)), SHL(of, CONST32(24)));
+				Value *rotr = INTRINSIC_ty(fshr, getIntegerType(8), (std::vector<Value *> { val, val, TRUNC8(count) }));
+				Value *cf = ZEXT32(AND(SHR(val, SUB(TRUNC8(count), CONST8(1))), CONST8(1)));
+				Value *of = ZEXT32(XOR(AND(rotr, CONST8(1 << 7)), SHL(AND(rotr, CONST8(1 << 6)), CONST8(1))));
+				flg = OR(SHL(cf, CONST32(31)), SHL(XOR(of, SHL(cf, CONST32(7))), CONST32(23)));
+				res = rotr;
 			}
 			break;
 
 			case SIZE16: {
-				count = AND(count2, CONST32(15));
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
-				cpu->bb = vec_bb[1];
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-				val = INTRINSIC_ty(fshr, getIntegerType(16), (std::vector<Value *> { val, val, TRUNC16(count) }));
-				Value *cf = ZEXT32(AND(val, CONST16(1 << 15)));
-				Value *of = ZEXT32(AND(val, CONST16(1 << 14)));
-				flg = OR(SHL(cf, CONST32(16)), SHL(of, CONST32(16)));
+				Value *rotr = INTRINSIC_ty(fshr, getIntegerType(16), (std::vector<Value *> { val, val, TRUNC16(count) }));
+				Value *cf = ZEXT32(AND(SHR(val, SUB(TRUNC16(count), CONST16(1))), CONST16(1)));
+				Value *of = ZEXT32(XOR(AND(rotr, CONST16(1 << 15)), SHL(AND(rotr, CONST16(1 << 14)), CONST16(1))));
+				flg = OR(SHL(cf, CONST32(31)), SHL(XOR(of, SHL(cf, CONST32(15))), CONST32(15)));
+				res = rotr;
 			}
 			break;
 
 			case SIZE32: {
-				count = count2;
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
-				cpu->bb = vec_bb[1];
 				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-				val = INTRINSIC_ty(fshr, getIntegerType(32), (std::vector<Value *> { val, val, count }));
-				Value *cf = AND(val, CONST32(1 << 31));
-				Value *of = AND(val, CONST32(1 << 30));
-				flg = OR(cf, of);
+				Value *rotr = INTRINSIC_ty(fshr, getIntegerType(32), (std::vector<Value *> { val, val, count }));
+				Value *cf = AND(SHR(val, SUB(count, CONST32(1))), CONST32(1));
+				Value *of = XOR(SHR(AND(rotr, CONST32(1 << 31)), CONST32(1)), AND(rotr, CONST32(1 << 30)));
+				flg = OR(SHL(cf, CONST32(31)), XOR(of, SHL(cf, CONST32(30))));
+				res = rotr;
 			}
 			break;
 
@@ -3757,7 +3729,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT();
 			}
 
-			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(val, rm) : ST_MEM(fn_idx[size_mode], rm, val);
+			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(res, rm) : ST_MEM(fn_idx[size_mode], rm, res);
 			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF)), flg));
 			BR_UNCOND(vec_bb[0]);
 			cpu->bb = vec_bb[0];
@@ -3779,7 +3751,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 		case ZYDIS_MNEMONIC_SAR: {
 			assert(instr.raw.modrm.reg == 7);
-
 			Value *count;
 			switch (instr.opcode)
 			{
@@ -3821,12 +3792,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			switch (size_mode)
 			{
 			case SIZE8:
-				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = AND(val, cf_mask); val = TRUNC8(ASHR(val, count)); ST_REG_val(val, rm);,
+				GET_RM(OPNUM_DST, val = SEXT32(LD_REG_val(rm)); cf = AND(val, cf_mask); val = TRUNC8(ASHR(val, count)); ST_REG_val(val, rm);,
 				temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = AND(val, cf_mask); val = TRUNC8(ASHR(val, count)); ST_MEM(fn_idx[size_mode], rm, val););
 				break;
 
 			case SIZE16:
-				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = AND(val, cf_mask); val = TRUNC16(ASHR(val, count)); ST_REG_val(val, rm);,
+				GET_RM(OPNUM_DST, val = SEXT32(LD_REG_val(rm)); cf = AND(val, cf_mask); val = TRUNC16(ASHR(val, count)); ST_REG_val(val, rm);,
 				temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = AND(val, cf_mask); val = TRUNC16(ASHR(val, count)); ST_MEM(fn_idx[size_mode], rm, val););
 				break;
 
@@ -4213,12 +4184,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				std::vector<BasicBlock *> vec_bb2 = BBs(2);
 				BR_COND(vec_bb2[0], vec_bb2[1], ICMP_ULE(count, CONST32(8)));
 				cpu->bb = vec_bb2[0];
-				cf_mask = SHL(CONST32(1), SUB(CONST32(8), AND(count, CONST32(7))));
+				cf_mask = SHL(CONST32(1), SUB(CONST32(8), count));
 				of_mask = CONST32(1 << 7);
-				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = SHL(AND(val, cf_mask), ADD(AND(count, CONST32(7)), CONST32(23))); val = SHL(val, count);
+				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = SHL(AND(val, cf_mask), ADD(count, CONST32(23))); val = SHL(val, count);
 				of = SHL(AND(val, of_mask), CONST32(23)); val = TRUNC8(val); ST_REG_val(val, rm); SET_FLG(val, OR(cf, of)); BR_UNCOND(vec_bb[0]);
 				cpu->bb = vec_bb2[1]; ST_REG_val(CONST8(0), rm); SET_FLG(CONST8(0), CONST32(0)); BR_UNCOND(vec_bb[0]);,
-				temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = SHL(AND(val, cf_mask), ADD(AND(count, CONST32(7)), CONST32(23)));
+				temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = SHL(AND(val, cf_mask), ADD(count, CONST32(23)));
 				val = SHL(val, count); of = SHL(AND(val, of_mask), CONST32(23)); val = TRUNC8(val); ST_MEM(fn_idx[size_mode], rm, val); SET_FLG(val, OR(cf, of));
 				BR_UNCOND(vec_bb[0]); cpu->bb = vec_bb2[1]; ST_MEM(fn_idx[size_mode], rm, CONST8(0)); SET_FLG(CONST8(0), CONST32(0)); BR_UNCOND(vec_bb[0]););
 			}
@@ -4228,12 +4199,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				std::vector<BasicBlock *> vec_bb2 = BBs(2);
 				BR_COND(vec_bb2[0], vec_bb2[1], ICMP_ULE(count, CONST32(16)));
 				cpu->bb = vec_bb2[0];
-				cf_mask = SHL(CONST32(1), SUB(CONST32(16), AND(count, CONST32(15))));
+				cf_mask = SHL(CONST32(1), SUB(CONST32(16), count));
 				of_mask = CONST32(1 << 15);
-				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = SHL(AND(val, cf_mask), ADD(AND(count, CONST32(15)), CONST32(15))); val = SHL(val, count);
+				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = SHL(AND(val, cf_mask), ADD(count, CONST32(15))); val = SHL(val, count);
 				of = SHL(AND(val, of_mask), CONST32(15)); val = TRUNC16(val); ST_REG_val(val, rm); SET_FLG(val, OR(cf, of)); BR_UNCOND(vec_bb[0]);
 				cpu->bb = vec_bb2[1]; ST_REG_val(CONST16(0), rm); SET_FLG(CONST16(0), CONST32(0)); BR_UNCOND(vec_bb[0]);,
-				temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = SHL(AND(val, cf_mask), ADD(AND(count, CONST32(7)), CONST32(15)));
+				temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = SHL(AND(val, cf_mask), ADD(count, CONST32(15)));
 				val = SHL(val, count); of = SHL(AND(val, of_mask), CONST32(15)); val = TRUNC16(val); ST_MEM(fn_idx[size_mode], rm, val); SET_FLG(val, OR(cf, of));
 				BR_UNCOND(vec_bb[0]); cpu->bb = vec_bb2[1]; ST_MEM(fn_idx[size_mode], rm, CONST16(0)); SET_FLG(CONST16(0), CONST32(0)); BR_UNCOND(vec_bb[0]););
 			}
@@ -4286,7 +4257,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				cpu->bb = bb;
 				GET_RM(OPNUM_DST, dst = LD_REG_val(rm);, dst = LD_MEM(fn_idx[size_mode], rm););
 				src = LD_REG_val(GET_REG(OPNUM_SRC));
-				val = INTRINSIC_ty(fshl, getIntegerType(16), (std::vector<Value *> { dst, src, TRUNC16(count) }));
+				val = TRUNC16(SHR(SHL(OR(SHL(ZEXT32(dst), CONST32(16)), ZEXT32(src)), count), CONST32(16)));
 				Value *cf = SHL(AND(ZEXT32(dst), SHL(CONST32(1), SUB(CONST32(16), count))), ADD(CONST32(15), count));
 				Value *of = SHL(ZEXT32(XOR(AND(dst, CONST16(1 << 15)), AND(val, CONST16(1 << 15)))), CONST32(15));
 				flg = OR(cf, XOR(SHR(cf, CONST32(1)), of));
@@ -4296,7 +4267,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case SIZE32: {
 				GET_RM(OPNUM_DST, dst = LD_REG_val(rm);, dst = LD_MEM(fn_idx[size_mode], rm););
 				src = LD_REG_val(GET_REG(OPNUM_SRC));
-				val = INTRINSIC_ty(fshl, getIntegerType(32), (std::vector<Value *> { dst, src, count }));
+				val = TRUNC32(SHR(SHL(OR(SHL(ZEXT64(dst), CONST64(32)), ZEXT64(src)), ZEXT64(count)), CONST64(32)));
 				Value *cf = SHL(AND(dst, SHL(CONST32(1), SUB(CONST32(32), count))), SUB(count, CONST32(1)));
 				Value *of = SHR(XOR(AND(dst, CONST32(1 << 31)), AND(val, CONST32(1 << 31))), CONST32(1));
 				flg = OR(cf, XOR(SHR(cf, CONST32(1)), of));
@@ -4417,7 +4388,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				cpu->bb = bb;
 				GET_RM(OPNUM_DST, dst = LD_REG_val(rm);, dst = LD_MEM(fn_idx[size_mode], rm););
 				src = LD_REG_val(GET_REG(OPNUM_SRC));
-				val = INTRINSIC_ty(fshr, getIntegerType(16), (std::vector<Value *> { src, dst, TRUNC16(count) }));
+				val = TRUNC16(SHR(OR(SHL(ZEXT32(src), CONST32(16)), ZEXT32(dst)), count));
 				Value *cf = SHL(AND(ZEXT32(dst), SHL(CONST32(1), SUB(count, CONST32(1)))), SUB(CONST32(32), count));
 				Value *of = SHL(ZEXT32(XOR(AND(dst, CONST16(1 << 15)), AND(val, CONST16(1 << 15)))), CONST32(15));
 				flg = OR(cf, XOR(SHR(cf, CONST32(1)), of));
@@ -4427,7 +4398,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case SIZE32: {
 				GET_RM(OPNUM_DST, dst = LD_REG_val(rm);, dst = LD_MEM(fn_idx[size_mode], rm););
 				src = LD_REG_val(GET_REG(OPNUM_SRC));
-				val = INTRINSIC_ty(fshr, getIntegerType(32), (std::vector<Value *> { src, dst, count }));
+				val = TRUNC32(SHR(OR(SHL(ZEXT64(src), CONST64(32)), ZEXT64(dst)), ZEXT64(count)));
 				Value *cf = SHL(AND(dst, SHL(CONST32(1), SUB(count, CONST32(1)))), SUB(CONST32(32), count));
 				Value *of = SHR(XOR(AND(dst, CONST32(1 << 31)), AND(val, CONST32(1 << 31))), CONST32(1));
 				flg = OR(cf, XOR(SHR(cf, CONST32(1)), of));
@@ -4584,9 +4555,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				[[fallthrough]];
 
 			case 0x2D: {
-				Value *dst, *sub, *src = GET_IMM();
-				dst = LD_REG_val(GET_REG(OPNUM_DST));
+				Value *dst, *eax, *sub, *src = GET_IMM();
+				eax = GET_REG(OPNUM_DST);
+				dst = LD_REG_val(eax);
 				sub = SUB(dst, src);
+				ST_REG_val(sub, eax);
 				SET_FLG_SUB(sub, dst, src);
 			}
 			break;
@@ -4630,9 +4603,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				[[fallthrough]];
 
 			case 0x2B: {
-				Value *rm, *src, *sub, *dst = LD_REG_val(GET_REG(OPNUM_DST));
-				GET_RM(OPNUM_SRC, src = LD_REG_val(rm); sub = SUB(dst, src); ST_REG_val(sub, rm);,
-					src = LD_MEM(fn_idx[size_mode], rm); sub = SUB(dst, src); ST_MEM(fn_idx[size_mode], rm, sub););
+				Value *rm, *src, *sub, *dst, *reg = GET_REG(OPNUM_DST);
+				dst = LD_REG_val(reg);
+				GET_RM(OPNUM_SRC, src = LD_REG_val(rm);, src = LD_MEM(fn_idx[size_mode], rm););
+				sub = SUB(dst, src);
+				ST_REG_val(sub, reg);
 				SET_FLG_SUB(sub, dst, src);
 			}
 			break;
