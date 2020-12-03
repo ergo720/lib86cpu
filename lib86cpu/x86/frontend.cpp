@@ -163,6 +163,7 @@ optimize(cpu_t *cpu)
 	pm.add(createConstantPropagationPass());
 	pm.add(createDeadStoreEliminationPass());
 	pm.add(createDeadCodeEliminationPass());
+	pm.add(createCFGSimplificationPass());
 	pm.run(*cpu->bb->getParent());
 }
 
