@@ -54,8 +54,8 @@ void hook_emit(cpu_t *cpu, hook *obj);
 
 
 #define CTX() (*cpu->ctx)
-#define BB() BasicBlock::Create(CTX(), "", func, 0)
-#define BBs(n) gen_bbs(cpu, cpu->bb->getParent(), n)
+#define getBB() BasicBlock::Create(CTX(), "", func, 0)
+#define getBBs(n) gen_bbs(cpu, cpu->bb->getParent(), n)
 #define getIntegerType(x) (IntegerType::get(CTX(), x))
 #define getPointerType(x) (PointerType::getUnqual(x))
 #define getIntegerPointerType() (cpu->dl->getIntPtrType(CTX()))
@@ -239,9 +239,9 @@ default: \
 #define RAISE(code, idx) raise_exception_emit(cpu, std::vector<Value *> { CONST32(0), code, CONST16(idx), cpu->instr_eip })
 #define RAISE0(idx) raise_exception_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(idx), cpu->instr_eip })
 #define RAISEin(addr, code, idx, eip) raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(addr), CONST16(code), CONST16(idx), CONST32(eip) }); \
-cpu->bb = BBs(1)[0]
+cpu->bb = getBBs(1)[0]
 #define RAISEin0(idx) raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(idx), cpu->instr_eip }); \
-cpu->bb = BBs(1)[0]
+cpu->bb = getBBs(1)[0]
 #define SET_FLG_SUM(sum, a, b) set_flags_sum(cpu, std::vector<Value *> { sum, a , b }, size_mode)
 #define SET_FLG_SUB(sub, a, b) set_flags_sub(cpu, std::vector<Value *> { sub, a , b }, size_mode)
 #define SET_FLG(res, aux) set_flags(cpu, res, aux, size_mode)
