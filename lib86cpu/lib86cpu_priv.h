@@ -86,7 +86,9 @@ struct cpu_ctx_t;
 using entry_t = translated_code_t * (*)(cpu_ctx_t *cpu_ctx);
 using raise_exp_t = translated_code_t * (*)(cpu_ctx_t *cpu_ctx, exp_data_t *exp_data);
 
-struct translated_code_ctx_t {
+struct translated_code_t {
+	std::forward_list<translated_code_t *> linked_tc;
+	cpu_t *cpu;
 	addr_t cs_base;
 	addr_t pc;
 	uint32_t cpu_flags;
@@ -94,12 +96,6 @@ struct translated_code_ctx_t {
 	entry_t jmp_offset[3];
 	uint32_t flags;
 	uint32_t size;
-};
-
-struct translated_code_t {
-	std::forward_list<translated_code_t *> linked_tc;
-	cpu_t *cpu;
-	translated_code_ctx_t tc_ctx;
 	explicit translated_code_t(cpu_t *cpu) noexcept;
 	~translated_code_t();
 };

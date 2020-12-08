@@ -20,14 +20,14 @@
 translated_code_t::translated_code_t(cpu_t *cpu) noexcept
 {
 	this->cpu = cpu;
-	this->tc_ctx.size = 0;
-	this->tc_ctx.flags = 0;
-	this->tc_ctx.ptr_code = nullptr;
+	this->size = 0;
+	this->flags = 0;
+	this->ptr_code = nullptr;
 }
 
 translated_code_t::~translated_code_t()
 {
-	this->cpu->jit->free_code_block(this->tc_ctx.ptr_code);
+	this->cpu->jit->free_code_block(this->ptr_code);
 }
 
 static translated_code_t *
@@ -35,7 +35,7 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 {
 	try {
 		// run the translated code
-		return tc->tc_ctx.ptr_code(cpu_ctx);
+		return tc->ptr_code(cpu_ctx);
 	}
 	catch (exp_data_t exp_data) {
 		// page fault while excecuting the translated code
@@ -67,8 +67,8 @@ tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t 
 	bool halt_tc = false;
 	std::vector<std::unordered_set<translated_code_t *>::iterator> tc_to_delete;
 
-	if ((tc != nullptr) && !(tc->tc_ctx.flags & TC_FLG_HOOK) &&
-		!(std::min(addr + size - 1, tc->tc_ctx.pc + tc->tc_ctx.size - 1) < std::max(addr, tc->tc_ctx.pc))) {
+	if ((tc != nullptr) && !(tc->flags & TC_FLG_HOOK) &&
+		!(std::min(addr + size - 1, tc->pc + tc->size - 1) < std::max(addr, tc->pc))) {
 		// worst case: the write overlaps with the tc we are currently executing
 		halt_tc = true;
 		cpu_ctx->cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
@@ -82,21 +82,21 @@ tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t 
 		while (it_set != it_map->second.end()) {
 			translated_code_t *tc_in_page = *it_set;
 			// only invalidate the tc if addr is included in the translated address range of the tc
-			if (!(std::min(addr + size - 1, tc_in_page->tc_ctx.pc + tc_in_page->tc_ctx.size - 1) < std::max(addr, tc_in_page->tc_ctx.pc))) {
+			if (!(std::min(addr + size - 1, tc_in_page->pc + tc_in_page->size - 1) < std::max(addr, tc_in_page->pc))) {
 				auto it_list = tc_in_page->linked_tc.begin();
 				// now unlink all other tc's which jump to this tc
 				while (it_list != tc_in_page->linked_tc.end()) {
-					if ((*it_list)->tc_ctx.jmp_offset[0] == tc_in_page->tc_ctx.ptr_code) {
-						(*it_list)->tc_ctx.jmp_offset[0] = (*it_list)->tc_ctx.jmp_offset[2];
+					if ((*it_list)->jmp_offset[0] == tc_in_page->ptr_code) {
+						(*it_list)->jmp_offset[0] = (*it_list)->jmp_offset[2];
 					}
-					if ((*it_list)->tc_ctx.jmp_offset[1] == tc_in_page->tc_ctx.ptr_code) {
-						(*it_list)->tc_ctx.jmp_offset[1] = (*it_list)->tc_ctx.jmp_offset[2];
+					if ((*it_list)->jmp_offset[1] == tc_in_page->ptr_code) {
+						(*it_list)->jmp_offset[1] = (*it_list)->jmp_offset[2];
 					}
 					it_list++;
 				}
 
 				// delete the found tc from the code cache
-				uint32_t idx = tc_hash(tc_in_page->tc_ctx.pc);
+				uint32_t idx = tc_hash(tc_in_page->pc);
 				auto it = cpu_ctx->cpu->code_cache[idx].begin();
 				auto it_prev = it;
 				uint8_t found = 0;
@@ -148,9 +148,9 @@ tc_cache_search(cpu_t *cpu, addr_t pc)
 	auto it = cpu->code_cache[idx].begin();
 	while (it != cpu->code_cache[idx].end()) {
 		translated_code_t *tc = it->get();
-		if (tc->tc_ctx.cs_base == cpu->cpu_ctx.regs.cs_hidden.base &&
-			tc->tc_ctx.pc == pc &&
-			tc->tc_ctx.cpu_flags == flags) {
+		if (tc->cs_base == cpu->cpu_ctx.regs.cs_hidden.base &&
+			tc->pc == pc &&
+			tc->cpu_flags == flags) {
 			return tc;
 		}
 		it++;
@@ -163,7 +163,7 @@ static void
 tc_cache_insert(cpu_t *cpu, addr_t pc, std::shared_ptr<translated_code_t> &&tc)
 {
 	cpu->num_tc++;
-	if (!(tc->tc_ctx.flags & TC_FLG_HOOK)) {
+	if (!(tc->flags & TC_FLG_HOOK)) {
 		cpu->tc_page_map[pc >> PAGE_SHIFT].insert(tc.get());
 	}
 	cpu->code_cache[tc_hash(pc)].push_front(std::move(tc));
@@ -182,7 +182,7 @@ tc_cache_clear(cpu_t *cpu)
 static void
 tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc)
 {
-	uint32_t num_jmp = prev_tc->tc_ctx.flags & TC_FLG_NUM_JMP;
+	uint32_t num_jmp = prev_tc->flags & TC_FLG_NUM_JMP;
 
 	switch (num_jmp)
 	{
@@ -191,15 +191,15 @@ tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc)
 
 	case 1:
 	case 2:
-		switch ((prev_tc->tc_ctx.flags & TC_FLG_JMP_TAKEN) >> 4)
+		switch ((prev_tc->flags & TC_FLG_JMP_TAKEN) >> 4)
 		{
 		case TC_FLG_DST_PC:
-			prev_tc->tc_ctx.jmp_offset[0] = ptr_tc->tc_ctx.ptr_code;
+			prev_tc->jmp_offset[0] = ptr_tc->ptr_code;
 			ptr_tc->linked_tc.push_front(prev_tc);
 			break;
 
 		case TC_FLG_NEXT_PC:
-			prev_tc->tc_ctx.jmp_offset[1] = ptr_tc->tc_ctx.ptr_code;
+			prev_tc->jmp_offset[1] = ptr_tc->ptr_code;
 			ptr_tc->linked_tc.push_front(prev_tc);
 			break;
 
@@ -222,13 +222,13 @@ tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc)
 void
 tc_link_dst_only(translated_code_t *prev_tc, translated_code_t *ptr_tc)
 {
-	switch (prev_tc->tc_ctx.flags & TC_FLG_NUM_JMP)
+	switch (prev_tc->flags & TC_FLG_NUM_JMP)
 	{
 	case 0:
 		break;
 
 	case 1:
-		prev_tc->tc_ctx.jmp_offset[0] = ptr_tc->tc_ctx.ptr_code;
+		prev_tc->jmp_offset[0] = ptr_tc->ptr_code;
 		ptr_tc->linked_tc.push_front(prev_tc);
 		break;
 
@@ -952,7 +952,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					lcall_pe_emit(cpu, std::vector<Value *> { CONST16(new_sel), CONST32(call_eip), cs, eip }, size_mode, ret_eip);
-					cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
+					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else {
 					MEM_PUSH((std::vector<Value *> { cs, eip }));
@@ -961,7 +961,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
 					link_direct_emit(cpu, std::vector <addr_t> { pc, (static_cast<uint32_t>(new_sel) << 4) + call_eip },
 						CONST32((static_cast<uint32_t>(new_sel) << 4) + call_eip));
-					cpu->tc->tc_ctx.flags |= TC_FLG_DIRECT;
+					cpu->tc->flags |= TC_FLG_DIRECT;
 				}
 			}
 			break;
@@ -979,7 +979,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				ST_R32(CONST32(call_eip), EIP_idx);
 				link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + call_eip, pc + bytes },
 					CONST32(cpu_ctx->regs.cs_hidden.base + call_eip));
-				cpu->tc->tc_ctx.flags |= TC_FLG_DIRECT;
+				cpu->tc->flags |= TC_FLG_DIRECT;
 			}
 			break;
 
@@ -995,7 +995,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						call_eip = ZEXT32(call_eip);
 					}
 					ST_R32(call_eip, EIP_idx);
-					cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
+					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else if (instr.raw.modrm.reg == 3) {
 					assert(instr.operands[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_MEMORY);
@@ -1028,7 +1028,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						ST_R32(call_eip, EIP_idx);
 						ST_SEG_HIDDEN(SHL(ZEXT32(call_cs), CONST32(4)), CS_idx, SEG_BASE_idx);
 					}
-					cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
+					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else {
 					LIB86CPU_ABORT();
@@ -1865,7 +1865,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				write_eflags(cpu, eflags, mask);
 			}
 
-			cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
+			cpu->tc->flags |= TC_FLG_INDIRECT;
 			translate_next = 0;
 		}
 		break;
@@ -1999,7 +1999,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			cpu->bb = vec_bb[2];
 			link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + jump_eip, pc + bytes }, LD(dst_pc));
-			cpu->tc->tc_ctx.flags |= TC_FLG_DIRECT;
+			cpu->tc->flags |= TC_FLG_DIRECT;
 			translate_next = 0;
 		}
 		break;
@@ -2015,7 +2015,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 				ST_R32(CONST32(new_eip), EIP_idx);
 				link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + new_eip }, CONST32(cpu_ctx->regs.cs_hidden.base + new_eip));
-				cpu->tc->tc_ctx.flags |= TC_FLG_DIRECT;
+				cpu->tc->flags |= TC_FLG_DIRECT;
 			}
 			break;
 
@@ -2024,7 +2024,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				uint16_t new_sel = instr.operands[OPNUM_SINGLE].ptr.segment;
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					ljmp_pe_emit(cpu, CONST16(new_sel), size_mode, new_eip);
-					cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
+					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else {
 					new_eip = size_mode == SIZE16 ? new_eip & 0xFFFF : new_eip;
@@ -2032,7 +2032,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					ST_R32(CONST32(new_eip), EIP_idx);
 					ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
 					link_direct_emit(cpu, std::vector <addr_t> { pc, (static_cast<uint32_t>(new_sel) << 4) + new_eip }, CONST32((static_cast<uint32_t>(new_sel) << 4) + new_eip));
-					cpu->tc->tc_ctx.flags |= TC_FLG_DIRECT;
+					cpu->tc->flags |= TC_FLG_DIRECT;
 				}
 			}
 			break;
@@ -2049,7 +2049,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						new_eip = offset;
 						ST_R32(new_eip, EIP_idx);
 					}
-					cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
+					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else if (instr.raw.modrm.reg == 5) {
 					BAD;
@@ -2350,7 +2350,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			cpu->bb = vec_bb[2];
 			link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + loop_eip, pc + bytes }, LD(dst_pc));
-			cpu->tc->tc_ctx.flags |= TC_FLG_DIRECT;
+			cpu->tc->flags |= TC_FLG_DIRECT;
 			translate_next = 0;
 		}
 		break;
@@ -2409,7 +2409,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						cpu->bb = vec_bb[0];
 						link_dst_only_emit(cpu);
 						cpu->bb = vec_bb[1];
-						cpu->tc->tc_ctx.flags |= TC_FLG_DST_ONLY;
+						cpu->tc->flags |= TC_FLG_DST_ONLY;
 					}
 					translate_next = 0;
 				}
@@ -2575,7 +2575,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							cpu->bb = vec_bb[0];
 							link_dst_only_emit(cpu);
 							cpu->bb = vec_bb[1];
-							cpu->tc->tc_ctx.flags |= TC_FLG_DST_ONLY;
+							cpu->tc->flags |= TC_FLG_DST_ONLY;
 						}
 						translate_next = 0;
 					}
@@ -3078,7 +3078,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 								cpu->bb = vec_bb[0];
 								link_dst_only_emit(cpu);
 								cpu->bb = vec_bb[1];
-								cpu->tc->tc_ctx.flags |= TC_FLG_DST_ONLY;
+								cpu->tc->flags |= TC_FLG_DST_ONLY;
 							}
 							translate_next = 0;
 						}
@@ -3207,7 +3207,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				cpu->bb = vec_bb[0];
 				link_dst_only_emit(cpu);
 				cpu->bb = vec_bb[1];
-				cpu->tc->tc_ctx.flags |= TC_FLG_DST_ONLY;
+				cpu->tc->flags |= TC_FLG_DST_ONLY;
 			}
 			translate_next = 0;
 		}
@@ -3563,7 +3563,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				BAD;
 			}
 
-			cpu->tc->tc_ctx.flags |= TC_FLG_INDIRECT;
+			cpu->tc->flags |= TC_FLG_INDIRECT;
 			translate_next = 0;
 		}
 		break;
@@ -4816,7 +4816,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 
 		pc += bytes;
-		cpu->tc->tc_ctx.size += bytes;
+		cpu->tc->size += bytes;
 
 	} while ((translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR))) == 1);
 
@@ -4887,7 +4887,7 @@ void cpu_exec_tc(cpu_t *cpu, T &&lambda)
 			if (it != cpu->hook_map.end()) {
 				cpu->instr_eip = CONST32(disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
 				hook_emit(cpu, it->second.get());
-				cpu->tc->tc_ctx.flags |= TC_FLG_HOOK;
+				cpu->tc->flags |= TC_FLG_HOOK;
 				it->second->hook_tc_flags = tc;
 			}
 			else {
@@ -4920,14 +4920,14 @@ void cpu_exec_tc(cpu_t *cpu, T &&lambda)
 			orc::ThreadSafeModule tsm(std::unique_ptr<Module>(cpu->mod), tsc);
 			cpu->jit->add_ir_module(std::move(tsm));
 
-			tc->tc_ctx.pc = pc;
-			tc->tc_ctx.cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
-			tc->tc_ctx.cpu_flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
-			tc->tc_ctx.ptr_code = reinterpret_cast<entry_t>(cpu->jit->lookup("main")->getAddress());
-			assert(tc->tc_ctx.ptr_code);
-			tc->tc_ctx.jmp_offset[0] = reinterpret_cast<entry_t>(cpu->jit->lookup("exit")->getAddress());
-			tc->tc_ctx.jmp_offset[1] = tc->tc_ctx.jmp_offset[2] = tc->tc_ctx.jmp_offset[0];
-			assert(tc->tc_ctx.jmp_offset[0]);
+			tc->pc = pc;
+			tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
+			tc->cpu_flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
+			tc->ptr_code = reinterpret_cast<entry_t>(cpu->jit->lookup("main")->getAddress());
+			assert(tc->ptr_code);
+			tc->jmp_offset[0] = reinterpret_cast<entry_t>(cpu->jit->lookup("exit")->getAddress());
+			tc->jmp_offset[1] = tc->jmp_offset[2] = tc->jmp_offset[0];
+			assert(tc->jmp_offset[0]);
 
 			// now remove the function symbol names so that we can reuse them for other modules
 			cpu->jit->remove_symbols(std::vector<std::string> { "main", "exit" });
@@ -4966,7 +4966,7 @@ void cpu_exec_tc(cpu_t *cpu, T &&lambda)
 
 		// see if we can link the previous tc with the current one
 		if (prev_tc != nullptr) {
-			switch (prev_tc->tc_ctx.flags & TC_FLG_LINK_MASK)
+			switch (prev_tc->flags & TC_FLG_LINK_MASK)
 			{
 			case 0:
 			case TC_FLG_INDIRECT:
@@ -5181,10 +5181,10 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 	auto &hook_node = cpu->hook_map.extract(addr);
 	cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_FORCE_INSERT);
 	if (!(hook_ptr->hook_tc_flags.expired())) {
-		hook_ptr->hook_tc_flags.lock()->tc_ctx.cpu_flags |= CPU_IGNORE_TC;
+		hook_ptr->hook_tc_flags.lock()->cpu_flags |= CPU_IGNORE_TC;
 	}
 	if (!(hook_ptr->trmp_tc_flags.expired())) {
-		hook_ptr->trmp_tc_flags.lock()->tc_ctx.cpu_flags &= ~CPU_IGNORE_TC;
+		hook_ptr->trmp_tc_flags.lock()->cpu_flags &= ~CPU_IGNORE_TC;
 	}
 
 	cpu_exec_tc(cpu, [&i]() { return i++ == 0; });
@@ -5196,9 +5196,9 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 			auto it = cpu->code_cache[idx].begin();
 			while (it != cpu->code_cache[idx].end()) {
 				translated_code_t *tc = it->get();
-				if (tc->tc_ctx.cs_base == cpu->cpu_ctx.regs.cs_hidden.base &&
-					tc->tc_ctx.pc == pc &&
-					tc->tc_ctx.cpu_flags == flags) {
+				if (tc->cs_base == cpu->cpu_ctx.regs.cs_hidden.base &&
+					tc->pc == pc &&
+					tc->cpu_flags == flags) {
 					return *it;
 				}
 				it++;
@@ -5208,16 +5208,16 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 			}, cpu, addr);
 
 		if (tc_ptr) {
-			assert(tc_ptr->tc_ctx.size != 0);
-			tc_ptr->tc_ctx.cpu_flags |= CPU_IGNORE_TC;
+			assert(tc_ptr->size != 0);
+			tc_ptr->cpu_flags |= CPU_IGNORE_TC;
 			hook_ptr->trmp_tc_flags = tc_ptr;
 		}
 	}
 	else {
-		hook_ptr->trmp_tc_flags.lock()->tc_ctx.cpu_flags |= CPU_IGNORE_TC;
+		hook_ptr->trmp_tc_flags.lock()->cpu_flags |= CPU_IGNORE_TC;
 	}
 	if (!(hook_ptr->hook_tc_flags.expired())) {
-		hook_ptr->hook_tc_flags.lock()->tc_ctx.cpu_flags &= ~CPU_IGNORE_TC;
+		hook_ptr->hook_tc_flags.lock()->cpu_flags &= ~CPU_IGNORE_TC;
 	}
 	cpu->hook_map.insert(std::move(hook_node));
 

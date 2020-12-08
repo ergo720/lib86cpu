@@ -260,28 +260,15 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 		assert(vec_addr.size() == 2);
 		n = dst;
 	}
-	cpu->tc->tc_ctx.flags |= (n & TC_FLG_NUM_JMP);
+	cpu->tc->flags |= (n & TC_FLG_NUM_JMP);
 
 	if (n == 0) {
 		return;
 	}
 
-	std::vector<Type *> type_struct_tc_t_fields;
-	type_struct_tc_t_fields.push_back(getIntegerType(32));
-	type_struct_tc_t_fields.push_back(getIntegerType(32));
-	type_struct_tc_t_fields.push_back(getIntegerType(32));
-	type_struct_tc_t_fields.push_back(getPointerType(cpu->bb->getParent()->getFunctionType()));
-	type_struct_tc_t_fields.push_back(getArrayType(getPointerType(cpu->bb->getParent()->getFunctionType()), 3));
-	type_struct_tc_t_fields.push_back(getIntegerType(32));
-	type_struct_tc_t_fields.push_back(getIntegerType(32));
-	PointerType *tc_pstruct_type = getPointerType(StructType::create(CTX(), type_struct_tc_t_fields, "struct.tc_ctx_t", false));
-
-	// NOTE: WHY??? Trying to use GEP to calculate the struct member offsets from the tc base address only works if optimizations are turned off. Unfortunately, after enabling the transform passes,
-	// the generated code seems to assume that the function pointer members of the tc struct are 8 bytes large, instead of 4 (their real size), thus causing GEP to calculate wrong addresses,
-	// and the generated code will then perform out of bounds memory accesses at runtime. As a workaround, we calculate the addresses ourselves and inject them in the IR as constant pointers.
-	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->tc_ctx.jmp_offset[0]), getPointerType(tc_pstruct_type->getElementType()->getStructElementType(3)));
-	Value *tc_jmp1_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->tc_ctx.jmp_offset[1]), getPointerType(tc_pstruct_type->getElementType()->getStructElementType(3)));
-	Value *tc_flg_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->tc_ctx.flags), getPointerType(tc_pstruct_type->getElementType()->getStructElementType(5)));
+	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->jmp_offset[0]), getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())));
+	Value *tc_jmp1_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->jmp_offset[1]), getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())));
+	Value *tc_flg_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->flags), getPointerType(getIntegerType(32)));
 
 	switch (n)
 	{
@@ -351,19 +338,9 @@ link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
 void
 link_dst_only_emit(cpu_t *cpu)
 {
-	cpu->tc->tc_ctx.flags |= (1 & TC_FLG_NUM_JMP);
+	cpu->tc->flags |= (1 & TC_FLG_NUM_JMP);
 
-	std::vector<Type *> type_struct_tc_t_fields;
-	type_struct_tc_t_fields.push_back(getIntegerType(32));
-	type_struct_tc_t_fields.push_back(getIntegerType(32));
-	type_struct_tc_t_fields.push_back(getIntegerType(32));
-	type_struct_tc_t_fields.push_back(getPointerType(cpu->bb->getParent()->getFunctionType()));
-	type_struct_tc_t_fields.push_back(getArrayType(getPointerType(cpu->bb->getParent()->getFunctionType()), 3));
-	type_struct_tc_t_fields.push_back(getIntegerType(32));
-	type_struct_tc_t_fields.push_back(getIntegerType(32));
-	PointerType *tc_pstruct_type = getPointerType(StructType::create(CTX(), type_struct_tc_t_fields, "struct.tc_ctx_t", false));
-	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->tc_ctx.jmp_offset[0]), getPointerType(tc_pstruct_type->getElementType()->getStructElementType(3)));
-
+	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->jmp_offset[0]), getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())));
 	CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
 	ci->setCallingConv(CallingConv::C);
 	ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
