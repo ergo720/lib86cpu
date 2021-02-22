@@ -5190,7 +5190,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 	cpu_exec_tc(cpu, [&i]() { return i++ == 0; });
 
 	if (hook_ptr->trmp_tc_flags.expired()) {
-		auto &tc_ptr = std::invoke([](cpu_t *cpu, uint32_t pc) {
+		auto &tc_ptr = [](cpu_t *cpu, uint32_t pc) {
 			uint32_t flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
 			uint32_t idx = tc_hash(pc);
 			auto it = cpu->code_cache[idx].begin();
@@ -5205,7 +5205,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 			}
 
 			return std::shared_ptr<translated_code_t>();
-			}, cpu, addr);
+			}(cpu, addr);
 
 		if (tc_ptr) {
 			assert(tc_ptr->size != 0);
