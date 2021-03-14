@@ -68,7 +68,15 @@ static const std::unordered_map<ZydisRegister, int> zydis_to_reg_idx_table = {
 	{ ZYDIS_REGISTER_DR4,    DR4_idx },
 	{ ZYDIS_REGISTER_DR5,    DR5_idx },
 	{ ZYDIS_REGISTER_DR6,    DR6_idx },
-	{ ZYDIS_REGISTER_DR7,    DR7_idx }
+	{ ZYDIS_REGISTER_DR7,    DR7_idx },
+	{ ZYDIS_REGISTER_MM0,    R0_idx },
+	{ ZYDIS_REGISTER_MM1,    R1_idx },
+	{ ZYDIS_REGISTER_MM2,    R2_idx },
+	{ ZYDIS_REGISTER_MM3,    R3_idx },
+	{ ZYDIS_REGISTER_MM4,    R4_idx },
+	{ ZYDIS_REGISTER_MM5,    R5_idx },
+	{ ZYDIS_REGISTER_MM6,    R6_idx },
+	{ ZYDIS_REGISTER_MM7,    R7_idx },
 };
 
 int
@@ -96,6 +104,7 @@ get_struct_reg(cpu_t *cpu)
 	std::vector<Type *>type_struct_reg_t_fields;
 	std::vector<Type *>type_struct_seg_t_fields;
 	std::vector<Type *>type_struct_hiddenseg_t_fields;
+	std::vector<Type *>type_struct_fp80_t_fields;
 
 	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
 	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
@@ -105,6 +114,10 @@ get_struct_reg(cpu_t *cpu)
 	type_struct_seg_t_fields.push_back(getIntegerType(16));
 	type_struct_seg_t_fields.push_back(type_struct_hiddenseg_t);
 	StructType *type_struct_seg_t = StructType::create(CTX(), type_struct_seg_t_fields, "struct.seg_t", false);
+
+	type_struct_fp80_t_fields.push_back(getIntegerType(64));
+	type_struct_fp80_t_fields.push_back(getIntegerType(16));
+	StructType *type_struct_fp80_t = StructType::create(CTX(), type_struct_fp80_t_fields, "struct.fp80_t", true);
 
 	for (uint8_t n = 0; n < CPU_NUM_REGS; n++) {
 		switch (n)
@@ -120,6 +133,17 @@ get_struct_reg(cpu_t *cpu)
 		case LDTR_idx:
 		case TR_idx:
 			type_struct_reg_t_fields.push_back(type_struct_seg_t);
+			break;
+
+		case R0_idx:
+		case R1_idx:
+		case R2_idx:
+		case R3_idx:
+		case R4_idx:
+		case R5_idx:
+		case R6_idx:
+		case R7_idx:
+			type_struct_reg_t_fields.push_back(type_struct_fp80_t);
 			break;
 
 		default:
@@ -1795,6 +1819,14 @@ set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode)
 {
 	size_mode == SIZE32 ? ST_FLG_RES(res) : ST_FLG_RES_ext(res);
 	ST_FLG_AUX(aux);
+}
+
+void
+update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag)
+{
+	ST_MM_HIGH(CONST16(0xFFFF), idx);
+	ST_R16(tag, TAG_idx);
+	ST_R16(AND(LD_R16(ST_idx), CONST16(~ST_TOP_MASK)), ST_idx);
 }
 
 int

@@ -272,16 +272,16 @@ gen_hook_test()
 	}
 
 	uint32_t cr0;
-	read_reg(cpu, &cr0, REG_CR0);
+	read_gpr(cpu, &cr0, REG_CR0);
 	cr0 |= 1;
-	write_reg(cpu, cr0, REG_CR0);
-	write_reg(cpu, 0, REG_EIP);
-	write_reg(cpu, 0, REG_CS, SEG_SEL);
-	write_reg(cpu, 0, REG_CS, SEG_BASE);
-	write_reg(cpu, 1 << 22, REG_CS, SEG_FLG);
-	write_reg(cpu, 1 << 22, REG_SS, SEG_FLG);
-	write_reg(cpu, ramsize, REG_ESP);
-	write_reg(cpu, ramsize, REG_EBP);
+	write_gpr(cpu, cr0, REG_CR0);
+	write_gpr(cpu, 0, REG_EIP);
+	write_gpr(cpu, 0, REG_CS, SEG_SEL);
+	write_gpr(cpu, 0, REG_CS, SEG_BASE);
+	write_gpr(cpu, 1 << 22, REG_CS, SEG_FLG);
+	write_gpr(cpu, 1 << 22, REG_SS, SEG_FLG);
+	write_gpr(cpu, ramsize, REG_ESP);
+	write_gpr(cpu, ramsize, REG_EBP);
 
 	return true;
 }
@@ -427,9 +427,9 @@ main(int argc, char **argv)
 			return 1;
 		}
 
-		write_reg(cpu, 0, REG_CS, SEG_SEL);
-		write_reg(cpu, 0, REG_CS, SEG_BASE);
-		write_reg(cpu, code_entry, REG_EIP);
+		write_gpr(cpu, 0, REG_CS, SEG_SEL);
+		write_gpr(cpu, 0, REG_CS, SEG_BASE);
+		write_gpr(cpu, code_entry, REG_EIP);
 
 		if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
 			printf("Failed to initialize ram memory!\n");

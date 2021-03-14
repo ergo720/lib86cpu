@@ -42,7 +42,17 @@ static constexpr regs_layout_t regs_layout[CPU_NUM_REGS] = {
 	{ 0, IDTR_idx,	  "idtr" },
 	{ 0, GDTR_idx,	  "gdtr" },
 	{ 0, LDTR_idx,	  "ldtr" },
-	{ 0, TR_idx,	  "tr" },
+	{ 0, TR_idx,      "tr" },
+	{ 80, R0_idx,	  "r0" },
+	{ 80, R1_idx,	  "r1" },
+	{ 80, R2_idx,	  "r2" },
+	{ 80, R3_idx,	  "r3" },
+	{ 80, R4_idx,	  "r4" },
+	{ 80, R5_idx,	  "r5" },
+	{ 80, R6_idx,	  "r6" },
+	{ 80, R7_idx,	  "r7" },
+	{ 16, ST_idx,	  "status" },
+	{ 16, TAG_idx,	  "tag" },
 };
 
 static constexpr bool
@@ -90,6 +100,16 @@ static_assert(check_regs_layout_idx(29), "wrong index in regs_layout array!");
 static_assert(check_regs_layout_idx(30), "wrong index in regs_layout array!");
 static_assert(check_regs_layout_idx(31), "wrong index in regs_layout array!");
 static_assert(check_regs_layout_idx(32), "wrong index in regs_layout array!");
+static_assert(check_regs_layout_idx(33), "wrong index in regs_layout array!");
+static_assert(check_regs_layout_idx(34), "wrong index in regs_layout array!");
+static_assert(check_regs_layout_idx(35), "wrong index in regs_layout array!");
+static_assert(check_regs_layout_idx(36), "wrong index in regs_layout array!");
+static_assert(check_regs_layout_idx(37), "wrong index in regs_layout array!");
+static_assert(check_regs_layout_idx(38), "wrong index in regs_layout array!");
+static_assert(check_regs_layout_idx(39), "wrong index in regs_layout array!");
+static_assert(check_regs_layout_idx(40), "wrong index in regs_layout array!");
+static_assert(check_regs_layout_idx(41), "wrong index in regs_layout array!");
+static_assert(check_regs_layout_idx(42), "wrong index in regs_layout array!");
 
 
 void
@@ -110,4 +130,5 @@ cpu_init(cpu_t *cpu)
 	cpu->cpu_ctx.regs.cr0 = 0x60000010;
 	cpu->cpu_ctx.regs.idtr_hidden.limit = cpu->cpu_ctx.regs.gdtr_hidden.limit = cpu->cpu_ctx.regs.ldtr_hidden.limit =
 		cpu->cpu_ctx.regs.tr_hidden.limit = 0xFFFF;
+	cpu->cpu_ctx.regs.tag = 0x5555;
 }

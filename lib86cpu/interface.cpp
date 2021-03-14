@@ -692,7 +692,7 @@ trampoline_call(cpu_t *cpu, addr_t addr, std::any &ret, std::vector<std::any> ar
 }
 
 lc86_status
-read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
+read_gpr(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 {
 	switch (reg)
 	{
@@ -1169,7 +1169,7 @@ read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 }
 
 lc86_status
-write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
+write_gpr(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 {
 	switch (reg)
 	{
@@ -1640,6 +1640,126 @@ write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 			return set_last_error(lc86_status::invalid_parameter);
 		}
 		break;
+	}
+
+	return lc86_status::success;
+}
+
+lc86_status
+read_fxr(cpu_t *cpu, uint64_t *low, uint64_t *high, int reg)
+{
+	switch (reg)
+	{
+	case REG_R0:
+		*low = cpu->cpu_ctx.regs.r0.low;
+		*high = cpu->cpu_ctx.regs.r0.high;
+		break;
+
+	case REG_R1:
+		*low = cpu->cpu_ctx.regs.r1.low;
+		*high = cpu->cpu_ctx.regs.r1.high;
+		break;
+
+	case REG_R2:
+		*low = cpu->cpu_ctx.regs.r2.low;
+		*high = cpu->cpu_ctx.regs.r2.high;
+		break;
+
+	case REG_R3:
+		*low = cpu->cpu_ctx.regs.r3.low;
+		*high = cpu->cpu_ctx.regs.r3.high;
+		break;
+
+	case REG_R4:
+		*low = cpu->cpu_ctx.regs.r4.low;
+		*high = cpu->cpu_ctx.regs.r4.high;
+		break;
+
+	case REG_R5:
+		*low = cpu->cpu_ctx.regs.r5.low;
+		*high = cpu->cpu_ctx.regs.r5.high;
+		break;
+
+	case REG_R6:
+		*low = cpu->cpu_ctx.regs.r6.low;
+		*high = cpu->cpu_ctx.regs.r6.high;
+		break;
+
+	case REG_R7:
+		*low = cpu->cpu_ctx.regs.r7.low;
+		*high = cpu->cpu_ctx.regs.r7.high;
+		break;
+
+	case REG_ST:
+		*low = cpu->cpu_ctx.regs.status;
+		break;
+
+	case REG_TAG:
+		*low = cpu->cpu_ctx.regs.tag;
+		break;
+
+	default:
+		return set_last_error(lc86_status::invalid_parameter);
+	}
+
+	return lc86_status::success;
+}
+
+lc86_status
+write_fxr(cpu_t *cpu, uint64_t low, uint64_t high, int reg)
+{
+	switch (reg)
+	{
+	case REG_R0:
+		cpu->cpu_ctx.regs.r0.low = low;
+		cpu->cpu_ctx.regs.r0.high = high;
+		break;
+
+	case REG_R1:
+		cpu->cpu_ctx.regs.r1.low = low;
+		cpu->cpu_ctx.regs.r1.high = high;
+		break;
+
+	case REG_R2:
+		cpu->cpu_ctx.regs.r2.low = low;
+		cpu->cpu_ctx.regs.r2.high = high;
+		break;
+
+	case REG_R3:
+		cpu->cpu_ctx.regs.r3.low = low;
+		cpu->cpu_ctx.regs.r3.high = high;
+		break;
+
+	case REG_R4:
+		cpu->cpu_ctx.regs.r4.low = low;
+		cpu->cpu_ctx.regs.r4.high = high;
+		break;
+
+	case REG_R5:
+		cpu->cpu_ctx.regs.r5.low = low;
+		cpu->cpu_ctx.regs.r5.high = high;
+		break;
+
+	case REG_R6:
+		cpu->cpu_ctx.regs.r6.low = low;
+		cpu->cpu_ctx.regs.r6.high = high;
+		break;
+
+	case REG_R7:
+		cpu->cpu_ctx.regs.r7.low = low;
+		cpu->cpu_ctx.regs.r7.high = high;
+		break;
+
+	case REG_ST:
+		cpu->cpu_ctx.regs.status = low;
+		break;
+
+	case REG_TAG:
+		cpu->cpu_ctx.regs.tag = low;
+		break;
+
+	default:
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	return lc86_status::success;

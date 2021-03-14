@@ -99,6 +99,16 @@ uint8_t cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_
 #define GDTR_idx    REG_GDTR
 #define LDTR_idx    REG_LDTR
 #define TR_idx      REG_TR
+#define R0_idx      REG_R0
+#define R1_idx      REG_R1
+#define R2_idx      REG_R2
+#define R3_idx      REG_R3
+#define R4_idx      REG_R4
+#define R5_idx      REG_R5
+#define R6_idx      REG_R6
+#define R7_idx      REG_R7
+#define ST_idx      REG_ST
+#define TAG_idx     REG_TAG
 
 #define SEG_offset  ES_idx
 #define CR_offset   CR0_idx
@@ -108,6 +118,8 @@ uint8_t cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_
 #define SEG_BASE_idx    0
 #define SEG_LIMIT_idx   1
 #define SEG_FLG_idx     2
+#define F80_LOW_idx     0
+#define F80_HIGH_idx    1
 
 // eflags macros
 #define TF_MASK     (1 << 8)
@@ -194,5 +206,9 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define CR3_FLG_MASK (CR3_PD_MASK | CR3_PCD_MASK | CR3_PWT_MASK)
 #define CR4_PSE_MASK (1 << 4)
 #define CR4_PGE_MASK (1 << 7)
+
+// fpu register flags
+#define ST_ES_MASK  (1 << 7)
+#define ST_TOP_MASK (3 << 11)
 
 #define X86_MAX_INSTR_LENGTH 15

@@ -11,6 +11,11 @@
 		uint32_t		_reg;	\
 	}
 
+#define DEFINE_REG16(_reg)			\
+	struct {				\
+		uint16_t		_reg;	\
+	}
+
 #define DEFINE_SEG_REG(_reg)			\
 	struct {				\
 		uint16_t		_reg;	\
@@ -20,6 +25,12 @@
 			uint32_t flags; \
 		} _reg ## _hidden; \
 	}
+
+#define DEFINE_FP80(_reg) \
+	PACKED(struct { \
+		uint64_t low; \
+		uint16_t high; \
+	} _reg;)
 
 // These registers must have the same order they have in cpu->regs_layout
 struct regs_t {
@@ -68,4 +79,16 @@ struct regs_t {
 	DEFINE_SEG_REG(gdtr); // selector and flags unused
 	DEFINE_SEG_REG(ldtr);
 	DEFINE_SEG_REG(tr);
+
+	/* Fpu registers */
+	DEFINE_FP80(r0);
+	DEFINE_FP80(r1);
+	DEFINE_FP80(r2);
+	DEFINE_FP80(r3);
+	DEFINE_FP80(r4);
+	DEFINE_FP80(r5);
+	DEFINE_FP80(r6);
+	DEFINE_FP80(r7);
+	DEFINE_REG16(status);
+	DEFINE_REG16(tag);
 };

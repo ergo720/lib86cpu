@@ -125,6 +125,16 @@ struct hook {
 #define REG_GDTR    30
 #define REG_LDTR    31
 #define REG_TR      32
+#define REG_R0      33
+#define REG_R1      34
+#define REG_R2      35
+#define REG_R3      36
+#define REG_R4      37
+#define REG_R5      38
+#define REG_R6      39
+#define REG_R7      40
+#define REG_ST      41
+#define REG_TAG     42
 
 #define REG32       0
 #define REG16       1
@@ -146,8 +156,10 @@ API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC lc86_status cpu_run(cpu_t *cpu);
 API_FUNC void cpu_sync_state(cpu_t *cpu);
 API_FUNC lc86_status cpu_set_flags(cpu_t *cpu, uint32_t flags);
-API_FUNC lc86_status read_reg(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel = REG32);
-API_FUNC lc86_status write_reg(cpu_t *cpu, uint32_t value, int reg, int size_or_sel = REG32);
+API_FUNC lc86_status read_gpr(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel = REG32);
+API_FUNC lc86_status write_gpr(cpu_t *cpu, uint32_t value, int reg, int size_or_sel = REG32);
+API_FUNC lc86_status read_fxr(cpu_t *cpu, uint64_t *low, uint64_t *high, int reg);
+API_FUNC lc86_status write_fxr(cpu_t *cpu, uint64_t low, uint64_t high, int reg);
 
 // memory api
 API_FUNC uint8_t *get_ram_ptr(cpu_t *cpu);

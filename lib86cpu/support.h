@@ -16,7 +16,7 @@
 #define CPU_ALLOW_CODE_WRITE    (1 << 8)
 #define CPU_FORCE_INSERT        (1 << 9)
 
-#define CPU_NUM_REGS 33
+#define CPU_NUM_REGS 43
 
 #define NUM_VARGS(args) std::tuple_size<decltype(std::make_tuple(args))>::value
 
