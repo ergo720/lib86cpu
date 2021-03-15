@@ -8,6 +8,7 @@
 #include "jit.h"
 #include "internal.h"
 #include "memory.h"
+#include "clock.h"
 #include <fstream>
 
 
@@ -34,6 +35,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 	}
 
 	cpu_init(cpu);
+	tsc_init(cpu);
 	// XXX: eventually, the user should be able to set the instruction formatting
 	set_instr_format(cpu);
 
@@ -50,7 +52,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 
 	cpu->jit = std::move(lc86_jit::create(cpu));
 
-	// check if FP80 and FP128 are supported by this architecture
+	// check if FP80 is supported by this architecture
 	std::string data_layout = cpu->dl->getStringRepresentation();
 	if (data_layout.find("f80") != std::string::npos) {
 		LOG(log_level::info, "FP80 supported.");
@@ -106,6 +108,9 @@ cpu_sync_state(cpu_t *cpu)
 		if (cpu->cpu_ctx.regs.ss_hidden.flags & SEG_HIDDEN_DB) {
 			cpu->cpu_ctx.hflags |= HFLG_SS32;
 		}
+	}
+	if (cpu->cpu_ctx.regs.cr0 & CR0_EM_MASK) {
+		cpu->cpu_ctx.hflags |= HFLG_CR0_EM;
 	}
 }
 

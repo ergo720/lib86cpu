@@ -329,6 +329,10 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 			return 1;
 		}
 
+		if ((cpu_ctx->regs.cr0 & CR0_EM_MASK) != (new_cr & CR0_EM_MASK)) {
+			cpu_ctx->hflags |= ((new_cr & CR0_EM_MASK) >> 2);
+		}
+
 		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
 			tc_cache_clear(cpu_ctx->cpu);
 			tlb_flush(cpu_ctx->cpu, TLB_zero);
@@ -370,8 +374,24 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 		cpu_ctx->regs.cr3 = (new_cr & CR3_FLG_MASK);
 		break;
 
+	case 4: {
+		if (new_cr & CR4_RES_MASK) {
+			return 1;
+		}
+
+		if (new_cr & CR4_PAE_MASK) {
+			LIB86CPU_ABORT_msg("PAE mode is not supported");
+		}
+
+		if ((cpu_ctx->regs.cr4 & (CR4_PSE_MASK | CR4_PGE_MASK)) != (new_cr & (CR4_PSE_MASK | CR4_PGE_MASK))) {
+			tlb_flush(cpu_ctx->cpu, TLB_keep_rc);
+		}
+
+		cpu_ctx->regs.cr4 = new_cr;
+	}
+	break;
+
 	case 2:
-	case 4:
 	default:
 		LIB86CPU_ABORT();
 	}
@@ -2501,7 +2521,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						translate_next = 0;
 						[[fallthrough]];
 
-					case ZYDIS_REGISTER_CR3: {
+					case ZYDIS_REGISTER_CR3:
+					case ZYDIS_REGISTER_CR4: {
 						Function *crN_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_update_crN", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
 							getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)));
 						CallInst *ci = CallInst::Create(crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(GET_REG_idx(instr.operands[OPNUM_DST].reg.value) - CR_offset),
@@ -2515,9 +2536,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					case ZYDIS_REGISTER_CR2:
 						ST_R32(val, CR2_idx);
 						break;
-
-					case ZYDIS_REGISTER_CR4:
-						BAD;
 
 					default:
 						LIB86CPU_ABORT();
@@ -3538,7 +3556,21 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 		case ZYDIS_MNEMONIC_RDMSR:       BAD;
 		case ZYDIS_MNEMONIC_RDPMC:       BAD;
-		case ZYDIS_MNEMONIC_RDTSC:       BAD;
+		case ZYDIS_MNEMONIC_RDTSC: {
+			if ((cpu_ctx->hflags & HFLG_PE_MODE) && (cpu_ctx->hflags & HFLG_CPL)) {
+				std::vector<BasicBlock *>vec_bb = getBBs(2);
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(LD_R32(CR4_idx), CONST32(CR4_TSD_MASK)), CONST32(0)));
+				cpu->bb = vec_bb[0];
+				RAISEin0(EXP_GP);
+				UNREACH();
+				cpu->bb = vec_bb[1];
+			}
+
+			Function *rdtsc_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_rdtsc_handler", getVoidType(), cpu->ptr_cpu_ctx->getType()));
+			CallInst::Create(rdtsc_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_RET: {
 			bool has_imm_op = false;
 			switch (instr.opcode)

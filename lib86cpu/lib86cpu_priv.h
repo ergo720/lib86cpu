@@ -149,6 +149,12 @@ struct cpu_t {
 	std::unordered_map<addr_t, std::unique_ptr<hook>> hook_map;
 	uint16_t num_tc;
 	exp_info_t exp_info;
+	struct {
+		uint64_t tsc;
+		static constexpr uint64_t freq = 733333333;
+		uint64_t last_host_ticks;
+		uint64_t host_freq;
+	} clock;
 
 	// llvm specific variables
 	std::unique_ptr<lc86_jit> jit;

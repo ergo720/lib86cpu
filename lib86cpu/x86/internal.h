@@ -14,11 +14,14 @@ using namespace llvm;
 
 void tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t size, uint32_t eip);
 uint8_t cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes);
+void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);
 
 // cpu hidden flags
+#define EM_SHIFT        0
 #define CS32_SHIFT      2
 #define SS32_SHIFT      3
 #define PE_MODE_SHIFT   4
+#define HFLG_CR0_EM     (1 << EM_SHIFT)
 #define HFLG_CPL        (3 << 0)
 #define HFLG_CS32       (1 << CS32_SHIFT)
 #define HFLG_SS32       (1 << SS32_SHIFT)
@@ -204,8 +207,11 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define CR3_PCD_MASK (1 << 4)
 #define CR3_PWT_MASK (1 << 3)
 #define CR3_FLG_MASK (CR3_PD_MASK | CR3_PCD_MASK | CR3_PWT_MASK)
+#define CR4_TSD_MASK (1 << 2)
 #define CR4_PSE_MASK (1 << 4)
+#define CR4_PAE_MASK (1 << 5)
 #define CR4_PGE_MASK (1 << 7)
+#define CR4_RES_MASK (0x1FFFFF << 11) // cr4 reserved bits
 
 // fpu register flags
 #define ST_ES_MASK  (1 << 7)
