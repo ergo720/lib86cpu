@@ -155,6 +155,12 @@ struct cpu_t {
 		uint64_t last_host_ticks;
 		uint64_t host_freq;
 	} clock;
+	struct {
+		struct {
+			uint64_t base;
+			uint64_t mask;
+		} phys_var[8];
+	} mtrr;
 
 	// llvm specific variables
 	std::unique_ptr<lc86_jit> jit;

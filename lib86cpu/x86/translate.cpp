@@ -399,6 +399,48 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 	return 0;
 }
 
+void
+cpu_msr_read(cpu_ctx_t *cpu_ctx)
+{
+	uint64_t val;
+
+	switch (cpu_ctx->regs.ecx)
+	{
+	case IA32_APIC_BASE:
+		// hardcoded value for now
+		val = 0xFEE00000 | (1 << 11) | (1 << 8);
+		break;
+
+	case IA32_MTRR_PHYSBASE(0):
+	case IA32_MTRR_PHYSBASE(1):
+	case IA32_MTRR_PHYSBASE(2):
+	case IA32_MTRR_PHYSBASE(3):
+	case IA32_MTRR_PHYSBASE(4):
+	case IA32_MTRR_PHYSBASE(5):
+	case IA32_MTRR_PHYSBASE(6):
+	case IA32_MTRR_PHYSBASE(7):
+		val = cpu_ctx->cpu->mtrr.phys_var[(cpu_ctx->regs.ecx - MTRR_PHYSBASE_base) / 2].base;
+		break;
+
+	case IA32_MTRR_PHYSMASK(0):
+	case IA32_MTRR_PHYSMASK(1):
+	case IA32_MTRR_PHYSMASK(2):
+	case IA32_MTRR_PHYSMASK(3):
+	case IA32_MTRR_PHYSMASK(4):
+	case IA32_MTRR_PHYSMASK(5):
+	case IA32_MTRR_PHYSMASK(6):
+	case IA32_MTRR_PHYSMASK(7):
+		val = cpu_ctx->cpu->mtrr.phys_var[(cpu_ctx->regs.ecx - MTRR_PHYSMASK_base) / 2].mask;
+		break;
+
+	default:
+		LIB86CPU_ABORT_msg("Unhandled msr read to register at address 0x%X", cpu_ctx->regs.ecx);
+	}
+
+	cpu_ctx->regs.edx = (val >> 32);
+	cpu_ctx->regs.eax = val;
+}
+
 static inline addr_t
 get_pc(cpu_ctx_t *cpu_ctx)
 {
@@ -3569,10 +3611,21 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_RDMSR:       BAD;
+		case ZYDIS_MNEMONIC_RDMSR: {
+			if (cpu_ctx->hflags & HFLG_CPL) {
+				RAISEin0(EXP_GP);
+				translate_next = 0;
+			}
+			else {
+				Function *msr_r_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_msr_read", getVoidType(), cpu->ptr_cpu_ctx->getType()));
+				CallInst::Create(msr_r_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
+			}
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_RDPMC:       BAD;
 		case ZYDIS_MNEMONIC_RDTSC: {
-			if ((cpu_ctx->hflags & HFLG_PE_MODE) && (cpu_ctx->hflags & HFLG_CPL)) {
+			if (cpu_ctx->hflags & HFLG_CPL) {
 				std::vector<BasicBlock *>vec_bb = getBBs(2);
 				BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(LD_R32(CR4_idx), CONST32(CR4_TSD_MASK)), CONST32(0)));
 				cpu->bb = vec_bb[0];

@@ -15,6 +15,7 @@ using namespace llvm;
 void tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t size, uint32_t eip);
 uint8_t cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes);
 void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);
+void cpu_msr_read(cpu_ctx_t *cpu_ctx);
 
 // cpu hidden flags
 #define EM_SHIFT        0
@@ -216,5 +217,12 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 // fpu register flags
 #define ST_ES_MASK  (1 << 7)
 #define ST_TOP_MASK (3 << 11)
+
+// msr register addresses
+#define MTRR_PHYSBASE_base    0x200
+#define MTRR_PHYSMASK_base    0x201
+#define IA32_APIC_BASE        0x1B
+#define IA32_MTRR_PHYSBASE(n) (MTRR_PHYSBASE_base + (n * 2))
+#define IA32_MTRR_PHYSMASK(n) (MTRR_PHYSMASK_base + (n * 2))
 
 #define X86_MAX_INSTR_LENGTH 15

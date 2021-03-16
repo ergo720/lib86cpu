@@ -96,6 +96,7 @@ lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetM
 	define_absolute(mangle("tc_invalidate"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&tc_invalidate), JITSymbolFlags::Absolute));
 	define_absolute(mangle("cpu_update_crN"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_update_crN), JITSymbolFlags::Absolute));
 	define_absolute(mangle("cpu_rdtsc_handler"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_rdtsc_handler), JITSymbolFlags::Absolute));
+	define_absolute(mangle("cpu_msr_read"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_msr_read), JITSymbolFlags::Absolute));
 	define_absolute(mangle("cpu_abort"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(static_cast<void(*)(int32_t, uint8_t *)>(&cpu_abort_proxy)), JITSymbolFlags::Absolute));
 
 #ifdef _WIN32
