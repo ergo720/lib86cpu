@@ -1158,22 +1158,104 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 		case ZYDIS_MNEMONIC_CLTS:        BAD;
 		case ZYDIS_MNEMONIC_CMC:         BAD;
-		case ZYDIS_MNEMONIC_CMOVB:       BAD;
-		case ZYDIS_MNEMONIC_CMOVBE:      BAD;
-		case ZYDIS_MNEMONIC_CMOVL:       BAD;
-		case ZYDIS_MNEMONIC_CMOVLE:      BAD;
-		case ZYDIS_MNEMONIC_CMOVNB:      BAD;
-		case ZYDIS_MNEMONIC_CMOVNBE:     BAD;
-		case ZYDIS_MNEMONIC_CMOVNL:      BAD;
-		case ZYDIS_MNEMONIC_CMOVNLE:     BAD;
-		case ZYDIS_MNEMONIC_CMOVNO:      BAD;
-		case ZYDIS_MNEMONIC_CMOVNP:      BAD;
-		case ZYDIS_MNEMONIC_CMOVNS:      BAD;
-		case ZYDIS_MNEMONIC_CMOVNZ:      BAD;
-		case ZYDIS_MNEMONIC_CMOVO:       BAD;
-		case ZYDIS_MNEMONIC_CMOVP:       BAD;
-		case ZYDIS_MNEMONIC_CMOVS:       BAD;
-		case ZYDIS_MNEMONIC_CMOVZ:       BAD;
+		case ZYDIS_MNEMONIC_CMOVB:
+		case ZYDIS_MNEMONIC_CMOVBE:
+		case ZYDIS_MNEMONIC_CMOVL:
+		case ZYDIS_MNEMONIC_CMOVLE:
+		case ZYDIS_MNEMONIC_CMOVNB:
+		case ZYDIS_MNEMONIC_CMOVNBE:
+		case ZYDIS_MNEMONIC_CMOVNL:
+		case ZYDIS_MNEMONIC_CMOVNLE:
+		case ZYDIS_MNEMONIC_CMOVNO:
+		case ZYDIS_MNEMONIC_CMOVNP:
+		case ZYDIS_MNEMONIC_CMOVNS:
+		case ZYDIS_MNEMONIC_CMOVNZ:
+		case ZYDIS_MNEMONIC_CMOVO:
+		case ZYDIS_MNEMONIC_CMOVP:
+		case ZYDIS_MNEMONIC_CMOVS:
+		case ZYDIS_MNEMONIC_CMOVZ: {
+			Value *val;
+			switch (instr.opcode)
+			{
+			case 0x40:
+				val = ICMP_NE(LD_OF(), CONST32(0)); // OF != 0
+				break;
+
+			case 0x41:
+				val = ICMP_EQ(LD_OF(), CONST32(0)); // OF == 0
+				break;
+
+			case 0x42:
+				val = ICMP_NE(LD_CF(), CONST32(0)); // CF != 0
+				break;
+
+			case 0x43:
+				val = ICMP_EQ(LD_CF(), CONST32(0)); // CF == 0
+				break;
+
+			case 0x44:
+				val = ICMP_EQ(LD_ZF(), CONST32(0)); // ZF != 0
+				break;
+
+			case 0x45:
+				val = ICMP_NE(LD_ZF(), CONST32(0)); // ZF == 0
+				break;
+
+			case 0x46:
+				val = OR(ICMP_NE(LD_CF(), CONST32(0)), ICMP_EQ(LD_ZF(), CONST32(0))); // CF != 0 OR ZF != 0
+				break;
+
+			case 0x47:
+				val = AND(ICMP_EQ(LD_CF(), CONST32(0)), ICMP_NE(LD_ZF(), CONST32(0))); // CF == 0 AND ZF == 0
+				break;
+
+			case 0x48:
+				val = ICMP_NE(LD_SF(), CONST32(0)); // SF != 0
+				break;
+
+			case 0x49:
+				val = ICMP_EQ(LD_SF(), CONST32(0)); // SF == 0
+				break;
+
+			case 0x4A:
+				val = ICMP_EQ(LD_PF(), CONST8(0)); // PF != 0
+				break;
+
+			case 0x4B:
+				val = ICMP_NE(LD_PF(), CONST8(0)); // PF == 0
+				break;
+
+			case 0x4C:
+				val = ICMP_NE(LD_SF(), SHR(LD_OF(), CONST32(31))); // SF != OF
+				break;
+
+			case 0x4D:
+				val = ICMP_EQ(LD_SF(), SHR(LD_OF(), CONST32(31))); // SF == OF
+				break;
+
+			case 0x4E:
+				val = OR(ICMP_EQ(LD_ZF(), CONST32(0)), ICMP_NE(LD_SF(), SHR(LD_OF(), CONST32(31)))); // ZF != 0 OR SF != OF
+				break;
+
+			case 0x4F:
+				val = AND(ICMP_NE(LD_ZF(), CONST32(0)), ICMP_EQ(LD_SF(), SHR(LD_OF(), CONST32(31)))); // ZF == 0 AND SF == OF
+				break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+
+			Value *rm, *src;
+			std::vector<BasicBlock *>vec_bb = getBBs(2);
+			BR_COND(vec_bb[0], vec_bb[1], val);
+			cpu->bb = vec_bb[0];
+			GET_RM(OPNUM_SRC, src = LD_REG_val(rm);, src = LD_MEM(fn_idx[size_mode], rm););
+			ST_REG_val(src, GET_REG(OPNUM_DST));
+			BR_UNCOND(vec_bb[1]);
+			cpu->bb = vec_bb[1];
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_CMP: {
 			Value *val, *cmp, *sub, *rm;
 			switch (instr.opcode)
