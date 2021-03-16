@@ -49,7 +49,7 @@ Value *get_register_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx);
 void set_flags_sum(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode);
 void set_flags_sub(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode);
 void set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode);
-void update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag);
+void update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag, bool is_write);
 void write_eflags(cpu_t *cpu, Value *eflags, Value *mask);
 void hook_emit(cpu_t *cpu, hook *obj);
 
@@ -227,6 +227,7 @@ default: \
 #define LD_REG_val(reg) LD(reg)
 #define LD_SEG(seg) LD(GEP_SEL(seg))
 #define LD_SEG_HIDDEN(seg, idx) LD(GEP(GEP(GEP(cpu->ptr_regs, seg), SEG_HIDDEN_idx), idx))
+#define LD_MM32(idx) LD(IBITCAST32(GEP(GEP(cpu->ptr_regs, idx), F80_LOW_idx)))
 
 #define LD_MEM(idx, addr) mem_read_emit(cpu, addr, idx, 0)
 #define ST_MEM(idx, addr, val) mem_write_emit(cpu, addr, val, idx, 0)
@@ -248,7 +249,9 @@ cpu->bb = getBBs(1)[0]
 #define SET_FLG_SUM(sum, a, b) set_flags_sum(cpu, std::vector<Value *> { sum, a , b }, size_mode)
 #define SET_FLG_SUB(sub, a, b) set_flags_sub(cpu, std::vector<Value *> { sub, a , b }, size_mode)
 #define SET_FLG(res, aux) set_flags(cpu, res, aux, size_mode)
-#define UPDATE_FPU_AFTER_MMX(tag, idx) update_fpu_state_after_mmx_emit(cpu, idx, tag)
+#define UPDATE_FPU_AFTER_MMX(tag, idx, w) update_fpu_state_after_mmx_emit(cpu, idx, tag, w)
+#define UPDATE_FPU_AFTER_MMX_w(tag, idx) UPDATE_FPU_AFTER_MMX(tag, idx, true)
+#define UPDATE_FPU_AFTER_MMX_r(tag, idx) UPDATE_FPU_AFTER_MMX(tag, idx, false)
 
 #define REP_start() vec_bb.push_back(BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0)); \
 Value *ecx, *zero; \

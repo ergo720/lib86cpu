@@ -1822,9 +1822,11 @@ set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode)
 }
 
 void
-update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag)
+update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag, bool is_write)
 {
-	ST_MM_HIGH(CONST16(0xFFFF), idx);
+	if (is_write) {
+		ST_MM_HIGH(CONST16(0xFFFF), idx);
+	}
 	ST_R16(tag, TAG_idx);
 	ST_R16(AND(LD_R16(ST_idx), CONST16(~ST_TOP_MASK)), ST_idx);
 }

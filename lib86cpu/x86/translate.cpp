@@ -2694,7 +2694,22 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					GET_RM(OPNUM_SRC, src = LD_R32(GET_REG_idx(instr.operands[OPNUM_SRC].reg.value));, src = LD_MEM(MEM_LD32_idx, rm););
 					int mm_idx = GET_REG_idx(instr.operands[OPNUM_DST].reg.value);
 					ST_MM64(ZEXT64(src), mm_idx);
-					UPDATE_FPU_AFTER_MMX(CONST16(0), mm_idx);
+					UPDATE_FPU_AFTER_MMX_w(CONST16(0), mm_idx);
+				}
+				break;
+
+				case 0x7E: {
+					Value *rm;
+					std::vector<BasicBlock *> vec_bb = getBBs(2);
+
+					BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(LD_R16(ST_idx), CONST16(ST_ES_MASK)), CONST16(0)));
+					cpu->bb = vec_bb[0];
+					RAISEin0(EXP_MF);
+					UNREACH();
+					cpu->bb = vec_bb[1];
+					int mm_idx = GET_REG_idx(instr.operands[OPNUM_SRC].reg.value);
+					GET_RM(OPNUM_DST, ST_R32(LD_MM32(mm_idx), GET_REG_idx(instr.operands[OPNUM_DST].reg.value));, ST_MEM(MEM_LD32_idx, rm, LD_MM32(mm_idx)););
+					UPDATE_FPU_AFTER_MMX_r(CONST16(0), mm_idx);
 				}
 				break;
 
