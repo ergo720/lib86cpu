@@ -922,7 +922,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_BSWAP:       BAD;
+		case ZYDIS_MNEMONIC_BSWAP: {
+			int reg_idx = GET_REG_idx(instr.operands[OPNUM_SINGLE].reg.value);
+			Value *temp = LD_R32(reg_idx);
+			temp = INTRINSIC_ty(bswap, getIntegerType(32), temp);
+			ST_R32(temp, reg_idx);
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_BT:
 		case ZYDIS_MNEMONIC_BTC:
 		case ZYDIS_MNEMONIC_BTR:
