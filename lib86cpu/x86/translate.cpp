@@ -330,7 +330,7 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 		}
 
 		if ((cpu_ctx->regs.cr0 & CR0_EM_MASK) != (new_cr & CR0_EM_MASK)) {
-			cpu_ctx->hflags |= ((new_cr & CR0_EM_MASK) >> 2);
+			cpu_ctx->hflags |= ((new_cr & CR0_EM_MASK) << 3);
 		}
 
 		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {

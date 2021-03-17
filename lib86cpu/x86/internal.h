@@ -18,15 +18,16 @@ void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);
 void cpu_msr_read(cpu_ctx_t *cpu_ctx);
 
 // cpu hidden flags
-#define EM_SHIFT        0
+#define CPL_SHIFT       0
 #define CS32_SHIFT      2
 #define SS32_SHIFT      3
 #define PE_MODE_SHIFT   4
-#define HFLG_CR0_EM     (1 << EM_SHIFT)
-#define HFLG_CPL        (3 << 0)
+#define EM_SHIFT        5
+#define HFLG_CPL        (3 << CPL_SHIFT)
 #define HFLG_CS32       (1 << CS32_SHIFT)
 #define HFLG_SS32       (1 << SS32_SHIFT)
 #define HFLG_PE_MODE    (1 << PE_MODE_SHIFT)
+#define HFLG_CR0_EM     (1 << EM_SHIFT)
 
 // disassembly context flags
 #define DISAS_FLG_CS32         (1 << 0)
