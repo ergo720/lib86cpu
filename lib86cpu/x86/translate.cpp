@@ -1977,9 +1977,96 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_INSB:        BAD;
-		case ZYDIS_MNEMONIC_INSD:        BAD;
-		case ZYDIS_MNEMONIC_INSW:        BAD;
+		case ZYDIS_MNEMONIC_INSB:
+		case ZYDIS_MNEMONIC_INSD:
+		case ZYDIS_MNEMONIC_INSW: {
+			switch (instr.opcode)
+			{
+			case 0x6C:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x6D: {
+				Value *val, *df, *addr, *src, *edi, *io_val, *port = LD_R16(EDX_idx);
+				check_io_priv_emit(cpu, ZEXT32(port), size_mode);
+				std::vector<BasicBlock *> vec_bb = getBBs(3);
+				if (instr.attributes & ZYDIS_ATTRIB_HAS_REP) {
+					REP_start();
+				}
+
+				switch (addr_mode)
+				{
+				case ADDR16:
+					edi = ZEXT32(LD_R16(EDI_idx));
+					addr = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi);
+					break;
+
+				case ADDR32:
+					edi = LD_R32(EDI_idx);
+					addr = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi);
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+
+				switch (size_mode)
+				{
+				case SIZE8:
+					val = CONST32(1);
+					io_val = LD_IO(IO_LD8_idx, port);
+					ST_MEM(MEM_LD8_idx, addr, io_val);
+					break;
+
+				case SIZE16:
+					val = CONST32(2);
+					io_val = LD_IO(IO_LD16_idx, port);
+					ST_MEM(MEM_LD16_idx, addr, io_val);
+					break;
+
+				case SIZE32:
+					val = CONST32(4);
+					io_val = LD_IO(IO_LD32_idx, port);
+					ST_MEM(MEM_LD32_idx, addr, io_val);
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+
+				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(df, CONST32(0)));
+
+				cpu->bb = vec_bb[0];
+				Value *edi_sum = ADD(edi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi_sum), EDI_idx) : ST_R32(edi_sum, EDI_idx);
+				if (instr.attributes & ZYDIS_ATTRIB_HAS_REP) {
+					REP();
+				}
+				else {
+					BR_UNCOND(vec_bb[2]);
+				}
+
+				cpu->bb = vec_bb[1];
+				Value *edi_sub = SUB(edi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(edi_sub), EDI_idx) : ST_R32(edi_sub, EDI_idx);
+				if (instr.attributes & ZYDIS_ATTRIB_HAS_REP) {
+					REP();
+				}
+				else {
+					BR_UNCOND(vec_bb[2]);
+				}
+
+				cpu->bb = vec_bb[2];
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_INT3:        BAD;
 		case ZYDIS_MNEMONIC_INT:         BAD;
 		case ZYDIS_MNEMONIC_INTO:        BAD;
