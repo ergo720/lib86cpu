@@ -147,8 +147,8 @@ struct hook {
 #define SEG_FLG     3
 
 // mmio/pmio access handlers
-using fp_read = std::vector<uint8_t> (*)(addr_t addr, size_t size, void *opaque);
-using fp_write = void (*)(addr_t addr, size_t size, const void *buffer, void *opaque);
+using fp_read = uint64_t (*)(addr_t addr, size_t size, void *opaque);
+using fp_write = void (*)(addr_t addr, size_t size, const uint64_t value, void *opaque);
 
 // cpu api
 API_FUNC lc86_status cpu_new(size_t ramsize, cpu_t *&out);
@@ -168,7 +168,7 @@ API_FUNC lc86_status mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, b
 API_FUNC lc86_status mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority);
 API_FUNC lc86_status mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int priority, const char *rom_path, uint8_t *&out);
 API_FUNC lc86_status mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space);
-API_FUNC lc86_status mem_read_block(cpu_t *cpu, addr_t addr, size_t size, std::vector<uint8_t> &out);
+API_FUNC lc86_status mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out);
 API_FUNC lc86_status mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer);
 API_FUNC uint8_t io_read_8(cpu_t *cpu, port_t port);
 API_FUNC uint16_t io_read_16(cpu_t *cpu, port_t port);

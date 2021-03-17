@@ -159,29 +159,29 @@ get_ram_ptr(cpu_t *cpu)
 }
 
 static void
-default_mmio_write_handler(addr_t addr, size_t size, const void *buffer, void *opaque)
+default_mmio_write_handler(addr_t addr, size_t size, const uint64_t value, void *opaque)
 {
 	LOG(log_level::warn, "Unhandled MMIO write at address %#010x with size %d", addr, size);
 }
 
-static std::vector<uint8_t>
+static uint64_t
 default_mmio_read_handler(addr_t addr, size_t size, void *opaque)
 {
 	LOG(log_level::warn, "Unhandled MMIO read at address %#010x with size %d", addr, size);
-	return std::vector<uint8_t>(size, 0xFF);
+	return std::numeric_limits<uint64_t>::max();
 }
 
 static void
-default_pmio_write_handler(addr_t addr, size_t size, const void *buffer, void *opaque)
+default_pmio_write_handler(addr_t addr, size_t size, const uint64_t value, void *opaque)
 {
 	LOG(log_level::warn, "Unhandled PMIO write at port %#06x with size %d", addr, size);
 }
 
-static std::vector<uint8_t>
+static uint64_t
 default_pmio_read_handler(addr_t addr, size_t size, void *opaque)
 {
 	LOG(log_level::warn, "Unhandled PMIO read at port %#06x with size %d", addr, size);
-	return std::vector<uint8_t>(size, 0xFF);
+	return std::numeric_limits<uint64_t>::max();
 }
 
 lc86_status
@@ -478,9 +478,8 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 }
 
 lc86_status
-mem_read_block(cpu_t *cpu, addr_t addr, size_t size, std::vector<uint8_t> &out)
+mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out)
 {
-	out.resize(size);
 	size_t vec_offset = 0;
 	size_t page_offset = addr & PAGE_MASK;
 	size_t size_left = size;
@@ -496,16 +495,15 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, std::vector<uint8_t> &out)
 				switch (region->type)
 				{
 				case mem_type::ram:
-					std::memcpy(out.data() + vec_offset, get_ram_host_ptr(cpu, region, phys_addr), bytes_to_read);
+					std::memcpy(out + vec_offset, get_ram_host_ptr(cpu, region, phys_addr), bytes_to_read);
 					break;
 
 				case mem_type::rom:
-					std::memcpy(out.data() + vec_offset, get_rom_host_ptr(cpu, region, phys_addr), bytes_to_read);
+					std::memcpy(out + vec_offset, get_rom_host_ptr(cpu, region, phys_addr), bytes_to_read);
 					break;
 
 				case mem_type::mmio:
-					std::memcpy(out.data() + vec_offset, (region->read_handler(phys_addr, bytes_to_read, region->opaque)).data(), bytes_to_read);
-					break;
+					return set_last_error(lc86_status::invalid_parameter);
 
 				case mem_type::alias: {
 					memory_region_t<addr_t> *alias = region;
@@ -517,7 +515,7 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, std::vector<uint8_t> &out)
 
 				case mem_type::unmapped:
 					LOG(log_level::warn, "Memory read to unmapped memory at address %#010x with size %zu", phys_addr, bytes_to_read);
-					std::memcpy(out.data() + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
+					std::memcpy(out + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
 					break;
 
 				default:
@@ -526,7 +524,7 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, std::vector<uint8_t> &out)
 			}
 			else {
 				LOG(log_level::warn, "Memory read at address %#010x with size %zu is not completely inside a memory region", phys_addr, bytes_to_read);
-				std::memcpy(out.data() + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
+				std::memcpy(out + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
 			}
 
 			page_offset = 0;
@@ -572,8 +570,7 @@ mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer)
 					break;
 
 				case mem_type::mmio:
-					region->write_handler(phys_addr, bytes_to_write, buffer, region->opaque);
-					break;
+					return set_last_error(lc86_status::invalid_parameter);
 
 				case mem_type::alias: {
 					memory_region_t<addr_t> *alias = region;

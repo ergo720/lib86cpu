@@ -32,9 +32,9 @@ FASTCALL test_fastcall(uint64_t a, uint16_t b, uint8_t c, uint32_t d)
 {
 	printf("test_fastcall called with args: %llu, %hu, %u, %u\n", a, b, c, d);
 
-	std::vector<uint8_t> vec(0x2000, 0xAA);
+	std::vector<uint8_t> vec(0x3800, 0xAA);
 	mem_write_block(cpu, 0x2800, 0x2000, vec.data());
-	mem_read_block(cpu, 0, 0x3800, vec);
+	mem_read_block(cpu, 0, 0x3800, vec.data());
 	// should print 0x6A, uninitialzed value, 0xAA
 	printf("vec[0x0] = 0x%X, vec[0x27FF] = 0x%X, vec[0x2800] = 0x%X\n", vec[0x0], vec[0x27FF], vec[0x2800]);
 
@@ -91,13 +91,13 @@ CDECL test_double_ptr(int **a, int *b)
 }
 
 void
-test386_write_handler(addr_t addr, size_t size, const void *buffer, void *opaque)
+test386_write_handler(addr_t addr, size_t size, const uint64_t value, void *opaque)
 {
 	switch (addr)
 	{
 	case TEST386_POST_PORT: {
 		if (size == 1) {
-			printf("Test number is 0x%X\n", *static_cast<const uint8_t *>(buffer));
+			printf("Test number is 0x%X\n", static_cast<const uint8_t>(value));
 		}
 		else {
 			printf("Unhandled i/o port size at port %d\n", TEST386_POST_PORT);
@@ -108,12 +108,12 @@ test386_write_handler(addr_t addr, size_t size, const void *buffer, void *opaque
 	case TEST386_EE_PORT: {
 		static std::string str = "";
 		if (size == 1) {
-			if (*static_cast<const char *>(buffer) == '\n') {
+			if (static_cast<const char>(value) == '\n') {
 				printf("%s", (str + '\n').c_str());
 				str.clear();
 			}
 			else {
-				str += *static_cast<const char *>(buffer);
+				str += static_cast<const char>(value);
 			}
 		}
 		else {
