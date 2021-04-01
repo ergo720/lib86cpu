@@ -1054,21 +1054,29 @@ read_gpr(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel)
 		*value = cpu->cpu_ctx.regs.dr7;
 		break;
 
-	case REG_EFLAGS:
+	case REG_EFLAGS: {
+		uint32_t arth_flags = (((cpu->cpu_ctx.lazy_eflags.auxbits & 0x80000000) >> 31) | // cf
+			(((cpu->cpu_ctx.lazy_eflags.parity[(cpu->cpu_ctx.lazy_eflags.result ^ (cpu->cpu_ctx.lazy_eflags.auxbits >> 8)) & 0xFF]) ^ 1) << 2) | // pf
+			((cpu->cpu_ctx.lazy_eflags.auxbits & 8) << 1) | // af
+			(((((cpu->cpu_ctx.lazy_eflags.result | -cpu->cpu_ctx.lazy_eflags.result) >> 31) & 1) ^ 1) << 6) | // zf
+			(((cpu->cpu_ctx.lazy_eflags.result >> 31) ^ (cpu->cpu_ctx.lazy_eflags.auxbits & 1)) << 7) | // sf
+			(((cpu->cpu_ctx.lazy_eflags.auxbits ^ (cpu->cpu_ctx.lazy_eflags.auxbits << 1)) & 0x80000000) >> 20) // of
+			);
 		switch (size_or_sel)
 		{
 		case REG32:
-			*value = cpu->cpu_ctx.regs.eflags;
+			*value = (cpu->cpu_ctx.regs.eflags | arth_flags);
 			break;
 
 		case REG16:
-			*value = (cpu->cpu_ctx.regs.eflags & 0xFFFF);
+			*value = ((cpu->cpu_ctx.regs.eflags & 0xFFFF) | arth_flags);
 			break;
 
 		default:
 			return set_last_error(lc86_status::invalid_parameter);
 		}
-		break;
+	}
+	break;
 
 	case REG_EIP:
 		switch (size_or_sel)
@@ -1531,21 +1539,34 @@ write_gpr(cpu_t *cpu, uint32_t value, int reg, int size_or_sel)
 		cpu->cpu_ctx.regs.dr7 = value;
 		break;
 
-	case REG_EFLAGS:
+	case REG_EFLAGS: {
+		uint32_t new_res, new_aux;
+		new_aux = (((value & 1) << 31) | // cf
+			((((value & 1) << 11) ^ (value & 0x800)) << 19) | // of
+			((value & 0x10) >> 1) | // af
+			((((value & 4) >> 2) ^ 1) << 8) | // pf
+			((value & 0x80) >> 7) // sf
+			);
+		new_res = ((value & 0x40) << 2); // zf
 		switch (size_or_sel)
 		{
 		case REG32:
-			cpu->cpu_ctx.regs.eflags = value;
+			cpu->cpu_ctx.regs.eflags = (value & 0x3F7FD5); // mask out reserved bits in eflags
+			cpu->cpu_ctx.lazy_eflags.result = new_res;
+			cpu->cpu_ctx.lazy_eflags.auxbits = new_aux;
 			break;
 
 		case REG16:
-			(cpu->cpu_ctx.regs.eflags &= 0xFFFF0000) |= (value & 0xFFFF);
+			(cpu->cpu_ctx.regs.eflags &= 0xFFFF0002) |= (value & 0x7FD5); // mask out reserved bits in eflags
+			cpu->cpu_ctx.lazy_eflags.result = new_res;
+			cpu->cpu_ctx.lazy_eflags.auxbits = new_aux;
 			break;
 
 		default:
 			return set_last_error(lc86_status::invalid_parameter);
 		}
-		break;
+	}
+	break;
 
 	case REG_EIP:
 		switch (size_or_sel)
