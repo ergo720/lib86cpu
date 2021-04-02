@@ -59,11 +59,6 @@ cpu_new(size_t ramsize, cpu_t *&out)
 		cpu->cpu_flags |= CPU_FLAG_FP80;
 	}
 
-	// check if we need to swap guest memory.
-	if (cpu->dl->isBigEndian()) {
-		cpu->cpu_flags |= CPU_FLAG_SWAPMEM;
-	}
-
 	LOG(log_level::info, "Created new cpu \"%s\"", cpu->cpu_name);
 
 	cpu->cpu_ctx.cpu = out = cpu;

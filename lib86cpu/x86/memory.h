@@ -202,66 +202,23 @@ get_ram_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *ram, addr_t addr)
 }
 
 template<typename T>
-T ram_read_le(cpu_t *cpu, void *ram_ptr)
-{
-	T value;
-	memcpy(&value, ram_ptr, sizeof(T));
-	return value;
-}
-
-template<typename T>
-T ram_read_be(cpu_t *cpu, void *ram_ptr)
-{
-	T value;
-	memcpy(&value, ram_ptr, sizeof(T));
-	sys::swapByteOrder<T>(value);
-	return value;
-}
-
-template<typename T>
-void ram_write_le(cpu_t *cpu, void *ram_ptr, T value)
-{
-	memcpy(ram_ptr, &value, sizeof(T));
-}
-
-template<typename T>
-void ram_write_be(cpu_t *cpu, void *ram_ptr, T value)
-{
-	sys::swapByteOrder<T>(value);
-	memcpy(ram_ptr, &value, sizeof(T));
-}
-
-template<typename T>
-using fp_ram_read = T(*)(cpu_t *, void *);
-template<typename T>
-using fp_ram_write = void(*)(cpu_t *, void *, T);
-
-inline constexpr std::tuple<fp_ram_read<uint8_t>, fp_ram_read<uint16_t>, fp_ram_read<uint32_t>, fp_ram_read<uint64_t>,
-	fp_ram_write<uint8_t>, fp_ram_write<uint16_t>, fp_ram_write<uint32_t>, fp_ram_write<uint64_t>> ram_func[2] = {
-		{ ram_read_le<uint8_t>, ram_read_le<uint16_t>, ram_read_le<uint32_t>, ram_read_le<uint64_t>,
-		ram_write_le<uint8_t>, ram_write_le<uint16_t>, ram_write_le<uint32_t>, ram_write_le<uint64_t> },
-		{ ram_read_be<uint8_t>, ram_read_be<uint16_t>, ram_read_be<uint32_t>, ram_read_be<uint64_t>,
-		ram_write_be<uint8_t>, ram_write_be<uint16_t>, ram_write_be<uint32_t>, ram_write_be<uint64_t> },
-};
-
-// borrowed from Bit Twiddling Hacks by Sean Eron Anderson (public domain)
-// http://graphics.stanford.edu/~seander/bithacks.html#IntegerLogDeBruijn
-inline constexpr int MultiplyDeBruijnBitPosition2[32] =
-{
-  0, 1, 28, 2, 29, 14, 24, 3, 30, 22, 20, 15, 25, 17, 4, 8,
-  31, 27, 13, 23, 21, 19, 16, 7, 26, 12, 18, 6, 11, 5, 10, 9
-};
-
-template<typename T>
 T ram_read(cpu_t *cpu, void *ram_ptr)
 {
-	return (*std::get<MultiplyDeBruijnBitPosition2[static_cast<uint32_t>(sizeof(T) * 0x077CB531U) >> 27]>(ram_func[cpu->cpu_flags & CPU_FLAG_SWAPMEM]))(cpu, ram_ptr);
+	T value;
+	memcpy(&value, ram_ptr, sizeof(T));
+	if constexpr (is_big_endian) {
+		sys::swapByteOrder<T>(value);
+	}
+	return value;
 }
 
 template<typename T>
 void ram_write(cpu_t *cpu, void *ram_ptr, T value)
 {
-	(*std::get<MultiplyDeBruijnBitPosition2[static_cast<uint32_t>(sizeof(T) * 0x077CB531U) >> 27] + 4>(ram_func[cpu->cpu_flags & CPU_FLAG_SWAPMEM]))(cpu, ram_ptr, value);
+	if constexpr (is_big_endian) {
+		sys::swapByteOrder<T>(value);
+	}
+	memcpy(ram_ptr, &value, sizeof(T));
 }
 
 /*
@@ -288,7 +245,7 @@ T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t flags)
 					phys_addr = phys_addr_e & ~PAGE_MASK;
 				}
 			}
-			if (cpu->cpu_flags & CPU_FLAG_SWAPMEM) {
+			if constexpr (is_big_endian) {
 				sys::swapByteOrder<T>(value);
 			}
 			return value;
@@ -321,7 +278,7 @@ void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t flags, tr
 			if (is_code2) {
 				tc_invalidate(&cpu->cpu_ctx, tc, phys_addr_e & ~PAGE_MASK, sizeof(T) - bytes_in_page, eip);
 			}
-			if (cpu->cpu_flags & CPU_FLAG_SWAPMEM) {
+			if constexpr (is_big_endian) {
 				sys::swapByteOrder<T>(value);
 			}
 			while (i < sizeof(T)) {

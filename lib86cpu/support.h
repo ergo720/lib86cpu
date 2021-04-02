@@ -7,9 +7,9 @@
 #pragma once
 
 #include "lib86cpu_priv.h"
+#include "llvm/support/Host.h"
 
 
-#define CPU_FLAG_SWAPMEM        (1 << 0)
 #define CPU_FLAG_FP80           (1 << 2)
 #define CPU_IGNORE_TC           (1 << 6)
 #define CPU_DISAS_ONE           (1 << 7)
@@ -55,3 +55,4 @@ lc86_status cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::an
 
 inline logfn_t logfn = &discard_log;
 inline std::string last_error = "";
+inline constexpr bool is_big_endian = llvm::sys::IsBigEndianHost;

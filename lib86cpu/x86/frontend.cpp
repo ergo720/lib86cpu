@@ -1517,7 +1517,7 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_pri
 	// yes, access ram directly
 	cpu->bb = vec_bb[3];
 	ST(ret, LD(IBITCASTs(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(ram_offset) }))));
-	if ((cpu->cpu_flags & CPU_FLAG_SWAPMEM) && (mem_size != 8)) {
+	if (is_big_endian && (mem_size != 8)) {
 		std::vector<Type *> vec_types { getIntegerType(mem_size) };
 		std::vector<Value *> vec_params { LD(ret) };
 		ST(ret, INTRINSIC_ty(bswap, vec_types, vec_params));
@@ -1570,7 +1570,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	cpu->bb = vec_bb[3];
 	Value *val_ptr = ALLOCs(mem_size);
 	ST(val_ptr, value);
-	if ((cpu->cpu_flags & CPU_FLAG_SWAPMEM) && (mem_size != 8)) {
+	if (is_big_endian && (mem_size != 8)) {
 		std::vector<Type *> vec_types { getIntegerType(mem_size) };
 		std::vector<Value *> vec_params { LD(val_ptr) };
 		ST(val_ptr, INTRINSIC_ty(bswap, vec_types, vec_params));
