@@ -9,18 +9,19 @@
 
 
 void
-cpu_abort_proxy(int32_t code, uint8_t *str)
+cpu_runtime_abort(const char *msg)
 {
-	cpu_abort(code, reinterpret_cast<const char *>(str));
+	cpu_abort(static_cast<int32_t>(lc86_status::internal_error), msg);
 }
 
 void
 cpu_abort(int32_t code, const char *msg, ...)
 {
-	char str[256];
 	std::va_list args;
 	va_start(args, msg);
-	std::vsnprintf(str, sizeof(str), msg, args);
+	int size = std::vsnprintf(nullptr, 0, msg, args);
+	std::string str(size + 1, '\0');
+	std::vsnprintf(str.data(), str.length(), msg, args);
 	va_end(args);
 	throw lc86_exp_abort(str, static_cast<lc86_status>(code));
 }

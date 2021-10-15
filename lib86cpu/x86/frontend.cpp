@@ -221,7 +221,7 @@ get_ext_fn(cpu_t *cpu)
 	cpu->ptr_invtc_fn = cast<Function>(cpu->mod->getOrInsertFunction("tc_invalidate", getVoidType(), cpu_ctx_ty,
 		tc_ty, getIntegerType(32), getIntegerType(8), getIntegerType(32)));
 
-	Function *abort_func = cast<Function>(cpu->mod->getOrInsertFunction("cpu_abort", getVoidType(), getIntegerType(32), getPointerType(getIntegerType(8))));
+	Function *abort_func = cast<Function>(cpu->mod->getOrInsertFunction("cpu_runtime_abort", getVoidType(), getPointerType(getIntegerType(8))));
 	abort_func->addAttribute(0, Attribute::AttrKind::NoReturn);
 	cpu->ptr_abort_fn = abort_func;
 }

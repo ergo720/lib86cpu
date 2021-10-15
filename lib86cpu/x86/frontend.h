@@ -351,11 +351,6 @@ BR_COND(vec_bb[3], vec_bb[2], AND(ICMP_NE(ecx, zero), ICMP_EQ(LD_ZF(), CONST32(0
 
 #define ABORT(str) \
 do { \
-    assert(sizeof(str) <= 256); \
-    Value *arr = ALLOC(getArrayType(getIntegerType(8), 256)); \
-    for (size_t idx = 0; idx < sizeof(str); ++idx) { \
-	    ST(GEP(arr, idx), CONST8(str[idx])); \
-	} \
-    CallInst *ci = CallInst::Create(cpu->ptr_abort_fn, std::vector<Value *>{ CONST32(static_cast<int32_t>(lc86_status::internal_error)), GEP(arr, 0) }, "", cpu->bb); \
+    CallInst *ci = CallInst::Create(cpu->ptr_abort_fn, ConstantExpr::getIntToPtr(INTPTR(str), getPointerType(getIntegerType(8))), "", cpu->bb); \
     ci->setCallingConv(CallingConv::C); \
 } while (0)
