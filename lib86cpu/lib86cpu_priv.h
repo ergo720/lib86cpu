@@ -84,7 +84,7 @@ struct exp_info_t {
 
 struct cpu_ctx_t;
 using entry_t = translated_code_t * (*)(cpu_ctx_t *cpu_ctx);
-using raise_exp_t = translated_code_t * (*)(cpu_ctx_t *cpu_ctx, exp_data_t *exp_data);
+using raise_exp_t = entry_t;
 
 struct translated_code_t {
 	std::forward_list<translated_code_t *> linked_tc;
@@ -129,7 +129,7 @@ struct cpu_ctx_t {
 	uint32_t tlb[TLB_MAX_SIZE];
 	uint8_t *ram;
 	raise_exp_t exp_fn;
-	exp_info_t *ptr_exp_info;
+	exp_info_t exp_info;
 };
 
 class lc86_jit;
@@ -148,7 +148,6 @@ struct cpu_t {
 	std::vector<std::pair<std::unique_ptr<uint8_t[]>, int>> vec_rom;
 	std::unordered_map<addr_t, std::unique_ptr<hook>> hook_map;
 	uint16_t num_tc;
-	exp_info_t exp_info;
 	struct {
 		uint64_t tsc;
 		static constexpr uint64_t freq = 733333333;
@@ -180,5 +179,4 @@ struct cpu_t {
 	llvm::BasicBlock *bb; // bb to which we are currently adding llvm instructions
 	llvm::Function *ptr_mem_ldfn[7];
 	llvm::Function *ptr_mem_stfn[7];
-	llvm::GlobalVariable *exp_data;
 };

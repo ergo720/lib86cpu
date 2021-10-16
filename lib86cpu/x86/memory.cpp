@@ -234,8 +234,11 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, 
 		// NOTE: the u/s bit of the error code should reflect the actual cpl even if the memory access is privileged
 		if constexpr (raise_host_exp) {
 			assert(disas_ctx == nullptr);
-			exp_data_t exp_data{ addr, err_code | (is_write << 1) | cpu_lv, EXP_PF, eip };
-			throw exp_data;
+			cpu->cpu_ctx.exp_info.exp_data.fault_addr = addr;
+			cpu->cpu_ctx.exp_info.exp_data.code = err_code | (is_write << 1) | cpu_lv;
+			cpu->cpu_ctx.exp_info.exp_data.idx = EXP_PF;
+			cpu->cpu_ctx.exp_info.exp_data.eip = eip;
+			throw host_exp_t::guest_exp;
 		}
 		else {
 			assert(disas_ctx != nullptr);

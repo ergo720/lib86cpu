@@ -37,21 +37,28 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 		// run the translated code
 		return tc->ptr_code(cpu_ctx);
 	}
-	catch (exp_data_t exp_data) {
-		// page fault while excecuting the translated code
-		try {
-			// the exception handler always returns nullptr
-			return cpu_ctx->exp_fn(cpu_ctx, &exp_data);
+	catch (host_exp_t type) {
+		if (type == host_exp_t::guest_exp) {
+			// page fault while excecuting the translated code
+			try {
+				// the exception handler always returns nullptr
+				return cpu_ctx->exp_fn(cpu_ctx);
+			}
+			catch (host_exp_t type) {
+				assert(type == host_exp_t::guest_exp);
+
+				// page fault while delivering another exception
+				// NOTE: we abort because we don't support double/triple faults yet
+				LIB86CPU_ABORT();
+			}
 		}
-		catch (exp_data_t exp_data) {
-			// page fault while delivering another exception
-			// NOTE: we abort because we don't support double/triple faults yet
-			LIB86CPU_ABORT();
+		else if (type == host_exp_t::cpu_mode_changed || type == host_exp_t::halt_tc) {
+			// used by mov cr0, reg when it switches cpu mode and by tc_invalidate when it invalidates the current tc
+			return nullptr;
 		}
-	}
-	catch (int err) {
-		// used by mov cr0, reg when it switches cpu mode and by tc_invalidate when it invalidates the current tc
-		return nullptr;
+		else {
+			LIB86CPU_ABORT_msg("Unknown host exception in %s", __func__);
+		}
 	}
 }
 
@@ -136,7 +143,7 @@ tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t 
 	if (halt_tc) {
 		// in this case the tc we were executing has been destroyed and thus we must return to the translator with an exception
 		cpu_ctx->regs.eip = eip;
-		throw -2;
+		throw host_exp_t::halt_tc;
 	}
 }
 
@@ -250,10 +257,16 @@ create_tc_prologue(cpu_t *cpu)
 	StructType *type_exp_data_t = StructType::create(CTX(),
 		type_struct_exp_data_t_fields, "struct.exp_data_t", false);
 
+	std::vector<Type*> type_struct_exp_info_t_fields;
+	type_struct_exp_info_t_fields.push_back(type_exp_data_t);
+	type_struct_exp_info_t_fields.push_back(getIntegerType(8));
+	StructType* type_exp_info_t = StructType::create(CTX(),
+		type_struct_exp_info_t_fields, "struct.exp_info_t", false);
+
 	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");  // NOTE: opaque tc struct
 	FunctionType *type_exp_t = FunctionType::get(
-		getPointerType(tc_struct_type),                                                                // tc ret
-		std::vector<Type *> { getPointerType(cpu_ctx_struct_type), getPointerType(type_exp_data_t) },  // cpu_ctx, exp_data arg
+		getPointerType(tc_struct_type),       // tc ret
+		getPointerType(cpu_ctx_struct_type),  // cpu_ctx
 		false);
 
 	std::vector<Type *> type_struct_cpu_ctx_t_fields;
@@ -264,7 +277,7 @@ create_tc_prologue(cpu_t *cpu)
 	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(32), TLB_MAX_SIZE));
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(getIntegerType(8)));
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(type_exp_t));
-	type_struct_cpu_ctx_t_fields.push_back(getPointerType(StructType::create(CTX(), ""))); // opaque exp_info struct since we never need to access it
+	type_struct_cpu_ctx_t_fields.push_back(type_exp_info_t);
 	cpu_ctx_struct_type->setBody(type_struct_cpu_ctx_t_fields, false);
 	PointerType *type_pcpu_ctx_t = getPointerType(cpu_ctx_struct_type);
 
@@ -295,8 +308,6 @@ create_tc_prologue(cpu_t *cpu)
 	cpu->ptr_ram->setName("ram");
 	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 6));
 	cpu->ptr_exp_fn->setName("exp_fn");
-	cpu->exp_data = new GlobalVariable(*cpu->mod, type_exp_data_t, false, GlobalValue::InternalLinkage,
-		ConstantStruct::get(type_exp_data_t, std::vector<Constant *> { CONST32(0), CONST16(0), CONST16(0), CONST32(0) }), "global.exp_data");
 }
 
 static void
@@ -354,7 +365,7 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 			cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
 			cpu_ctx->cpu->jit->free_code_block(cpu_ctx->exp_fn);
 			gen_exp_fn(cpu_ctx->cpu);
-			throw -1;
+			throw host_exp_t::cpu_mode_changed;
 		}
 
 		if ((cpu_ctx->regs.cr0 & (CR0_WP_MASK | CR0_PG_MASK)) != (new_cr & (CR0_WP_MASK | CR0_PG_MASK))) {
@@ -5146,13 +5157,17 @@ void cpu_exec_tc(cpu_t *cpu, T &&lambda)
 		try {
 			pc = get_code_addr_exp(cpu, get_pc(&cpu->cpu_ctx), cpu->cpu_ctx.regs.eip);
 		}
-		catch (exp_data_t exp_data) {
+		catch (host_exp_t type) {
+			assert(type == host_exp_t::guest_exp);
+
 			// page fault during instruction fetching
 			try {
 				// the exception handler always returns nullptr
-				prev_tc = cpu->cpu_ctx.exp_fn(&cpu->cpu_ctx, &exp_data);
+				prev_tc = cpu->cpu_ctx.exp_fn(&cpu->cpu_ctx);
 			}
-			catch (exp_data_t exp_data) {
+			catch (host_exp_t type) {
+				assert(type == host_exp_t::guest_exp);
+
 				// page fault while delivering another exception
 				// NOTE: we abort because we don't support double/triple faults yet
 				LIB86CPU_ABORT();
@@ -5468,10 +5483,11 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		// setup the stack to call the trampoline
 		hook_ptr->trmp_fn(cpu, args, &ret_eip);
 	}
-	catch (exp_data_t exp_data) {
+	catch (host_exp_t type) {
+		assert(type == host_exp_t::guest_exp);
+
 		// page fault while calling the trampoline. We return because we can't handle an exception here. If this happens,
 		// it probably means there is a stack overflow condition in the guest stack
-
 		cpu->cpu_ctx.regs.ecx = ecx;
 		cpu->cpu_ctx.regs.edx = edx;
 		return set_last_error(lc86_status::page_fault);

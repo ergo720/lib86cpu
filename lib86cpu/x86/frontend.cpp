@@ -385,6 +385,12 @@ gen_exp_fn(cpu_t *cpu)
 	}
 
 	StructType *cpu_ctx_struct_type = StructType::create(CTX(), "struct.cpu_ctx_t");
+	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");  // NOTE: opaque tc struct
+	FunctionType *type_exp_t = FunctionType::get(
+		getPointerType(tc_struct_type),       // tc ret
+		getPointerType(cpu_ctx_struct_type),  // cpu_ctx
+		false);
+
 	std::vector<Type *> type_struct_exp_data_t_fields;
 	type_struct_exp_data_t_fields.push_back(getIntegerType(32));
 	type_struct_exp_data_t_fields.push_back(getIntegerType(16));
@@ -392,12 +398,6 @@ gen_exp_fn(cpu_t *cpu)
 	type_struct_exp_data_t_fields.push_back(getIntegerType(32));
 	StructType *type_exp_data_t = StructType::create(CTX(),
 		type_struct_exp_data_t_fields, "struct.exp_data_t", false);
-
-	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");  // NOTE: opaque tc struct
-	FunctionType *type_exp_t = FunctionType::get(
-		getPointerType(tc_struct_type),                                                                // tc ret
-		std::vector<Type *> { getPointerType(cpu_ctx_struct_type), getPointerType(type_exp_data_t) },  // cpu_ctx, exp_data arg
-		false);
 
 	std::vector<Type *> type_struct_exp_info_t_fields;
 	type_struct_exp_info_t_fields.push_back(type_exp_data_t);
@@ -413,7 +413,7 @@ gen_exp_fn(cpu_t *cpu)
 	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(32), TLB_MAX_SIZE));
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(getIntegerType(8)));
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(type_exp_t));
-	type_struct_cpu_ctx_t_fields.push_back(getPointerType(type_exp_info_t));
+	type_struct_cpu_ctx_t_fields.push_back(type_exp_info_t);
 	cpu_ctx_struct_type->setBody(type_struct_cpu_ctx_t_fields, false);
 
 	Function *func = Function::Create(
@@ -426,8 +426,7 @@ gen_exp_fn(cpu_t *cpu)
 	cpu->bb = getBB();
 	cpu->tc = nullptr;
 	cpu->instr_eip = CONST32(0);
-	Function::arg_iterator args = func->arg_begin();
-	cpu->ptr_cpu_ctx = args++;
+	cpu->ptr_cpu_ctx = func->arg_begin();
 	cpu->ptr_cpu_ctx->setName("cpu_ctx");
 	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, 1);
 	cpu->ptr_regs->setName("regs");
@@ -441,11 +440,12 @@ gen_exp_fn(cpu_t *cpu)
 	cpu->ptr_ram->setName("ram");
 	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 6));
 	cpu->ptr_exp_fn->setName("exp_fn");
-	Value *ptr_exp_info = LD(GEP(cpu->ptr_cpu_ctx, 7));
+	Value *ptr_exp_info = GEP(cpu->ptr_cpu_ctx, 7);
 	ptr_exp_info->setName("exp_info");
 
 	get_ext_fn(cpu);
-	Value *exp_data = args++;
+	Value *ptr_exp_data = GEP(ptr_exp_info, 0);
+	ptr_exp_data->setName("exp_data");
 	BasicBlock *bb_exp_in_flight = getBB();
 	BasicBlock *bb_next = getBB();
 	BR_COND(bb_exp_in_flight, bb_next, ICMP_NE(LD(GEP(ptr_exp_info, 1)), CONST8(0)));
@@ -455,14 +455,14 @@ gen_exp_fn(cpu_t *cpu)
 	UNREACH();
 	cpu->bb = bb_next;
 	ST(GEP(ptr_exp_info, 1), CONST8(1));
-	Value *fault_addr = LD(GEP(exp_data, 0));
-	Value *code = ZEXT32(LD(GEP(exp_data, 1)));
-	Value *idx = ZEXT32(LD(GEP(exp_data, 2)));
-	Value *eip = LD(GEP(exp_data, 3));
-	ST(GEP(GEP(ptr_exp_info, 0), 0), fault_addr);
-	ST(GEP(GEP(ptr_exp_info, 0), 1), TRUNC16(code));
-	ST(GEP(GEP(ptr_exp_info, 0), 2), TRUNC16(idx));
-	ST(GEP(GEP(ptr_exp_info, 0), 3), eip);
+	Value *fault_addr = LD(GEP(ptr_exp_data, 0));
+	Value *code = ZEXT32(LD(GEP(ptr_exp_data, 1)));
+	Value *idx = ZEXT32(LD(GEP(ptr_exp_data, 2)));
+	Value *eip = LD(GEP(ptr_exp_data, 3));
+	ST(GEP(ptr_exp_data, 0), fault_addr);
+	ST(GEP(ptr_exp_data, 1), TRUNC16(code));
+	ST(GEP(ptr_exp_data, 2), TRUNC16(idx));
+	ST(GEP(ptr_exp_data, 3), eip);
 
 	Value *old_eflags = OR(OR(OR(OR(OR(OR(LD_R32(EFLAGS_idx),
 		SHR(LD_CF(), CONST32(31))),
@@ -773,11 +773,12 @@ gen_exp_fn(cpu_t *cpu)
 void
 raise_exp_inline_emit(cpu_t *cpu, std::vector<Value *> &exp_data)
 {
-	ST(GEP(cpu->exp_data, 0), exp_data[0]);
-	ST(GEP(cpu->exp_data, 1), exp_data[1]);
-	ST(GEP(cpu->exp_data, 2), exp_data[2]);
-	ST(GEP(cpu->exp_data, 3), exp_data[3]);
-	CallInst *ci = CallInst::Create(cpu->ptr_exp_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, cpu->exp_data }, "", cpu->bb);
+	Value *ptr_exp_data = GEP(GEP(cpu->ptr_cpu_ctx, 7), 0);
+	ST(GEP(ptr_exp_data, 0), exp_data[0]);
+	ST(GEP(ptr_exp_data, 1), exp_data[1]);
+	ST(GEP(ptr_exp_data, 2), exp_data[2]);
+	ST(GEP(ptr_exp_data, 3), exp_data[3]);
+	CallInst *ci = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
 	ci->setCallingConv(CallingConv::C);
 	ReturnInst::Create(CTX(), ci, cpu->bb);
 }
