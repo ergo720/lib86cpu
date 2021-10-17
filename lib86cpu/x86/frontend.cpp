@@ -677,6 +677,7 @@ gen_exp_fn(cpu_t *cpu)
 		ST_R32(fault_addr, CR2_idx);
 		BR_UNCOND(vec_bb[38]);
 		cpu->bb = vec_bb[38];
+		ST_R32(AND(LD_R32(DR7_idx), CONST32(~DR7_GD_MASK)), DR7_idx); // also clear gd of dr7 in the case this is a DB exception
 		ST(GEP(ptr_exp_info, 1), CONST8(0));
 		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];

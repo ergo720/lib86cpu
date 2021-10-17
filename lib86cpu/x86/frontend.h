@@ -55,7 +55,7 @@ void hook_emit(cpu_t *cpu, hook *obj);
 
 
 #define CTX() (*cpu->ctx)
-#define getBB() BasicBlock::Create(CTX(), "", func, 0)
+#define getBB() BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0)
 #define getBBs(n) gen_bbs(cpu, cpu->bb->getParent(), n)
 #define getIntegerType(x) (IntegerType::get(CTX(), x))
 #define getPointerType(x) (PointerType::getUnqual(x))

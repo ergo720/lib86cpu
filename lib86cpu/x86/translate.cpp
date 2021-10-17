@@ -2735,6 +2735,31 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			break;
 
+			case 0x21: {
+				std::vector<BasicBlock *> vec_bb = getBBs(2);
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(LD_R32(DR7_idx), CONST32(DR7_GD_MASK)), CONST32(0)));
+				cpu->bb = vec_bb[0];
+				ST_R32(OR(LD_R32(DR6_idx), CONST32(DR6_BD_MASK)), DR6_idx); // can't just use RAISE0 because we need to set bd in dr6
+				RAISEin0(EXP_DB);
+				UNREACH();
+				cpu->bb = vec_bb[1];
+				if (cpu_ctx->hflags & HFLG_CPL) {
+					RAISEin0(EXP_GP);
+					translate_next = 0;
+				}
+				else {
+					int dr_offset = 0;
+					if (((instr.operands[OPNUM_SRC].reg.value == ZYDIS_REGISTER_DR4) || (instr.operands[OPNUM_SRC].reg.value == ZYDIS_REGISTER_DR5))) {
+						BR_COND(RAISE0(EXP_UD), getBB(), ICMP_NE(AND(LD_R32(CR4_idx), CONST32(CR4_DE_MASK)), CONST32(0)));
+						cpu->bb = vec_bb[0];
+						dr_offset = 2; // turns dr4/5 to dr6/7
+					}
+					ST_R32(LD_R32(GET_REG_idx(instr.operands[OPNUM_SRC].reg.value) + dr_offset),
+						GET_REG_idx(instr.operands[OPNUM_DST].reg.value));
+				}
+			}
+			break;
+
 			case 0x22: {
 				if (cpu_ctx->hflags & HFLG_CPL) {
 					RAISEin0(EXP_GP);
