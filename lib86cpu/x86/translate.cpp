@@ -340,9 +340,7 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 			return 1;
 		}
 
-		if ((cpu_ctx->regs.cr0 & CR0_EM_MASK) != (new_cr & CR0_EM_MASK)) {
-			cpu_ctx->hflags |= ((new_cr & CR0_EM_MASK) << 3);
-		}
+		cpu_ctx->hflags = (((new_cr & CR0_EM_MASK) << 3) | (cpu_ctx->hflags & ~HFLG_CR0_EM));
 
 		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
 			tc_cache_clear(cpu_ctx->cpu);
@@ -2904,7 +2902,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 		case ZYDIS_MNEMONIC_MOVD: {
-			if (cpu_ctx->regs.cr0 & CR0_EM_MASK) {
+			if (cpu_ctx->hflags & HFLG_CR0_EM) {
 				RAISEin0(EXP_UD);
 				translate_next = 0;
 			}

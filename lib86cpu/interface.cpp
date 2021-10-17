@@ -94,7 +94,7 @@ cpu_run(cpu_t *cpu)
 void
 cpu_sync_state(cpu_t *cpu)
 {
-	uint16_t cs = cpu->cpu_ctx.regs.cs;
+	cpu->cpu_ctx.hflags = 0;
 	if (cpu->cpu_ctx.regs.cr0 & CR0_PE_MASK) {
 		cpu->cpu_ctx.hflags |= ((cpu->cpu_ctx.regs.cs & HFLG_CPL) | HFLG_PE_MODE);
 		if (cpu->cpu_ctx.regs.cs_hidden.flags & SEG_HIDDEN_DB) {
