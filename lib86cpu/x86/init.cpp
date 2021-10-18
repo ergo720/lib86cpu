@@ -127,6 +127,8 @@ cpu_init(cpu_t *cpu)
 	cpu->cpu_ctx.regs.ds_hidden.limit = cpu->cpu_ctx.regs.fs_hidden.limit = cpu->cpu_ctx.regs.gs_hidden.limit = 0xFFFF;
 	cpu->cpu_ctx.regs.eflags = 0x2;
 	cpu->cpu_ctx.regs.cr0 = 0x60000010;
+	cpu->cpu_ctx.regs.dr6 = DR6_RES_MASK;
+	cpu->cpu_ctx.regs.dr7 = 0x400;
 	cpu->cpu_ctx.regs.idtr_hidden.limit = cpu->cpu_ctx.regs.gdtr_hidden.limit = cpu->cpu_ctx.regs.ldtr_hidden.limit =
 		cpu->cpu_ctx.regs.tr_hidden.limit = 0xFFFF;
 	cpu->cpu_ctx.regs.tag = 0x5555;

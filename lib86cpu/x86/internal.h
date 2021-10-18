@@ -218,6 +218,7 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 
 // debug register flags
 #define DR6_BD_MASK (1 << 13)
+#define DR6_RES_MASK 0xFFFF0FF0 // dr6 reserved bits
 #define DR7_GD_MASK (1 << 13)
 
 // fpu register flags
