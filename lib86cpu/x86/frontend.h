@@ -7,7 +7,7 @@
 #pragma once
 
 
-std::vector<BasicBlock *> gen_bbs(cpu_t *cpu, Function *func, const unsigned num);
+std::vector<BasicBlock *> gen_bbs(cpu_t *cpu, const unsigned num);
 void gen_exp_fn(cpu_t *cpu);
 void optimize(cpu_t *cpu);
 void get_ext_fn(cpu_t *cpu);
@@ -56,7 +56,7 @@ void hook_emit(cpu_t *cpu, hook *obj);
 
 #define CTX() (*cpu->ctx)
 #define getBB() BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0)
-#define getBBs(n) gen_bbs(cpu, cpu->bb->getParent(), n)
+#define getBBs(n) gen_bbs(cpu, n)
 #define getIntegerType(x) (IntegerType::get(CTX(), x))
 #define getPointerType(x) (PointerType::getUnqual(x))
 #define getIntegerPointerType() (cpu->dl->getIntPtrType(CTX()))

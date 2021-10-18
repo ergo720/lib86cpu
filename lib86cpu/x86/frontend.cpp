@@ -167,11 +167,12 @@ get_struct_eflags(cpu_t *cpu)
 }
 
 std::vector<BasicBlock *>
-gen_bbs(cpu_t *cpu, Function *func, const unsigned num)
+gen_bbs(cpu_t *cpu, const unsigned num)
 {
+	Function *func = cpu->bb->getParent();
 	std::vector<BasicBlock *> vec;
 	for (unsigned i = 0; i < num; i++) {
-		vec.push_back(getBB());
+		vec.push_back(BasicBlock::Create(CTX(), "", func, 0));
 	}
 
 	return vec;
@@ -423,7 +424,7 @@ gen_exp_fn(cpu_t *cpu)
 		cpu->mod);
 	func->setCallingConv(CallingConv::C);
 
-	cpu->bb = getBB();
+	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
 	cpu->tc = nullptr;
 	cpu->instr_eip = CONST32(0);
 	cpu->ptr_cpu_ctx = func->arg_begin();
@@ -446,8 +447,8 @@ gen_exp_fn(cpu_t *cpu)
 	get_ext_fn(cpu);
 	Value *ptr_exp_data = GEP(ptr_exp_info, 0);
 	ptr_exp_data->setName("exp_data");
-	BasicBlock *bb_exp_in_flight = getBB();
-	BasicBlock *bb_next = getBB();
+	BasicBlock *bb_exp_in_flight = BasicBlock::Create(CTX(), "", func, 0);
+	BasicBlock *bb_next = BasicBlock::Create(CTX(), "", func, 0);
 	BR_COND(bb_exp_in_flight, bb_next, ICMP_NE(LD(GEP(ptr_exp_info, 1)), CONST8(0)));
 	cpu->bb = bb_exp_in_flight;
 	// we don't handle double and triple faults yet, so just abort
@@ -474,7 +475,7 @@ gen_exp_fn(cpu_t *cpu)
 		);
 
 	if (cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
-		std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, func, 49);
+		std::vector<BasicBlock *> vec_bb = getBBs(49);
 		Value *cpl = TRUNC16(AND(LD(cpu->ptr_hflags), CONST32(HFLG_CPL)));
 		BR_COND(vec_bb[0], vec_bb[1], ICMP_UGT(ADD(MUL(idx, CONST32(8)), CONST32(7)), LD_SEG_HIDDEN(IDTR_idx, SEG_LIMIT_idx)));
 		cpu->bb = vec_bb[1];
@@ -715,7 +716,7 @@ gen_exp_fn(cpu_t *cpu)
 		UNREACH();
 	}
 	else {
-		std::vector<BasicBlock *> vec_bb = gen_bbs(cpu, func, 2);
+		std::vector<BasicBlock *> vec_bb = getBBs(2);
 		BR_COND(vec_bb[0], vec_bb[1], ICMP_UGT(ADD(MUL(idx, CONST32(4)), CONST32(3)), LD_SEG_HIDDEN(IDTR_idx, SEG_LIMIT_idx)));
 		cpu->bb = vec_bb[1];
 		Value *vec_entry = LD_MEM(MEM_LD32_idx, ADD(LD_SEG_HIDDEN(IDTR_idx, SEG_BASE_idx), MUL(idx, CONST32(4))));

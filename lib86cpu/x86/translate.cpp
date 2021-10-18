@@ -293,7 +293,7 @@ create_tc_prologue(cpu_t *cpu)
 		cpu->mod);
 	func->setCallingConv(CallingConv::C);
 
-	cpu->bb = getBB();
+	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
 	cpu->ptr_cpu_ctx = cpu->bb->getParent()->arg_begin();
 	cpu->ptr_cpu_ctx->setName("cpu_ctx");
 	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, 1);
