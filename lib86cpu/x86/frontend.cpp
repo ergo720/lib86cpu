@@ -1502,6 +1502,8 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_pri
 	Value *mem_access = CONST32((tlb_access[0][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]));
 
 	// interrogate the tlb
+	// this checks the page privilege access (mem_access) and also if the last byte of the read is in the same page as the first (addr + (mem_size / 8) - 1)
+	// reads that cross pages always result in tlb misses
 	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(tlb_entry, mem_access), SHL(tlb_idx1, CONST32(PAGE_SHIFT))),
 		OR(mem_access, SHL(tlb_idx2, CONST32(PAGE_SHIFT)))), CONST32(0)));
 
@@ -1553,6 +1555,8 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	Value *tc_ptr = ConstantExpr::getIntToPtr(INTPTR(cpu->tc), cpu->bb->getParent()->getReturnType());
 
 	// interrogate the tlb
+	// this checks the page privilege access (mem_access), if the last byte of the write is in the same page as the first (addr + (mem_size / 8) - 1) and
+	// the tlb dirty flag. Writes that cross pages always result in tlb misses and writes without the dirty flag set only miss once
 	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(tlb_entry, mem_access), SHL(tlb_idx1, CONST32(PAGE_SHIFT))),
 		OR(mem_access, SHL(tlb_idx2, CONST32(PAGE_SHIFT)))), CONST32(0)));
 

@@ -251,6 +251,7 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, 
 	}
 }
 
+// These functions below only get the address of a single byte and thus do not need to check for a page boundary crossing
 addr_t
 get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip)
 {
@@ -265,6 +266,9 @@ get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip)
 addr_t
 get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *is_code)
 {
+	// this also needs to check for the dirty flag, to catch the case where the first access to the page is a read and then a write happens, so that
+	// we give the mmu the chance to set the dirty flag in the tlb
+
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
 	*is_code = tlb_entry & TLB_CODE;
 	if (((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) | TLB_DIRTY) ^ (tlb_entry & ((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) | TLB_DIRTY))) {
@@ -277,7 +281,7 @@ get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *
 addr_t
 get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx)
 {
-	// this is only used for ram fetching, so we don't need to check for privileged accesses and is_write
+	// this is only used for ram fetching, so we don't need to check for privileged accesses
 
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
 	if ((tlb_entry & (tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL])) == 0) {
@@ -294,7 +298,7 @@ get_code_addr_exp(cpu_t *cpu, addr_t addr, uint32_t eip)
 	// same as get_code_addr, but it throws an exception when a page fault occurs
 
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
-	if ((tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]) ^ (tlb_entry & (tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL]))) {
+	if ((tlb_entry & (tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL])) == 0) {
 		return mmu_translate_addr<true>(cpu, addr, TLB_CODE, eip);
 	}
 
