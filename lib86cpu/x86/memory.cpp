@@ -162,7 +162,7 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, 
 	uint8_t is_code = flags & TLB_CODE;
 
 	if (!(cpu->cpu_ctx.regs.cr0 & CR0_PG_MASK)) {
-		tlb_fill(cpu, addr, addr, TLB_SUP_READ | TLB_SUP_WRITE | TLB_USER_READ | TLB_USER_WRITE | TLB_DIRTY | is_code);
+		tlb_fill(cpu, addr, addr, TLB_SUP_READ | TLB_SUP_WRITE | TLB_USER_READ | TLB_USER_WRITE | ((flags & 1) << 9) | is_code);
 		return addr;
 	}
 	else {
