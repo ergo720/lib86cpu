@@ -2750,8 +2750,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				else {
 					int dr_offset = 0;
 					if (((instr.operands[OPNUM_SRC].reg.value == ZYDIS_REGISTER_DR4) || (instr.operands[OPNUM_SRC].reg.value == ZYDIS_REGISTER_DR5))) {
-						BR_COND(RAISE0(EXP_UD), getBB(), ICMP_NE(AND(LD_R32(CR4_idx), CONST32(CR4_DE_MASK)), CONST32(0)));
-						cpu->bb = vec_bb[0];
+						BasicBlock *bb = getBB();
+						BR_COND(RAISE0(EXP_UD), bb, ICMP_NE(AND(LD_R32(CR4_idx), CONST32(CR4_DE_MASK)), CONST32(0)));
+						cpu->bb = bb;
 						dr_offset = 2; // turns dr4/5 to dr6/7
 					}
 					ST_R32(LD_R32(GET_REG_idx(instr.operands[OPNUM_SRC].reg.value) + dr_offset),
@@ -2792,6 +2793,99 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					default:
 						LIB86CPU_ABORT();
 					}
+				}
+			}
+			break;
+
+			case 0x23: {
+				std::vector<BasicBlock *> vec_bb = getBBs(2);
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(LD_R32(DR7_idx), CONST32(DR7_GD_MASK)), CONST32(0)));
+				cpu->bb = vec_bb[0];
+				ST_R32(OR(LD_R32(DR6_idx), CONST32(DR6_BD_MASK)), DR6_idx); // can't just use RAISE0 because we need to set bd in dr6
+				RAISEin0(EXP_DB);
+				UNREACH();
+				cpu->bb = vec_bb[1];
+				if (cpu_ctx->hflags & HFLG_CPL) {
+					RAISEin0(EXP_GP);
+					translate_next = 0;
+				}
+				else {
+					int dr_offset = 0, dr_idx = GET_REG_idx(instr.operands[OPNUM_DST].reg.value);
+					Value *reg = ALLOC32();
+					ST(reg, LD_R32(GET_REG_idx(instr.operands[OPNUM_SRC].reg.value)));
+					switch (dr_idx)
+					{
+					case DR0_idx:
+					case DR1_idx:
+					case DR2_idx:
+					case DR3_idx: {
+						std::vector<BasicBlock *> vec_bb = getBBs(2);
+						Value *tlb_old_idx = GEP(cpu->ptr_tlb, SHR(LD_R32(dr_idx), CONST32(PAGE_SHIFT)));
+						Value *tlb_new_idx = GEP(cpu->ptr_tlb, SHR(LD(reg), CONST32(PAGE_SHIFT)));
+						ST(tlb_old_idx, AND(LD(tlb_old_idx), CONST32(~TLB_WATCH))); // remove existing watchpoint
+						BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(SHR(LD_R32(DR7_idx), MUL(CONST32(dr_idx - DR_offset), CONST32(2))), CONST32(3)), CONST32(0)));
+						cpu->bb = vec_bb[0];
+						ST(tlb_new_idx, OR(LD(tlb_new_idx), CONST32(TLB_WATCH))); // install new watchpoint if enabled
+						BR_UNCOND(vec_bb[1]);
+						cpu->bb = vec_bb[1];
+					}
+					break;
+
+					case DR4_idx: {
+						BasicBlock *bb = getBB();
+						BR_COND(RAISE0(EXP_UD), bb, ICMP_NE(AND(LD_R32(CR4_idx), CONST32(CR4_DE_MASK)), CONST32(0)));
+						cpu->bb = bb;
+						dr_offset = 2; // turns dr4 to dr6
+					}
+					[[fallthrough]];
+
+					case DR6_idx:
+						ST(reg, OR(LD(reg), CONST32(DR6_RES_MASK)));
+						break;
+
+					case DR5_idx: {
+						BasicBlock *bb = getBB();
+						BR_COND(RAISE0(EXP_UD), bb, ICMP_NE(AND(LD_R32(CR4_idx), CONST32(CR4_DE_MASK)), CONST32(0)));
+						cpu->bb = bb;
+						dr_offset = 2; // turns dr5 to dr7
+					}
+					[[fallthrough]];
+
+					case DR7_idx: {
+						ST(reg, OR(LD(reg), CONST32(DR7_RES_MASK)));
+						std::vector<BasicBlock *> vec_bb = getBBs(7);
+						Value *i = ALLOC32();
+						Value *tlb_idx = ALLOC32();
+						ST(i, CONST32(0));
+						BR_UNCOND(vec_bb[0]);
+						cpu->bb = vec_bb[0];
+						ST(tlb_idx, GEP(cpu->ptr_tlb, SHR(LD_R32(ADD(CONST32(DR_offset), LD(i))), CONST32(PAGE_SHIFT))));
+						// we don't support task switches, so local and global enable flags are the same for now
+						BR_COND(vec_bb[1], vec_bb[2], ICMP_NE(AND(SHR(LD(reg), MUL(LD(i), CONST32(2))), CONST32(3)), CONST32(0)));
+						cpu->bb = vec_bb[1];
+						BR_COND(vec_bb[3], vec_bb[4], ICMP_EQ(OR(AND(SHR(LD(reg), ADD(CONST32(DR7_TYPE_SHIFT), MUL(LD(i), CONST32(4)))), CONST32(3)),
+							AND(LD_R32(CR4_idx), CONST32(CR4_DE_MASK))), CONST32(DR7_TYPE_IO_RW | CR4_DE_MASK)));
+						cpu->bb = vec_bb[3];
+						// we don't support io watchpoints yet so for now we just abort
+						ABORT("Io watchpoints are not supported");
+						UNREACH();
+						cpu->bb = vec_bb[4];
+						ST(tlb_idx, OR(LD(tlb_idx), CONST32(TLB_WATCH))); // install watchpoint
+						BR_UNCOND(vec_bb[5]);
+						cpu->bb = vec_bb[2];
+						ST(tlb_idx, AND(LD(tlb_idx), CONST32(~TLB_WATCH))); // remove watchpoint
+						BR_UNCOND(vec_bb[5]);
+						ST(i, ADD(LD(i), CONST32(1)));
+						BR_COND(vec_bb[0], vec_bb[6], ICMP_ULT(LD(i), CONST32(4)));
+						cpu->bb = vec_bb[6];
+					}
+					break;
+
+					default:
+						LIB86CPU_ABORT();
+					}
+
+					ST_R32(LD(reg), dr_idx + dr_offset);
 				}
 			}
 			break;
@@ -2922,7 +3016,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 			default:
-				BAD;
+				LIB86CPU_ABORT();
 			}
 			break;
 

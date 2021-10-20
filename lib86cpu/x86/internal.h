@@ -117,6 +117,7 @@ void cpu_msr_read(cpu_ctx_t *cpu_ctx);
 
 #define SEG_offset  ES_idx
 #define CR_offset   CR0_idx
+#define DR_offset   DR0_idx
 
 #define SEG_SEL_idx     0
 #define SEG_HIDDEN_idx  1
@@ -187,6 +188,7 @@ void cpu_msr_read(cpu_ctx_t *cpu_ctx);
 #define TLB_RAM         (1 << 5)
 #define TLB_GLOBAL      (1 << 8)
 #define TLB_DIRTY       (1 << 9)
+#define TLB_WATCH       (1 << 10)
 #define TLB_zero        0
 #define TLB_keep_rc     1
 #define TLB_no_g        2
@@ -217,9 +219,15 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define CR4_RES_MASK (0x1FFFFF << 11) // cr4 reserved bits
 
 // debug register flags
-#define DR6_BD_MASK (1 << 13)
-#define DR6_RES_MASK 0xFFFF0FF0 // dr6 reserved bits
-#define DR7_GD_MASK (1 << 13)
+#define DR6_BD_MASK      (1 << 13)
+#define DR6_RES_MASK     0xFFFF0FF0 // dr6 reserved bits
+#define DR7_GD_MASK      (1 << 13)
+#define DR7_RES_MASK     0x400 // dr7 reserved bits
+#define DR7_TYPE_SHIFT   16
+#define DR7_TYPE_INSTR   0
+#define DR7_TYPE_DATA_R  1
+#define DR7_TYPE_IO_RW   2
+#define DR7_TYPE_DATA_RW 3
 
 // fpu register flags
 #define ST_ES_MASK  (1 << 7)
