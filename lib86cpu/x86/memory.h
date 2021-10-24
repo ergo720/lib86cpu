@@ -21,8 +21,8 @@ inline void *get_rom_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *rom, addr_t a
 inline void *get_ram_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *ram, addr_t addr);
 addr_t get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip);
 addr_t get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *is_code);
-addr_t get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx);
-addr_t get_code_addr_exp(cpu_t *cpu, addr_t addr, uint32_t eip);
+addr_t get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip);
+addr_t get_code_addr(cpu_t * cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx);
 uint8_t mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
 uint16_t mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
 uint32_t mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
@@ -229,6 +229,8 @@ template<typename T>
 T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t flags)
 {
 	if (!(flags & 1)) {
+		// NOTE: is_phys can only be set if TLB_WATCH is not set
+		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_RW, eip);
 		if ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK)) {
 			T value = 0;
 			uint8_t i = 0;
@@ -264,6 +266,8 @@ template<typename T>
 void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t flags, translated_code_t *tc)
 {
 	if (!(flags & 1)) {
+		// NOTE: is_phys can only be set if TLB_WATCH is not set
+		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_W, eip);
 		if ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK)) {
 			uint8_t is_code1, is_code2;
 			uint8_t i = 0;

@@ -8,6 +8,7 @@
 
 #include "decode.h"
 #include "support.h"
+#include "breakpoint.h"
 
 
 using namespace llvm;
@@ -219,13 +220,18 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define CR4_RES_MASK (0x1FFFFF << 11) // cr4 reserved bits
 
 // debug register flags
+#define DR6_B0_MASK      (1 << 0)
+#define DR6_B1_MASK      (1 << 1)
+#define DR6_B2_MASK      (1 << 2)
+#define DR6_B3_MASK      (1 << 3)
 #define DR6_BD_MASK      (1 << 13)
 #define DR6_RES_MASK     0xFFFF0FF0 // dr6 reserved bits
 #define DR7_GD_MASK      (1 << 13)
 #define DR7_RES_MASK     0x400 // dr7 reserved bits
 #define DR7_TYPE_SHIFT   16
+#define DR7_LEN_SHIFT    18
 #define DR7_TYPE_INSTR   0
-#define DR7_TYPE_DATA_R  1
+#define DR7_TYPE_DATA_W  1
 #define DR7_TYPE_IO_RW   2
 #define DR7_TYPE_DATA_RW 3
 

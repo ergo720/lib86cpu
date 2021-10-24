@@ -33,7 +33,7 @@ enum class lc86_status : int32_t {
 	invalid_parameter,
 	already_exist,
 	not_found,
-	page_fault,
+	guest_exp,
 	success,
 };
 

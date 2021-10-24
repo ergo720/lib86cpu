@@ -156,7 +156,7 @@ check_page_privilege(cpu_t *cpu, uint8_t pde_priv, uint8_t pte_priv)
 }
 
 // NOTE: flags: bit 0 -> is_write, bit 1 -> is_priv, bit 4 -> is_code
-template<bool raise_host_exp>
+template<bool raise_host_exp = true>
 addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, disas_ctx_t *disas_ctx = nullptr)
 {
 	uint8_t is_code = flags & TLB_CODE;
@@ -238,14 +238,14 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, 
 			cpu->cpu_ctx.exp_info.exp_data.code = err_code | (is_write << 1) | cpu_lv;
 			cpu->cpu_ctx.exp_info.exp_data.idx = EXP_PF;
 			cpu->cpu_ctx.exp_info.exp_data.eip = eip;
-			throw host_exp_t::guest_exp;
+			throw host_exp_t::pf_exp;
 		}
 		else {
 			assert(disas_ctx != nullptr);
-			disas_ctx->pf_info.fault_addr = addr;
-			disas_ctx->pf_info.code = err_code | (is_write << 1) | cpu_lv;
-			disas_ctx->pf_info.idx = EXP_PF;
-			disas_ctx->pf_info.eip = eip;
+			disas_ctx->exp_data.fault_addr = addr;
+			disas_ctx->exp_data.code = err_code | (is_write << 1) | cpu_lv;
+			disas_ctx->exp_data.idx = EXP_PF;
+			disas_ctx->exp_data.eip = eip;
 			return 0;
 		}
 	}
@@ -257,7 +257,7 @@ get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip)
 {
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
 	if ((tlb_entry & (tlb_access[0][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv])) == 0) {
-		return mmu_translate_addr<true>(cpu, addr, is_priv, eip);
+		return mmu_translate_addr(cpu, addr, is_priv, eip);
 	}
 
 	return (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
@@ -272,20 +272,20 @@ get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
 	*is_code = tlb_entry & TLB_CODE;
 	if (((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) | TLB_DIRTY) ^ (tlb_entry & ((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) | TLB_DIRTY))) {
-		return mmu_translate_addr<true>(cpu, addr, 1 | is_priv, eip);
+		return mmu_translate_addr(cpu, addr, 1 | is_priv, eip);
 	}
 
 	return (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
 }
 
 addr_t
-get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx)
+get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip)
 {
 	// this is only used for ram fetching, so we don't need to check for privileged accesses
 
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
 	if ((tlb_entry & (tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL])) == 0) {
-		return mmu_translate_addr<false>(cpu, addr, TLB_CODE, eip, disas_ctx);
+		return mmu_translate_addr(cpu, addr, TLB_CODE, eip);
 	}
 
 	cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] = tlb_entry | TLB_CODE;
@@ -293,13 +293,13 @@ get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx)
 }
 
 addr_t
-get_code_addr_exp(cpu_t *cpu, addr_t addr, uint32_t eip)
+get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx)
 {
-	// same as get_code_addr, but it throws an exception when a page fault occurs
+	// overloaded get_code_addr that does not throw host exceptions
 
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
 	if ((tlb_entry & (tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL])) == 0) {
-		return mmu_translate_addr<true>(cpu, addr, TLB_CODE, eip);
+		return mmu_translate_addr<false>(cpu, addr, TLB_CODE, eip, disas_ctx);
 	}
 
 	cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] = tlb_entry | TLB_CODE;
@@ -338,6 +338,11 @@ as_ram_dispatch_read(cpu_t *cpu, addr_t addr, size_t size, memory_region_t<addr_
 void
 ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer)
 {
+	// NOTE: annoyingly, this check is already done in cpu_main_loop. If that raises a debug exception, we won't even reach here,
+	// and if it doesn't this check is useless. Perhaps find a way to avoid redoing the check here. Note that this can be skipped only the first
+	// time this is called by decode_instr!
+	cpu_check_data_watchpoints(cpu, disas_ctx->virt_pc, 1, DR7_TYPE_INSTR, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
+
 	if ((disas_ctx->virt_pc & ~PAGE_MASK) != ((disas_ctx->virt_pc + X86_MAX_INSTR_LENGTH - 1) & ~PAGE_MASK)) {
 		size_t bytes_to_read, bytes_in_first_page;
 		bytes_to_read = bytes_in_first_page = (PAGE_SIZE - (disas_ctx->virt_pc & PAGE_MASK));
@@ -349,11 +354,12 @@ ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer)
 		}
 
 		addr_t addr = get_code_addr(cpu, disas_ctx->virt_pc + bytes_in_first_page, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, disas_ctx);
-		if (disas_ctx->pf_info.idx == EXP_PF) {
+		if (disas_ctx->exp_data.idx == EXP_PF) {
 			// a page fault will be raised when fetching from the second page
 			disas_ctx->instr_buff_size = bytes_in_first_page;
 			return;
 		}
+
 		bytes_to_read = (X86_MAX_INSTR_LENGTH - bytes_to_read);
 		buffer += bytes_in_first_page;
 		bytes_to_read = as_ram_dispatch_read(cpu, addr, bytes_to_read, as_memory_search_addr<uint8_t>(cpu, addr), buffer);

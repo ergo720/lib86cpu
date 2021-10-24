@@ -15,6 +15,7 @@
 #define CPU_DISAS_ONE           (1 << 7)
 #define CPU_ALLOW_CODE_WRITE    (1 << 8)
 #define CPU_FORCE_INSERT        (1 << 9)
+#define CPU_DBG_TRAP            (1 << 10)
 
 #define CPU_NUM_REGS 43
 
@@ -45,7 +46,8 @@ private:
 };
 
 enum class host_exp_t : int {
-    guest_exp,
+    pf_exp,
+    de_exp,
     cpu_mode_changed,
     halt_tc,
 };

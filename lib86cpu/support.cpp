@@ -49,8 +49,8 @@ lc86status_to_str(lc86_status status)
 	case lc86_status::not_found:
 		return "The specified object could not be found";
 
-	case lc86_status::page_fault:
-		return "A page fault was raised by lib86cpu while executing the operation";
+	case lc86_status::guest_exp:
+		return "A guest exception was raised by lib86cpu while executing the operation";
 
 	case lc86_status::success:
 		return "The operation completed successfully";

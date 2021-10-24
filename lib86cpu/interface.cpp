@@ -531,8 +531,8 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out)
 		return lc86_status::success;
 	}
 	catch (host_exp_t type) {
-		assert(type == host_exp_t::guest_exp);
-		return set_last_error(lc86_status::page_fault);
+		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
+		return set_last_error(lc86_status::guest_exp);
 	}
 }
 
@@ -597,8 +597,8 @@ mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer)
 		return lc86_status::success;
 	}
 	catch (host_exp_t type) {
-		assert(type == host_exp_t::guest_exp);
-		return set_last_error(lc86_status::page_fault);
+		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
+		return set_last_error(lc86_status::guest_exp);
 	}
 }
 

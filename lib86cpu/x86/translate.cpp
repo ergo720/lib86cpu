@@ -38,25 +38,40 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 		return tc->ptr_code(cpu_ctx);
 	}
 	catch (host_exp_t type) {
-		if (type == host_exp_t::guest_exp) {
+		switch (type)
+		{
+		case host_exp_t::pf_exp: {
 			// page fault while excecuting the translated code
 			try {
 				// the exception handler always returns nullptr
 				return cpu_ctx->exp_fn(cpu_ctx);
 			}
 			catch (host_exp_t type) {
-				assert(type == host_exp_t::guest_exp);
+				assert(type == host_exp_t::pf_exp);
 
 				// page fault while delivering another exception
 				// NOTE: we abort because we don't support double/triple faults yet
 				LIB86CPU_ABORT();
 			}
 		}
-		else if (type == host_exp_t::cpu_mode_changed || type == host_exp_t::halt_tc) {
-			// used by mov cr0, reg when it switches cpu mode and by tc_invalidate when it invalidates the current tc
+		break;
+
+		case host_exp_t::de_exp:
+			// debug exception trap while excecuting the translated code
+			// we first remove the watchpoint for the faulting address, execute the trapping instruction,
+			// reinstall the watchpoint and jump to the debug handler
+			assert(cpu_ctx->exp_info.exp_data.idx == EXP_DB);
+
+			cpu_ctx->cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_DBG_TRAP);
+			cpu_ctx->tlb[cpu_ctx->exp_info.exp_data.fault_addr >> PAGE_SHIFT] &= ~TLB_WATCH;
+			cpu_ctx->regs.eip = cpu_ctx->exp_info.exp_data.eip;
+			[[fallthrough]];
+
+		case host_exp_t::cpu_mode_changed:
+		case host_exp_t::halt_tc:
 			return nullptr;
-		}
-		else {
+
+		default:
 			LIB86CPU_ABORT_msg("Unknown host exception in %s", __func__);
 		}
 	}
@@ -471,12 +486,22 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 	ZydisDecodedInstruction instr;
 	ZydisDecoder decoder;
+	ZyanStatus status;
+
 	init_instr_decoder(disas_ctx, &decoder);
 
 	do {
 		cpu->instr_eip = CONST32(pc - cpu_ctx->regs.cs_hidden.base);
 
-		auto status = decode_instr(cpu, disas_ctx, &decoder, &instr);
+		try {
+			status = decode_instr(cpu, disas_ctx, &decoder, &instr);
+		}
+		catch (host_exp_t type) {
+			assert(type == host_exp_t::de_exp);
+			RAISEin0(EXP_DB);
+			return;
+		}
+
 		if (ZYAN_SUCCESS(status)) {
 			// successfully decoded
 
@@ -501,10 +526,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case ZYDIS_STATUS_NO_MORE_DATA:
 				// buffer < 15 bytes
 				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
-				if (disas_ctx->pf_info.idx == EXP_PF) {
+				if (disas_ctx->exp_data.idx == EXP_PF) {
 					// buffer size reduced because of page fault on second page
 					disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
-					RAISEin(disas_ctx->pf_info.fault_addr, disas_ctx->pf_info.code, disas_ctx->pf_info.idx, disas_ctx->pf_info.eip);
+					RAISEin(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx, disas_ctx->exp_data.eip);
 					return;
 				}
 				else {
@@ -516,9 +541,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				// instruction length > 15 bytes
 				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
 				volatile addr_t addr = get_code_addr(cpu, disas_ctx->virt_pc + X86_MAX_INSTR_LENGTH, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, disas_ctx);
-				if (disas_ctx->pf_info.idx == EXP_PF) {
+				if (disas_ctx->exp_data.idx == EXP_PF) {
 					disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
-					RAISEin(disas_ctx->pf_info.fault_addr, disas_ctx->pf_info.code, disas_ctx->pf_info.idx, disas_ctx->pf_info.eip);
+					RAISEin(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx, disas_ctx->exp_data.eip);
 				}
 				else {
 					RAISEin(0, 0, EXP_GP, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
@@ -530,6 +555,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT_msg("Unhandled zydis decode return status");
 			}
 		}
+
 
 		if ((disas_ctx->flags & DISAS_FLG_CS32) ^ ((instr.attributes & ZYDIS_ATTRIB_HAS_OPERANDSIZE) >> 34)) {
 			size_mode = SIZE32;
@@ -5256,34 +5282,51 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 	} while ((translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR))) == 1);
 
+	// update the eip if we stopped decoding without a terminating instr
 	if ((translate_next == 1) && (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR) != 0) {
 		ST_R32(CONST32(pc - cpu_ctx->regs.cs_hidden.base), EIP_idx);
+	}
+
+	// unconditionally jump to the exp handler if we need to service a debug trap
+	if (cpu->cpu_flags & CPU_DBG_TRAP) {
+		Value *tlb_idx = GEP(cpu->ptr_tlb, CONST32(cpu->cpu_ctx.tlb[cpu->cpu_ctx.exp_info.exp_data.fault_addr >> PAGE_SHIFT]));
+		ST(tlb_idx, OR(LD(tlb_idx), CONST32(TLB_WATCH)));
+		raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx) });
+		cpu->bb = getBB();
+	}
+
+	// clear rf if it was set by the debug exp handler
+	if (cpu->cpu_ctx.regs.eflags & RF_MASK) {
+		assert(disas_ctx->flags & DISAS_FLG_ONE_INSTR);
+		ST(GEP_EFLAGS(), AND(LD(GEP_EFLAGS()), CONST32(~RF_MASK)));
 	}
 }
 
 template<typename T>
-void cpu_exec_tc(cpu_t *cpu, T &&lambda)
+void cpu_main_loop(cpu_t *cpu, T &&lambda)
 {
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
-	addr_t pc;
+	addr_t virt_pc, pc;
 
 	// main cpu loop
 	while (lambda()) {
 
 		retry:
 		try {
-			pc = get_code_addr_exp(cpu, get_pc(&cpu->cpu_ctx), cpu->cpu_ctx.regs.eip);
+			virt_pc = get_pc(&cpu->cpu_ctx);
+			cpu_check_data_watchpoints(cpu, virt_pc, 1, DR7_TYPE_INSTR, cpu->cpu_ctx.regs.eip);
+			pc = get_code_addr(cpu, virt_pc, cpu->cpu_ctx.regs.eip);
 		}
 		catch (host_exp_t type) {
-			assert(type == host_exp_t::guest_exp);
+			assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
 
-			// page fault during instruction fetching
+			// this is either a page fault or a debug exception. In both cases, we have to call the exception handler
 			try {
 				// the exception handler always returns nullptr
 				prev_tc = cpu->cpu_ctx.exp_fn(&cpu->cpu_ctx);
 			}
 			catch (host_exp_t type) {
-				assert(type == host_exp_t::guest_exp);
+				assert(type == host_exp_t::pf_exp);
 
 				// page fault while delivering another exception
 				// NOTE: we abort because we don't support double/triple faults yet
@@ -5319,12 +5362,15 @@ void cpu_exec_tc(cpu_t *cpu, T &&lambda)
 			disas_ctx_t disas_ctx{};
 			disas_ctx.flags = ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT) |
 				((cpu->cpu_ctx.hflags & HFLG_PE_MODE) >> (PE_MODE_SHIFT - 1)) |
-				(cpu->cpu_flags & CPU_DISAS_ONE);
-			disas_ctx.virt_pc = get_pc(&cpu->cpu_ctx);
+				(cpu->cpu_flags & CPU_DISAS_ONE) |
+				((cpu->cpu_ctx.regs.eflags & RF_MASK) >> 9); // if rf is set, we need to clear it after the first instr executed
+			disas_ctx.virt_pc = virt_pc;
 			disas_ctx.pc = pc;
 
 			auto it = cpu->hook_map.find(disas_ctx.virt_pc);
 			if (it != cpu->hook_map.end()) {
+				// XXX: putting a hook on the addr of an instr that causes a debug exception will cause the watchpoint not to be
+				// reinstalled. That's because we will skip the call to cpu_translate below, which reinstalls it later
 				cpu->instr_eip = CONST32(disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
 				hook_emit(cpu, it->second.get());
 				cpu->tc->flags |= TC_FLG_HOOK;
@@ -5390,7 +5436,7 @@ void cpu_exec_tc(cpu_t *cpu, T &&lambda)
 					tc_cache_insert(cpu, pc, std::move(tc));
 				}
 
-				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE | CPU_FORCE_INSERT);
+				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE | CPU_FORCE_INSERT | CPU_DBG_TRAP);
 				tc_run_code(&cpu->cpu_ctx, ptr_tc);
 				prev_tc = nullptr;
 				continue;
@@ -5435,7 +5481,7 @@ cpu_start(cpu_t *cpu)
 	gen_exp_fn(cpu);
 
 	try {
-		cpu_exec_tc(cpu, []() { return true; });
+		cpu_main_loop(cpu, []() { return true; });
 	}
 	catch (lc86_exp_abort &exp) {
 		last_error = exp.what();
@@ -5601,13 +5647,13 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		hook_ptr->trmp_fn(cpu, args, &ret_eip);
 	}
 	catch (host_exp_t type) {
-		assert(type == host_exp_t::guest_exp);
+		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
 
 		// page fault while calling the trampoline. We return because we can't handle an exception here. If this happens,
-		// it probably means there is a stack overflow condition in the guest stack
+		// it probably means there is a stack overflow condition in the guest stack. Alternatively, this can also be a debug excepion
 		cpu->cpu_ctx.regs.ecx = ecx;
 		cpu->cpu_ctx.regs.edx = edx;
-		return set_last_error(lc86_status::page_fault);
+		return set_last_error(lc86_status::guest_exp);
 	}
 	catch (std::bad_any_cast e) {
 		// this will happen if the client passes an argument type not supported by arg_types
@@ -5628,7 +5674,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 		hook_ptr->trmp_tc_flags.lock()->cpu_flags &= ~CPU_IGNORE_TC;
 	}
 
-	cpu_exec_tc(cpu, [&i]() { return i++ == 0; });
+	cpu_main_loop(cpu, [&i]() { return i++ == 0; });
 
 	if (hook_ptr->trmp_tc_flags.expired()) {
 		auto &tc_ptr = [](cpu_t *cpu, uint32_t pc) {
@@ -5662,7 +5708,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 	}
 	cpu->hook_map.insert(std::move(hook_node));
 
-	cpu_exec_tc(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
+	cpu_main_loop(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
 
 	if (hook_ptr->o_conv == call_conv::x86_cdecl) {
 		// with cdecl, we also have to clean the stack ourselves

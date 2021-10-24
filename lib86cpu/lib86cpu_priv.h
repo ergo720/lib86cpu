@@ -71,7 +71,7 @@ struct sort_by_priority
 };
 
 struct exp_data_t {
-	uint32_t fault_addr;    // only used during page faults
+	uint32_t fault_addr;    // addr that caused the exception
 	uint16_t code;          // error code used by the exception (if any)
 	uint16_t idx;           // index number of the exception
 	uint32_t eip;           // eip of the instr that generated the exception
@@ -104,7 +104,7 @@ struct disas_ctx_t {
 	uint8_t flags;
 	addr_t virt_pc, pc;
 	size_t instr_buff_size;
-	exp_data_t pf_info;
+	exp_data_t exp_data;
 };
 
 struct regs_layout_t {

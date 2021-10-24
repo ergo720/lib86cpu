@@ -49,6 +49,7 @@ add_library(cpu SHARED
 			lib86cpu/x86/frontend.cpp
 			lib86cpu/x86/memory.cpp
 			lib86cpu/x86/jit.cpp
+			lib86cpu/x86/breakpoint.cpp
 			lib86cpu/x86/windows/allocator.cpp
 			lib86cpu/x86/windows/clock.cpp)
 			
