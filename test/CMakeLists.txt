@@ -2,5 +2,9 @@
 
 project(test_run86)
 
-add_executable(test_run86 run.cpp)
+add_executable(test_run86
+			run.cpp
+			test386.cpp
+			hook.cpp)
+
 target_link_libraries(test_run86 cpu)
