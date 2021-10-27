@@ -1,5 +1,5 @@
 /*
- * lib86cpu hook api test generator (https://github.com/barotto/test386.asm)
+ * lib86cpu hook api test generator
  *
  * ergo720                Copyright (c) 2021
  */
@@ -105,6 +105,8 @@ gen_hook_test()
 		printf("Failed to initialize lib86cpu!\n");
 		return false;
 	}
+
+	ram = get_ram_ptr(cpu);
 	std::memcpy(ram, hook_binary, sizeof(hook_binary));
 
 	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {

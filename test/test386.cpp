@@ -5,6 +5,7 @@
  */
 
 #include "run.h"
+#include <fstream>
 
 #define TEST386_POST_PORT 0x190
 #define TEST386_EE_PORT 0x55
@@ -53,9 +54,34 @@ gen_test386asm_test(const std::string &executable)
 	addr_t code_start = 0xF0000;
 	size_t ramsize = 1 * 1024 * 1024;
 
-	if (create_cpu(executable, ram, ramsize, code_start) == false) {
+	/* load code */
+	std::ifstream ifs(executable, std::ios_base::in | std::ios_base::binary);
+	if (!ifs.is_open()) {
+		printf("Could not open binary file \"%s\"!\n", executable.c_str());
 		return false;
 	}
+	ifs.seekg(0, ifs.end);
+	std::streampos length = ifs.tellg();
+	ifs.seekg(0, ifs.beg);
+
+	/* Sanity checks */
+	if (length == 0) {
+		printf("Size of binary file \"%s\" detected as zero!\n", executable.c_str());
+		return false;
+	}
+	else if (length > ramsize - code_start) {
+		printf("Binary file \"%s\" doesn't fit inside RAM!\n", executable.c_str());
+		return false;
+	}
+
+	if (!LIB86CPU_CHECK_SUCCESS(cpu_new(ramsize, cpu))) {
+		printf("Failed to initialize lib86cpu!\n");
+		return false;
+	}
+	ram = get_ram_ptr(cpu);
+
+	ifs.read((char *)&ram[code_start], length);
+	ifs.close();
 
 	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
 		printf("Failed to initialize ram memory for test386.asm!\n");

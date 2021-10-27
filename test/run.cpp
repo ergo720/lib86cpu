@@ -5,7 +5,6 @@
  */
 
 #include "run.h"
-#include <fstream>
 #include <cstdarg>
 #include <iostream>
 
@@ -25,41 +24,6 @@ options: \n\
 -h         Print this message\n";
 
 	printf("%s", help);
-}
-
-bool
-create_cpu(const std::string &executable, uint8_t *ram, size_t ramsize, addr_t code_start)
-{
-	/* load code */
-	std::ifstream ifs(executable, std::ios_base::in | std::ios_base::binary);
-	if (!ifs.is_open()) {
-		printf("Could not open binary file \"%s\"!\n", executable.c_str());
-		return false;
-	}
-	ifs.seekg(0, ifs.end);
-	std::streampos length = ifs.tellg();
-	ifs.seekg(0, ifs.beg);
-
-	/* Sanity checks */
-	if (length == 0) {
-		printf("Size of binary file \"%s\" detected as zero!\n", executable.c_str());
-		return false;
-	}
-	else if (length > ramsize - code_start) {
-		printf("Binary file \"%s\" doesn't fit inside RAM!\n", executable.c_str());
-		return false;
-	}
-
-	if (!LIB86CPU_CHECK_SUCCESS(cpu_new(ramsize, cpu))) {
-		printf("Failed to initialize lib86cpu!\n");
-		return false;
-	}
-	ram = get_ram_ptr(cpu);
-
-	ifs.read((char *)&ram[code_start], length);
-	ifs.close();
-
-	return true;
 }
 
 static void
@@ -194,6 +158,12 @@ main(int argc, char **argv)
 
 	case 1:
 		if (gen_hook_test() == false) {
+			return 1;
+		}
+		break;
+
+	case 2:
+		if (gen_dbg_test() == false) {
 			return 1;
 		}
 		break;
