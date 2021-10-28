@@ -735,6 +735,7 @@ gen_exp_fn(cpu_t *cpu)
 		ST_SEG(TRUNC16(SHR(vec_entry, CONST32(16))), CS_idx);
 		ST_SEG_HIDDEN(SHL(ZEXT32(LD_SEG(CS_idx)), CONST32(4)), CS_idx, SEG_BASE_idx);
 		ST_R32(AND(vec_entry, CONST32(0xFFFF)), EIP_idx);
+		ST_R32(AND(LD_R32(DR7_idx), CONST32(~DR7_GD_MASK)), DR7_idx); // also clear gd of dr7 in the case this is a DB exception
 		ST(GEP(ptr_exp_info, 1), CONST8(0));
 		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
@@ -799,7 +800,7 @@ raise_exception_emit(cpu_t *cpu, std::vector<Value *> &exp_data)
 void
 write_eflags(cpu_t *cpu, Value *eflags, Value *mask)
 {
-	ST_R32(AND(OR(OR(AND(LD_R32(EFLAGS_idx), NOT(mask)), AND(eflags, mask)), CONST32(2)), CONST32(~RF_MASK)), EFLAGS_idx);
+	ST_R32(OR(OR(AND(LD_R32(EFLAGS_idx), NOT(mask)), AND(eflags, mask)), CONST32(2)), EFLAGS_idx);
 	Value *cf_new = AND(eflags, CONST32(1));
 	Value *of_new = SHL(XOR(SHR(AND(eflags, CONST32(0x800)), CONST32(11)), cf_new), CONST32(30));
 	Value *sfd = SHR(AND(eflags, CONST32(128)), CONST32(7));

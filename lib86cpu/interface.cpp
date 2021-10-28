@@ -94,6 +94,7 @@ cpu_run(cpu_t *cpu)
 void
 cpu_sync_state(cpu_t *cpu)
 {
+	tlb_flush(cpu, TLB_zero);
 	cpu->cpu_ctx.hflags = 0;
 	if (cpu->cpu_ctx.regs.cr0 & CR0_PE_MASK) {
 		cpu->cpu_ctx.hflags |= ((cpu->cpu_ctx.regs.cs & HFLG_CPL) | HFLG_PE_MODE);

@@ -64,6 +64,7 @@ ZyanStatus
 decode_instr(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, ZydisDecodedInstruction *instr)
 {
 	uint8_t instr_buffer[X86_MAX_INSTR_LENGTH];
+	disas_ctx->instr_buff_size = sizeof(instr_buffer);
 	ram_fetch(cpu, disas_ctx, instr_buffer);
 
 	return ZydisDecoderDecodeBuffer(decoder, instr_buffer, disas_ctx->instr_buff_size, instr);

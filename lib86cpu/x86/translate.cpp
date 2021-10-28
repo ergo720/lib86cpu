@@ -17,6 +17,12 @@
 #define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr("", disas_ctx->virt_pc - bytes, &instr).c_str())
 
 
+static inline addr_t
+get_pc(cpu_ctx_t *cpu_ctx)
+{
+	return cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
+}
+
 translated_code_t::translated_code_t(cpu_t *cpu) noexcept
 {
 	this->cpu = cpu;
@@ -65,6 +71,7 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 			cpu_ctx->cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_DBG_TRAP);
 			cpu_ctx->tlb[cpu_ctx->exp_info.exp_data.fault_addr >> PAGE_SHIFT] &= ~TLB_WATCH;
 			cpu_ctx->regs.eip = cpu_ctx->exp_info.exp_data.eip;
+			tc_invalidate(cpu_ctx, nullptr, get_pc(cpu_ctx), 1, cpu_ctx->regs.eip); // force retranslation
 			[[fallthrough]];
 
 		case host_exp_t::cpu_mode_changed:
@@ -465,12 +472,6 @@ cpu_msr_read(cpu_ctx_t *cpu_ctx)
 	cpu_ctx->regs.eax = val;
 }
 
-static inline addr_t
-get_pc(cpu_ctx_t *cpu_ctx)
-{
-	return cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
-}
-
 static void
 cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 {
@@ -489,6 +490,13 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	ZyanStatus status;
 
 	init_instr_decoder(disas_ctx, &decoder);
+
+	// clear rf if it was set by the previous tc. Note that the cpu does this after having checked for instr breakpoints but before executing the instr. If we do
+	// this at the end of the tc, it's possible that one of the instr in the tc raise an exp and that wil prevent us from clearing the flag
+	if (cpu->cpu_ctx.regs.eflags & RF_MASK) {
+		assert(disas_ctx->flags & DISAS_FLG_ONE_INSTR);
+		ST(GEP_EFLAGS(), AND(LD(GEP_EFLAGS()), CONST32(~RF_MASK)));
+	}
 
 	do {
 		cpu->instr_eip = CONST32(pc - cpu_ctx->regs.cs_hidden.base);
@@ -2845,13 +2853,26 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					case DR1_idx:
 					case DR2_idx:
 					case DR3_idx: {
+						// we cannot just look for the single watchpoint we are updating because it's possible that other watchpoints exist in the same page
+						for (int idx = 0; idx < 4; ++idx) {
+							std::vector<BasicBlock *> vec_bb = getBBs(2);
+							Value *tlb_old_idx = GEP(cpu->ptr_tlb, SHR(LD_R32(idx), CONST32(PAGE_SHIFT)));
+							Value *tlb_new_idx = GEP(cpu->ptr_tlb, SHR(LD(reg), CONST32(PAGE_SHIFT)));
+							ST(tlb_old_idx, AND(LD(tlb_old_idx), CONST32(~TLB_WATCH))); // remove existing watchpoint
+							BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(SHR(LD_R32(DR7_idx), CONST32(idx * 2)), CONST32(3)), CONST32(0)));
+							cpu->bb = vec_bb[0];
+							ST(tlb_new_idx, OR(LD(tlb_new_idx), CONST32(TLB_WATCH))); // install new watchpoint if enabled
+							BR_UNCOND(vec_bb[1]);
+							cpu->bb = vec_bb[1];
+						}
+						// invalidate the tc if it is an instr breakpoint. This, because those are only checked at translation time and not at runtime. If we don't, the existing
+						// tc's will stil break on the old address. Note that this is not a problem for data watchpoints because those are signaled as a flag in the tlb, which is
+						// always checked at runtime by the tc's
 						std::vector<BasicBlock *> vec_bb = getBBs(2);
-						Value *tlb_old_idx = GEP(cpu->ptr_tlb, SHR(LD_R32(dr_idx), CONST32(PAGE_SHIFT)));
-						Value *tlb_new_idx = GEP(cpu->ptr_tlb, SHR(LD(reg), CONST32(PAGE_SHIFT)));
-						ST(tlb_old_idx, AND(LD(tlb_old_idx), CONST32(~TLB_WATCH))); // remove existing watchpoint
-						BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(SHR(LD_R32(DR7_idx), MUL(CONST32(dr_idx - DR_offset), CONST32(2))), CONST32(3)), CONST32(0)));
+						BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(AND(SHR(LD_R32(DR7_idx), CONST32(DR7_TYPE_SHIFT + (dr_idx - DR_offset) * 4)), CONST32(3)), CONST32(DR7_TYPE_INSTR)));
 						cpu->bb = vec_bb[0];
-						ST(tlb_new_idx, OR(LD(tlb_new_idx), CONST32(TLB_WATCH))); // install new watchpoint if enabled
+						CallInst::Create(cpu->ptr_invtc_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, ConstantExpr::getIntToPtr(INTPTR(cpu->tc), cpu->bb->getParent()->getReturnType()),
+							LD_R32(dr_idx), CONST8(1), cpu->instr_eip }, "", cpu->bb);
 						BR_UNCOND(vec_bb[1]);
 						cpu->bb = vec_bb[1];
 					}
@@ -2879,31 +2900,34 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 					case DR7_idx: {
 						ST(reg, OR(LD(reg), CONST32(DR7_RES_MASK)));
-						std::vector<BasicBlock *> vec_bb = getBBs(7);
-						Value *i = ALLOC32();
-						Value *tlb_idx = ALLOC32();
-						ST(i, CONST32(0));
-						BR_UNCOND(vec_bb[0]);
-						cpu->bb = vec_bb[0];
-						ST(tlb_idx, GEP(cpu->ptr_tlb, SHR(LD_R32(ADD(CONST32(DR_offset), LD(i))), CONST32(PAGE_SHIFT))));
-						// we don't support task switches, so local and global enable flags are the same for now
-						BR_COND(vec_bb[1], vec_bb[2], ICMP_NE(AND(SHR(LD(reg), MUL(LD(i), CONST32(2))), CONST32(3)), CONST32(0)));
-						cpu->bb = vec_bb[1];
-						BR_COND(vec_bb[3], vec_bb[4], ICMP_EQ(OR(AND(SHR(LD(reg), ADD(CONST32(DR7_TYPE_SHIFT), MUL(LD(i), CONST32(4)))), CONST32(3)),
-							AND(LD_R32(CR4_idx), CONST32(CR4_DE_MASK))), CONST32(DR7_TYPE_IO_RW | CR4_DE_MASK)));
-						cpu->bb = vec_bb[3];
-						// we don't support io watchpoints yet so for now we just abort
-						ABORT("Io watchpoints are not supported");
-						UNREACH();
-						cpu->bb = vec_bb[4];
-						ST(tlb_idx, OR(LD(tlb_idx), CONST32(TLB_WATCH))); // install watchpoint
-						BR_UNCOND(vec_bb[5]);
-						cpu->bb = vec_bb[2];
-						ST(tlb_idx, AND(LD(tlb_idx), CONST32(~TLB_WATCH))); // remove watchpoint
-						BR_UNCOND(vec_bb[5]);
-						ST(i, ADD(LD(i), CONST32(1)));
-						BR_COND(vec_bb[0], vec_bb[6], ICMP_ULT(LD(i), CONST32(4)));
-						cpu->bb = vec_bb[6];
+						for (int idx = 0; idx < 4; ++idx) {
+							std::vector<BasicBlock *> vec_bb = getBBs(7);
+							Value *curr_watch_addr = LD_R32(DR_offset + idx);
+							Value *tlb_idx = GEP(cpu->ptr_tlb, SHR(curr_watch_addr, CONST32(PAGE_SHIFT)));
+							// we don't support task switches, so local and global enable flags are the same for now
+							BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(SHR(LD(reg), CONST32(idx * 2)), CONST32(3)), CONST32(0)));
+							cpu->bb = vec_bb[0];
+							BR_COND(vec_bb[2], vec_bb[3], ICMP_EQ(OR(AND(SHR(LD(reg), CONST32(DR7_TYPE_SHIFT + idx * 4)), CONST32(3)),
+								AND(LD_R32(CR4_idx), CONST32(CR4_DE_MASK))), CONST32(DR7_TYPE_IO_RW | CR4_DE_MASK)));
+							cpu->bb = vec_bb[2];
+							// we don't support io watchpoints yet so for now we just abort
+							ABORT("Io watchpoints are not supported");
+							UNREACH();
+							cpu->bb = vec_bb[3];
+							ST(tlb_idx, OR(LD(tlb_idx), CONST32(TLB_WATCH))); // install watchpoint
+							BR_UNCOND(vec_bb[4]);
+							cpu->bb = vec_bb[1];
+							ST(tlb_idx, AND(LD(tlb_idx), CONST32(~TLB_WATCH))); // remove watchpoint
+							BR_UNCOND(vec_bb[4]);
+							cpu->bb = vec_bb[4];
+							BR_COND(vec_bb[5], vec_bb[6], ICMP_EQ(AND(SHR(LD(reg), CONST32(DR7_TYPE_SHIFT + idx * 4)), CONST32(3)), CONST32(DR7_TYPE_INSTR)));
+							cpu->bb = vec_bb[5];
+							// invalidate the tc if it is an instr breakpoint. Same as above
+							CallInst::Create(cpu->ptr_invtc_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, ConstantExpr::getIntToPtr(INTPTR(cpu->tc), cpu->bb->getParent()->getReturnType()),
+								curr_watch_addr, CONST8(1), cpu->instr_eip }, "", cpu->bb);
+							BR_UNCOND(vec_bb[6]);
+							cpu->bb = vec_bb[6];
+						}
 					}
 					break;
 
@@ -2912,6 +2936,13 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					}
 
 					ST_R32(LD(reg), dr_idx + dr_offset);
+					ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
+					if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
+						link_dst_only_emit(cpu);
+						cpu->bb = getBB();
+						cpu->tc->flags |= TC_FLG_DST_ONLY;
+					}
+					translate_next = 0;
 				}
 			}
 			break;
@@ -5289,16 +5320,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 	// unconditionally jump to the exp handler if we need to service a debug trap
 	if (cpu->cpu_flags & CPU_DBG_TRAP) {
-		Value *tlb_idx = GEP(cpu->ptr_tlb, CONST32(cpu->cpu_ctx.tlb[cpu->cpu_ctx.exp_info.exp_data.fault_addr >> PAGE_SHIFT]));
+		Value *tlb_idx = GEP(cpu->ptr_tlb, CONST32(cpu->cpu_ctx.exp_info.exp_data.fault_addr >> PAGE_SHIFT));
 		ST(tlb_idx, OR(LD(tlb_idx), CONST32(TLB_WATCH)));
 		raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx) });
 		cpu->bb = getBB();
-	}
-
-	// clear rf if it was set by the debug exp handler
-	if (cpu->cpu_ctx.regs.eflags & RF_MASK) {
-		assert(disas_ctx->flags & DISAS_FLG_ONE_INSTR);
-		ST(GEP_EFLAGS(), AND(LD(GEP_EFLAGS()), CONST32(~RF_MASK)));
 	}
 }
 
