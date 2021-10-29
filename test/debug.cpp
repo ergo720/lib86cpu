@@ -175,7 +175,7 @@ gen_dbg_test()
 		return false;
 	}
 
-	mem_write_block(cpu, 0xFE000, 0x2000, std::vector<uint8_t>(0x2000, 0).data());
+	mem_fill_block(cpu, 0xFE000, 0x2000, 0);
 	uint32_t pde = 0xFE007, pte = 0x7;
 	mem_write_block(cpu, 0xFF000, 4, &pde);
 	for (int i = 0; i < 256; ++i) {

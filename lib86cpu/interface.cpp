@@ -539,8 +539,8 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out)
 
 // NOTE1: this is not correct if the client writes to the same tc we are executing (because we pass nullptr as tc argument to tc_invalidate)
 // NOTE2: if a page fault is raised on a page after the first one is written to, this will result in a partial write. I'm not sure if this is a problem though
-lc86_status
-mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer)
+template<bool fill>
+lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *buffer, int val)
 {
 	size_t page_offset = addr & PAGE_MASK;
 	size_t size_left = size;
@@ -560,7 +560,12 @@ mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer)
 				switch (region->type)
 				{
 				case mem_type::ram:
-					std::memcpy(get_ram_host_ptr(cpu, region, phys_addr), buffer, bytes_to_write);
+					if constexpr (fill) {
+						std::memset(get_ram_host_ptr(cpu, region, phys_addr), val, bytes_to_write);
+					}
+					else {
+						std::memcpy(get_ram_host_ptr(cpu, region, phys_addr), buffer, bytes_to_write);
+					}
 					break;
 
 				case mem_type::rom:
@@ -601,6 +606,18 @@ mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer)
 		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
 		return set_last_error(lc86_status::guest_exp);
 	}
+}
+
+lc86_status
+mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer)
+{
+	return mem_write_handler<false>(cpu, addr, size, buffer, 0);
+}
+
+lc86_status
+mem_fill_block(cpu_t *cpu, addr_t addr, size_t size, int val)
+{
+	return mem_write_handler<true>(cpu, addr, size, nullptr, val);
 }
 
 uint8_t
