@@ -3473,9 +3473,95 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			break;
 
-		case ZYDIS_MNEMONIC_OUTSB:       BAD;
-		case ZYDIS_MNEMONIC_OUTSD:       BAD;
-		case ZYDIS_MNEMONIC_OUTSW:       BAD;
+		case ZYDIS_MNEMONIC_OUTSB:
+		case ZYDIS_MNEMONIC_OUTSD:
+		case ZYDIS_MNEMONIC_OUTSW:
+			switch (instr.opcode)
+			{
+			case 0x6E:
+				size_mode = SIZE8;
+				[[fallthrough]];
+
+			case 0x6F: {
+				Value *val, *df, *addr, *src, *esi, *io_val, *port = LD_R16(EDX_idx);
+				check_io_priv_emit(cpu, ZEXT32(port), size_mode);
+				std::vector<BasicBlock *> vec_bb = getBBs(3);
+				if (instr.attributes & ZYDIS_ATTRIB_HAS_REP) {
+					REP_start();
+				}
+
+				switch (addr_mode)
+				{
+				case ADDR16:
+					esi = ZEXT32(LD_R16(ESI_idx));
+					addr = ADD(LD_SEG_HIDDEN(GET_REG_idx(instr.operands[OPNUM_SRC].mem.segment), SEG_BASE_idx), esi);
+					break;
+
+				case ADDR32:
+					esi = LD_R32(ESI_idx);
+					addr = ADD(LD_SEG_HIDDEN(GET_REG_idx(instr.operands[OPNUM_SRC].mem.segment), SEG_BASE_idx), esi);
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+
+				switch (size_mode)
+				{
+				case SIZE8:
+					val = CONST32(1);
+					io_val = LD_MEM(MEM_LD8_idx, addr);
+					ST_IO(IO_ST8_idx, port, io_val);
+					break;
+
+				case SIZE16:
+					val = CONST32(2);
+					io_val = LD_MEM(MEM_LD16_idx, addr);
+					ST_IO(IO_ST16_idx, port, io_val);
+					break;
+
+				case SIZE32:
+					val = CONST32(4);
+					io_val = LD_MEM(MEM_LD32_idx, addr);
+					ST_IO(IO_ST32_idx, port, io_val);
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+
+				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
+				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(df, CONST32(0)));
+
+				cpu->bb = vec_bb[0];
+				Value *esi_sum = ADD(esi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sum), ESI_idx) : ST_R32(esi_sum, ESI_idx);
+				if (instr.attributes & ZYDIS_ATTRIB_HAS_REP) {
+					REP();
+				}
+				else {
+					BR_UNCOND(vec_bb[2]);
+				}
+
+				cpu->bb = vec_bb[1];
+				Value *esi_sub = SUB(esi, val);
+				addr_mode == ADDR16 ? ST_R16(TRUNC16(esi_sub), ESI_idx) : ST_R32(esi_sub, ESI_idx);
+				if (instr.attributes & ZYDIS_ATTRIB_HAS_REP) {
+					REP();
+				}
+				else {
+					BR_UNCOND(vec_bb[2]);
+				}
+
+				cpu->bb = vec_bb[2];
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+			break;
+
 		case ZYDIS_MNEMONIC_POP: {
 			std::vector<Value *> vec;
 
