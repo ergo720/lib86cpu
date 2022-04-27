@@ -167,13 +167,15 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 			return static_cast<uint8_t *>(get_ram_host_ptr(cpu, region, phys_addr));
 
 		case mem_type::rom:
-			return static_cast<uint8_t*>(get_rom_host_ptr(cpu, region, phys_addr));
+			return static_cast<uint8_t *>(get_rom_host_ptr(cpu, region, phys_addr));
 		}
 
+		set_last_error(lc86_status::invalid_parameter);
 		return nullptr;
 	}
 	catch (host_exp_t type) {
 		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
+		set_last_error(lc86_status::guest_exp);
 		return nullptr;
 	}
 }
