@@ -163,6 +163,7 @@ API_FUNC lc86_status write_fxr(cpu_t *cpu, uint64_t low, uint64_t high, int reg)
 
 // memory api
 API_FUNC uint8_t *get_ram_ptr(cpu_t *cpu);
+API_FUNC uint8_t* get_host_ptr(cpu_t *cpu, addr_t addr);
 API_FUNC lc86_status mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority);
 API_FUNC lc86_status mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read read_func, fp_write write_func, void *opaque, int priority);
 API_FUNC lc86_status mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority);

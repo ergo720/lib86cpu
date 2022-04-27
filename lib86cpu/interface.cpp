@@ -154,6 +154,30 @@ get_ram_ptr(cpu_t *cpu)
 	return cpu->cpu_ctx.ram;
 }
 
+uint8_t *
+get_host_ptr(cpu_t *cpu, addr_t addr)
+{
+	try {
+		addr_t phys_addr = get_read_addr(cpu, addr, 0, 0);
+		memory_region_t<addr_t>* region = as_memory_search_addr<uint8_t>(cpu, phys_addr);
+
+		switch (region->type)
+		{
+		case mem_type::ram:
+			return static_cast<uint8_t *>(get_ram_host_ptr(cpu, region, phys_addr));
+
+		case mem_type::rom:
+			return static_cast<uint8_t*>(get_rom_host_ptr(cpu, region, phys_addr));
+		}
+
+		return nullptr;
+	}
+	catch (host_exp_t type) {
+		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
+		return nullptr;
+	}
+}
+
 static void
 default_mmio_write_handler(addr_t addr, size_t size, const uint64_t value, void *opaque)
 {
