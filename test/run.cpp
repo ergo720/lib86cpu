@@ -152,24 +152,36 @@ main(int argc, char **argv)
 	{
 	case 0:
 		if (gen_test386asm_test(executable) == false) {
+			if (cpu) {
+				cpu_free(cpu);
+			}
 			return 1;
 		}
 		break;
 
 	case 1:
 		if (gen_hook_test() == false) {
+			if (cpu) {
+				cpu_free(cpu);
+			}
 			return 1;
 		}
 		break;
 
 	case 2:
 		if (gen_dbg_test() == false) {
+			if (cpu) {
+				cpu_free(cpu);
+			}
 			return 1;
 		}
 		break;
 
 	case 3:
 		if (gen_cxbxrkrnl_test(executable) == false) {
+			if (cpu) {
+				cpu_free(cpu);
+			}
 			return 1;
 		}
 		break;
