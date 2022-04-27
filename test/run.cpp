@@ -13,14 +13,11 @@ static void
 print_help()
 {
 	static const char *help =
-		"usage: [options] <path of the binary to run>\n\
+		"usage: [options] <path of the binary to run (if required)>\n\
 options: \n\
 -p         Print llvm IR code\n\
 -i         Use Intel syntax (default is AT&T)\n\
--c <addr>  Start address of code\n\
--e <addr>  Address of first instruction\n\
--s <size>  Size (in bytes) to allocate for RAM\n\
--t <num>   Run a default test specified by num\n\
+-t <num>   Run a test specified by num\n\
 -h         Print this message\n";
 
 	printf("%s", help);
@@ -58,16 +55,10 @@ logger(log_level lv, const unsigned count, const char *msg, ...)
 int
 main(int argc, char **argv)
 {
-	size_t ramsize;
-	addr_t code_start, code_entry;
 	std::string executable;
 	int print_ir = 0;
 	int intel_syntax = 0;
 	int test_num = -1;
-
-	ramsize = 1 * 1024 * 1024;
-	code_start = 0;
-	code_entry = 0;
 
 	/* parameter parsing */
 	if (argc < 2) {
@@ -87,30 +78,6 @@ main(int argc, char **argv)
 
 				case 'i':
 					intel_syntax = 1;
-					break;
-
-				case 'c':
-					if (++idx == argc || argv[idx][0] == '-') {
-						printf("Missing argument for option \"c\"\n");
-						return 0;
-					}
-					code_start = std::stoul(std::string(argv[idx]), nullptr, 0);
-					break;
-
-				case 'e':
-					if (++idx == argc || argv[idx][0] == '-') {
-						printf("Missing argument for option \"e\"\n");
-						return 0;
-					}
-					code_entry = std::stoul(std::string(argv[idx]), nullptr, 0);
-					break;
-
-				case 's':
-					if (++idx == argc || argv[idx][0] == '-') {
-						printf("Missing argument for option \"s\"\n");
-						return 0;
-					}
-					ramsize = std::stoul(std::string(argv[idx]), nullptr, 0);
 					break;
 
 				case 't':
@@ -141,9 +108,9 @@ main(int argc, char **argv)
 				return 0;
 			}
 		}
-		/* handle possible exceptions thrown by std::stoul */
+		/* handle possible exceptions thrown by std::stoi */
 		catch (std::exception &e) {
-			printf("Failed to parse addr and/or size arguments. The error was: %s\n", e.what());
+			printf("Failed to parse \"t\" option. The error was: %s\n", e.what());
 			return 1;
 		}
 	}
