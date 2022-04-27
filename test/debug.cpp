@@ -156,7 +156,7 @@ gen_dbg_test()
 		return false;
 	}
 
-	ram = get_ram_ptr(cpu);
+	uint8_t *ram = get_ram_ptr(cpu);
 	std::memcpy(ram + 0x1000, dbg_binary, sizeof(dbg_binary));
 
 	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {

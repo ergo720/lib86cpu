@@ -78,7 +78,7 @@ gen_test386asm_test(const std::string &executable)
 		printf("Failed to initialize lib86cpu!\n");
 		return false;
 	}
-	ram = get_ram_ptr(cpu);
+	uint8_t *ram = get_ram_ptr(cpu);
 
 	ifs.read((char *)&ram[code_start], length);
 	ifs.close();

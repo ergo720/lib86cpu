@@ -168,6 +168,12 @@ main(int argc, char **argv)
 		}
 		break;
 
+	case 3:
+		if (gen_cxbxrkrnl_test(executable) == false) {
+			return 1;
+		}
+		break;
+
 	default:
 		printf("Unknown test option specified\n");
 		return 1;

@@ -11,6 +11,7 @@ file (GLOB HEADERS
 file (GLOB SOURCES
  "${TEST_RUN86_ROOT_DIR}/debug.cpp"
  "${TEST_RUN86_ROOT_DIR}/hook.cpp"
+ "${TEST_RUN86_ROOT_DIR}/kernel.cpp"
  "${TEST_RUN86_ROOT_DIR}/run.cpp"
  "${TEST_RUN86_ROOT_DIR}/test386.cpp"
 )
