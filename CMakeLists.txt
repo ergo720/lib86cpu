@@ -25,6 +25,7 @@ LLVMInstrumentation.lib LLVMVectorize.lib LLVMIRReader.lib LLVMLinker.lib LLVMAs
 if (MSVC)
 include_directories(${LLVM_DIR}/$(Configuration)/include)
 link_directories(${LLVM_DIR}/$(Configuration)/lib)
+add_compile_options(/external:I ${LLVM_DIR}/$(Configuration)/include /external:W0 /external:templates- /external:anglebrackets)
 else ()
 message(FATAL_ERROR "Only Windows builds are supported for now")
 endif()
