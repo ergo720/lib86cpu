@@ -11,23 +11,23 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 17)
 
 set(LIB86CPU_ROOT_DIR ${CMAKE_CURRENT_LIST_DIR})
-
-set(LLVM_DIR ${LIB86CPU_ROOT_DIR}/llvm/build/llvm)
-if (NOT IS_DIRECTORY ${LLVM_DIR})
-  message(FATAL_ERROR "Could NOT find LLVM")
-endif ()
-message(STATUS "Found LLVM: ${LLVM_DIR}")
+set(LLVM_DIR ${LIB86CPU_ROOT_DIR}/llvm)
 
 message("Building lib86cpu")
 include(BuildConfigH.cmake)
-include_directories(${LLVM_DIR}/include ${LIB86CPU_ROOT_DIR}/lib86cpu ${LIB86CPU_ROOT_DIR}/lib86cpu/x86)
+add_definitions(-DLIB86CPU_BUILD_CORE)
+include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu ${LIB86CPU_ROOT_DIR}/lib86cpu/x86)
 set(LLVM_LIBS LLVMX86Disassembler.lib LLVMX86AsmParser.lib LLVMX86CodeGen.lib LLVMGlobalISel.lib LLVMSelectionDAG.lib LLVMAsmPrinter.lib LLVMCodeGen.lib LLVMTarget.lib
 LLVMScalarOpts.lib LLVMInstCombine.lib LLVMAggressiveInstCombine.lib LLVMTransformUtils.lib LLVMBitWriter.lib LLVMAnalysis.lib LLVMProfileData.lib LLVMX86Desc.lib LLVMObject.lib
 LLVMMCParser.lib LLVMBitReader.lib LLVMCore.lib LLVMMCDisassembler.lib LLVMX86Info.lib LLVMX86AsmPrinter.lib LLVMMC.lib LLVMDebugInfoCodeView.lib LLVMDebugInfoMSF.lib
 LLVMBinaryFormat.lib LLVMX86Utils.lib LLVMSupport.lib LLVMDemangle.lib LLVMMCJIT.lib LLVMOrcJIT.lib LLVMExecutionEngine.lib LLVMRuntimeDyld.lib LLVMipo.lib LLVMObjCARCOpts.lib
 LLVMInstrumentation.lib LLVMVectorize.lib LLVMIRReader.lib LLVMLinker.lib LLVMAsmParser.lib)
-link_directories(${LLVM_DIR}/lib)
-add_definitions(-DLIB86CPU_BUILD_CORE)
+if (MSVC)
+include_directories(${LLVM_DIR}/$(Configuration)/include)
+link_directories(${LLVM_DIR}/$(Configuration)/lib)
+else ()
+message(FATAL_ERROR "Only Windows builds are supported for now")
+endif()
 
 option(ZYDIS_BUILD_TOOLS "" OFF)
 option(ZYDIS_BUILD_EXAMPLES "" OFF)
