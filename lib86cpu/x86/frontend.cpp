@@ -240,7 +240,7 @@ gep_emit(cpu_t *cpu, Value *gep_start, Value *gep_index)
 }
 
 Value *
-gep_emit(cpu_t *cpu, Value *gep_start, std::vector<Value *> &vec_index)
+gep_emit(cpu_t *cpu, Value *gep_start, const std::vector<Value *> &vec_index)
 {
 	return GetElementPtrInst::CreateInBounds(gep_start, vec_index, "", cpu->bb);
 }
@@ -272,7 +272,7 @@ floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits)
 }
 
 void
-link_direct_emit(cpu_t *cpu, std::vector<addr_t> &vec_addr, Value *target_addr)
+link_direct_emit(cpu_t *cpu, const std::vector<addr_t> &vec_addr, Value *target_addr)
 {
 	// vec_addr: instr_pc, dst_pc, next_pc
 
@@ -774,7 +774,7 @@ gen_exp_fn(cpu_t *cpu)
 }
 
 void
-raise_exp_inline_emit(cpu_t *cpu, std::vector<Value *> &exp_data)
+raise_exp_inline_emit(cpu_t *cpu, const std::vector<Value *> &exp_data)
 {
 	Value *ptr_exp_data = GEP(GEP(cpu->ptr_cpu_ctx, 7), 0);
 	ST(GEP(ptr_exp_data, 0), exp_data[0]);
@@ -787,7 +787,7 @@ raise_exp_inline_emit(cpu_t *cpu, std::vector<Value *> &exp_data)
 }
 
 BasicBlock *
-raise_exception_emit(cpu_t *cpu, std::vector<Value *> &exp_data)
+raise_exception_emit(cpu_t *cpu, const std::vector<Value *> &exp_data)
 {
 	BasicBlock *bb_exp = BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0);
 	BasicBlock *bb = cpu->bb;
@@ -827,7 +827,7 @@ validate_seg_emit(cpu_t *cpu, const unsigned reg)
 }
 
 void
-write_seg_reg_emit(cpu_t *cpu, const unsigned reg, std::vector<Value *> &vec)
+write_seg_reg_emit(cpu_t *cpu, const unsigned reg, const std::vector<Value *> &vec)
 {
 	ST_SEG(vec[0], reg);
 	ST_SEG_HIDDEN(vec[1], reg, SEG_BASE_idx);
@@ -1023,7 +1023,7 @@ check_seg_desc_priv_emit(cpu_t *cpu, Value *sel)
 }
 
 void
-lcall_pe_emit(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode, uint32_t ret_eip)
+lcall_pe_emit(cpu_t *cpu, std::vector<Value *> vec, uint8_t size_mode, uint32_t ret_eip)
 {
 	std::vector<BasicBlock *> vec_bb = getBBs(38);
 	BasicBlock *bb_exp = RAISE0(EXP_GP);
@@ -1628,7 +1628,7 @@ check_io_priv_emit(cpu_t *cpu, Value *port, uint8_t size_mode)
 }
 
 void
-stack_push_emit(cpu_t *cpu, std::vector<Value *> &vec, uint32_t size_mode)
+stack_push_emit(cpu_t *cpu, const std::vector<Value *> &vec, uint32_t size_mode)
 {
 	assert(size_mode != SIZE8);
 	assert(vec.size() != 0);
@@ -1774,7 +1774,7 @@ get_register_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx)
 }
 
 void
-set_flags_sum(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode)
+set_flags_sum(cpu_t *cpu, const std::vector<Value *> &vec, uint8_t size_mode)
 {
 	switch (size_mode)
 	{
@@ -1799,7 +1799,7 @@ set_flags_sum(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode)
 }
 
 void
-set_flags_sub(cpu_t *cpu, std::vector<Value *> &vec, uint8_t size_mode)
+set_flags_sub(cpu_t *cpu, const std::vector<Value *> &vec, uint8_t size_mode)
 {
 	switch (size_mode)
 	{
@@ -2172,7 +2172,7 @@ hook_emit(cpu_t *cpu, hook *obj)
 	CallInst *ci;
 	int stack_bytes;
 	std::vector<int> reg_args;
-	auto &vec_args = hook_get_args(cpu, obj, reg_args, &stack_bytes);
+	const auto &vec_args = hook_get_args(cpu, obj, reg_args, &stack_bytes);
 	switch (obj->d_conv)
 	{
 	case call_conv::x86_cdecl: {

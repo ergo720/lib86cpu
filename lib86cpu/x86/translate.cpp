@@ -133,9 +133,12 @@ tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t 
 					translated_code_t *tc = it->get();
 					if (tc == tc_in_page) {
 						found = 1;
-						(it == cpu_ctx->cpu->code_cache[idx].begin()) ?
-							cpu_ctx->cpu->code_cache[idx].pop_front() :
+						if (it == cpu_ctx->cpu->code_cache[idx].begin()) {
+							cpu_ctx->cpu->code_cache[idx].pop_front();
+						}
+						else {
 							cpu_ctx->cpu->code_cache[idx].erase_after(it_prev);
+						}
 						cpu_ctx->cpu->num_tc--;
 						break;
 					}
@@ -905,7 +908,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			BR_COND(vec_bb[0], vec_bb[1], ICMP_ULT(AND(rpl_dst, CONST16(3)), AND(rpl_src, CONST16(3))));
 			cpu->bb = vec_bb[0];
 			Value *new_rpl = OR(AND(rpl_dst, CONST16(0xFFFC)), AND(rpl_src, CONST16(3)));
-			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(new_rpl, rm) : ST_MEM(MEM_LD16_idx, rm, new_rpl);
+			if (instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+				ST_REG_val(new_rpl, rm);
+			}
+			else {
+				ST_MEM(MEM_LD16_idx, rm, new_rpl);
+			}
 			Value *new_sfd = XOR(LD_SF(), CONST32(0));
 			Value *new_pdb = SHL(XOR(AND(XOR(LD_FLG_RES(), SHR(LD_FLG_AUX(), CONST32(8))), CONST32(0xFF)), CONST32(0)), CONST32(8));
 			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0xFFFF00FE)), OR(new_sfd, new_pdb)));
@@ -3964,7 +3972,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT();
 			}
 
-			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(res, rm) : ST_MEM(fn_idx[size_mode], rm, res);
+			if (instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+				ST_REG_val(res, rm);
+			}
+			else {
+				ST_MEM(fn_idx[size_mode], rm, res);
+			}
 			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF)), flg));
 			BR_UNCOND(vec_bb[0]);
 			cpu->bb = vec_bb[0];
@@ -4015,7 +4028,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			switch (size_mode)
 			{
 			case SIZE8: {
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); , val = LD_MEM(fn_idx[size_mode], rm););
 				Value *i9 = OR(SHL(ZEXTs(9, val), CONSTs(9, 1)), TRUNCs(9, SHR(LD_CF(), CONST32(31))));
 				Value *rotr = INTRINSIC_ty(fshr, getIntegerType(9), (std::vector<Value *> { val, val, TRUNCs(9, count) }));
 				Value *cf = ZEXT32(AND(SHR(val, SUB(TRUNC8(count), CONST8(1))), CONST8(1)));
@@ -4026,7 +4039,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 			case SIZE16: {
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); , val = LD_MEM(fn_idx[size_mode], rm););
 				Value *i17 = OR(SHL(ZEXTs(17, val), CONSTs(17, 1)), TRUNCs(17, SHR(LD_CF(), CONST32(31))));
 				Value *rotr = INTRINSIC_ty(fshr, getIntegerType(17), (std::vector<Value *> { val, val, TRUNCs(17, count) }));
 				Value *cf = ZEXT32(AND(SHR(val, SUB(TRUNC16(count), CONST16(1))), CONST16(1)));
@@ -4037,7 +4050,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 			case SIZE32: {
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
+				GET_RM(OPNUM_DST, val = LD_REG_val(rm); , val = LD_MEM(fn_idx[size_mode], rm););
 				Value *i33 = OR(SHL(ZEXTs(33, val), CONSTs(33, 1)), SHL(ZEXTs(33, LD_CF()), CONSTs(33, 31)));
 				Value *rotr = INTRINSIC_ty(fshr, getIntegerType(33), (std::vector<Value *> { val, val, ZEXTs(33, count) }));
 				Value *cf = AND(SHR(val, SUB(count, CONST32(1))), CONST32(1));
@@ -4051,7 +4064,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT();
 			}
 
-			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(res, rm) : ST_MEM(fn_idx[size_mode], rm, res);
+			if (instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+				ST_REG_val(res, rm);
+			}
+			else {
+				ST_MEM(fn_idx[size_mode], rm, res);
+			}
 			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF)), flg));
 			BR_UNCOND(vec_bb[0]);
 			cpu->bb = vec_bb[0];
@@ -4224,7 +4242,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT();
 			}
 
-			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(res, rm) : ST_MEM(fn_idx[size_mode], rm, res);
+			if (instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+				ST_REG_val(res, rm);
+			}
+			else {
+				ST_MEM(fn_idx[size_mode], rm, res);
+			}
 			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF)), flg));
 			BR_UNCOND(vec_bb[0]);
 			cpu->bb = vec_bb[0];
@@ -4308,7 +4331,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT();
 			}
 
-			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(res, rm) : ST_MEM(fn_idx[size_mode], rm, res);
+			if (instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+				ST_REG_val(res, rm);
+			}
+			else {
+				ST_MEM(fn_idx[size_mode], rm, res);
+			}
 			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF)), flg));
 			BR_UNCOND(vec_bb[0]);
 			cpu->bb = vec_bb[0];
@@ -4857,7 +4885,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT();
 			}
 
-			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(val, rm) : ST_MEM(fn_idx[size_mode], rm, val);
+			if (instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+				ST_REG_val(val, rm);
+			}
+			else {
+				ST_MEM(fn_idx[size_mode], rm, val);
+			}
 			SET_FLG(val, flg);
 			BR_UNCOND(vec_bb[0]);
 			cpu->bb = vec_bb[0];
@@ -4988,7 +5021,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT();
 			}
 
-			(instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) ? ST_REG_val(val, rm) : ST_MEM(fn_idx[size_mode], rm, val);
+			if (instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+				ST_REG_val(val, rm);
+			}
+			else {
+				ST_MEM(fn_idx[size_mode], rm, val);
+			}
 			SET_FLG(val, flg);
 			BR_UNCOND(vec_bb[0]);
 			cpu->bb = vec_bb[0];
@@ -5776,7 +5814,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 	}
 
 	int i = 0;
-	auto &hook_node = cpu->hook_map.extract(addr);
+	auto hook_node = cpu->hook_map.extract(addr);
 	cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_FORCE_INSERT);
 	if (!(hook_ptr->hook_tc_flags.expired())) {
 		hook_ptr->hook_tc_flags.lock()->cpu_flags |= CPU_IGNORE_TC;
@@ -5788,7 +5826,7 @@ cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std:
 	cpu_main_loop(cpu, [&i]() { return i++ == 0; });
 
 	if (hook_ptr->trmp_tc_flags.expired()) {
-		auto &tc_ptr = [](cpu_t *cpu, uint32_t pc) {
+		const auto &tc_ptr = [](cpu_t *cpu, uint32_t pc) {
 			uint32_t flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
 			uint32_t idx = tc_hash(pc);
 			auto it = cpu->code_cache[idx].begin();

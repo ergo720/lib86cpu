@@ -29,7 +29,7 @@ public:
 		const sys::MemoryBlock *const near_block, unsigned flags, std::error_code &ec) override;
 	std::error_code protectMappedMemory(const sys::MemoryBlock &block, unsigned flags) override;
 	std::error_code releaseMappedMemory(sys::MemoryBlock &block) override;
-	void free_block(sys::MemoryBlock &block);
+	void free_block(const sys::MemoryBlock &block);
 	~mem_manager() override;
 	mem_manager() : head(nullptr) {}
 

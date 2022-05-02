@@ -34,7 +34,7 @@ public:
 	Error run_constructors() { return m_ctor_runner.run(); }
 	Error run_destructors() { return m_dtor_runner.run(); }
 	RTDyldObjectLinkingLayer &get_obj_linking_layer() { return m_obj_linking_layer; }
-	void remove_symbols(std::vector<std::string> &names);
+	void remove_symbols(const std::vector<std::string> &names);
 	Error define_absolute(StringRef name, JITEvaluatedSymbol sym);
 	std::string mangle(Function *func);
 	void free_code_block(void *addr);

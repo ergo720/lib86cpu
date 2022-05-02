@@ -154,7 +154,7 @@ lc86_jit::apply_data_layout(Module &m)
 }
 
 void
-lc86_jit::remove_symbols(std::vector<std::string> &names)
+lc86_jit::remove_symbols(const std::vector<std::string> &names)
 {
 	MangleAndInterner mangle(*m_es, m_dl);
 	orc::SymbolNameSet module_symbol_names;

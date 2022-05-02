@@ -155,6 +155,28 @@ check_page_privilege(cpu_t *cpu, uint8_t pde_priv, uint8_t pte_priv)
 	return access_lv;
 }
 
+template<bool raise_host_exp>
+static inline void
+mmu_raise_page_fault(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx, uint8_t err_code, uint8_t is_write, uint8_t cpu_lv)
+{
+	// NOTE: the u/s bit of the error code should reflect the actual cpl even if the memory access is privileged
+	if constexpr (raise_host_exp) {
+		assert(disas_ctx == nullptr);
+		cpu->cpu_ctx.exp_info.exp_data.fault_addr = addr;
+		cpu->cpu_ctx.exp_info.exp_data.code = err_code | (is_write << 1) | cpu_lv;
+		cpu->cpu_ctx.exp_info.exp_data.idx = EXP_PF;
+		cpu->cpu_ctx.exp_info.exp_data.eip = eip;
+		throw host_exp_t::pf_exp;
+	}
+	else {
+		assert(disas_ctx != nullptr);
+		disas_ctx->exp_data.fault_addr = addr;
+		disas_ctx->exp_data.code = err_code | (is_write << 1) | cpu_lv;
+		disas_ctx->exp_data.idx = EXP_PF;
+		disas_ctx->exp_data.eip = eip;
+	}
+}
+
 // NOTE: flags: bit 0 -> is_write, bit 1 -> is_priv, bit 4 -> is_code
 template<bool raise_host_exp = true>
 addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, disas_ctx_t *disas_ctx = nullptr)
@@ -176,7 +198,8 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, 
 		uint32_t pde = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, as_memory_search_addr<uint8_t>(cpu, cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK), pde_addr));
 
 		if (!(pde & PTE_PRESENT)) {
-			goto page_fault;
+			mmu_raise_page_fault<raise_host_exp>(cpu, addr, eip, disas_ctx, err_code, is_write, cpu_lv);
+			return 0;
 		}
 		
 		uint8_t mem_access = (is_write << 1) | ((cpu_lv >> is_priv) & 4);
@@ -197,14 +220,16 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, 
 				return phys_addr;
 			}
 			err_code = 1;
-			goto page_fault;
+			mmu_raise_page_fault<raise_host_exp>(cpu, addr, eip, disas_ctx, err_code, is_write, cpu_lv);
+			return 0;
 		}
 
 		addr_t pte_addr = (pde & PTE_ADDR_4K) | ((addr >> PAGE_SHIFT) & 0x3FF) * 4;
 		uint32_t pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, as_memory_search_addr<uint8_t>(cpu, cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK), pte_addr));
 
 		if (!(pte & PTE_PRESENT)) {
-			goto page_fault;
+			mmu_raise_page_fault<raise_host_exp>(cpu, addr, eip, disas_ctx, err_code, is_write, cpu_lv);
+			return 0;
 		}
 
 		int8_t access_lv = check_page_privilege(cpu, pde_priv, (pte & PTE_WRITE) | (pte & PTE_USER));
@@ -230,24 +255,8 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, 
 		}
 		err_code = 1;
 
-	page_fault:
-		// NOTE: the u/s bit of the error code should reflect the actual cpl even if the memory access is privileged
-		if constexpr (raise_host_exp) {
-			assert(disas_ctx == nullptr);
-			cpu->cpu_ctx.exp_info.exp_data.fault_addr = addr;
-			cpu->cpu_ctx.exp_info.exp_data.code = err_code | (is_write << 1) | cpu_lv;
-			cpu->cpu_ctx.exp_info.exp_data.idx = EXP_PF;
-			cpu->cpu_ctx.exp_info.exp_data.eip = eip;
-			throw host_exp_t::pf_exp;
-		}
-		else {
-			assert(disas_ctx != nullptr);
-			disas_ctx->exp_data.fault_addr = addr;
-			disas_ctx->exp_data.code = err_code | (is_write << 1) | cpu_lv;
-			disas_ctx->exp_data.idx = EXP_PF;
-			disas_ctx->exp_data.eip = eip;
-			return 0;
-		}
+		mmu_raise_page_fault<raise_host_exp>(cpu, addr, eip, disas_ctx, err_code, is_write, cpu_lv);
+		return 0;
 	}
 }
 

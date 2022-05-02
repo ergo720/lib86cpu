@@ -191,7 +191,7 @@ mem_manager::releaseMappedMemory(sys::MemoryBlock &block)
 }
 
 void
-mem_manager::free_block(sys::MemoryBlock &block)
+mem_manager::free_block(const sys::MemoryBlock &block)
 {
 	void *addr = block.base();
 	assert(block.size() == 0);

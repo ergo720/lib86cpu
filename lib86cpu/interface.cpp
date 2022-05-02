@@ -430,7 +430,10 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int 
 
 	for (auto &region : cpu->memory_out) {
 		if (region.get()->priority == priority) {
-			goto fail;
+			if (out == nullptr) {
+				cpu->vec_rom.pop_back();
+			}
+			return set_last_error(lc86_status::invalid_parameter);
 		}
 	}
 
@@ -446,7 +449,6 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int 
 		return lc86_status::success;
 	}
 
-	fail:
 	if (out == nullptr) {
 		cpu->vec_rom.pop_back();
 	}
