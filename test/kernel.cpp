@@ -264,5 +264,8 @@ gen_cxbxrkrnl_test(const std::string &executable)
 	write_gpr(cpu, 0x80400000, REG_EBP);
 	write_gpr(cpu, peHeader->OptionalHeader.ImageBase + peHeader->OptionalHeader.AddressOfEntryPoint, REG_EIP);
 
+	// Pass eeprom and certificate keys on the stack (we use dummy all-zero keys)
+	mem_fill_block(cpu, 0x80400000, 16 * 2, 0);
+
 	return true;
 }
