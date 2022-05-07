@@ -220,12 +220,10 @@ gen_cxbxrkrnl_test(const std::string &executable)
 
 	PIMAGE_SECTION_HEADER sections = reinterpret_cast<PIMAGE_SECTION_HEADER>(reinterpret_cast<uint8_t *>(peHeader) + sizeof(IMAGE_NT_HEADERS32));
 	for (uint16_t i = 0; i < peHeader->FileHeader.NumberOfSections; ++i) {
-		uint8_t* dest = &ram[peHeader->OptionalHeader.ImageBase - CONTIGUOUS_MEMORY_BASE] + sections[i].VirtualAddress;
-		if (sections[i].SizeOfRawData) {
-			std::memcpy(dest, reinterpret_cast<uint8_t*>(dosHeader) + sections[i].PointerToRawData, sections[i].SizeOfRawData);
-		}
-		else {
-			std::memset(dest, 0, sections[i].Misc.VirtualSize);
+		uint8_t* dest = &ram[peHeader->OptionalHeader.ImageBase - CONTIGUOUS_MEMORY_BASE + sections[i].VirtualAddress];
+		std::memcpy(dest, reinterpret_cast<uint8_t*>(dosHeader) + sections[i].PointerToRawData, sections[i].SizeOfRawData);
+		if (sections[i].SizeOfRawData < sections[i].Misc.VirtualSize) {
+			std::memset(dest + sections[i].SizeOfRawData, 0, sections[i].Misc.VirtualSize - sections[i].SizeOfRawData);
 		}
 	}
 
