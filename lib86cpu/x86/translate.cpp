@@ -14,7 +14,7 @@
 #include "memory.h"
 #include "jit.h"
 
-#define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr("", disas_ctx->virt_pc - bytes, &instr).c_str())
+#define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(disas_ctx->virt_pc - bytes, &instr).c_str())
 
 
 static inline addr_t
@@ -521,7 +521,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			disas_ctx->pc += bytes;
 			disas_ctx->virt_pc += bytes;
 
-			LOG(log_level::debug, instr_logfn("0x%08X  ", disas_ctx->virt_pc - bytes, &instr).c_str(), disas_ctx->virt_pc - bytes);
+			// att syntax uses percentage symbols to designate the operands, which will cause an error/crash if we (or the client)
+			// attempts to interpret them as conversion specifiers, so we pass the formatted instruction as an argument
+			LOG(log_level::debug, "0x%08X  %s", disas_ctx->virt_pc - bytes, instr_logfn(disas_ctx->virt_pc - bytes, &instr).c_str());
 		}
 		else {
 			switch (status)

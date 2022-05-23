@@ -43,15 +43,15 @@ set_instr_format(cpu_t *cpu)
 }
 
 std::string
-log_instr(const char* addr_str, addr_t addr, ZydisDecodedInstruction *instr)
+log_instr(addr_t addr, ZydisDecodedInstruction *instr)
 {
 	char buffer[256];
 	ZydisFormatterFormatInstruction(&formatter, instr, buffer, sizeof(buffer), addr);
-	return addr_str + std::string(buffer);
+	return buffer;
 }
 
 std::string
-discard_instr_log(const char *addr_str, addr_t addr, ZydisDecodedInstruction *instr) { return std::string(); }
+discard_instr_log(addr_t addr, ZydisDecodedInstruction *instr) { return std::string(); }
 
 void
 init_instr_decoder(disas_ctx_t *disas_ctx, ZydisDecoder *decoder)

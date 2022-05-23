@@ -28,10 +28,10 @@ enum {
 };
 
 void set_instr_format(cpu_t *cpu);
-std::string log_instr(const char *addr_str, addr_t addr, ZydisDecodedInstruction *instr);
-std::string discard_instr_log(const char *addr_str, addr_t addr, ZydisDecodedInstruction *instr);
+std::string log_instr(addr_t addr, ZydisDecodedInstruction *instr);
+std::string discard_instr_log(addr_t addr, ZydisDecodedInstruction *instr);
 void init_instr_decoder(disas_ctx_t *disas_ctx, ZydisDecoder *decoder);
 ZyanStatus decode_instr(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, ZydisDecodedInstruction *instr);
 
-using instr_logfn_t = std::string(*)(const char *, addr_t, ZydisDecodedInstruction *);
+using instr_logfn_t = std::string(*)(addr_t, ZydisDecodedInstruction *);
 inline instr_logfn_t instr_logfn = &discard_instr_log;
