@@ -34,6 +34,14 @@ option(ZYDIS_BUILD_TOOLS "" OFF)
 option(ZYDIS_BUILD_EXAMPLES "" OFF)
 add_subdirectory("import/zydis")
 
+option(BUILD_SHARED_LIBS "Build shared libraries" OFF)
+option(GLFW_BUILD_EXAMPLES "Build the GLFW example programs" OFF)
+option(GLFW_BUILD_TESTS "Build the GLFW test programs" OFF)
+option(GLFW_BUILD_DOCS "Build the GLFW documentation" OFF)
+option(GLFW_INSTALL "Generate installation target" OFF)
+option(GLFW_VULKAN_STATIC "Assume the Vulkan loader is linked with the application" OFF)
+add_subdirectory("import/glfw")
+
 file (GLOB HEADERS
  "${LIB86CPU_ROOT_DIR}/lib86cpu/config.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/interval_tree.h"
@@ -72,7 +80,7 @@ source_group(TREE ${LIB86CPU_ROOT_DIR} PREFIX source FILES ${SOURCES})
 
 if (MSVC)
 set(CMAKE_CXX_FLAGS "/EHs")
-include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/x86/windows)
+include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/x86/windows ${LIB86CPU_ROOT_DIR}/import/glfw/include/GLFW)
 add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS -D__STDC_FORMAT_MACROS -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS)
 add_definitions(-wd4146)
 add_definitions(-wd4800)
@@ -82,7 +90,7 @@ message(FATAL_ERROR "Only Windows builds are supported for now")
 endif()
 
 add_library(cpu SHARED ${HEADERS} ${SOURCES})
-target_link_libraries(cpu PRIVATE ${LLVM_LIBS} Zydis)
+target_link_libraries(cpu PRIVATE ${LLVM_LIBS} Zydis glfw)
 
 if (${LIB86CPU_BUILD_TEST})
 message("Building test")

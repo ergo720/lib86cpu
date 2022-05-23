@@ -1,6 +1,12 @@
 [submodule "import/llvm"]
 	path = import/llvm
 	url = https://github.com/llvm/llvm-project
+	shallow = true
 [submodule "import/zydis"]
 	path = import/zydis
 	url = https://github.com/zyantific/zydis
+	shallow = true
+[submodule "import/glfw"]
+	path = import/glfw
+	url = https://github.com/glfw/glfw
+	shallow = true
