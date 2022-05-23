@@ -2,19 +2,15 @@
  * the register file
  *
  * ergo720                Copyright (c) 2019
- * the libcpu developers  Copyright (c) 2009-2010
  */
 
+#pragma once
 
 #define DEFINE_REG32(_reg)			\
-	struct {				\
-		uint32_t		_reg;	\
-	}
+		uint32_t		_reg
 
 #define DEFINE_REG16(_reg)			\
-	struct {				\
-		uint16_t		_reg;	\
-	}
+		uint16_t		_reg
 
 #define DEFINE_SEG_REG(_reg)			\
 	struct {				\

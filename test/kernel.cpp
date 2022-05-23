@@ -242,27 +242,28 @@ gen_cxbxrkrnl_test(const std::string &executable)
 	pde = 0x0000F063; // dirty, accessed, r/w, present
 	mem_write_block(cpu, 0xFC00, 4, &pde); // this maps the pd at 0xC0000000
 
-	write_gpr(cpu, 0x0, REG_CS, SEG_BASE);
-	write_gpr(cpu, 0x0, REG_ES, SEG_BASE);
-	write_gpr(cpu, 0x0, REG_DS, SEG_BASE);
-	write_gpr(cpu, 0x0, REG_SS, SEG_BASE);
-	write_gpr(cpu, 0x0, REG_FS, SEG_BASE);
-	write_gpr(cpu, 0x0, REG_GS, SEG_BASE);
+	regs_t *regs = get_regs_ptr(cpu);
+	regs->cs_hidden.base = 0;
+	regs->es_hidden.base = 0;
+	regs->ds_hidden.base = 0;
+	regs->ss_hidden.base = 0;
+	regs->fs_hidden.base = 0;
+	regs->gs_hidden.base = 0;
 
-	write_gpr(cpu, 0xCF9F00, REG_CS, SEG_FLG);
-	write_gpr(cpu, 0xCF9700, REG_ES, SEG_FLG);
-	write_gpr(cpu, 0xCF9700, REG_DS, SEG_FLG);
-	write_gpr(cpu, 0xCF9700, REG_SS, SEG_FLG);
-	write_gpr(cpu, 0xCF9700, REG_FS, SEG_FLG);
-	write_gpr(cpu, 0xCF9700, REG_GS, SEG_FLG);
+	regs->cs_hidden.flags = 0xCF9F00;
+	regs->es_hidden.flags = 0xCF9700;
+	regs->ds_hidden.flags = 0xCF9700;
+	regs->ss_hidden.flags = 0xCF9700;
+	regs->fs_hidden.flags = 0xCF9700;
+	regs->gs_hidden.flags = 0xCF9700;
 
-	write_gpr(cpu, 0x80000001, REG_CR0); // protected, paging
-	write_gpr(cpu, 0xF000, REG_CR3); // pd addr
-	write_gpr(cpu, 0x10, REG_CR4); // pse
+	regs->cr0 = 0x80000001; // protected, paging
+	regs->cr3 = 0xF000; // pd addr
+	regs->cr4 = 0x10; // pse
 
-	write_gpr(cpu, 0x80400000, REG_ESP);
-	write_gpr(cpu, 0x80400000, REG_EBP);
-	write_gpr(cpu, peHeader->OptionalHeader.ImageBase + peHeader->OptionalHeader.AddressOfEntryPoint, REG_EIP);
+	regs->esp = 0x80400000;
+	regs->ebp = 0x80400000;
+	regs->eip = peHeader->OptionalHeader.ImageBase + peHeader->OptionalHeader.AddressOfEntryPoint;
 
 	// Pass eeprom and certificate keys on the stack (we use dummy all-zero keys)
 	mem_fill_block(cpu, 0x80400000, 16 * 2, 0);

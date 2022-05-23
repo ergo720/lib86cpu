@@ -92,60 +92,6 @@ struct hook {
 #define CPU_PRINT_IR            (1 << 4)
 #define CPU_PRINT_IR_OPTIMIZED  (1 << 5)
 
-#define REG_EAX     0
-#define REG_ECX     1
-#define REG_EDX     2
-#define REG_EBX     3
-#define REG_ESP     4
-#define REG_EBP     5
-#define REG_ESI     6
-#define REG_EDI     7
-#define REG_ES      8
-#define REG_CS      9
-#define REG_SS      10
-#define REG_DS      11
-#define REG_FS      12
-#define REG_GS      13
-#define REG_CR0     14
-#define REG_CR1     15
-#define REG_CR2     16
-#define REG_CR3     17
-#define REG_CR4     18
-#define REG_DR0     19
-#define REG_DR1     20
-#define REG_DR2     21
-#define REG_DR3     22
-#define REG_DR4     23
-#define REG_DR5     24
-#define REG_DR6     25
-#define REG_DR7     26
-#define REG_EFLAGS  27
-#define REG_EIP     28
-#define REG_IDTR    29
-#define REG_GDTR    30
-#define REG_LDTR    31
-#define REG_TR      32
-#define REG_R0      33
-#define REG_R1      34
-#define REG_R2      35
-#define REG_R3      36
-#define REG_R4      37
-#define REG_R5      38
-#define REG_R6      39
-#define REG_R7      40
-#define REG_ST      41
-#define REG_TAG     42
-
-#define REG32       0
-#define REG16       1
-#define REG8H       2
-#define REG8L       3
-
-#define SEG_SEL     0
-#define SEG_BASE    1
-#define SEG_LIMIT   2
-#define SEG_FLG     3
-
 // mmio/pmio access handlers
 using fp_read = uint64_t (*)(addr_t addr, size_t size, void *opaque);
 using fp_write = void (*)(addr_t addr, size_t size, const uint64_t value, void *opaque);
@@ -156,10 +102,11 @@ API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC lc86_status cpu_run(cpu_t *cpu);
 API_FUNC void cpu_sync_state(cpu_t *cpu);
 API_FUNC lc86_status cpu_set_flags(cpu_t *cpu, uint32_t flags);
-API_FUNC lc86_status read_gpr(cpu_t *cpu, uint32_t *value, int reg, int size_or_sel = REG32);
-API_FUNC lc86_status write_gpr(cpu_t *cpu, uint32_t value, int reg, int size_or_sel = REG32);
-API_FUNC lc86_status read_fxr(cpu_t *cpu, uint64_t *low, uint64_t *high, int reg);
-API_FUNC lc86_status write_fxr(cpu_t *cpu, uint64_t low, uint64_t high, int reg);
+
+// register api
+API_FUNC regs_t *get_regs_ptr(cpu_t *cpu);
+API_FUNC uint32_t read_eflags(cpu_t *cpu);
+API_FUNC void write_eflags(cpu_t *cpu, uint32_t value, bool reg32 = true);
 
 // memory api
 API_FUNC uint8_t *get_ram_ptr(cpu_t *cpu);

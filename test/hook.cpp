@@ -138,17 +138,15 @@ gen_hook_test()
 		return false;
 	}
 
-	uint32_t cr0;
-	read_gpr(cpu, &cr0, REG_CR0);
-	cr0 |= 1;
-	write_gpr(cpu, cr0, REG_CR0);
-	write_gpr(cpu, 0, REG_EIP);
-	write_gpr(cpu, 0, REG_CS, SEG_SEL);
-	write_gpr(cpu, 0, REG_CS, SEG_BASE);
-	write_gpr(cpu, 1 << 22, REG_CS, SEG_FLG);
-	write_gpr(cpu, 1 << 22, REG_SS, SEG_FLG);
-	write_gpr(cpu, ramsize, REG_ESP);
-	write_gpr(cpu, ramsize, REG_EBP);
+	regs_t *regs = get_regs_ptr(cpu);
+	regs->cr0 |= 1;
+	regs->eip = 0;
+	regs->cs = 0;
+	regs->cs_hidden.base = 0;
+	regs->cs_hidden.flags = 1 << 22;
+	regs->ss_hidden.flags = 1 << 22;
+	regs->esp = ramsize;
+	regs->ebp = ramsize;
 
 	return true;
 }

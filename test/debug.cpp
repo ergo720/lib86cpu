@@ -51,6 +51,8 @@ static uint8_t dbg_binary[] = {
 	0x89, 0x1C, 0x24, 0xCF, 0xC3, 0xFA, 0xF4
 };
 
+static regs_t *regs = nullptr;
+
 
 static void
 dbg_write_handler(addr_t addr, size_t size, const uint64_t value, void *opaque)
@@ -110,12 +112,12 @@ CDECL int_handler_printer(uint32_t eip)
 		break;
 
 	case 0x107D:
-		read_gpr(cpu, &val, REG_DR6);
+		val = regs->dr6;
 		std::printf("general detect read at 0x%X: dr6 should have bd flag set, it actually was %d\n", eip, (val >> 13) & 1);
 		break;
 
 	case 0x1088:
-		read_gpr(cpu, &val, REG_DR6);
+		val = regs->dr6;
 		std::printf("general detect write at 0x%X: dr6 should have bd flag set, it actually was %d\n", eip, (val >> 13) & 1);
 		break;
 
@@ -209,46 +211,47 @@ gen_dbg_test()
 	desc = 0xCF97000000FFFF;
 	mem_write_block(cpu, 0x110, 8, &desc); // 32bit data segment, expand-down, rw, present
 
-	write_gpr(cpu, 0x8, REG_CS, SEG_SEL);
-	write_gpr(cpu, 0x10, REG_ES, SEG_SEL);
-	write_gpr(cpu, 0x10, REG_DS, SEG_SEL);
-	write_gpr(cpu, 0x10, REG_SS, SEG_SEL);
-	write_gpr(cpu, 0x10, REG_FS, SEG_SEL);
-	write_gpr(cpu, 0x10, REG_GS, SEG_SEL);
+	regs = get_regs_ptr(cpu);
+	regs->cs = 0x8;
+	regs->es = 0x10;
+	regs->ds = 0x10;
+	regs->ss = 0x10;
+	regs->fs = 0x10;
+	regs->gs = 0x10;
 
-	write_gpr(cpu, 0x0, REG_CS, SEG_BASE);
-	write_gpr(cpu, 0x0, REG_ES, SEG_BASE);
-	write_gpr(cpu, 0x0, REG_DS, SEG_BASE);
-	write_gpr(cpu, 0x0, REG_SS, SEG_BASE);
-	write_gpr(cpu, 0x0, REG_FS, SEG_BASE);
-	write_gpr(cpu, 0x0, REG_GS, SEG_BASE);
+	regs->cs_hidden.base = 0x0;
+	regs->es_hidden.base = 0x0;
+	regs->ds_hidden.base = 0x0;
+	regs->ss_hidden.base = 0x0;
+	regs->fs_hidden.base = 0x0;
+	regs->gs_hidden.base = 0x0;
 
-	write_gpr(cpu, 0xFFFFFFFF, REG_CS, SEG_LIMIT);
-	write_gpr(cpu, 0xFFFFFFFF, REG_ES, SEG_LIMIT);
-	write_gpr(cpu, 0xFFFFFFFF, REG_DS, SEG_LIMIT);
-	write_gpr(cpu, 0xFFFFFFFF, REG_SS, SEG_LIMIT);
-	write_gpr(cpu, 0xFFFFFFFF, REG_FS, SEG_LIMIT);
-	write_gpr(cpu, 0xFFFFFFFF, REG_GS, SEG_LIMIT);
+	regs->cs_hidden.limit = 0xFFFFFFFF;
+	regs->es_hidden.limit = 0xFFFFFFFF;
+	regs->ds_hidden.limit = 0xFFFFFFFF;
+	regs->ss_hidden.limit = 0xFFFFFFFF;
+	regs->fs_hidden.limit = 0xFFFFFFFF;
+	regs->gs_hidden.limit = 0xFFFFFFFF;
 
-	write_gpr(cpu, 0xCF9F00, REG_CS, SEG_FLG);
-	write_gpr(cpu, 0xCF9700, REG_ES, SEG_FLG);
-	write_gpr(cpu, 0xCF9700, REG_DS, SEG_FLG);
-	write_gpr(cpu, 0xCF9700, REG_SS, SEG_FLG);
-	write_gpr(cpu, 0xCF9700, REG_FS, SEG_FLG);
-	write_gpr(cpu, 0xCF9700, REG_GS, SEG_FLG);
+	regs->cs_hidden.flags = 0xCF9F00;
+	regs->es_hidden.flags = 0xCF9700;
+	regs->ds_hidden.flags = 0xCF9700;
+	regs->ss_hidden.flags = 0xCF9700;
+	regs->fs_hidden.flags = 0xCF9700;
+	regs->gs_hidden.flags = 0xCF9700;
 
-	write_gpr(cpu, 0x1000, REG_EIP);
-	write_gpr(cpu, 0xFD000, REG_ESP);
-	write_gpr(cpu, 0xFD000, REG_EBP);
+	regs->eip = 0x1000;
+	regs->esp = 0xFD000;
+	regs->ebp = 0xFD000;
 
-	write_gpr(cpu, 0x0, REG_IDTR, SEG_BASE);
-	write_gpr(cpu, 0x100, REG_GDTR, SEG_BASE);
-	write_gpr(cpu, 0xFF, REG_IDTR, SEG_LIMIT);
-	write_gpr(cpu, 0x117, REG_GDTR, SEG_LIMIT);
+	regs->idtr_hidden.base = 0x0;
+	regs->gdtr_hidden.base = 0x100;
+	regs->idtr_hidden.limit = 0xFF;
+	regs->gdtr_hidden.limit = 0x117;
 
-	write_gpr(cpu, 0x80000001, REG_CR0); // protected, paging
-	write_gpr(cpu, 0x000FF000, REG_CR3);
-	write_gpr(cpu, 0x8, REG_CR4); // debug extensions
+	regs->cr0 = 0x80000001; // protected, paging
+	regs->cr3 = 0x000FF000;
+	regs->cr4 = 0x8; // debug extensions
 
 	return true;
 }
