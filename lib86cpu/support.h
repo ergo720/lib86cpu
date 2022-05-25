@@ -50,6 +50,7 @@ enum class host_exp_t : int {
     de_exp,
     cpu_mode_changed,
     halt_tc,
+    dbg_closed,
 };
 
 void cpu_init(cpu_t *cpu);

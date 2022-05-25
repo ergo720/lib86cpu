@@ -85,7 +85,9 @@ struct exp_info_t {
 struct cpu_ctx_t;
 using entry_t = translated_code_t * (*)(cpu_ctx_t *cpu_ctx);
 using raise_exp_t = entry_t;
+using raise_int_t = void (*)(cpu_ctx_t *cpu_ctx, uint8_t int_flg);
 
+// jmp_offset functions: 0,1 -> used for direct linking (either points to exit or &next_tc), 2 -> exit, 3 -> dbg int, 4 -> hw int
 struct translated_code_t {
 	std::forward_list<translated_code_t *> linked_tc;
 	cpu_t *cpu;
@@ -93,7 +95,7 @@ struct translated_code_t {
 	addr_t pc;
 	uint32_t cpu_flags;
 	entry_t ptr_code;
-	entry_t jmp_offset[3];
+	entry_t jmp_offset[5];
 	uint32_t flags;
 	uint32_t size;
 	explicit translated_code_t(cpu_t *cpu) noexcept;
@@ -130,6 +132,7 @@ struct cpu_ctx_t {
 	uint8_t *ram;
 	raise_exp_t exp_fn;
 	exp_info_t exp_info;
+	uint8_t int_pending;
 };
 
 class lc86_jit;
@@ -160,6 +163,7 @@ struct cpu_t {
 			uint64_t mask;
 		} phys_var[8];
 	} mtrr;
+	raise_int_t int_fn;
 
 	// llvm specific variables
 	std::unique_ptr<lc86_jit> jit;

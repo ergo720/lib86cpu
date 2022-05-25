@@ -30,13 +30,18 @@ void cpu_msr_read(cpu_ctx_t *cpu_ctx);
 #define HFLG_PE_MODE    (1 << PE_MODE_SHIFT)
 #define HFLG_CR0_EM     (1 << EM_SHIFT)
 
+// cpu interrupt flags
+#define CPU_NO_INT   0
+#define CPU_DBG_INT  1
+#define CPU_HW_INT   2
+
 // disassembly context flags
 #define DISAS_FLG_CS32         (1 << 0)
 #define DISAS_FLG_PAGE_CROSS   (1 << 2)
 #define DISAS_FLG_FETCH_FAULT  DISAS_FLG_PAGE_CROSS
 #define DISAS_FLG_ONE_INSTR    CPU_DISAS_ONE
 
-// tc struct flags
+// tc struct flags/offsets
 #define TC_FLG_DST_PC     0
 #define TC_FLG_NEXT_PC    1
 #define TC_FLG_RET        2
@@ -47,6 +52,7 @@ void cpu_msr_read(cpu_ctx_t *cpu_ctx);
 #define TC_FLG_HOOK       (1 << 6)
 #define TC_FLG_DST_ONLY   (1 << 7)
 #define TC_FLG_LINK_MASK  (TC_FLG_INDIRECT | TC_FLG_DIRECT | TC_FLG_DST_ONLY)
+#define TC_JMP_INT_OFFSET 2
 
 // segment descriptor flags
 #define SEG_DESC_TY   (15ULL << 40) // type

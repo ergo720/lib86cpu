@@ -8,6 +8,7 @@
 
 
 std::vector<BasicBlock *> gen_bbs(cpu_t *cpu, const unsigned num);
+void gen_int_fn(cpu_t *cpu);
 void gen_exp_fn(cpu_t *cpu);
 void optimize(cpu_t *cpu);
 void get_ext_fn(cpu_t *cpu);
@@ -16,6 +17,8 @@ StructType *get_struct_eflags(cpu_t *cpu);
 Value *gep_emit(cpu_t *cpu, Value *gep_start, const int gep_index);
 Value *gep_emit(cpu_t *cpu, Value *gep_start, Value *gep_index);
 Value *gep_emit(cpu_t *cpu, Value *gep_start, const std::vector<Value *> &vec_index);
+Value *store_atomic_emit(cpu_t *cpu, Value *ptr, Value *val, AtomicOrdering order);
+Value *load_atomic_emit(cpu_t *cpu, Value *ptr, AtomicOrdering order);
 Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
 Value *get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum);
 int get_reg_idx(ZydisRegister reg);
@@ -52,6 +55,7 @@ void set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode);
 void update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag, bool is_write);
 void write_eflags(cpu_t *cpu, Value *eflags, Value *mask);
 void hook_emit(cpu_t *cpu, hook *obj);
+void check_int_emit(cpu_t *cpu);
 
 
 #define CTX() (*cpu->ctx)
@@ -98,7 +102,7 @@ default: \
 	LIB86CPU_ABORT_msg("Invalid operand type used in GET_RM macro!"); \
 }
 
-#define INTPTR(v) ConstantInt::get(getIntegerPointerType(), reinterpret_cast<uintptr_t>(v))
+#define CONSTp(v) ConstantInt::get(getIntegerPointerType(), reinterpret_cast<uintptr_t>(v))
 #define CONSTs(s, v) ConstantInt::get(getIntegerType(s), v)
 #define CONST1(v) CONSTs(1, v)
 #define CONST8(v) CONSTs(8, v)
@@ -115,6 +119,8 @@ default: \
 
 #define ST(ptr, v) new StoreInst(v, ptr, cpu->bb)
 #define LD(ptr) new LoadInst(ptr, "", false, cpu->bb)
+#define ST_ATOMIC(ptr, v, order) store_atomic_emit(cpu, ptr, v, order)
+#define LD_ATOMIC(ptr, order) load_atomic_emit(cpu, ptr, order)
 
 #define UNREACH() new UnreachableInst(CTX(), cpu->bb)
 #define INTRINSIC(id) CallInst::Create(Intrinsic::getDeclaration(cpu->mod, Intrinsic::id), "", cpu->bb)
@@ -132,10 +138,11 @@ default: \
 #define SEXT32(v) SEXTs(32, v)
 #define SEXT64(v) SEXTs(64, v)
 
-#define IBITCASTs(s, v) new BitCastInst(v, getPointerType(getIntegerType(s)), "", cpu->bb)
-#define IBITCAST8(v) IBITCASTs(8, v)
-#define IBITCAST16(v) IBITCASTs(16, v)
-#define IBITCAST32(v) IBITCASTs(32, v)
+#define IBITCASTp(s, v) new BitCastInst(v, getPointerType(getIntegerType(s)), "", cpu->bb)
+#define IBITCASTs(s, v) new BitCastInst(v, s, "", cpu->bb)
+#define IBITCAST8(v) IBITCASTp(8, v)
+#define IBITCAST16(v) IBITCASTp(16, v)
+#define IBITCAST32(v) IBITCASTp(32, v)
 
 #define TRUNCs(s,v) new TruncInst(v, getIntegerType(s), "", cpu->bb)
 #define TRUNC8(v) TRUNCs(8, v)
@@ -351,6 +358,6 @@ BR_COND(vec_bb[3], vec_bb[2], AND(ICMP_NE(ecx, zero), ICMP_EQ(LD_ZF(), CONST32(0
 
 #define ABORT(str) \
 do { \
-    CallInst *ci = CallInst::Create(cpu->ptr_abort_fn, ConstantExpr::getIntToPtr(INTPTR(str), getPointerType(getIntegerType(8))), "", cpu->bb); \
+    CallInst *ci = CallInst::Create(cpu->ptr_abort_fn, ConstantExpr::getIntToPtr(CONSTp(str), getPointerType(getIntegerType(8))), "", cpu->bb); \
     ci->setCallingConv(CallingConv::C); \
 } while (0)

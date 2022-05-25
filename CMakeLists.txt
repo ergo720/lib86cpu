@@ -16,7 +16,8 @@ set(LLVM_DIR ${LIB86CPU_ROOT_DIR}/llvm)
 message("Building lib86cpu")
 include(BuildConfigH.cmake)
 add_definitions(-DLIB86CPU_BUILD_CORE)
-include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu ${LIB86CPU_ROOT_DIR}/lib86cpu/x86)
+include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu ${LIB86CPU_ROOT_DIR}/lib86cpu/x86 ${LIB86CPU_ROOT_DIR}/import/glfw/include/GLFW
+ ${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad ${LIB86CPU_ROOT_DIR}/lib86cpu/dbg)
 set(LLVM_LIBS LLVMX86Disassembler.lib LLVMX86AsmParser.lib LLVMX86CodeGen.lib LLVMGlobalISel.lib LLVMSelectionDAG.lib LLVMAsmPrinter.lib LLVMCodeGen.lib LLVMTarget.lib
 LLVMScalarOpts.lib LLVMInstCombine.lib LLVMAggressiveInstCombine.lib LLVMTransformUtils.lib LLVMBitWriter.lib LLVMAnalysis.lib LLVMProfileData.lib LLVMX86Desc.lib LLVMObject.lib
 LLVMMCParser.lib LLVMBitReader.lib LLVMCore.lib LLVMMCDisassembler.lib LLVMX86Info.lib LLVMX86AsmPrinter.lib LLVMMC.lib LLVMDebugInfoCodeView.lib LLVMDebugInfoMSF.lib
@@ -50,6 +51,9 @@ file (GLOB HEADERS
  "${LIB86CPU_ROOT_DIR}/lib86cpu/platform.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/support.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/types.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/main_wnd.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/glad/glad.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/KHR/khrplatform.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/x86/breakpoint.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/x86/decode.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/x86/frontend.h"
@@ -64,6 +68,8 @@ file (GLOB HEADERS
 file (GLOB SOURCES
  "${LIB86CPU_ROOT_DIR}/lib86cpu/interface.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/support.cpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/glad.c"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/main_wnd.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/x86/breakpoint.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/x86/decode.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/x86/frontend.cpp"
@@ -80,7 +86,7 @@ source_group(TREE ${LIB86CPU_ROOT_DIR} PREFIX source FILES ${SOURCES})
 
 if (MSVC)
 set(CMAKE_CXX_FLAGS "/EHs")
-include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/x86/windows ${LIB86CPU_ROOT_DIR}/import/glfw/include/GLFW)
+include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/x86/windows)
 add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS -D__STDC_FORMAT_MACROS -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS)
 add_definitions(-wd4146)
 add_definitions(-wd4800)

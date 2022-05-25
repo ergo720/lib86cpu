@@ -271,11 +271,39 @@ floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits)
 	return LD(ret);
 }
 
+Value *
+store_atomic_emit(cpu_t *cpu, Value *ptr, Value *val, AtomicOrdering order)
+{
+	StoreInst *instr = ST(ptr, val);
+	instr->setOrdering(order);
+	return instr;
+}
+
+Value *
+load_atomic_emit(cpu_t *cpu, Value *ptr, AtomicOrdering order)
+{
+	LoadInst *instr = LD(ptr);
+	instr->setOrdering(order);
+	return instr;
+}
+
+void
+check_int_emit(cpu_t *cpu)
+{
+	unsigned ptr_size = cpu->dl->getPointerSize();
+	Value *int_flg = ZEXTs(ptr_size * 8, LD_ATOMIC(GEP(cpu->ptr_cpu_ctx, 8), AtomicOrdering::Monotonic));
+	Value *tc_jmp_int_ptr = INT2PTR(getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())),
+		ADD(CONSTs(ptr_size * 8, reinterpret_cast<uintptr_t>(&cpu->tc->jmp_offset[TC_JMP_INT_OFFSET])), MUL(int_flg, CONSTs(ptr_size * 8, ptr_size))));
+	CallInst::Create(LD(tc_jmp_int_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
+}
+
 void
 link_direct_emit(cpu_t *cpu, const std::vector<addr_t> &vec_addr, Value *target_addr)
 {
-	// vec_addr: instr_pc, dst_pc, next_pc
+	// make sure we check for interrupts before jumping to the next tc
+	check_int_emit(cpu);
 
+	// vec_addr: instr_pc, dst_pc, next_pc
 	addr_t page_addr = vec_addr[0] & ~PAGE_MASK;
 	uint32_t n, dst = (vec_addr[1] & ~PAGE_MASK) == page_addr;
 	if (vec_addr.size() == 3) {
@@ -291,9 +319,9 @@ link_direct_emit(cpu_t *cpu, const std::vector<addr_t> &vec_addr, Value *target_
 		return;
 	}
 
-	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->jmp_offset[0]), getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())));
-	Value *tc_jmp1_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->jmp_offset[1]), getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())));
-	Value *tc_flg_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->flags), getPointerType(getIntegerType(32)));
+	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[0]), getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())));
+	Value *tc_jmp1_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[1]), getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())));
+	Value *tc_flg_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->flags), getPointerType(getIntegerType(32)));
 
 	switch (n)
 	{
@@ -363,13 +391,109 @@ link_direct_emit(cpu_t *cpu, const std::vector<addr_t> &vec_addr, Value *target_
 void
 link_dst_only_emit(cpu_t *cpu)
 {
+	// make sure we check for interrupts before jumping to the next tc
+	check_int_emit(cpu);
+
 	cpu->tc->flags |= (1 & TC_FLG_NUM_JMP);
 
-	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(INTPTR(&cpu->tc->jmp_offset[0]), getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())));
+	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[0]), getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())));
 	CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
 	ci->setCallingConv(CallingConv::C);
 	ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 	ReturnInst::Create(CTX(), ci, cpu->bb);
+}
+
+void
+gen_int_fn(cpu_t *cpu)
+{
+	cpu->ctx = new LLVMContext();
+	if (cpu->ctx == nullptr) {
+		LIB86CPU_ABORT();
+	}
+	cpu->mod = new Module(cpu->cpu_name, *cpu->ctx);
+	cpu->mod->setDataLayout(*cpu->dl);
+	if (cpu->mod == nullptr) {
+		LIB86CPU_ABORT();
+	}
+
+	StructType *cpu_ctx_struct_type = StructType::create(CTX(), "struct.cpu_ctx_t");
+	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");  // NOTE: opaque tc struct
+	FunctionType *type_exp_t = FunctionType::get(
+		getPointerType(tc_struct_type),       // tc ret
+		getPointerType(cpu_ctx_struct_type),  // cpu_ctx
+		false);
+
+	std::vector<Type *> type_struct_exp_data_t_fields;
+	type_struct_exp_data_t_fields.push_back(getIntegerType(32));
+	type_struct_exp_data_t_fields.push_back(getIntegerType(16));
+	type_struct_exp_data_t_fields.push_back(getIntegerType(16));
+	type_struct_exp_data_t_fields.push_back(getIntegerType(32));
+	StructType *type_exp_data_t = StructType::create(CTX(),
+		type_struct_exp_data_t_fields, "struct.exp_data_t", false);
+
+	std::vector<Type *> type_struct_exp_info_t_fields;
+	type_struct_exp_info_t_fields.push_back(type_exp_data_t);
+	type_struct_exp_info_t_fields.push_back(getIntegerType(8));
+	StructType *type_exp_info_t = StructType::create(CTX(),
+		type_struct_exp_info_t_fields, "struct.exp_info_t", false);
+
+	std::vector<Type *> type_struct_cpu_ctx_t_fields;
+	type_struct_cpu_ctx_t_fields.push_back(getPointerType(StructType::create(CTX(), "struct.cpu_t")));  // NOTE: opaque cpu struct
+	type_struct_cpu_ctx_t_fields.push_back(get_struct_reg(cpu));
+	type_struct_cpu_ctx_t_fields.push_back(get_struct_eflags(cpu));
+	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(32));
+	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(32), TLB_MAX_SIZE));
+	type_struct_cpu_ctx_t_fields.push_back(getPointerType(getIntegerType(8)));
+	type_struct_cpu_ctx_t_fields.push_back(getPointerType(type_exp_t));
+	type_struct_cpu_ctx_t_fields.push_back(type_exp_info_t);
+	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(8));
+	cpu_ctx_struct_type->setBody(type_struct_cpu_ctx_t_fields, false);
+
+	FunctionType *type_int_t = FunctionType::get(
+		getVoidType(),                                                                   // void ret
+		std::vector<Type *> { getPointerType(cpu_ctx_struct_type), getIntegerType(8) },  // cpu_ctx, int flag
+		false);
+
+	Function *func = Function::Create(
+		type_int_t,                      // func type
+		GlobalValue::ExternalLinkage,    // linkage
+		"cpu_raise_interrupt",           // name
+		cpu->mod);
+	func->setCallingConv(CallingConv::C);
+
+	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
+	cpu->tc = nullptr;
+
+	ST_ATOMIC(GEP(func->arg_begin(), 8), func->arg_begin() + 1, AtomicOrdering::Monotonic);
+	ReturnInst::Create(CTX(), cpu->bb);
+
+	if (cpu->cpu_flags & CPU_PRINT_IR) {
+		std::string str;
+		raw_string_ostream os(str);
+		os << *cpu->mod;
+		os.flush();
+		LOG(log_level::debug, str.c_str());
+	}
+
+	if (cpu->cpu_flags & CPU_CODEGEN_OPTIMIZE) {
+		optimize(cpu);
+		if (cpu->cpu_flags & CPU_PRINT_IR_OPTIMIZED) {
+			std::string str;
+			raw_string_ostream os(str);
+			os << *cpu->mod;
+			os.flush();
+			LOG(log_level::debug, str.c_str());
+		}
+	}
+
+	orc::ThreadSafeContext tsc(std::unique_ptr<LLVMContext>(cpu->ctx));
+	orc::ThreadSafeModule tsm(std::unique_ptr<Module>(cpu->mod), tsc);
+	cpu->jit->add_ir_module(std::move(tsm));
+	cpu->int_fn = reinterpret_cast<raise_int_t>(cpu->jit->lookup("cpu_raise_interrupt")->getAddress());
+	assert(cpu->int_fn);
+	cpu->jit->remove_symbols(std::vector<std::string> { "cpu_raise_interrupt" });
+	cpu->tc = nullptr;
+	cpu->bb = nullptr;
 }
 
 void
@@ -415,6 +539,7 @@ gen_exp_fn(cpu_t *cpu)
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(getIntegerType(8)));
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(type_exp_t));
 	type_struct_cpu_ctx_t_fields.push_back(type_exp_info_t);
+	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(8));
 	cpu_ctx_struct_type->setBody(type_struct_cpu_ctx_t_fields, false);
 
 	Function *func = Function::Create(
@@ -680,7 +805,7 @@ gen_exp_fn(cpu_t *cpu)
 		cpu->bb = vec_bb[38];
 		ST_R32(AND(LD_R32(DR7_idx), CONST32(~DR7_GD_MASK)), DR7_idx); // also clear gd of dr7 in the case this is a DB exception
 		ST(GEP(ptr_exp_info, 1), CONST8(0));
-		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
+		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(CONSTp(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
 		ABORT("IDT limit exceeded (protected mode)");
 		UNREACH();
@@ -737,7 +862,7 @@ gen_exp_fn(cpu_t *cpu)
 		ST_R32(AND(vec_entry, CONST32(0xFFFF)), EIP_idx);
 		ST_R32(AND(LD_R32(DR7_idx), CONST32(~DR7_GD_MASK)), DR7_idx); // also clear gd of dr7 in the case this is a DB exception
 		ST(GEP(ptr_exp_info, 1), CONST8(0));
-		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(INTPTR(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
+		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(CONSTp(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
 		// we don't handle double and triple faults yet, so just abort
 		ABORT("IDT limit exceeded (real mode)");
@@ -1522,7 +1647,7 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_pri
 
 	// yes, access ram directly
 	cpu->bb = vec_bb[3];
-	ST(ret, LD(IBITCASTs(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(ram_offset) }))));
+	ST(ret, LD(IBITCASTp(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(ram_offset) }))));
 	if (is_big_endian && (mem_size != 8)) {
 		std::vector<Type *> vec_types { getIntegerType(mem_size) };
 		std::vector<Value *> vec_params { LD(ret) };
@@ -1553,7 +1678,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
 	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
 	Value *mem_access = CONST32((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) | TLB_DIRTY);
-	Value *tc_ptr = ConstantExpr::getIntToPtr(INTPTR(cpu->tc), cpu->bb->getParent()->getReturnType());
+	Value *tc_ptr = ConstantExpr::getIntToPtr(CONSTp(cpu->tc), cpu->bb->getParent()->getReturnType());
 
 	// interrogate the tlb
 	// this checks the page privilege access (mem_access), if the last byte of the write is in the same page as the first (addr + (mem_size / 8) - 1) and
@@ -1584,7 +1709,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 		std::vector<Value *> vec_params { LD(val_ptr) };
 		ST(val_ptr, INTRINSIC_ty(bswap, vec_types, vec_params));
 	}
-	ST(IBITCASTs(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(ram_offset) })), LD(val_ptr));
+	ST(IBITCASTp(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(ram_offset) })), LD(val_ptr));
 	BR_UNCOND(vec_bb[2]);
 
 	if (!(cpu->cpu_flags & CPU_ALLOW_CODE_WRITE)) {

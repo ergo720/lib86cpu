@@ -91,6 +91,7 @@ struct hook {
 #define CPU_CODEGEN_OPTIMIZE    (1 << 3)
 #define CPU_PRINT_IR            (1 << 4)
 #define CPU_PRINT_IR_OPTIMIZED  (1 << 5)
+#define CPU_DBG_PRESENT         (1 << 11)
 
 // mmio/pmio access handlers
 using fp_read = uint64_t (*)(addr_t addr, size_t size, void *opaque);

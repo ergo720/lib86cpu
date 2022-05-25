@@ -13,6 +13,7 @@
 #include "frontend.h"
 #include "memory.h"
 #include "jit.h"
+#include "main_wnd.h"
 
 #define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(disas_ctx->virt_pc - bytes, &instr).c_str())
 
@@ -61,6 +62,10 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 			}
 		}
 		break;
+
+		case host_exp_t::dbg_closed:
+			// the user has closed the debugger, simply abort by rethrowing the exception
+			throw;
 
 		case host_exp_t::de_exp:
 			// debug exception trap while excecuting the translated code
@@ -303,6 +308,7 @@ create_tc_prologue(cpu_t *cpu)
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(getIntegerType(8)));
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(type_exp_t));
 	type_struct_cpu_ctx_t_fields.push_back(type_exp_info_t);
+	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(8));
 	cpu_ctx_struct_type->setBody(type_struct_cpu_ctx_t_fields, false);
 	PointerType *type_pcpu_ctx_t = getPointerType(cpu_ctx_struct_type);
 
@@ -338,7 +344,7 @@ create_tc_prologue(cpu_t *cpu)
 static void
 create_tc_epilogue(cpu_t *cpu)
 {
-	Value *tc_ptr1 = new IntToPtrInst(INTPTR(cpu->tc), cpu->bb->getParent()->getReturnType(), "", cpu->bb);
+	Value *tc_ptr1 = new IntToPtrInst(CONSTp(cpu->tc), cpu->bb->getParent()->getReturnType(), "", cpu->bb);
 	ReturnInst::Create(CTX(), tc_ptr1, cpu->bb);
 
 	// create the function that returns to the translator
@@ -350,7 +356,7 @@ create_tc_epilogue(cpu_t *cpu)
 	exit->setCallingConv(CallingConv::C);
 
 	BasicBlock *bb = BasicBlock::Create(CTX(), "", exit, 0);
-	Value *tc_ptr2 = new IntToPtrInst(INTPTR(cpu->tc), exit->getReturnType(), "", bb);
+	Value *tc_ptr2 = new IntToPtrInst(CONSTp(cpu->tc), exit->getReturnType(), "", bb);
 	ReturnInst::Create(CTX(), tc_ptr2, bb);
 }
 
@@ -1074,6 +1080,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					lcall_pe_emit(cpu, std::vector<Value *> { CONST16(new_sel), CONST32(call_eip), cs, eip }, size_mode, ret_eip);
+					// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
+					check_int_emit(cpu);
 					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else {
@@ -1117,6 +1125,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						call_eip = ZEXT32(call_eip);
 					}
 					ST_R32(call_eip, EIP_idx);
+					// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
+					check_int_emit(cpu);
 					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else if (instr.raw.modrm.reg == 3) {
@@ -1150,6 +1160,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						ST_R32(call_eip, EIP_idx);
 						ST_SEG_HIDDEN(SHL(ZEXT32(call_cs), CONST32(4)), CS_idx, SEG_BASE_idx);
 					}
+					// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
+					check_int_emit(cpu);
 					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else {
@@ -2156,6 +2168,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				write_eflags(cpu, eflags, mask);
 			}
 
+			// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
+			check_int_emit(cpu);
 			cpu->tc->flags |= TC_FLG_INDIRECT;
 			translate_next = 0;
 		}
@@ -2315,6 +2329,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				uint16_t new_sel = instr.operands[OPNUM_SINGLE].ptr.segment;
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					ljmp_pe_emit(cpu, CONST16(new_sel), size_mode, new_eip);
+					// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
+					check_int_emit(cpu);
 					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else {
@@ -2340,6 +2356,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						new_eip = offset;
 						ST_R32(new_eip, EIP_idx);
 					}
+					// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
+					check_int_emit(cpu);
 					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else if (instr.raw.modrm.reg == 5) {
@@ -2881,7 +2899,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						std::vector<BasicBlock *> vec_bb = getBBs(2);
 						BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(AND(SHR(LD_R32(DR7_idx), CONST32(DR7_TYPE_SHIFT + (dr_idx - DR_offset) * 4)), CONST32(3)), CONST32(DR7_TYPE_INSTR)));
 						cpu->bb = vec_bb[0];
-						CallInst::Create(cpu->ptr_invtc_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, ConstantExpr::getIntToPtr(INTPTR(cpu->tc), cpu->bb->getParent()->getReturnType()),
+						CallInst::Create(cpu->ptr_invtc_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, ConstantExpr::getIntToPtr(CONSTp(cpu->tc), cpu->bb->getParent()->getReturnType()),
 							LD_R32(dr_idx), CONST8(1), cpu->instr_eip }, "", cpu->bb);
 						BR_UNCOND(vec_bb[1]);
 						cpu->bb = vec_bb[1];
@@ -2933,7 +2951,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							BR_COND(vec_bb[5], vec_bb[6], ICMP_EQ(AND(SHR(LD(reg), CONST32(DR7_TYPE_SHIFT + idx * 4)), CONST32(3)), CONST32(DR7_TYPE_INSTR)));
 							cpu->bb = vec_bb[5];
 							// invalidate the tc if it is an instr breakpoint. Same as above
-							CallInst::Create(cpu->ptr_invtc_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, ConstantExpr::getIntToPtr(INTPTR(cpu->tc), cpu->bb->getParent()->getReturnType()),
+							CallInst::Create(cpu->ptr_invtc_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, ConstantExpr::getIntToPtr(CONSTp(cpu->tc), cpu->bb->getParent()->getReturnType()),
 								curr_watch_addr, CONST8(1), cpu->instr_eip }, "", cpu->bb);
 							BR_UNCOND(vec_bb[6]);
 							cpu->bb = vec_bb[6];
@@ -4162,6 +4180,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				BAD;
 			}
 
+			// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
+			check_int_emit(cpu);
 			cpu->tc->flags |= TC_FLG_INDIRECT;
 			translate_next = 0;
 		}
@@ -5453,6 +5473,20 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	}
 }
 
+static translated_code_t *
+cpu_dbg_int(cpu_ctx_t *cpu_ctx)
+{
+	// this is called when the user closes the debugger window
+	throw host_exp_t::dbg_closed;
+}
+
+static translated_code_t *
+cpu_do_int(cpu_ctx_t *cpu_ctx)
+{
+	// hw interrupts not imlpemented yet
+	throw lc86_exp_abort("Hardware interrupts are not implemented yet", static_cast<lc86_status>(lc86_status::internal_error));
+}
+
 template<typename T>
 void cpu_main_loop(cpu_t *cpu, T &&lambda)
 {
@@ -5565,6 +5599,8 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			tc->jmp_offset[0] = reinterpret_cast<entry_t>(cpu->jit->lookup("exit")->getAddress());
 			tc->jmp_offset[1] = tc->jmp_offset[2] = tc->jmp_offset[0];
 			assert(tc->jmp_offset[0]);
+			tc->jmp_offset[3] = &cpu_dbg_int;
+			tc->jmp_offset[4] = &cpu_do_int;
 
 			// now remove the function symbol names so that we can reuse them for other modules
 			cpu->jit->remove_symbols(std::vector<std::string> { "main", "exit" });
@@ -5629,15 +5665,49 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 lc86_status
 cpu_start(cpu_t *cpu)
 {
-	gen_exp_fn(cpu);
-
+	// guard against the case gen_int_fn raises an exception before the debugger is even initialized
 	try {
-		cpu_main_loop(cpu, []() { return true; });
+		gen_int_fn(cpu);
 	}
 	catch (lc86_exp_abort &exp) {
 		last_error = exp.what();
 		return exp.get_code();
 	}
+
+	if (cpu->cpu_flags & CPU_DBG_PRESENT) {
+		std::promise<bool> promise;
+		std::future<bool> fut = promise.get_future();
+		std::thread(dbg_main_wnd, cpu, std::ref(promise)).detach();
+		bool has_err = fut.get();
+		if (has_err) {
+			return lc86_status::internal_error;
+		}
+	}
+
+	try {
+		gen_exp_fn(cpu);
+		cpu_main_loop(cpu, []() { return true; });
+	}
+	catch (lc86_exp_abort &exp) {
+		if (cpu->cpu_flags & CPU_DBG_PRESENT) {
+			dbg_should_close();
+		}
+
+		last_error = exp.what();
+		return exp.get_code();
+	}
+	catch (host_exp_t type) {
+		if (type == host_exp_t::dbg_closed) {
+			dbg_should_close();
+			last_error = "The debugger was closed";
+			return lc86_status::success;
+		}
+		else {
+			return set_last_error(lc86_status::internal_error);
+		}
+	}
+
+	assert(0);
 
 	return set_last_error(lc86_status::internal_error);
 }

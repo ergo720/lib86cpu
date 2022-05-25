@@ -113,7 +113,7 @@ cpu_sync_state(cpu_t *cpu)
 lc86_status
 cpu_set_flags(cpu_t *cpu, uint32_t flags)
 {
-	if (flags & ~(CPU_INTEL_SYNTAX | CPU_CODEGEN_OPTIMIZE | CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED)) {
+	if (flags & ~(CPU_INTEL_SYNTAX | CPU_CODEGEN_OPTIMIZE | CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED | CPU_DBG_PRESENT)) {
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 
@@ -121,7 +121,7 @@ cpu_set_flags(cpu_t *cpu, uint32_t flags)
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 
-	cpu->cpu_flags &= ~(CPU_INTEL_SYNTAX | CPU_CODEGEN_OPTIMIZE | CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED);
+	cpu->cpu_flags &= ~(CPU_INTEL_SYNTAX | CPU_CODEGEN_OPTIMIZE | CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED | CPU_DBG_PRESENT);
 	cpu->cpu_flags |= flags;
 	// XXX: eventually, the user should be able to set the instruction formatting
 	set_instr_format(cpu);
