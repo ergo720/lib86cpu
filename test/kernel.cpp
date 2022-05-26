@@ -194,7 +194,7 @@ gen_cxbxrkrnl_test(const std::string &executable)
 	}
 
 	// Init lib86cpu
-	if (!LIB86CPU_CHECK_SUCCESS(cpu_new(ramsize, cpu))) {
+	if (!LIB86CPU_CHECK_SUCCESS(cpu_new(ramsize, cpu, "cxbxrkrnl"))) {
 		std::printf("Failed to create cpu!\n");
 		return false;
 	}
@@ -213,8 +213,6 @@ gen_cxbxrkrnl_test(const std::string &executable)
 		std::printf("Failed to initialize debug port!\n");
 		return false;
 	}
-
-	dbg_set_debuggee_name(cpu, "cxbxrkrnl");
 
 	// Load kernel exe into ram
 	uint8_t *ram = get_ram_ptr(cpu);

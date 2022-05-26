@@ -99,7 +99,7 @@ using fp_read = uint64_t (*)(addr_t addr, size_t size, void *opaque);
 using fp_write = void (*)(addr_t addr, size_t size, const uint64_t value, void *opaque);
 
 // cpu api
-API_FUNC lc86_status cpu_new(size_t ramsize, cpu_t *&out);
+API_FUNC lc86_status cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee = nullptr);
 API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC lc86_status cpu_run(cpu_t *cpu);
 API_FUNC void cpu_sync_state(cpu_t *cpu);
@@ -136,6 +136,3 @@ API_FUNC lc86_status trampoline_call(cpu_t *cpu, addr_t addr, std::any &ret, std
 // logging api
 API_FUNC void register_log_func(logfn_t logger);
 API_FUNC std::string get_last_error();
-
-// debugger api
-API_FUNC void dbg_set_debuggee_name(cpu_t *cpu, const char *name);

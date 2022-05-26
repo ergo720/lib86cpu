@@ -13,7 +13,7 @@
 
 
 lc86_status
-cpu_new(size_t ramsize, cpu_t *&out)
+cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee)
 {
 	LOG(log_level::info, "Creating new cpu...");
 
@@ -38,6 +38,7 @@ cpu_new(size_t ramsize, cpu_t *&out)
 	tsc_init(cpu);
 	// XXX: eventually, the user should be able to set the instruction formatting
 	set_instr_format(cpu);
+	cpu->dbg_name = debuggee;
 
 	std::unique_ptr<memory_region_t<addr_t>> mem_region(new memory_region_t<addr_t>);
 	cpu->memory_space_tree = interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>::create();
@@ -778,10 +779,4 @@ write_eflags(cpu_t *cpu, uint32_t value, bool reg32)
 		cpu->cpu_ctx.lazy_eflags.result = new_res;
 		cpu->cpu_ctx.lazy_eflags.auxbits = new_aux;
 	}
-}
-
-void
-dbg_set_debuggee_name(cpu_t *cpu, const char *name)
-{
-	cpu->dbg_name = name;
 }
