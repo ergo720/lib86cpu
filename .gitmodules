@@ -10,3 +10,7 @@
 	path = import/glfw
 	url = https://github.com/glfw/glfw
 	shallow = true
+[submodule "import/imgui"]
+	path = import/imgui
+	url = https://github.com/ocornut/imgui
+	shallow = true

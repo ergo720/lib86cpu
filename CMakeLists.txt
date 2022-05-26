@@ -16,7 +16,7 @@ set(LLVM_DIR ${LIB86CPU_ROOT_DIR}/llvm)
 message("Building lib86cpu")
 include(BuildConfigH.cmake)
 add_definitions(-DLIB86CPU_BUILD_CORE)
-include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu ${LIB86CPU_ROOT_DIR}/lib86cpu/x86 ${LIB86CPU_ROOT_DIR}/import/glfw/include/GLFW
+include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu ${LIB86CPU_ROOT_DIR}/lib86cpu/x86 ${LIB86CPU_ROOT_DIR}/import/glfw/include/GLFW ${LIB86CPU_ROOT_DIR}/import/imgui
  ${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad ${LIB86CPU_ROOT_DIR}/lib86cpu/dbg)
 set(LLVM_LIBS LLVMX86Disassembler.lib LLVMX86AsmParser.lib LLVMX86CodeGen.lib LLVMGlobalISel.lib LLVMSelectionDAG.lib LLVMAsmPrinter.lib LLVMCodeGen.lib LLVMTarget.lib
 LLVMScalarOpts.lib LLVMInstCombine.lib LLVMAggressiveInstCombine.lib LLVMTransformUtils.lib LLVMBitWriter.lib LLVMAnalysis.lib LLVMProfileData.lib LLVMX86Desc.lib LLVMObject.lib
@@ -42,6 +42,8 @@ option(GLFW_BUILD_DOCS "Build the GLFW documentation" OFF)
 option(GLFW_INSTALL "Generate installation target" OFF)
 option(GLFW_VULKAN_STATIC "Assume the Vulkan loader is linked with the application" OFF)
 add_subdirectory("import/glfw")
+
+add_subdirectory("projects/imgui")
 
 file (GLOB HEADERS
  "${LIB86CPU_ROOT_DIR}/lib86cpu/config.h"
@@ -98,7 +100,7 @@ message(FATAL_ERROR "Only Windows builds are supported for now")
 endif()
 
 add_library(cpu SHARED ${HEADERS} ${SOURCES})
-target_link_libraries(cpu PRIVATE ${LLVM_LIBS} Zydis glfw)
+target_link_libraries(cpu PRIVATE ${LLVM_LIBS} Zydis glfw imgui)
 
 if (${LIB86CPU_BUILD_TEST})
 message("Building test")
