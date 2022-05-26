@@ -10,6 +10,7 @@
 #include "support.h"
 #include "internal.h"
 #include "main_wnd.h"
+#include "debugger.h"
 
 
 static GLFWwindow * main_wnd = nullptr;
@@ -50,6 +51,8 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		return;
 	}
 
+	read_breakpoints_file(cpu);
+
 	has_err.set_value(false);
 	has_terminated.clear();
 
@@ -68,6 +71,8 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 	}
 
 	glfwTerminate();
+
+	write_breakpoints_file(cpu);
 
 	main_wnd = nullptr;
 	exit_requested.clear();

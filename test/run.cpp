@@ -28,9 +28,10 @@ static void
 logger(log_level lv, const unsigned count, const char *msg, ...)
 {
 	static const std::unordered_map<log_level, std::string> lv_to_str = {
-		{log_level::debug, "DBG:  "},
-		{log_level::info,  "INFO: "},
-		{log_level::warn,  "WARN: "}
+		{log_level::debug, "DBG:   "},
+		{log_level::info,  "INFO:  "},
+		{log_level::warn,  "WARN:  "},
+		{log_level::error, "ERROR: "},
 	};
 
 	std::string str;

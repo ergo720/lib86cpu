@@ -779,3 +779,9 @@ write_eflags(cpu_t *cpu, uint32_t value, bool reg32)
 		cpu->cpu_ctx.lazy_eflags.auxbits = new_aux;
 	}
 }
+
+void
+dbg_set_debuggee_name(cpu_t *cpu, const char *name)
+{
+	cpu->dbg_name = name;
+}

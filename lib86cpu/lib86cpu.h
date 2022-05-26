@@ -41,6 +41,7 @@ enum class log_level {
 	debug,
 	info,
 	warn,
+	error,
 };
 
 using logfn_t = void(*)(log_level, const unsigned, const char *, ...);
@@ -135,3 +136,6 @@ API_FUNC lc86_status trampoline_call(cpu_t *cpu, addr_t addr, std::any &ret, std
 // logging api
 API_FUNC void register_log_func(logfn_t logger);
 API_FUNC std::string get_last_error();
+
+// debugger api
+API_FUNC void dbg_set_debuggee_name(cpu_t *cpu, const char *name);

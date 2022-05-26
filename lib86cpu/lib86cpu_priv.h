@@ -164,6 +164,7 @@ struct cpu_t {
 		} phys_var[8];
 	} mtrr;
 	raise_int_t int_fn;
+	std::string dbg_name;
 
 	// llvm specific variables
 	std::unique_ptr<lc86_jit> jit;

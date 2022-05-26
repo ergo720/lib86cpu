@@ -214,6 +214,8 @@ gen_cxbxrkrnl_test(const std::string &executable)
 		return false;
 	}
 
+	dbg_set_debuggee_name(cpu, "cxbxrkrnl");
+
 	// Load kernel exe into ram
 	uint8_t *ram = get_ram_ptr(cpu);
 	std::memcpy(&ram[peHeader->OptionalHeader.ImageBase - CONTIGUOUS_MEMORY_BASE], dosHeader, peHeader->OptionalHeader.SizeOfHeaders);

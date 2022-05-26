@@ -51,6 +51,7 @@ file (GLOB HEADERS
  "${LIB86CPU_ROOT_DIR}/lib86cpu/platform.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/support.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/types.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/debugger.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/main_wnd.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/glad/glad.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/KHR/khrplatform.h"
@@ -68,8 +69,9 @@ file (GLOB HEADERS
 file (GLOB SOURCES
  "${LIB86CPU_ROOT_DIR}/lib86cpu/interface.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/support.cpp"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/glad.c"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/debugger.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/main_wnd.cpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/glad.c"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/x86/breakpoint.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/x86/decode.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/x86/frontend.cpp"
