@@ -17,7 +17,7 @@ message("Building lib86cpu")
 include(BuildConfigH.cmake)
 add_definitions(-DLIB86CPU_BUILD_CORE)
 include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu ${LIB86CPU_ROOT_DIR}/lib86cpu/x86 ${LIB86CPU_ROOT_DIR}/import/glfw/include/GLFW ${LIB86CPU_ROOT_DIR}/import/imgui
- ${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad ${LIB86CPU_ROOT_DIR}/lib86cpu/dbg)
+ ${LIB86CPU_ROOT_DIR}/import/imgui/backends ${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad ${LIB86CPU_ROOT_DIR}/lib86cpu/dbg)
 set(LLVM_LIBS LLVMX86Disassembler.lib LLVMX86AsmParser.lib LLVMX86CodeGen.lib LLVMGlobalISel.lib LLVMSelectionDAG.lib LLVMAsmPrinter.lib LLVMCodeGen.lib LLVMTarget.lib
 LLVMScalarOpts.lib LLVMInstCombine.lib LLVMAggressiveInstCombine.lib LLVMTransformUtils.lib LLVMBitWriter.lib LLVMAnalysis.lib LLVMProfileData.lib LLVMX86Desc.lib LLVMObject.lib
 LLVMMCParser.lib LLVMBitReader.lib LLVMCore.lib LLVMMCDisassembler.lib LLVMX86Info.lib LLVMX86AsmPrinter.lib LLVMMC.lib LLVMDebugInfoCodeView.lib LLVMDebugInfoMSF.lib
@@ -54,6 +54,7 @@ file (GLOB HEADERS
  "${LIB86CPU_ROOT_DIR}/lib86cpu/support.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/types.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/debugger.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/imgui_wnd.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/main_wnd.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/glad/glad.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/KHR/khrplatform.h"
@@ -72,6 +73,7 @@ file (GLOB SOURCES
  "${LIB86CPU_ROOT_DIR}/lib86cpu/interface.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/support.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/debugger.cpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/imgui_wnd.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/main_wnd.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/glad.c"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/x86/breakpoint.cpp"

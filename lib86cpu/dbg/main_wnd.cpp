@@ -4,16 +4,21 @@
  * ergo720                Copyright (c) 2022
  */
 
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl3.h"
+
 #include "glad/glad.h"
 #include "glfw3.h"
 
 #include "support.h"
 #include "internal.h"
 #include "main_wnd.h"
+#include "imgui_wnd.h"
 #include "debugger.h"
 
 
-static GLFWwindow * main_wnd = nullptr;
+static GLFWwindow *main_wnd = nullptr;
 static std::atomic_flag has_terminated;
 static std::atomic_flag exit_requested;
 
@@ -27,7 +32,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		return;
 	}
 	
-	main_wnd = glfwCreateWindow(640, 480, "Debugger", nullptr, nullptr);
+	main_wnd = glfwCreateWindow(1280, 720, "Lib86dbg", nullptr, nullptr);
 	if (!main_wnd) {
 		last_error = "Failed to create the debugger window";
 		glfwTerminate();
@@ -51,24 +56,49 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		return;
 	}
 
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	//ImGuiIO &io = ImGui::GetIO();
+	ImGui::StyleColorsDark();
+	ImGui_ImplGlfw_InitForOpenGL(main_wnd, true);
+	ImGui_ImplOpenGL3_Init();
+
 	read_breakpoints_file(cpu);
 
-	has_err.set_value(false);
 	has_terminated.clear();
+	has_err.set_value(false);
+
+	int fb_w, fb_h;
+	glfwGetFramebufferSize(main_wnd, &fb_w, &fb_h);
 
 	while (!glfwWindowShouldClose(main_wnd)) {
-		glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+		glfwWaitEvents();
+
+		ImGui_ImplOpenGL3_NewFrame();
+		ImGui_ImplGlfw_NewFrame();
+		ImGui::NewFrame();
+
+		dbg_draw_disas_wnd(fb_w, fb_h);
+
+		ImGui::Render();
+
+		glfwGetFramebufferSize(main_wnd, &fb_w, &fb_h);
+		glViewport(0, 0, fb_w, fb_h);
+		glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
 		glClear(GL_COLOR_BUFFER_BIT);
+		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
 		glfwSwapBuffers(main_wnd);
-
-		glfwWaitEvents();
 	}
 
 	if (!exit_requested.test()) {
 		cpu->int_fn(&cpu->cpu_ctx, CPU_DBG_INT);
 		exit_requested.wait(false);
 	}
+
+	ImGui_ImplOpenGL3_Shutdown();
+	ImGui_ImplGlfw_Shutdown();
+	ImGui::DestroyContext();
 
 	glfwTerminate();
 

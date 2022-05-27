@@ -16,6 +16,8 @@ file (GLOB HEADERS
  "${LIB86CPU_ROOT_DIR}/import/imgui/imstb_rectpack.h"
  "${LIB86CPU_ROOT_DIR}/import/imgui/imstb_textedit.h"
  "${LIB86CPU_ROOT_DIR}/import/imgui/imstb_truetype.h"
+ "${LIB86CPU_ROOT_DIR}/import/imgui/backends/imgui_impl_glfw.h"
+ "${LIB86CPU_ROOT_DIR}/import/imgui/backends/imgui_impl_opengl3.h"
 )
 
 file (GLOB SOURCES
@@ -23,10 +25,12 @@ file (GLOB SOURCES
  "${LIB86CPU_ROOT_DIR}/import/imgui/imgui_draw.cpp"
  "${LIB86CPU_ROOT_DIR}/import/imgui/imgui_tables.cpp"
  "${LIB86CPU_ROOT_DIR}/import/imgui/imgui_widgets.cpp"
+ "${LIB86CPU_ROOT_DIR}/import/imgui/backends/imgui_impl_glfw.cpp"
+ "${LIB86CPU_ROOT_DIR}/import/imgui/backends/imgui_impl_opengl3.cpp"
 )
 
 source_group(TREE ${LIB86CPU_ROOT_DIR}/import/imgui PREFIX header FILES ${HEADERS})
 source_group(TREE ${LIB86CPU_ROOT_DIR}/import/imgui PREFIX source FILES ${SOURCES})
 
-include_directories("${LIB86CPU_ROOT_DIR}/import/imgui")
+include_directories(${LIB86CPU_ROOT_DIR}/import/imgui ${LIB86CPU_ROOT_DIR}/import/glfw/include)
 add_library(imgui STATIC ${HEADERS} ${SOURCES})
