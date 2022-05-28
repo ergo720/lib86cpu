@@ -419,8 +419,8 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 			return 1;
 		}
 
-		if (new_cr & CR4_PAE_MASK) {
-			LIB86CPU_ABORT_msg("PAE mode is not supported");
+		if (new_cr & (CR4_VME_MASK | CR4_PAE_MASK)) {
+			LIB86CPU_ABORT_msg("Attempted to set an unsupported bit in cr4, new_cr was 0x%08X", new_cr);
 		}
 
 		if ((cpu_ctx->regs.cr4 & (CR4_PSE_MASK | CR4_PGE_MASK)) != (new_cr & (CR4_PSE_MASK | CR4_PGE_MASK))) {
@@ -2132,7 +2132,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_INT3:        BAD;
+		case ZYDIS_MNEMONIC_INT3: {
+			// NOTE1: we don't support virtual 8086 mode, so we don't need to check for it
+			// NOTE2: we can't just use RAISEin0 because the eip should point to the instr following int3
+			RAISEin(0, 0, EXP_BP, (pc + bytes) - cpu_ctx->regs.cs_hidden.base);
+			translate_next = 0;
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_INT:         BAD;
 		case ZYDIS_MNEMONIC_INTO:        BAD;
 		case ZYDIS_MNEMONIC_INVD:        BAD;
