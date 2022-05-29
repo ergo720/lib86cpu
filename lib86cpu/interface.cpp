@@ -771,12 +771,10 @@ write_eflags(cpu_t *cpu, uint32_t value, bool reg32)
 
 	if (reg32) {
 		cpu->cpu_ctx.regs.eflags = (value & 0x3F7FD5); // mask out reserved bits in eflags
-		cpu->cpu_ctx.lazy_eflags.result = new_res;
-		cpu->cpu_ctx.lazy_eflags.auxbits = new_aux;
 	}
 	else {
 		(cpu->cpu_ctx.regs.eflags &= 0xFFFF0002) |= (value & 0x7FD5); // mask out reserved bits in eflags
-		cpu->cpu_ctx.lazy_eflags.result = new_res;
-		cpu->cpu_ctx.lazy_eflags.auxbits = new_aux;
 	}
+	cpu->cpu_ctx.lazy_eflags.result = new_res;
+	cpu->cpu_ctx.lazy_eflags.auxbits = new_aux;
 }
