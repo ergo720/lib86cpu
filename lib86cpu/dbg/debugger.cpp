@@ -4,9 +4,8 @@
  * ergo720                Copyright (c) 2022
  */
 
-#include "lib86cpu_priv.h"
-#include "debugger.h"
 #include "memory.h"
+#include "debugger.h"
 #include <fstream>
 #include <charconv>
 #include <array>
@@ -159,20 +158,20 @@ dbg_disas_code_block(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, 
 }
 
 std::vector<std::pair<addr_t, std::string>>
-dbg_disas_code_block(cpu_t *cpu, unsigned instr_num)
+dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num)
 {
 	// setup common disas context
 	disas_ctx_t disas_ctx;
 	disas_ctx.flags = ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT) |
 		((cpu->cpu_ctx.hflags & HFLG_PE_MODE) >> (PE_MODE_SHIFT - 1));
-	disas_ctx.virt_pc = get_pc(&cpu->cpu_ctx);
+	disas_ctx.virt_pc = pc;
 	disas_ctx.pc = get_code_addr(cpu, disas_ctx.virt_pc, cpu->cpu_ctx.regs.eip, &disas_ctx);
 	if (disas_ctx.exp_data.idx == EXP_PF) {
 		// page fault, cannot display instr
 		return {};
 	}
 
-	// disable debug exp since we only want to disassemble them for displying them
+	// disable debug exp since we only want to disassemble instr for displying them
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[disas_ctx.virt_pc >> PAGE_SHIFT];
 	cpu->cpu_ctx.tlb[disas_ctx.virt_pc >> PAGE_SHIFT] &= ~TLB_WATCH;
 

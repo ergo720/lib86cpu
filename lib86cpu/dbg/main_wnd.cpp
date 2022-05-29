@@ -67,9 +67,6 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 	has_terminated.clear();
 	has_err.set_value(false); // comment this out to test the debugger for now
 
-	int fb_w, fb_h;
-	glfwGetFramebufferSize(main_wnd, &fb_w, &fb_h);
-
 	while (!glfwWindowShouldClose(main_wnd)) {
 		glfwWaitEvents();
 
@@ -77,11 +74,13 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
+		int fb_w, fb_h;
+		glfwGetFramebufferSize(main_wnd, &fb_w, &fb_h);
+
 		dbg_draw_disas_wnd(cpu, fb_w, fb_h);
 
 		ImGui::Render();
 
-		glfwGetFramebufferSize(main_wnd, &fb_w, &fb_h);
 		glViewport(0, 0, fb_w, fb_h);
 		glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
 		glClear(GL_COLOR_BUFFER_BIT);
