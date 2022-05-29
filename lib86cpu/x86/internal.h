@@ -17,6 +17,7 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uin
 uint8_t cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes);
 void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);
 void cpu_msr_read(cpu_ctx_t *cpu_ctx);
+inline addr_t get_pc(cpu_ctx_t *cpu_ctx);
 
 // cpu hidden flags
 #define CPL_SHIFT       0

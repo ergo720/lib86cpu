@@ -58,7 +58,6 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
-	//ImGuiIO &io = ImGui::GetIO();
 	ImGui::StyleColorsDark();
 	ImGui_ImplGlfw_InitForOpenGL(main_wnd, true);
 	ImGui_ImplOpenGL3_Init();
@@ -66,7 +65,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 	read_breakpoints_file(cpu);
 
 	has_terminated.clear();
-	has_err.set_value(false);
+	has_err.set_value(false); // comment this out to test the debugger for now
 
 	int fb_w, fb_h;
 	glfwGetFramebufferSize(main_wnd, &fb_w, &fb_h);
@@ -78,7 +77,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
-		dbg_draw_disas_wnd(fb_w, fb_h);
+		dbg_draw_disas_wnd(cpu, fb_w, fb_h);
 
 		ImGui::Render();
 

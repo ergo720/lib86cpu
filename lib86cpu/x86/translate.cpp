@@ -18,7 +18,7 @@
 #define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(disas_ctx->virt_pc - bytes, &instr).c_str())
 
 
-static inline addr_t
+addr_t
 get_pc(cpu_ctx_t *cpu_ctx)
 {
 	return cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
