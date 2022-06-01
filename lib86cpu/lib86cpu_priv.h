@@ -83,6 +83,7 @@ struct exp_info_t {
 };
 
 struct cpu_ctx_t;
+struct translated_code_t;
 using entry_t = translated_code_t * (*)(cpu_ctx_t *cpu_ctx);
 using raise_exp_t = entry_t;
 using raise_int_t = void (*)(cpu_ctx_t *cpu_ctx, uint8_t int_flg);
@@ -146,7 +147,7 @@ struct cpu_t {
 	std::unique_ptr<interval_tree<port_t, std::unique_ptr<memory_region_t<port_t>>>> io_space_tree;
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<addr_t>>>, sort_by_priority<addr_t>> memory_out;
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<port_t>>>, sort_by_priority<port_t>> io_out;
-	std::forward_list<std::shared_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
+	std::forward_list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
 	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
 	std::vector<std::pair<std::unique_ptr<uint8_t[]>, int>> vec_rom;
 	std::unordered_map<addr_t, std::unique_ptr<hook>> hook_map;

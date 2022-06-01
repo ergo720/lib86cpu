@@ -2151,140 +2151,37 @@ get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum)
 	}
 }
 
-static void
-hook_clean_stack_emit(cpu_t *cpu, const unsigned stack_bytes)
-{
-	// assumes that the hooked function was called with a near call, not with a far call
-	Value *stack_ptr = ADD(LD_R32(ESP_idx), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)); // assumes a 32 bit esp
-	Value *eip = LD_MEM(MEM_LD32_idx, stack_ptr);
-	ST_R32(eip, EIP_idx);
-	ST_R32(ADD(SUB(stack_ptr, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), CONST32(4 + stack_bytes)), ESP_idx);
-}
-
-static std::vector<Value *>
-hook_get_args(cpu_t *cpu, hook *obj, std::vector<int> &reg_args, int *stack_bytes)
-{
-	assert(obj->info.args.size() >= 1);
-
-	std::vector<Value *> args;
-	switch (obj->o_conv)
-	{
-	case call_conv::x86_cdecl:
-	case call_conv::x86_stdcall: {
-		int stack_arg_size = 0;
-		Value *stack_ptr = ALLOC32(); // assumes that call pushed a 32 bit eip
-		ST(stack_ptr, ADD(ADD(LD_R32(ESP_idx), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), CONST32(4))); // assumes a 32 bit esp
-		for (unsigned i = 1; i < obj->info.args.size(); i++) {
-			args.push_back(LD_MEM(static_cast<int>(obj->info.args[i]), LD(stack_ptr)));
-			int arg_size = obj->info.args[i] == arg_types::i64 ? 8 : 4;
-			ST(stack_ptr, ADD(LD(stack_ptr), CONST32(arg_size)));
-			stack_arg_size += arg_size;
-		}
-		*stack_bytes = stack_arg_size;
-	}
-	break;
-
-	case call_conv::x86_fastcall: {
-		int stack_arg_size = 0;
-		int num_reg_args = 0;
-		bool use_stack = false;
-		Value *stack_ptr = ALLOC32(); // assumes that call pushed a 32 bit eip
-		ST(stack_ptr, ADD(ADD(LD_R32(ESP_idx), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), CONST32(4))); // assumes a 32 bit esp
-		for (unsigned i = 1; i < obj->info.args.size(); i++) {
-			if (use_stack || (obj->info.args[i] == arg_types::i64)) {
-				args.push_back(LD_MEM(static_cast<int>(obj->info.args[i]), LD(stack_ptr)));
-				int arg_size = obj->info.args[i] == arg_types::i64 ? 8 : 4;
-				ST(stack_ptr, ADD(LD(stack_ptr), CONST32(arg_size)));
-				stack_arg_size += arg_size;
-			}
-			else {
-				int reg_idx = num_reg_args ? EDX_idx : ECX_idx;
-				switch (obj->info.args[i])
-				{
-				case arg_types::i8:
-					reg_args.push_back(i);
-					args.push_back(LD_R8L(reg_idx));
-					break;
-
-				case arg_types::i16:
-					reg_args.push_back(i);
-					args.push_back(LD_R16(reg_idx));
-					break;
-
-				case arg_types::i32:
-				case arg_types::ptr:
-				case arg_types::ptr2:
-					reg_args.push_back(i);
-					args.push_back(LD_R32(reg_idx));
-					break;
-
-				default:
-					LIB86CPU_ABORT_msg("Unknown hook argument type specified");
-				}
-
-				num_reg_args++;
-				if (num_reg_args == 2) {
-					use_stack = true;
-				}
-			}
-		}
-		*stack_bytes = stack_arg_size;
-	}
-	break;
-
-	default:
-		LIB86CPU_ABORT_msg("Unknown hook or invalid calling convention specified");
-	}
-
-	for (unsigned i = 1; i < obj->info.args.size(); i++) {
-		switch (obj->info.args[i])
-		{
-		case arg_types::ptr:
-			args[i - 1] = INT2PTR(getPointerType(getIntegerType(8)), args[i - 1]);
-			break;
-
-		case arg_types::ptr2:
-			args[i - 1] = INT2PTR(getPointerType(getPointerType(getIntegerType(8))), args[i - 1]);
-			break;
-		}
-	}
-
-	return args;
-}
-
 void
 hook_emit(cpu_t *cpu, hook *obj)
 {
-	std::vector<Type *> args;
-	for (const auto &type : obj->info.args) {
-		switch (type)
+	std::vector<Type *> args_t;
+	std::vector<Value *> args_val;
+	for (unsigned i = 0; i < obj->args_t.size(); ++i) {
+		switch (obj->args_t[i])
 		{
-		case arg_types::void_:
-			args.push_back(getVoidType());
-			break;
-
 		case arg_types::i8:
-			args.push_back(getIntegerType(8));
+			args_t.push_back(getIntegerType(8));
+			args_val.push_back(CONST8(obj->args_val[i]));
 			break;
 
 		case arg_types::i16:
-			args.push_back(getIntegerType(16));
+			args_t.push_back(getIntegerType(16));
+			args_val.push_back(CONST16(obj->args_val[i]));
 			break;
 
 		case arg_types::i32:
-			args.push_back(getIntegerType(32));
+			args_t.push_back(getIntegerType(32));
+			args_val.push_back(CONST32(obj->args_val[i]));
 			break;
 
 		case arg_types::i64:
-			args.push_back(getIntegerType(64));
+			args_t.push_back(getIntegerType(64));
+			args_val.push_back(CONST64(obj->args_val[i]));
 			break;
 
 		case arg_types::ptr:
-			args.push_back(getPointerType(getIntegerType(8)));
-			break;
-
-		case arg_types::ptr2:
-			args.push_back(getPointerType(getPointerType(getIntegerType(8))));
+			args_t.push_back(getPointerType(getIntegerType(8)));
+			args_val.push_back(INT2PTR(args_t[i], CONSTs(cpu->dl->getPointerSize() * 8, obj->args_val[i])));
 			break;
 
 		default:
@@ -2292,73 +2189,10 @@ hook_emit(cpu_t *cpu, hook *obj)
 		}
 	}
 
-	Function *hook = Function::Create(FunctionType::get(args[0], std::vector<Type *> { args.begin() + 1, args.end() }, false),
-		GlobalValue::ExternalLinkage, obj->info.name, cpu->mod);
-	CallInst *ci;
-	int stack_bytes;
-	std::vector<int> reg_args;
-	const auto &vec_args = hook_get_args(cpu, obj, reg_args, &stack_bytes);
-	switch (obj->d_conv)
-	{
-	case call_conv::x86_cdecl: {
-		stack_bytes = 0;
-		hook->setCallingConv(CallingConv::C);
-		cpu->jit->define_absolute(cpu->jit->mangle(hook), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(obj->info.addr),
-			JITSymbolFlags::Absolute | JITSymbolFlags::Exported));
-		ci = CallInst::Create(hook, vec_args, "", cpu->bb);
-		ci->setCallingConv(CallingConv::C);
-	}
-	break;
-
-	case call_conv::x86_stdcall: {
-		hook->setCallingConv(CallingConv::X86_StdCall);
-		cpu->jit->define_absolute(cpu->jit->mangle(hook), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(obj->info.addr),
-			JITSymbolFlags::Absolute | JITSymbolFlags::Exported));
-		ci = CallInst::Create(hook, vec_args, "", cpu->bb);
-		ci->setCallingConv(CallingConv::X86_StdCall);
-	}
-	break;
-
-	case call_conv::x86_fastcall: {
-		hook->setCallingConv(CallingConv::X86_FastCall);
-		for (int arg_idx : reg_args) {
-			hook->addAttribute(arg_idx, Attribute::AttrKind::InReg);
-		}
-		cpu->jit->define_absolute(cpu->jit->mangle(hook), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(obj->info.addr),
-			JITSymbolFlags::Absolute | JITSymbolFlags::Exported));
-		ci = CallInst::Create(hook, vec_args, "", cpu->bb);
-		ci->setCallingConv(CallingConv::X86_FastCall);
-	}
-	break;
-
-	default:
-		LIB86CPU_ABORT_msg("Unknown or invalid hook calling convention specified");
-	}
-
-	hook_clean_stack_emit(cpu, stack_bytes);
-
-	switch (obj->info.args[0])
-	{
-	case arg_types::void_:
-		break;
-
-	case arg_types::i8:
-		ST_R8L(ci, EAX_idx);
-		break;
-
-	case arg_types::i16:
-	case arg_types::i32:
-	case arg_types::ptr:
-	case arg_types::ptr2:
-		ST_R32(ci, EAX_idx);
-		break;
-
-	case arg_types::i64:
-		ST_R32(TRUNC32(ci), EAX_idx);
-		ST_R32(TRUNC32(SHR(ci, CONST64(32))), EDX_idx);
-		break;
-
-	default:
-		LIB86CPU_ABORT_msg("Unknown hook return type specified");
-	}
+	Function *hook = Function::Create(FunctionType::get(getVoidType(), ArrayRef<Type *> { args_t }, false),
+		GlobalValue::ExternalLinkage, obj->name, cpu->mod);
+	cpu->jit->define_absolute(cpu->jit->mangle(hook), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(obj->addr),
+		JITSymbolFlags::Absolute | JITSymbolFlags::Exported));
+	CallInst::Create(hook, args_val, "", cpu->bb);
+	check_int_emit(cpu);
 }

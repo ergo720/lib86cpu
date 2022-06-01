@@ -696,11 +696,12 @@ tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end)
 lc86_status
 hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 {
-	// NOTE: this hooks will only work as expected when they are added before cpu execution starts (becasue
-	// we don't flush the code cache here) and only when addr points to the first instruction of the hooked
-	// function (because we only check for hooks at the start of the translation of a new code block)
+	// adds a host function that is called in place of the original guest function when pc reaches addr. The client is responsible for fetching the guest arguments
+	// (if they need them) and fixing the guest stack/register before the host function returns
+	// NOTE: this hooks will only work when addr points to the first instruction of the hooked function (because we only check for hooks at the start
+	// of the translation of a new code block)
 
-	if (cpu->hook_map.find(addr) != cpu->hook_map.end()) {
+	if (cpu->hook_map.contains(addr)) {
 		return set_last_error(lc86_status::already_exist);
 	}
 
@@ -708,33 +709,26 @@ hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 
-	if (obj->info.args.size() == 0) {
+	if (obj->args_t.size() != obj->args_val.size()) {
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 
-	if (obj->info.args.size() > 1) {
-		for (unsigned i = 1; i < obj->info.args.size(); i++) {
-			if (obj->info.args[i] == arg_types::void_) {
-				return set_last_error(lc86_status::invalid_parameter);
-			}
-		}
-	}
-
-	obj->trmp_vec.clear();
 	cpu->hook_map.emplace(addr, std::move(obj));
+
+	tc_invalidate(&cpu->cpu_ctx, nullptr, addr, 1, 0);
 
 	return lc86_status::success;
 }
 
-lc86_status
-trampoline_call(cpu_t *cpu, addr_t addr, std::any &ret, std::vector<std::any> args)
+void
+trampoline_call(cpu_t *cpu, const uint32_t ret_eip)
 {
-	auto it = cpu->hook_map.find(addr);
-	if (it == cpu->hook_map.end()) {
-		return set_last_error(lc86_status::not_found);
-	}
+	// a trampoline calls the original guest function that was hooked, and it's only supposed to get called from the host function that hooed it.
+	// This assumes that the guest state (regs and stack) are in the same state that the guest has set them when it called the hook, so that we can call
+	// the trampoline without having to set this state up ourselves. The argument ret_eip is the eip to which the trampoline returns to after if finishes
+	// executing and returns, and it tipically corresponds to the eip that the call instruction pushed on the stack.
 
-	return cpu_exec_trampoline(cpu, addr, it->second.get(), ret, args);
+	cpu_exec_trampoline(cpu, ret_eip);
 }
 
 regs_t *get_regs_ptr(cpu_t *cpu)
@@ -767,13 +761,14 @@ write_eflags(cpu_t *cpu, uint32_t value, bool reg32)
 		((((value & 4) >> 2) ^ 1) << 8) | // pf
 		((value & 0x80) >> 7) // sf
 		);
-	new_res = ((value & 0x40) << 2); // zf
+	new_res = (((value & 0x40) << 2) ^ 0x100); // zf
 
+	// mask out reserved bits and arithmetic flags
 	if (reg32) {
-		cpu->cpu_ctx.regs.eflags = (value & 0x3F7FD5); // mask out reserved bits in eflags
+		(cpu->cpu_ctx.regs.eflags &= 2) |= (value & 0x3F7700);
 	}
 	else {
-		(cpu->cpu_ctx.regs.eflags &= 0xFFFF0002) |= (value & 0x7FD5); // mask out reserved bits in eflags
+		(cpu->cpu_ctx.regs.eflags &= 0xFFFF0002) |= (value & 0x7700);
 	}
 	cpu->cpu_ctx.lazy_eflags.result = new_res;
 	cpu->cpu_ctx.lazy_eflags.auxbits = new_aux;

@@ -27,8 +27,7 @@ lc86_jit::create(cpu_t *cpu)
 
 #if defined(_WIN32) && defined(_MSC_VER)
 	// using detectHost on win32 will select a default "i686-pc-windows-msvc" triple, which is wrong since this will use
-	// MM_WinCOFF mangling mode, while we want MM_WinCOFFX86 for 32 bit targets. This, in turn, will cause a function
-	// name mangling failure later when we try to mangle functions which use fastcall or stdcall calling conventions in the hooks.
+	// MM_WinCOFF mangling mode, while we want MM_WinCOFFX86 for 32 bit targets.
 	// Because of this, we construct the triple ourselves instead of using the default one.
 	// NOTE: I'm not sure if non-msvc compilers are affected as well.
 

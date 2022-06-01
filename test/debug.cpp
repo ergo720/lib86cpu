@@ -8,12 +8,6 @@
 
 #define DBG_POST_PORT 0x123
 
-#if _MSC_VER
-#define CDECL __cdecl
-#else
-#error Don't know how to specify calling conventions with this compiler
-#endif
-
 
 // memory map
 // 00000-000FF IDT
@@ -75,9 +69,13 @@ dbg_write_handler(addr_t addr, size_t size, const uint64_t value, void *opaque)
 }
 
 static void
-CDECL int_handler_printer(uint32_t eip)
+int_handler_printer()
 {
-	uint32_t val;
+	uint32_t val, eip, ret_eip;
+	uint8_t args[8];
+	mem_read_block(cpu, regs->esp, sizeof(args), args);
+	std::memcpy(&ret_eip, &args[0], 4);
+	std::memcpy(&eip, &args[4], 4);
 
 	switch (eip)
 	{
@@ -146,6 +144,9 @@ CDECL int_handler_printer(uint32_t eip)
 	default:
 		std::printf("got unexpected eip with value 0x%X", eip);
 	}
+
+	regs->eip = ret_eip;
+	regs->esp += 4;
 }
 
 bool
@@ -171,9 +172,8 @@ gen_dbg_test()
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x110C, std::unique_ptr<hook>(new hook({ call_conv::x86_cdecl, call_conv::x86_cdecl,
-		{ std::vector<arg_types> { arg_types::void_, arg_types::i32 }, "int_handler_printer", int_handler_printer } }))))) {
-		printf("Failed to install hook!\n");
+	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x110C, std::unique_ptr<hook>(new hook({ {}, {}, "int_handler_printer", int_handler_printer }))))) {
+		std::printf("Failed to install hook!\n");
 		return false;
 	}
 

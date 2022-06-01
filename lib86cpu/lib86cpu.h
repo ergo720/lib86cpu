@@ -11,20 +11,8 @@
 #include <stdint.h>
 #include "types.h"
 #include <string>
-#include <any>
 #include <vector>
 #include <functional>
-
-// convenience macros to cast a trampoline argument to the appropriate type
-#define ANY_I8s(x) static_cast<uint8_t>(x)
-#define ANY_I16s(x) static_cast<uint16_t>(x)
-#define ANY_I32s(x) static_cast<uint32_t>(x)
-#define ANY_I64s(x) static_cast<uint64_t>(x)
-#define ANY_I8r(x) reinterpret_cast<uint8_t>(x)
-#define ANY_I16r(x) reinterpret_cast<uint16_t>(x)
-#define ANY_I32r(x) reinterpret_cast<uint32_t>(x)
-#define ANY_I64r(x) reinterpret_cast<uint64_t>(x)
-#define ANY_VEC(...) std::vector<std::any> { __VA_ARGS__ }
 
 // lib86cpu error flags
 enum class lc86_status : int32_t {
@@ -46,44 +34,24 @@ enum class log_level {
 
 using logfn_t = void(*)(log_level, const unsigned, const char *, ...);
 
-enum class call_conv {
-	x86_stdcall,
-	x86_fastcall,
-	x86_cdecl,
-};
-
-// NOTE: avoid using a VOID type because it's possible that the client includes a header (e.g. Windows.h) which defines a VOID macro and thus will
-// conflict with our type
+// argument types used by the host function that hooks a guest function, its return type must be void
 enum class arg_types {
 	i8,
 	i16,
 	i32,
 	i64,
-	void_,
 	ptr,
-	ptr2,
 };
 
-// forward declare
-struct cpu_t;
-struct translated_code_t;
-using trmp_call_fn_t = void(*)(cpu_t *, std::any &, std::vector<uint32_t *> &);
-
-struct hook_info {
-	std::vector<arg_types> args;
+// args_t: argument types of the host function that is called instead of the original guest function
+// args_val: values to pass as arguments to the host function, their number must match the number of argument types specified in args_t
+// name: the name of the host function to call
+// addr: the address of the host function to call
+struct hook {
+	std::vector<arg_types> args_t;
+	std::vector<uint64_t> args_val;
 	std::string name;
 	void *addr;
-};
-
-struct hook {
-	call_conv d_conv;
-	call_conv o_conv;
-	hook_info info;
-	std::weak_ptr<translated_code_t> hook_tc_flags;
-	std::weak_ptr<translated_code_t> trmp_tc_flags;
-	std::function<void(cpu_t *, std::vector<std::any> &, uint32_t *)> trmp_fn;
-	std::vector<trmp_call_fn_t> trmp_vec;
-	uint32_t cdecl_arg_size;
 };
 
 #define LIB86CPU_CHECK_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::success)
@@ -97,6 +65,9 @@ struct hook {
 // mmio/pmio access handlers
 using fp_read = uint64_t (*)(addr_t addr, size_t size, void *opaque);
 using fp_write = void (*)(addr_t addr, size_t size, const uint64_t value, void *opaque);
+
+// forward declare
+struct cpu_t;
 
 // cpu api
 API_FUNC lc86_status cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee = nullptr);
@@ -131,7 +102,7 @@ API_FUNC void tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end);
 
 // hook api
 API_FUNC lc86_status hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj);
-API_FUNC lc86_status trampoline_call(cpu_t *cpu, addr_t addr, std::any &ret, std::vector<std::any> args);
+API_FUNC void trampoline_call(cpu_t *cpu, const uint32_t ret_eip);
 
 // logging api
 API_FUNC void register_log_func(logfn_t logger);

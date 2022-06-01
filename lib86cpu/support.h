@@ -11,7 +11,6 @@
 
 
 #define CPU_FLAG_FP80           (1 << 2)
-#define CPU_IGNORE_TC           (1 << 6)
 #define CPU_DISAS_ONE           (1 << 7)
 #define CPU_ALLOW_CODE_WRITE    (1 << 8)
 #define CPU_FORCE_INSERT        (1 << 9)
@@ -60,7 +59,7 @@ lc86_status cpu_start(cpu_t *cpu);
 std::string lc86status_to_str(lc86_status status);
 void discard_log(log_level lv, const unsigned count, const char *msg, ...);
 lc86_status set_last_error(lc86_status status);
-lc86_status cpu_exec_trampoline(cpu_t *cpu, addr_t addr, hook *hook_ptr, std::any &ret, std::vector<std::any> &args);
+void cpu_exec_trampoline(cpu_t *cpu, const uint32_t ret_eip);
 
 inline logfn_t logfn = &discard_log;
 inline std::string last_error = "";

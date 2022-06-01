@@ -19,17 +19,20 @@ void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);
 void cpu_msr_read(cpu_ctx_t *cpu_ctx);
 inline addr_t get_pc(cpu_ctx_t *cpu_ctx);
 
-// cpu hidden flags
+// cpu hidden flags (assumed to be constant during exec of a tc, together with tf, iopl, rf and ac of eflags)
+// HFLG_TRAMP: used to select the trampoline tc instead of the hook tc
 #define CPL_SHIFT       0
 #define CS32_SHIFT      2
 #define SS32_SHIFT      3
 #define PE_MODE_SHIFT   4
 #define EM_SHIFT        5
+#define TRAMP_SHIFT     6
 #define HFLG_CPL        (3 << CPL_SHIFT)
 #define HFLG_CS32       (1 << CS32_SHIFT)
 #define HFLG_SS32       (1 << SS32_SHIFT)
 #define HFLG_PE_MODE    (1 << PE_MODE_SHIFT)
 #define HFLG_CR0_EM     (1 << EM_SHIFT)
+#define HFLG_TRAMP      (1 << TRAMP_SHIFT)
 
 // cpu interrupt flags
 #define CPU_NO_INT   0
