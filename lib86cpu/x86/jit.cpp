@@ -7,6 +7,7 @@
 #include "llvm/Support/TargetSelect.h"
 #include "jit.h"
 #include "memory.h"
+#include "debugger.h"
 
 
 class tm_owning_simple_compiler : public SimpleCompiler {
@@ -97,6 +98,7 @@ lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetM
 	define_absolute(mangle("cpu_rdtsc_handler"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_rdtsc_handler), JITSymbolFlags::Absolute));
 	define_absolute(mangle("cpu_msr_read"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_msr_read), JITSymbolFlags::Absolute));
 	define_absolute(mangle("cpu_runtime_abort"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_runtime_abort), JITSymbolFlags::Absolute));
+	define_absolute(mangle("dbg_update_bp_hook"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(static_cast<void(*)(cpu_ctx_t *, uint32_t)>(&dbg_update_bp_hook)), JITSymbolFlags::Absolute));
 
 #ifdef _WIN32
 	// workaround for llvm bug D65548

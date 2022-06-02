@@ -14,6 +14,7 @@
 #include "memory.h"
 #include "jit.h"
 #include "main_wnd.h"
+#include "debugger.h"
 
 #define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(disas_ctx->virt_pc - bytes, &instr).c_str())
 
@@ -275,92 +276,6 @@ tc_link_dst_only(translated_code_t *prev_tc, translated_code_t *ptr_tc)
 	}
 }
 
-static void
-create_tc_prologue(cpu_t *cpu)
-{
-	// create the translation function, it will hold all the translated code
-	StructType *cpu_ctx_struct_type = StructType::create(CTX(), "struct.cpu_ctx_t");
-	std::vector<Type *> type_struct_exp_data_t_fields;
-	type_struct_exp_data_t_fields.push_back(getIntegerType(32));
-	type_struct_exp_data_t_fields.push_back(getIntegerType(16));
-	type_struct_exp_data_t_fields.push_back(getIntegerType(16));
-	type_struct_exp_data_t_fields.push_back(getIntegerType(32));
-	StructType *type_exp_data_t = StructType::create(CTX(),
-		type_struct_exp_data_t_fields, "struct.exp_data_t", false);
-
-	std::vector<Type*> type_struct_exp_info_t_fields;
-	type_struct_exp_info_t_fields.push_back(type_exp_data_t);
-	type_struct_exp_info_t_fields.push_back(getIntegerType(8));
-	StructType* type_exp_info_t = StructType::create(CTX(),
-		type_struct_exp_info_t_fields, "struct.exp_info_t", false);
-
-	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");  // NOTE: opaque tc struct
-	FunctionType *type_exp_t = FunctionType::get(
-		getPointerType(tc_struct_type),       // tc ret
-		getPointerType(cpu_ctx_struct_type),  // cpu_ctx
-		false);
-
-	std::vector<Type *> type_struct_cpu_ctx_t_fields;
-	type_struct_cpu_ctx_t_fields.push_back(getPointerType(StructType::create(CTX(), "struct.cpu_t")));  // NOTE: opaque cpu struct
-	type_struct_cpu_ctx_t_fields.push_back(get_struct_reg(cpu));
-	type_struct_cpu_ctx_t_fields.push_back(get_struct_eflags(cpu));
-	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(32));
-	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(32), TLB_MAX_SIZE));
-	type_struct_cpu_ctx_t_fields.push_back(getPointerType(getIntegerType(8)));
-	type_struct_cpu_ctx_t_fields.push_back(getPointerType(type_exp_t));
-	type_struct_cpu_ctx_t_fields.push_back(type_exp_info_t);
-	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(8));
-	cpu_ctx_struct_type->setBody(type_struct_cpu_ctx_t_fields, false);
-	PointerType *type_pcpu_ctx_t = getPointerType(cpu_ctx_struct_type);
-
-	FunctionType *type_entry_t = FunctionType::get(
-		getPointerType(tc_struct_type),   // tc ret
-		type_pcpu_ctx_t,                  // cpu_ctx arg
-		false);
-
-	Function *func = Function::Create(
-		type_entry_t,                        // func type
-		GlobalValue::ExternalLinkage,        // linkage
-		"main",                              // name
-		cpu->mod);
-	func->setCallingConv(CallingConv::C);
-
-	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
-	cpu->ptr_cpu_ctx = cpu->bb->getParent()->arg_begin();
-	cpu->ptr_cpu_ctx->setName("cpu_ctx");
-	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, 1);
-	cpu->ptr_regs->setName("regs");
-	cpu->ptr_eflags = GEP(cpu->ptr_cpu_ctx, 2);
-	cpu->ptr_eflags->setName("eflags");
-	cpu->ptr_hflags = GEP(cpu->ptr_cpu_ctx, 3);
-	cpu->ptr_hflags->setName("hflags");
-	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, 4);
-	cpu->ptr_tlb->setName("tlb");
-	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 5));
-	cpu->ptr_ram->setName("ram");
-	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 6));
-	cpu->ptr_exp_fn->setName("exp_fn");
-}
-
-static void
-create_tc_epilogue(cpu_t *cpu)
-{
-	Value *tc_ptr1 = new IntToPtrInst(CONSTp(cpu->tc), cpu->bb->getParent()->getReturnType(), "", cpu->bb);
-	ReturnInst::Create(CTX(), tc_ptr1, cpu->bb);
-
-	// create the function that returns to the translator
-	Function *exit = Function::Create(
-		cpu->bb->getParent()->getFunctionType(),  // func type
-		GlobalValue::ExternalLinkage,             // linkage
-		"exit",                                   // name
-		cpu->mod);
-	exit->setCallingConv(CallingConv::C);
-
-	BasicBlock *bb = BasicBlock::Create(CTX(), "", exit, 0);
-	Value *tc_ptr2 = new IntToPtrInst(CONSTp(cpu->tc), exit->getReturnType(), "", bb);
-	ReturnInst::Create(CTX(), tc_ptr2, bb);
-}
-
 uint8_t
 cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes)
 {
@@ -377,7 +292,10 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
 			tc_cache_clear(cpu_ctx->cpu);
 			tlb_flush(cpu_ctx->cpu, TLB_zero);
+			unsigned old_bp_offset;
 			if (new_cr & CR0_PE_MASK) {
+				// real -> protected
+				old_bp_offset = 4;
 				if (cpu_ctx->regs.cs_hidden.flags & SEG_HIDDEN_DB) {
 					cpu_ctx->hflags |= HFLG_CS32;
 				}
@@ -387,7 +305,15 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 				cpu_ctx->hflags |= (HFLG_PE_MODE | (cpu_ctx->regs.cs & HFLG_CPL));
 			}
 			else {
+				// protected -> real
+				old_bp_offset = 8;
 				cpu_ctx->hflags &= ~(HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE);
+			}
+
+			// remove old bp hook if the debugger is present
+			if (cpu_ctx->cpu->cpu_flags & CPU_DBG_PRESENT) {
+				hook_remove(cpu_ctx->cpu, cpu_ctx->regs.idtr_hidden.base + old_bp_offset * EXP_BP);
+				dbg_update_bp_hook(cpu_ctx);
 			}
 
 			// since tc_cache_clear has deleted the calling code block, we must return to the translator with an exception
@@ -2149,32 +2075,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_IRETD: {
 			assert(instr.opcode == 0xCF);
 
-			if (cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
-				ret_pe_emit(cpu, size_mode, true);
-			}
-			else {
-				std::vector<Value *> vec = MEM_POP(3);
-				Value *eip = vec[0];
-				Value *cs = vec[1];
-				Value *eflags = vec[2];
-				Value *mask;
-
-				if (size_mode == SIZE16) {
-					eip = ZEXT32(eip);
-					eflags = ZEXT32(eflags);
-					mask = CONST32(NT_MASK | IOPL_MASK | DF_MASK | IF_MASK | TF_MASK);
-				}
-				else {
-					cs = TRUNC16(cs);
-					mask = CONST32(ID_MASK | AC_MASK | RF_MASK | NT_MASK | IOPL_MASK | DF_MASK | IF_MASK | TF_MASK);
-				}
-
-				ST_REG_val(vec[3], vec[4]);
-				ST_R32(eip, EIP_idx);
-				ST_SEG(cs, CS_idx);
-				ST_SEG_HIDDEN(SHL(ZEXT32(cs), CONST32(4)), CS_idx, SEG_BASE_idx);
-				write_eflags(cpu, eflags, mask);
-			}
+			iret_emit(cpu, size_mode);
 
 			// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
 			check_int_emit(cpu);
@@ -2462,24 +2363,47 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_LGDT:
-		case ZYDIS_MNEMONIC_LIDT: {
+		case ZYDIS_MNEMONIC_LGDT: {
+			assert(instr.raw.modrm.reg == 2);
+
 			Value *rm, *limit, *base;
-			uint8_t reg_idx;
-			if (instr.mnemonic == ZYDIS_MNEMONIC_LGDT) {
-				assert(instr.raw.modrm.reg == 2);
-				reg_idx = GDTR_idx;
-			}
-			else {
-				assert(instr.raw.modrm.reg == 3);
-				reg_idx = IDTR_idx;
-			}
 			GET_RM(OPNUM_SINGLE, assert(0);, limit = LD_MEM(MEM_LD16_idx, rm); rm = ADD(rm, CONST32(2)); base = LD_MEM(MEM_LD32_idx, rm););
 			if (size_mode == SIZE16) {
 				base = AND(base, CONST32(0x00FFFFFF));
 			}
-			ST_SEG_HIDDEN(base, reg_idx, SEG_BASE_idx);
-			ST_SEG_HIDDEN(ZEXT32(limit), reg_idx, SEG_LIMIT_idx);
+			ST_SEG_HIDDEN(base, GDTR_idx, SEG_BASE_idx);
+			ST_SEG_HIDDEN(ZEXT32(limit), GDTR_idx, SEG_LIMIT_idx);
+		}
+		break;
+
+		case ZYDIS_MNEMONIC_LIDT: {
+			assert(instr.raw.modrm.reg == 3);
+
+			Value *rm, *limit, *base;
+			GET_RM(OPNUM_SINGLE, assert(0);, limit = LD_MEM(MEM_LD16_idx, rm); rm = ADD(rm, CONST32(2)); base = LD_MEM(MEM_LD32_idx, rm););
+			if (size_mode == SIZE16) {
+				base = AND(base, CONST32(0x00FFFFFF));
+			}
+
+			if (cpu->cpu_flags & CPU_DBG_PRESENT) {
+				// hook the breakpoint exception handler so that the debugger can catch it
+				Value *old_bp_base = ALLOC32();
+				Value *old_base = LD_SEG_HIDDEN(IDTR_idx, SEG_BASE_idx);
+				if (cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
+					ST(old_bp_base, ADD(old_base, CONST32(8 * EXP_BP)));
+				}
+				else {
+					ST(old_bp_base, ADD(old_base, CONST32(4 * EXP_BP)));
+				}
+				ST_SEG_HIDDEN(base, IDTR_idx, SEG_BASE_idx);
+				Function *fn = cast<Function>(cpu->mod->getOrInsertFunction("dbg_update_bp_hook", getVoidType(), cpu->ptr_cpu_ctx->getType(), getIntegerType(32)));
+				CallInst::Create(fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, LD(old_bp_base) }, "", cpu->bb);
+			}
+			else {
+				ST_SEG_HIDDEN(base, IDTR_idx, SEG_BASE_idx);
+			}
+
+			ST_SEG_HIDDEN(ZEXT32(limit), IDTR_idx, SEG_LIMIT_idx);
 		}
 		break;
 
@@ -5711,6 +5635,8 @@ cpu_start(cpu_t *cpu)
 		if (has_err) {
 			return lc86_status::internal_error;
 		}
+		// wait until the debugger continues execution, so that users have a chance to set breakpoints and/or inspect the guest code
+		guest_running.wait(false);
 	}
 
 	try {

@@ -720,6 +720,20 @@ hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 	return lc86_status::success;
 }
 
+lc86_status
+hook_remove(cpu_t *cpu, addr_t addr)
+{
+	const auto it = cpu->hook_map.find(addr);
+	if (it == cpu->hook_map.end()) {
+		return set_last_error(lc86_status::not_found);
+	}
+
+	tc_invalidate(&cpu->cpu_ctx, nullptr, it->first, 1, 0);
+	cpu->hook_map.erase(it);
+
+	return lc86_status::success;
+}
+
 void
 trampoline_call(cpu_t *cpu, const uint32_t ret_eip)
 {

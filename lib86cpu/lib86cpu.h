@@ -102,6 +102,7 @@ API_FUNC void tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end);
 
 // hook api
 API_FUNC lc86_status hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj);
+API_FUNC lc86_status hook_remove(cpu_t *cpu, addr_t addr);
 API_FUNC void trampoline_call(cpu_t *cpu, const uint32_t ret_eip);
 
 // logging api

@@ -19,6 +19,13 @@
 #include "memory.h"
 
 
+enum class fn_emit_t {
+	main_t,
+	exp_t,
+	int_t,
+	iret_t,
+};
+
 static const std::unordered_map<ZydisRegister, int> zydis_to_reg_idx_table = {
 	{ ZYDIS_REGISTER_AL,     EAX_idx },
 	{ ZYDIS_REGISTER_CL,     ECX_idx },
@@ -403,26 +410,11 @@ link_dst_only_emit(cpu_t *cpu)
 	ReturnInst::Create(CTX(), ci, cpu->bb);
 }
 
-void
-gen_int_fn(cpu_t *cpu)
+template<fn_emit_t fn_type>
+static Function *
+gen_fn(cpu_t *cpu)
 {
-	cpu->ctx = new LLVMContext();
-	if (cpu->ctx == nullptr) {
-		LIB86CPU_ABORT();
-	}
-	cpu->mod = new Module(cpu->cpu_name, *cpu->ctx);
-	cpu->mod->setDataLayout(*cpu->dl);
-	if (cpu->mod == nullptr) {
-		LIB86CPU_ABORT();
-	}
-
 	StructType *cpu_ctx_struct_type = StructType::create(CTX(), "struct.cpu_ctx_t");
-	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");  // NOTE: opaque tc struct
-	FunctionType *type_exp_t = FunctionType::get(
-		getPointerType(tc_struct_type),       // tc ret
-		getPointerType(cpu_ctx_struct_type),  // cpu_ctx
-		false);
-
 	std::vector<Type *> type_struct_exp_data_t_fields;
 	type_struct_exp_data_t_fields.push_back(getIntegerType(32));
 	type_struct_exp_data_t_fields.push_back(getIntegerType(16));
@@ -437,6 +429,13 @@ gen_int_fn(cpu_t *cpu)
 	StructType *type_exp_info_t = StructType::create(CTX(),
 		type_struct_exp_info_t_fields, "struct.exp_info_t", false);
 
+	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");  // NOTE: opaque tc struct
+	FunctionType *type_exp_t, *type_entry_t;
+	type_exp_t = type_entry_t = FunctionType::get(
+		getPointerType(tc_struct_type),       // tc ret
+		getPointerType(cpu_ctx_struct_type),  // cpu_ctx
+		false);
+
 	std::vector<Type *> type_struct_cpu_ctx_t_fields;
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(StructType::create(CTX(), "struct.cpu_t")));  // NOTE: opaque cpu struct
 	type_struct_cpu_ctx_t_fields.push_back(get_struct_reg(cpu));
@@ -448,18 +447,95 @@ gen_int_fn(cpu_t *cpu)
 	type_struct_cpu_ctx_t_fields.push_back(type_exp_info_t);
 	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(8));
 	cpu_ctx_struct_type->setBody(type_struct_cpu_ctx_t_fields, false);
+	PointerType *type_pcpu_ctx_t = getPointerType(cpu_ctx_struct_type);
 
-	FunctionType *type_int_t = FunctionType::get(
-		getVoidType(),                                                                   // void ret
-		std::vector<Type *> { getPointerType(cpu_ctx_struct_type), getIntegerType(8) },  // cpu_ctx, int flag
-		false);
+	Function *func = nullptr;
+	if constexpr (constexpr bool type_match = fn_type == fn_emit_t::main_t) {
+		func = Function::Create(
+			type_entry_t,                        // func type
+			GlobalValue::ExternalLinkage,        // linkage
+			"main",                              // name
+			cpu->mod);
+		func->setCallingConv(CallingConv::C);
+	}
+	else if constexpr (fn_type == fn_emit_t::exp_t) {
+		func = Function::Create(
+			type_exp_t,                      // func type
+			GlobalValue::ExternalLinkage,    // linkage
+			"cpu_raise_exception",           // name
+			cpu->mod);
+		func->setCallingConv(CallingConv::C);
+	}
+	else if constexpr (fn_type == fn_emit_t::int_t) {
+		FunctionType *type_int_t = FunctionType::get(
+			getVoidType(),                                                                   // void ret
+			std::vector<Type *> { getPointerType(cpu_ctx_struct_type), getIntegerType(8) },  // cpu_ctx, int flag
+			false);
 
-	Function *func = Function::Create(
-		type_int_t,                      // func type
-		GlobalValue::ExternalLinkage,    // linkage
-		"cpu_raise_interrupt",           // name
-		cpu->mod);
-	func->setCallingConv(CallingConv::C);
+		func = Function::Create(
+			type_int_t,                      // func type
+			GlobalValue::ExternalLinkage,    // linkage
+			"cpu_raise_interrupt",           // name
+			cpu->mod);
+		func->setCallingConv(CallingConv::C);
+	}
+	else if constexpr (fn_type == fn_emit_t::iret_t) {
+		FunctionType *type_iret_t = FunctionType::get(
+			getVoidType(),                        // void ret
+			getPointerType(cpu_ctx_struct_type),  // cpu_ctx
+			false);
+
+		func = Function::Create(
+			type_iret_t,                     // func type
+			GlobalValue::ExternalLinkage,    // linkage
+			"iret",                          // name
+			cpu->mod);
+		func->setCallingConv(CallingConv::C);
+	}
+	else {
+		static_assert(type_match, "Unknown function type to emit!");
+	}
+
+	return func;
+}
+
+void
+create_tc_prologue(cpu_t *cpu)
+{
+	// create the translation function, it will hold all the translated code
+	Function *func = gen_fn<fn_emit_t::main_t>(cpu);
+
+	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
+	cpu->ptr_cpu_ctx = cpu->bb->getParent()->arg_begin();
+	cpu->ptr_cpu_ctx->setName("cpu_ctx");
+	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, 1);
+	cpu->ptr_regs->setName("regs");
+	cpu->ptr_eflags = GEP(cpu->ptr_cpu_ctx, 2);
+	cpu->ptr_eflags->setName("eflags");
+	cpu->ptr_hflags = GEP(cpu->ptr_cpu_ctx, 3);
+	cpu->ptr_hflags->setName("hflags");
+	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, 4);
+	cpu->ptr_tlb->setName("tlb");
+	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 5));
+	cpu->ptr_ram->setName("ram");
+	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 6));
+	cpu->ptr_exp_fn->setName("exp_fn");
+}
+
+void
+gen_int_fn(cpu_t *cpu)
+{
+	cpu->ctx = new LLVMContext();
+	if (cpu->ctx == nullptr) {
+		LIB86CPU_ABORT();
+	}
+	cpu->mod = new Module(cpu->cpu_name, *cpu->ctx);
+	cpu->mod->setDataLayout(*cpu->dl);
+	if (cpu->mod == nullptr) {
+		LIB86CPU_ABORT();
+	}
+
+	Function *func = gen_fn<fn_emit_t::int_t>(cpu);
 
 	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
 	cpu->tc = nullptr;
@@ -509,45 +585,7 @@ gen_exp_fn(cpu_t *cpu)
 		LIB86CPU_ABORT();
 	}
 
-	StructType *cpu_ctx_struct_type = StructType::create(CTX(), "struct.cpu_ctx_t");
-	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");  // NOTE: opaque tc struct
-	FunctionType *type_exp_t = FunctionType::get(
-		getPointerType(tc_struct_type),       // tc ret
-		getPointerType(cpu_ctx_struct_type),  // cpu_ctx
-		false);
-
-	std::vector<Type *> type_struct_exp_data_t_fields;
-	type_struct_exp_data_t_fields.push_back(getIntegerType(32));
-	type_struct_exp_data_t_fields.push_back(getIntegerType(16));
-	type_struct_exp_data_t_fields.push_back(getIntegerType(16));
-	type_struct_exp_data_t_fields.push_back(getIntegerType(32));
-	StructType *type_exp_data_t = StructType::create(CTX(),
-		type_struct_exp_data_t_fields, "struct.exp_data_t", false);
-
-	std::vector<Type *> type_struct_exp_info_t_fields;
-	type_struct_exp_info_t_fields.push_back(type_exp_data_t);
-	type_struct_exp_info_t_fields.push_back(getIntegerType(8));
-	StructType *type_exp_info_t = StructType::create(CTX(),
-		type_struct_exp_info_t_fields, "struct.exp_info_t", false);
-
-	std::vector<Type *> type_struct_cpu_ctx_t_fields;
-	type_struct_cpu_ctx_t_fields.push_back(getPointerType(StructType::create(CTX(), "struct.cpu_t")));  // NOTE: opaque cpu struct
-	type_struct_cpu_ctx_t_fields.push_back(get_struct_reg(cpu));
-	type_struct_cpu_ctx_t_fields.push_back(get_struct_eflags(cpu));
-	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(32));
-	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(32), TLB_MAX_SIZE));
-	type_struct_cpu_ctx_t_fields.push_back(getPointerType(getIntegerType(8)));
-	type_struct_cpu_ctx_t_fields.push_back(getPointerType(type_exp_t));
-	type_struct_cpu_ctx_t_fields.push_back(type_exp_info_t);
-	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(8));
-	cpu_ctx_struct_type->setBody(type_struct_cpu_ctx_t_fields, false);
-
-	Function *func = Function::Create(
-		type_exp_t,                      // func type
-		GlobalValue::ExternalLinkage,    // linkage
-		"cpu_raise_exception",           // name
-		cpu->mod);
-	func->setCallingConv(CallingConv::C);
+	Function *func = gen_fn<fn_emit_t::exp_t>(cpu);
 
 	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
 	cpu->tc = nullptr;
@@ -896,6 +934,77 @@ gen_exp_fn(cpu_t *cpu)
 	cpu->jit->remove_symbols(std::vector<std::string> { "cpu_raise_exception" });
 	cpu->tc = nullptr;
 	cpu->bb = nullptr;
+}
+
+void
+gen_iret_fn(cpu_t *cpu)
+{
+	cpu->ctx = new LLVMContext();
+	if (cpu->ctx == nullptr) {
+		LIB86CPU_ABORT();
+	}
+	cpu->mod = new Module(cpu->cpu_name, *cpu->ctx);
+	cpu->mod->setDataLayout(*cpu->dl);
+	if (cpu->mod == nullptr) {
+		LIB86CPU_ABORT();
+	}
+
+	Function *func = gen_fn<fn_emit_t::iret_t>(cpu);
+
+	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
+	cpu->tc = nullptr;
+
+	iret_emit(cpu, cpu->cpu_ctx.hflags & HFLG_CS32 ? SIZE32 : SIZE16);
+	ReturnInst::Create(CTX(), cpu->bb);
+
+	if (cpu->cpu_flags & CPU_PRINT_IR) {
+		std::string str;
+		raw_string_ostream os(str);
+		os << *cpu->mod;
+		os.flush();
+		LOG(log_level::debug, str.c_str());
+	}
+
+	if (cpu->cpu_flags & CPU_CODEGEN_OPTIMIZE) {
+		optimize(cpu);
+		if (cpu->cpu_flags & CPU_PRINT_IR_OPTIMIZED) {
+			std::string str;
+			raw_string_ostream os(str);
+			os << *cpu->mod;
+			os.flush();
+			LOG(log_level::debug, str.c_str());
+		}
+	}
+
+	orc::ThreadSafeContext tsc(std::unique_ptr<LLVMContext>(cpu->ctx));
+	orc::ThreadSafeModule tsm(std::unique_ptr<Module>(cpu->mod), tsc);
+	cpu->jit->add_ir_module(std::move(tsm));
+	cpu->iret_fn.first = reinterpret_cast<iret_t>(cpu->jit->lookup("iret")->getAddress());
+	assert(cpu->iret_fn.first);
+	// save the current state of the constant cpu flags. This is necessary because they might change when we need to call iret again
+	cpu->iret_fn.second = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
+	cpu->jit->remove_symbols(std::vector<std::string> { "iret" });
+	cpu->tc = nullptr;
+	cpu->bb = nullptr;
+}
+
+void
+create_tc_epilogue(cpu_t *cpu)
+{
+	Value *tc_ptr1 = new IntToPtrInst(CONSTp(cpu->tc), cpu->bb->getParent()->getReturnType(), "", cpu->bb);
+	ReturnInst::Create(CTX(), tc_ptr1, cpu->bb);
+
+	// create the function that returns to the translator
+	Function *exit = Function::Create(
+		cpu->bb->getParent()->getFunctionType(),  // func type
+		GlobalValue::ExternalLinkage,             // linkage
+		"exit",                                   // name
+		cpu->mod);
+	exit->setCallingConv(CallingConv::C);
+
+	BasicBlock *bb = BasicBlock::Create(CTX(), "", exit, 0);
+	Value *tc_ptr2 = new IntToPtrInst(CONSTp(cpu->tc), exit->getReturnType(), "", bb);
+	ReturnInst::Create(CTX(), tc_ptr2, bb);
 }
 
 void
@@ -1608,6 +1717,37 @@ ret_pe_emit(cpu_t *cpu, uint8_t size_mode, bool is_iret)
 	cpu->bb = vec_bb[9];
 	if (is_iret) {
 		write_eflags(cpu, temp_eflags, mask);
+	}
+}
+
+void
+iret_emit(cpu_t *cpu, uint8_t size_mode)
+{
+	if (cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
+		ret_pe_emit(cpu, size_mode, true);
+	}
+	else {
+		std::vector<Value *> vec = MEM_POP(3);
+		Value *eip = vec[0];
+		Value *cs = vec[1];
+		Value *eflags = vec[2];
+		Value *mask;
+
+		if (size_mode == SIZE16) {
+			eip = ZEXT32(eip);
+			eflags = ZEXT32(eflags);
+			mask = CONST32(NT_MASK | IOPL_MASK | DF_MASK | IF_MASK | TF_MASK);
+		}
+		else {
+			cs = TRUNC16(cs);
+			mask = CONST32(ID_MASK | AC_MASK | RF_MASK | NT_MASK | IOPL_MASK | DF_MASK | IF_MASK | TF_MASK);
+		}
+
+		ST_REG_val(vec[3], vec[4]);
+		ST_R32(eip, EIP_idx);
+		ST_SEG(cs, CS_idx);
+		ST_SEG_HIDDEN(SHL(ZEXT32(cs), CONST32(4)), CS_idx, SEG_BASE_idx);
+		write_eflags(cpu, eflags, mask);
 	}
 }
 

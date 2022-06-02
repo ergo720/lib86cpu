@@ -64,8 +64,10 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 
 	read_breakpoints_file(cpu);
 
+	dbg_update_bp_hook(&cpu->cpu_ctx);
+
 	has_terminated.clear();
-	has_err.set_value(false); // comment this out to test the debugger for now
+	has_err.set_value(false);
 
 	while (!glfwWindowShouldClose(main_wnd)) {
 		glfwWaitEvents();
@@ -74,13 +76,14 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
-		int fb_w, fb_h;
-		glfwGetFramebufferSize(main_wnd, &fb_w, &fb_h);
-
-		dbg_draw_disas_wnd(cpu, fb_w, fb_h);
+		int wnd_w, wnd_h;
+		glfwGetWindowSize(main_wnd, &wnd_w, &wnd_h);
+		dbg_draw_disas_wnd(cpu, wnd_w, wnd_h);
 
 		ImGui::Render();
 
+		int fb_w, fb_h;
+		glfwGetFramebufferSize(main_wnd, &fb_w, &fb_h);
 		glViewport(0, 0, fb_w, fb_h);
 		glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -112,6 +115,7 @@ void
 dbg_should_close()
 {
 	glfwSetWindowShouldClose(main_wnd, GLFW_TRUE);
+	glfwPostEmptyEvent();
 	exit_requested.test_and_set();
 	exit_requested.notify_one();
 	has_terminated.wait(false);
