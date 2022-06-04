@@ -292,10 +292,8 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
 			tc_cache_clear(cpu_ctx->cpu);
 			tlb_flush(cpu_ctx->cpu, TLB_zero);
-			unsigned old_bp_offset;
 			if (new_cr & CR0_PE_MASK) {
 				// real -> protected
-				old_bp_offset = 4;
 				if (cpu_ctx->regs.cs_hidden.flags & SEG_HIDDEN_DB) {
 					cpu_ctx->hflags |= HFLG_CS32;
 				}
@@ -306,14 +304,15 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 			}
 			else {
 				// protected -> real
-				old_bp_offset = 8;
 				cpu_ctx->hflags &= ~(HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE);
 			}
 
-			// remove old bp hook if the debugger is present
+			// remove all breakpoints if the debugger is present
 			if (cpu_ctx->cpu->cpu_flags & CPU_DBG_PRESENT) {
-				hook_remove(cpu_ctx->cpu, cpu_ctx->regs.idtr_hidden.base + old_bp_offset * EXP_BP);
-				dbg_update_bp_hook(cpu_ctx);
+				hook_remove(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr);
+				dbg_remove_sw_breakpoints(cpu_ctx->cpu);
+				break_list.clear();
+				LOG(log_level::info, "Removed all breakpoints because cpu mode changed");
 			}
 
 			// since tc_cache_clear has deleted the calling code block, we must return to the translator with an exception
@@ -2384,26 +2383,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			if (size_mode == SIZE16) {
 				base = AND(base, CONST32(0x00FFFFFF));
 			}
+			ST_SEG_HIDDEN(base, IDTR_idx, SEG_BASE_idx);
+			ST_SEG_HIDDEN(ZEXT32(limit), IDTR_idx, SEG_LIMIT_idx);
 
 			if (cpu->cpu_flags & CPU_DBG_PRESENT) {
 				// hook the breakpoint exception handler so that the debugger can catch it
-				Value *old_bp_base = ALLOC32();
-				Value *old_base = LD_SEG_HIDDEN(IDTR_idx, SEG_BASE_idx);
-				if (cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
-					ST(old_bp_base, ADD(old_base, CONST32(8 * EXP_BP)));
-				}
-				else {
-					ST(old_bp_base, ADD(old_base, CONST32(4 * EXP_BP)));
-				}
-				ST_SEG_HIDDEN(base, IDTR_idx, SEG_BASE_idx);
-				Function *fn = cast<Function>(cpu->mod->getOrInsertFunction("dbg_update_bp_hook", getVoidType(), cpu->ptr_cpu_ctx->getType(), getIntegerType(32)));
-				CallInst::Create(fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, LD(old_bp_base) }, "", cpu->bb);
+				Function *fn = cast<Function>(cpu->mod->getOrInsertFunction("dbg_update_bp_hook", getVoidType(), cpu->ptr_cpu_ctx->getType()));
+				CallInst::Create(fn, cpu->ptr_cpu_ctx, "", cpu->bb);
 			}
-			else {
-				ST_SEG_HIDDEN(base, IDTR_idx, SEG_BASE_idx);
-			}
-
-			ST_SEG_HIDDEN(ZEXT32(limit), IDTR_idx, SEG_LIMIT_idx);
 		}
 		break;
 
@@ -5621,6 +5608,7 @@ cpu_start(cpu_t *cpu)
 	// guard against the case gen_int_fn raises an exception before the debugger is even initialized
 	try {
 		gen_int_fn(cpu);
+		gen_iret_fn(cpu);
 	}
 	catch (lc86_exp_abort &exp) {
 		last_error = exp.what();

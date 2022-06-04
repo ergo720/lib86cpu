@@ -63,8 +63,12 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 	ImGui_ImplOpenGL3_Init();
 
 	read_breakpoints_file(cpu);
+	for (const auto &elem : break_list) {
+		dbg_insert_sw_breakpoint(cpu, elem.first);
+	}
 
-	dbg_update_bp_hook(&cpu->cpu_ctx);
+	dbg_add_bp_hook(&cpu->cpu_ctx);
+	break_pc = get_pc(&cpu->cpu_ctx);
 
 	has_terminated.clear();
 	has_err.set_value(false);

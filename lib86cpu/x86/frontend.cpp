@@ -430,8 +430,8 @@ gen_fn(cpu_t *cpu)
 		type_struct_exp_info_t_fields, "struct.exp_info_t", false);
 
 	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");  // NOTE: opaque tc struct
-	FunctionType *type_exp_t, *type_entry_t;
-	type_exp_t = type_entry_t = FunctionType::get(
+	FunctionType *type_iret_t, *type_exp_t, *type_entry_t;
+	type_iret_t = type_exp_t = type_entry_t = FunctionType::get(
 		getPointerType(tc_struct_type),       // tc ret
 		getPointerType(cpu_ctx_struct_type),  // cpu_ctx
 		false);
@@ -480,11 +480,6 @@ gen_fn(cpu_t *cpu)
 		func->setCallingConv(CallingConv::C);
 	}
 	else if constexpr (fn_type == fn_emit_t::iret_t) {
-		FunctionType *type_iret_t = FunctionType::get(
-			getVoidType(),                        // void ret
-			getPointerType(cpu_ctx_struct_type),  // cpu_ctx
-			false);
-
 		func = Function::Create(
 			type_iret_t,                     // func type
 			GlobalValue::ExternalLinkage,    // linkage
@@ -525,6 +520,8 @@ create_tc_prologue(cpu_t *cpu)
 void
 gen_int_fn(cpu_t *cpu)
 {
+	// the interrupt function should never be generated more than once per emulation session
+
 	cpu->ctx = new LLVMContext();
 	if (cpu->ctx == nullptr) {
 		LIB86CPU_ABORT();
@@ -575,6 +572,9 @@ gen_int_fn(cpu_t *cpu)
 void
 gen_exp_fn(cpu_t *cpu)
 {
+	// free the memory of the previously emitted exception function
+	cpu->jit->free_code_block(cpu->cpu_ctx.exp_fn);
+
 	cpu->ctx = new LLVMContext();
 	if (cpu->ctx == nullptr) {
 		LIB86CPU_ABORT();
@@ -939,6 +939,9 @@ gen_exp_fn(cpu_t *cpu)
 void
 gen_iret_fn(cpu_t *cpu)
 {
+	// free the memory of the previously emitted iret function
+	cpu->jit->free_code_block(cpu->iret_fn.first);
+
 	cpu->ctx = new LLVMContext();
 	if (cpu->ctx == nullptr) {
 		LIB86CPU_ABORT();
@@ -953,9 +956,25 @@ gen_iret_fn(cpu_t *cpu)
 
 	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
 	cpu->tc = nullptr;
+	cpu->instr_eip = CONST32(0);
+	cpu->ptr_cpu_ctx = cpu->bb->getParent()->arg_begin();
+	cpu->ptr_cpu_ctx->setName("cpu_ctx");
+	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, 1);
+	cpu->ptr_regs->setName("regs");
+	cpu->ptr_eflags = GEP(cpu->ptr_cpu_ctx, 2);
+	cpu->ptr_eflags->setName("eflags");
+	cpu->ptr_hflags = GEP(cpu->ptr_cpu_ctx, 3);
+	cpu->ptr_hflags->setName("hflags");
+	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, 4);
+	cpu->ptr_tlb->setName("tlb");
+	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 5));
+	cpu->ptr_ram->setName("ram");
+	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 6));
+	cpu->ptr_exp_fn->setName("exp_fn");
 
+	get_ext_fn(cpu);
 	iret_emit(cpu, cpu->cpu_ctx.hflags & HFLG_CS32 ? SIZE32 : SIZE16);
-	ReturnInst::Create(CTX(), cpu->bb);
+	ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(CONSTp(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 
 	if (cpu->cpu_flags & CPU_PRINT_IR) {
 		std::string str;

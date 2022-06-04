@@ -87,7 +87,7 @@ struct translated_code_t;
 using entry_t = translated_code_t * (*)(cpu_ctx_t *cpu_ctx);
 using raise_exp_t = entry_t;
 using raise_int_t = void (*)(cpu_ctx_t *cpu_ctx, uint8_t int_flg);
-using iret_t = void (*)(cpu_ctx_t *cpu_ctx);
+using iret_t = entry_t; // could just return void
 
 // jmp_offset functions: 0,1 -> used for direct linking (either points to exit or &next_tc), 2 -> exit, 3 -> dbg int, 4 -> hw int
 struct translated_code_t {
@@ -168,6 +168,7 @@ struct cpu_t {
 	raise_int_t int_fn;
 	std::pair<iret_t, uint32_t> iret_fn;
 	std::string dbg_name;
+	addr_t bp_addr;
 
 	// llvm specific variables
 	std::unique_ptr<lc86_jit> jit;
