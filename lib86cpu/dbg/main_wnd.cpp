@@ -71,6 +71,8 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 	break_pc = get_pc(&cpu->cpu_ctx);
 
 	has_terminated.clear();
+	exit_requested.clear();
+	guest_running.clear();
 	has_err.set_value(false);
 
 	while (!glfwWindowShouldClose(main_wnd)) {
@@ -96,10 +98,15 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		glfwSwapBuffers(main_wnd);
 	}
 
-	if (!exit_requested.test()) {
-		cpu->int_fn(&cpu->cpu_ctx, CPU_DBG_INT);
-		exit_requested.wait(false);
-	}
+	// raise a debug interupt and wait until the guest stops execution
+	cpu->int_fn(&cpu->cpu_ctx, CPU_DBG_INT);
+	guest_running.wait(true);
+
+	// set guest_running in the case the guest is waiting in dbg_sw_breakpoint_handler
+	guest_running.test_and_set();
+	guest_running.notify_one();
+
+	exit_requested.wait(false);
 
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
@@ -120,6 +127,8 @@ dbg_should_close()
 {
 	glfwSetWindowShouldClose(main_wnd, GLFW_TRUE);
 	glfwPostEmptyEvent();
+	guest_running.clear();
+	guest_running.notify_one();
 	exit_requested.test_and_set();
 	exit_requested.notify_one();
 	has_terminated.wait(false);

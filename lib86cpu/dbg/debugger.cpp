@@ -286,6 +286,7 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 		// wait until the debugger continues execution
 		break_pc = pc;
 		guest_running.clear();
+		guest_running.notify_one();
 		guest_running.wait(false);
 
 		try {

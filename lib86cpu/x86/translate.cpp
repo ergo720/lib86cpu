@@ -64,10 +64,6 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 		}
 		break;
 
-		case host_exp_t::dbg_closed:
-			// the user has closed the debugger, simply abort by rethrowing the exception
-			throw;
-
 		case host_exp_t::de_exp:
 			// debug exception trap while excecuting the translated code
 			// we first remove the watchpoint for the faulting address, execute the trapping instruction,
@@ -5396,14 +5392,14 @@ static translated_code_t *
 cpu_dbg_int(cpu_ctx_t *cpu_ctx)
 {
 	// this is called when the user closes the debugger window
-	throw host_exp_t::dbg_closed;
+	throw lc86_exp_abort("The debugger was closed", lc86_status::success);
 }
 
 static translated_code_t *
 cpu_do_int(cpu_ctx_t *cpu_ctx)
 {
-	// hw interrupts not imlpemented yet
-	throw lc86_exp_abort("Hardware interrupts are not implemented yet", static_cast<lc86_status>(lc86_status::internal_error));
+	// hw interrupts not implemented yet
+	throw lc86_exp_abort("Hardware interrupts are not implemented yet", lc86_status::internal_error);
 }
 
 template<bool is_tramp>
@@ -5638,16 +5634,6 @@ cpu_start(cpu_t *cpu)
 
 		last_error = exp.what();
 		return exp.get_code();
-	}
-	catch (host_exp_t type) {
-		if (type == host_exp_t::dbg_closed) {
-			dbg_should_close();
-			last_error = "The debugger was closed";
-			return lc86_status::success;
-		}
-		else {
-			return set_last_error(lc86_status::internal_error);
-		}
 	}
 
 	assert(0);
