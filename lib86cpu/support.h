@@ -18,7 +18,7 @@
 
 #define CPU_NUM_REGS 43
 
-#define NUM_VARGS(args) std::tuple_size<decltype(std::make_tuple(args))>::value
+#define NUM_VARGS(...) std::tuple_size<decltype(std::make_tuple(__VA_ARGS__))>::value
 
 #define LOG(lv, msg, ...) do { logfn(lv, NUM_VARGS(__VA_ARGS__), msg, __VA_ARGS__); } while(0)
 
