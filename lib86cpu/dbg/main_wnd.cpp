@@ -26,13 +26,15 @@ static std::atomic_flag exit_requested;
 void
 dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 {
+	read_setting_files(cpu);
+
 	if (!glfwInit()) {
 		last_error = "Failed to initialize glfw";
 		has_err.set_value(true);
 		return;
 	}
 	
-	main_wnd = glfwCreateWindow(1280, 720, "Lib86dbg", nullptr, nullptr);
+	main_wnd = glfwCreateWindow(main_wnd_w, main_wnd_h, "Lib86dbg", nullptr, nullptr);
 	if (!main_wnd) {
 		last_error = "Failed to create the debugger window";
 		glfwTerminate();
@@ -62,7 +64,6 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 	ImGui_ImplGlfw_InitForOpenGL(main_wnd, true);
 	ImGui_ImplOpenGL3_Init();
 
-	read_breakpoints_file(cpu);
 	for (const auto &elem : break_list) {
 		dbg_insert_sw_breakpoint(cpu, elem.first);
 	}
@@ -108,13 +109,15 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 
 	exit_requested.wait(false);
 
+	glfwGetWindowSize(main_wnd, &main_wnd_w, &main_wnd_h);
+
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
 
 	glfwTerminate();
 
-	write_breakpoints_file(cpu);
+	write_setting_files(cpu);
 
 	main_wnd = nullptr;
 	exit_requested.clear();

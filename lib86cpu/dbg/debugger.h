@@ -12,8 +12,8 @@ enum class brk_t : int {
 	watchpoint,
 };
 
-void read_breakpoints_file(cpu_t *cpu);
-void write_breakpoints_file(cpu_t *cpu);
+void read_setting_files(cpu_t *cpu);
+void write_setting_files(cpu_t *cpu);
 bool dbg_insert_sw_breakpoint(cpu_t *cpu, addr_t addr);
 void dbg_apply_sw_breakpoints(cpu_t *cpu);
 void dbg_remove_sw_breakpoints(cpu_t *cpu);
@@ -27,3 +27,6 @@ inline std::uint32_t break_pc;
 
 inline std::unordered_map<addr_t, uint8_t> break_list;
 inline std::array<std::pair<addr_t, size_t>, 4> watch_list;
+
+inline int main_wnd_w = 1280;
+inline int main_wnd_h = 720;

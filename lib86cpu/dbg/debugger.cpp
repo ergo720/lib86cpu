@@ -11,7 +11,42 @@
 #include <charconv>
 
 
-void
+
+static void
+read_value_from_ini(std::ifstream *ifs, std::string_view key, int *value)
+{
+	std::string line;
+	if (std::getline(*ifs, line)) {
+		if (line.starts_with(key)) {
+			int temp;
+			auto ret = std::from_chars(line.data() + key.size(), line.data() + line.size(), temp, 10);
+			if ((ret.ec == std::errc::invalid_argument) || (ret.ptr == line.data() + key.size())) {
+				// missing value or garbage line
+				LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
+			}
+			*value = temp;
+		}
+		else {
+			// missing prefix or garbage line
+			LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
+		}
+	}
+}
+
+static void
+read_ini_file()
+{
+	std::ifstream ifs("lib86dbg.ini", std::ios_base::in);
+	if (ifs.is_open()) {
+		read_value_from_ini(&ifs, "width=", &main_wnd_w);
+		read_value_from_ini(&ifs, "height=", &main_wnd_h);
+	}
+	else {
+		LOG(log_level::info, "Could not open lib86dbg.ini file");
+	}
+}
+
+static void
 read_breakpoints_file(cpu_t *cpu)
 {
 	int watch_num = 0;
@@ -67,6 +102,39 @@ read_breakpoints_file(cpu_t *cpu)
 }
 
 void
+read_setting_files(cpu_t *cpu)
+{
+	read_ini_file();
+	read_breakpoints_file(cpu);
+}
+
+static void
+write_value_to_ini(std::ofstream *ofs, std::string_view key, int value)
+{
+	constexpr size_t line_size = std::max(std::string_view("width=").size(), std::string_view("height=").size());
+	std::array<char, line_size + 9 + 2> line;
+	std::copy(key.begin(), key.end(), line.begin());
+	auto ret = std::to_chars(line.data() + key.size(), line.data() + line.size(), value, 10);
+	assert(ret.ec == std::errc());
+	*ret.ptr++ = '\n';
+	*ret.ptr = '\0';
+	*ofs << std::string_view(line.data(), ret.ptr);
+}
+
+static void
+write_ini_file()
+{
+	std::ofstream ofs("lib86dbg.ini", std::ios_base::out | std::ios_base::trunc);
+	if (ofs.is_open()) {
+		write_value_to_ini(&ofs, "width=", main_wnd_w);
+		write_value_to_ini(&ofs, "height=", main_wnd_h);
+	}
+	else {
+		LOG(log_level::info, "Could not save lib86dbg.ini file");
+	}
+}
+
+static void
 write_breakpoints_file(cpu_t *cpu)
 {
 	std::string brk_file = cpu->dbg_name + ".ini";
@@ -109,6 +177,13 @@ write_breakpoints_file(cpu_t *cpu)
 
 	break_list.clear();
 	watch_list.fill(std::make_pair(0, 0));
+}
+
+void
+write_setting_files(cpu_t *cpu)
+{
+	write_ini_file();
+	write_breakpoints_file(cpu);
 }
 
 void
