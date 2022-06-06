@@ -33,29 +33,11 @@ dbg_draw_disas_wnd(cpu_t *cpu, int wnd_w, int wnd_h)
 				static bool show_popup = false;
 				unsigned instr_to_print = ImGui::GetWindowHeight() / ImGui::GetTextLineHeightWithSpacing() * DISAS_INSTR_NUM_FACTOR;
 				if (enter_pressed) {
-					auto ret = std::from_chars(buff, buff + sizeof(buff), break_pc, 16);
-					if ((ret.ec == std::errc::invalid_argument) || (ret.ec == std::errc::result_out_of_range)) {
-						// garbage text
-						show_popup = true;
-						ImGui::OpenPopup("Error");
-					}
-					else {
-						// start disassembling a new code block from the address specified
-						show_popup = false;
-						disas_data.clear();
-						instr_sel = pc_offset = 0;
-					}
-				}
-				if (show_popup){
-					ImGui::SetNextWindowPos(ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() * 0.5f,
-						ImGui::GetWindowPos().y + ImGui::GetWindowHeight() * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-					if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_NoResize)) {
-						ImGui::Text("Invalid address");
-						if (ImGui::Button("OK")) {
-							ImGui::CloseCurrentPopup();
-						}
-						ImGui::EndPopup();
-					}
+					// NOTE: it can't fail because ImGui::InputText only accepts hex digits and break_pc is large enough to store every possible 32 bit address
+					[[maybe_unused]] auto ret = std::from_chars(buff, buff + sizeof(buff), break_pc, 16);
+					assert(ret.ec == std::errc());
+					disas_data.clear();
+					instr_sel = pc_offset = 0;
 				}
 				if (disas_data.empty()) {
 					// this happens the first time the disassembler window is displayed
@@ -81,16 +63,27 @@ dbg_draw_disas_wnd(cpu_t *cpu, int wnd_w, int wnd_h)
 						}
 						else {
 							if (dbg_insert_sw_breakpoint(cpu, addr)) {
+								show_popup = false;
 								break_list.insert({ addr, 0 });
 							}
 							else {
+								show_popup = true;
 								ImGui::OpenPopup("Error");
-								if (ImGui::BeginPopup("Error")) {
-									ImGui::Text("Failed to insert the breakpoint");
-									ImGui::EndPopup();
-								}
 							}
 						}
+					}
+				}
+				if (show_popup) {
+					ImGui::SetNextWindowPos(ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() * 0.5f,
+						ImGui::GetWindowPos().y + ImGui::GetWindowHeight() * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+					ImGui::SetNextWindowSize(ImVec2(235.0f, 75.0f));
+					if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_NoResize)) {
+						ImGui::Text("Failed to insert the breakpoint");
+						if (ImGui::Button("OK")) {
+							show_popup = false;
+							ImGui::CloseCurrentPopup();
+						}
+						ImGui::EndPopup();
 					}
 				}
 				unsigned num_instr_printed = 0;
