@@ -9,6 +9,7 @@
 #include "imgui_wnd.h"
 #include "debugger.h"
 #include "internal.h"
+#include <charconv>
 
 #define DISAS_INSTR_NUM_FACTOR 5
 
@@ -19,13 +20,43 @@ dbg_draw_disas_wnd(cpu_t *cpu, int wnd_w, int wnd_h)
 	ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(wnd_w - 20, wnd_h - 20), ImGuiCond_FirstUseEver);
 	if (ImGui::Begin("Disassembler")) {
+		static char buff[9];
+		ImGui::PushItemWidth(80.0f);
+		bool enter_pressed = ImGui::InputText("Address", buff, IM_ARRAYSIZE(buff), ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue);
+		ImGui::PopItemWidth();
 		if (!guest_running.test()) {
 			// F5: continue execution, F9: toggle breakpoint
 			static std::vector<std::pair<addr_t, std::string>> disas_data;
 			static addr_t pc_offset = 0;
 			static unsigned instr_sel = 0;
 			if (!ImGui::IsKeyPressed(ImGuiKey_F5)) {
+				static bool show_popup = false;
 				unsigned instr_to_print = ImGui::GetWindowHeight() / ImGui::GetTextLineHeightWithSpacing() * DISAS_INSTR_NUM_FACTOR;
+				if (enter_pressed) {
+					auto ret = std::from_chars(buff, buff + sizeof(buff), break_pc, 16);
+					if ((ret.ec == std::errc::invalid_argument) || (ret.ec == std::errc::result_out_of_range)) {
+						// garbage text
+						show_popup = true;
+						ImGui::OpenPopup("Error");
+					}
+					else {
+						// start disassembling a new code block from the address specified
+						show_popup = false;
+						disas_data.clear();
+						instr_sel = pc_offset = 0;
+					}
+				}
+				if (show_popup){
+					ImGui::SetNextWindowPos(ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() * 0.5f,
+						ImGui::GetWindowPos().y + ImGui::GetWindowHeight() * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+					if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_NoResize)) {
+						ImGui::Text("Invalid address");
+						if (ImGui::Button("OK")) {
+							ImGui::CloseCurrentPopup();
+						}
+						ImGui::EndPopup();
+					}
+				}
 				if (disas_data.empty()) {
 					// this happens the first time the disassembler window is displayed
 					disas_data = dbg_disas_code_block(cpu, break_pc + pc_offset, instr_to_print);
@@ -53,8 +84,8 @@ dbg_draw_disas_wnd(cpu_t *cpu, int wnd_w, int wnd_h)
 								break_list.insert({ addr, 0 });
 							}
 							else {
-								ImGui::OpenPopup("");
-								if (ImGui::BeginPopup("")) {
+								ImGui::OpenPopup("Error");
+								if (ImGui::BeginPopup("Error")) {
 									ImGui::Text("Failed to insert the breakpoint");
 									ImGui::EndPopup();
 								}

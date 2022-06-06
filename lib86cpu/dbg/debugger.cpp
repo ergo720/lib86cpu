@@ -20,9 +20,10 @@ read_value_from_ini(std::ifstream *ifs, std::string_view key, int *value)
 		if (line.starts_with(key)) {
 			int temp;
 			auto ret = std::from_chars(line.data() + key.size(), line.data() + line.size(), temp, 10);
-			if ((ret.ec == std::errc::invalid_argument) || (ret.ptr == line.data() + key.size())) {
+			if ((ret.ec == std::errc::invalid_argument) || (ret.ec == std::errc::result_out_of_range)) {
 				// missing value or garbage line
 				LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
+				return;
 			}
 			*value = temp;
 		}
@@ -64,13 +65,14 @@ read_breakpoints_file(cpu_t *cpu)
 				continue;
 			}
 			auto ret = std::from_chars(line.data() + 2, line.data() + line.size(), addr, 16);
-			if ((ret.ec == std::errc::invalid_argument) || (ret.ptr == line.data() + line.size())) {
+			if ((ret.ec == std::errc::invalid_argument) || (ret.ec == std::errc::result_out_of_range)) {
 				// missing comma delimiter or garbage line
 				LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
 				continue;
 			}
 			ret = std::from_chars(ret.ptr + 1, line.data() + line.size(), brk_type, 10);
-			if ((ret.ec == std::errc::invalid_argument) || ((static_cast<brk_t>(brk_type) != brk_t::breakpoint) && (static_cast<brk_t>(brk_type) != brk_t::watchpoint))) {
+			if ((ret.ec == std::errc::invalid_argument) || (ret.ec == std::errc::result_out_of_range) ||
+				((static_cast<brk_t>(brk_type) != brk_t::breakpoint) && (static_cast<brk_t>(brk_type) != brk_t::watchpoint))) {
 				// invalid break/watchpoint type or garbage line
 				LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
 				continue;
@@ -78,7 +80,8 @@ read_breakpoints_file(cpu_t *cpu)
 			if (static_cast<brk_t>(brk_type) == brk_t::watchpoint) {
 				if ((ret.ptr != line.data() + line.size()) && watch_num < 4) {
 					ret = std::from_chars(ret.ptr + 1, line.data() + line.size(), watch_size, 10);
-					if ((ret.ec == std::errc::invalid_argument) || ((watch_size != 1U) && (watch_size != 2U) && (watch_size != 4U) && (watch_size != 8U))) {
+					if ((ret.ec == std::errc::invalid_argument) || (ret.ec == std::errc::result_out_of_range) ||
+						((watch_size != 1U) && (watch_size != 2U) && (watch_size != 4U) && (watch_size != 8U))) {
 						// invalid watchpoint size or garbage line
 						LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
 						continue;
