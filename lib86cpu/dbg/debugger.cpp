@@ -282,7 +282,6 @@ dbg_add_bp_hook(cpu_ctx_t *cpu_ctx)
 static std::vector<std::pair<addr_t, std::string>>
 dbg_disas_code_block(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, unsigned instr_num, uint32_t tlb_entry)
 {
-	size_t bytes_last_instr = 0;
 	std::vector<std::pair<addr_t, std::string>> disas_data;
 	while (instr_num) {
 		ZydisDecodedInstruction instr;
@@ -290,7 +289,7 @@ dbg_disas_code_block(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, 
 		if (ZYAN_SUCCESS(status)) {
 			disas_data.push_back(std::make_pair(disas_ctx->virt_pc, log_instr(disas_ctx->virt_pc, &instr)));
 			instr_num--;
-			size_t bytes = bytes_last_instr = instr.length;
+			size_t bytes = instr.length;
 			addr_t next_pc = disas_ctx->virt_pc + bytes;
 			if ((disas_ctx->virt_pc & ~PAGE_MASK) != ((next_pc - 1) & ~PAGE_MASK)) {
 				// page crossing, needs to translate virt_pc again and disable debug exp in the new page
@@ -298,13 +297,11 @@ dbg_disas_code_block(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, 
 				cpu->cpu_ctx.tlb[disas_ctx->virt_pc >> PAGE_SHIFT] = tlb_entry;
 				if (disas_ctx->exp_data.idx == EXP_PF) {
 					// page fault in the new page, cannot display remaining instr
+					disas_ctx->virt_pc = next_pc;
 					return disas_data;
 				}
 				tlb_entry = cpu->cpu_ctx.tlb[next_pc >> PAGE_SHIFT];
 				cpu->cpu_ctx.tlb[next_pc >> PAGE_SHIFT] &= ~TLB_WATCH;
-				if (!instr_num) {
-					return disas_data;
-				}
 			}
 			else {
 				disas_ctx->pc += bytes;
@@ -317,7 +314,7 @@ dbg_disas_code_block(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, 
 			return disas_data;
 		}
 	}
-	cpu->cpu_ctx.tlb[(disas_ctx->virt_pc - bytes_last_instr) >> PAGE_SHIFT] = tlb_entry;
+	cpu->cpu_ctx.tlb[disas_ctx->virt_pc >> PAGE_SHIFT] = tlb_entry;
 	return disas_data;
 }
 
@@ -341,7 +338,9 @@ dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num)
 
 	ZydisDecoder decoder;
 	init_instr_decoder(&disas_ctx, &decoder);
-	return dbg_disas_code_block(cpu, &disas_ctx, &decoder, instr_num, tlb_entry);
+	const auto &ret = dbg_disas_code_block(cpu, &disas_ctx, &decoder, instr_num, tlb_entry);
+	break_pc = disas_ctx.virt_pc;
+	return ret;
 }
 
 void

@@ -27,7 +27,6 @@ dbg_draw_disas_wnd(cpu_t *cpu, int wnd_w, int wnd_h)
 		if (!guest_running.test()) {
 			// F5: continue execution, F9: toggle breakpoint
 			static std::vector<std::pair<addr_t, std::string>> disas_data;
-			static addr_t pc_offset = 0;
 			static unsigned instr_sel = 0;
 			if (!ImGui::IsKeyPressed(ImGuiKey_F5)) {
 				static bool show_popup = false;
@@ -37,19 +36,17 @@ dbg_draw_disas_wnd(cpu_t *cpu, int wnd_w, int wnd_h)
 					[[maybe_unused]] auto ret = std::from_chars(buff, buff + sizeof(buff), break_pc, 16);
 					assert(ret.ec == std::errc());
 					disas_data.clear();
-					instr_sel = pc_offset = 0;
+					instr_sel = 0;
 				}
 				if (disas_data.empty()) {
 					// this happens the first time the disassembler window is displayed
-					disas_data = dbg_disas_code_block(cpu, break_pc + pc_offset, instr_to_print);
-					pc_offset += instr_to_print;
+					disas_data = dbg_disas_code_block(cpu, break_pc, instr_to_print);
 				}
 				else if (ImGui::GetScrollY() == ImGui::GetScrollMaxY()) {
 					// the user has scrolled up to the end of the instr block we previously cached, so we need to disassemble a new block
 					// and append it to the end of the cached data
-					const auto &disas_next_block = dbg_disas_code_block(cpu, break_pc + pc_offset, instr_to_print);
+					const auto &disas_next_block = dbg_disas_code_block(cpu, break_pc, instr_to_print);
 					disas_data.insert(disas_data.end(), std::make_move_iterator(disas_next_block.begin()), std::make_move_iterator(disas_next_block.end()));
-					pc_offset += instr_to_print;
 				}
 				assert(std::adjacent_find(disas_data.begin(), disas_data.end(), [](const auto &lhs, const auto &rhs) {
 					return lhs.first == rhs.first;
@@ -114,7 +111,7 @@ dbg_draw_disas_wnd(cpu_t *cpu, int wnd_w, int wnd_h)
 			}
 			else {
 				disas_data.clear();
-				instr_sel = pc_offset = 0;
+				instr_sel = 0;
 				dbg_apply_sw_breakpoints(cpu);
 				const char *text = "Not available while debuggee is running";
 				ImGui::SetCursorPos(ImVec2((wnd_w - 20) / 2 - (ImGui::CalcTextSize(text).x / 2), (wnd_h - 20) / 2 - (ImGui::CalcTextSize(text).y / 2)));
