@@ -99,7 +99,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		glfwSwapBuffers(main_wnd);
 	}
 
-	// raise a debug interupt and wait until the guest stops execution
+	// raise a debug interrupt and wait until the guest stops execution
 	cpu->int_fn(&cpu->cpu_ctx, CPU_DBG_INT);
 	guest_running.wait(true);
 

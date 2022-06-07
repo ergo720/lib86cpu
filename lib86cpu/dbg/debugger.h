@@ -30,3 +30,7 @@ inline std::array<std::pair<addr_t, size_t>, 4> watch_list;
 
 inline int main_wnd_w = 1280;
 inline int main_wnd_h = 720;
+
+inline float text_col[3] = { 1.0f, 1.0f, 1.0f }; // default text color: white
+inline float break_col[3] = { 1.0f, 0.0f, 0.0f }; // default breakpoint color: red
+inline float bk_col[3] = { 0.0f, 0.0f, 0.0f }; // default background color: black

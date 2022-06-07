@@ -17,13 +17,23 @@
 void
 dbg_draw_disas_wnd(cpu_t *cpu, int wnd_w, int wnd_h)
 {
+	static const auto &[text_r, text_g, text_b] = text_col;
+	static const auto &[break_r, break_g, break_b] = break_col;
+	static const auto &[bk_r, bk_g, bk_b] = bk_col;
+
 	ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(wnd_w - 20, wnd_h - 20), ImGuiCond_FirstUseEver);
+	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(text_r, text_g, text_b, 1.0f));
+	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(bk_r, bk_g, bk_b, 1.0f));
+	ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(bk_r, bk_g, bk_b, 1.0f));
 	if (ImGui::Begin("Disassembler")) {
 		static char buff[9];
 		ImGui::PushItemWidth(80.0f);
 		bool enter_pressed = ImGui::InputText("Address", buff, IM_ARRAYSIZE(buff), ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue);
 		ImGui::PopItemWidth();
+		ImGui::ColorEdit3("Text color", text_col);
+		ImGui::ColorEdit3("Breakpoint color", break_col);
+		ImGui::ColorEdit3("Background color", bk_col);
 		if (!guest_running.test()) {
 			// F5: continue execution, F9: toggle breakpoint
 			static std::vector<std::pair<addr_t, std::string>> disas_data;
@@ -91,7 +101,7 @@ dbg_draw_disas_wnd(cpu_t *cpu, int wnd_w, int wnd_h)
 					std::snprintf(buffer, sizeof(buffer), "0x%08X  %s", addr, (disas_data.begin() + num_instr_printed)->second.c_str());
 					if (break_list.contains(addr)) {
 						// draw breakpoint with a different text color
-						ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.0f, 0.0f, 1.0f));
+						ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(break_r, break_g, break_b, 1.0f));
 						if (ImGui::Selectable(buffer, instr_sel == num_instr_printed)) {
 							instr_sel = num_instr_printed;
 						}
@@ -127,4 +137,5 @@ dbg_draw_disas_wnd(cpu_t *cpu, int wnd_w, int wnd_h)
 		}
 	}
 	ImGui::End();
+	ImGui::PopStyleColor(3);
 }

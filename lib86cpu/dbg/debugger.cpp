@@ -12,25 +12,28 @@
 
 
 
+template<typename T>
 static void
-read_value_from_ini(std::ifstream *ifs, std::string_view key, int *value)
+read_value_from_ini(std::ifstream *ifs, std::string_view key, T *value)
 {
 	std::string line;
 	if (std::getline(*ifs, line)) {
 		if (line.starts_with(key)) {
-			int temp;
-			auto ret = std::from_chars(line.data() + key.size(), line.data() + line.size(), temp, 10);
+			auto ret = std::from_chars(line.data() + key.size(), line.data() + line.size(), *value);
 			if ((ret.ec == std::errc::invalid_argument) || (ret.ec == std::errc::result_out_of_range)) {
 				// missing value or garbage line
 				LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
 				return;
 			}
-			*value = temp;
 		}
 		else {
 			// missing prefix or garbage line
 			LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
 		}
+	}
+	else {
+		// missing key option
+		LOG(log_level::error, "Missing option with key %s", key.data());
 	}
 }
 
@@ -41,6 +44,15 @@ read_ini_file()
 	if (ifs.is_open()) {
 		read_value_from_ini(&ifs, "width=", &main_wnd_w);
 		read_value_from_ini(&ifs, "height=", &main_wnd_h);
+		read_value_from_ini(&ifs, "text_r=", &text_col[0]);
+		read_value_from_ini(&ifs, "text_g=", &text_col[1]);
+		read_value_from_ini(&ifs, "text_b=", &text_col[2]);
+		read_value_from_ini(&ifs, "break_r=", &break_col[0]);
+		read_value_from_ini(&ifs, "break_g=", &break_col[1]);
+		read_value_from_ini(&ifs, "break_b=", &break_col[2]);
+		read_value_from_ini(&ifs, "bk_r=", &bk_col[0]);
+		read_value_from_ini(&ifs, "bk_g=", &bk_col[1]);
+		read_value_from_ini(&ifs, "bk_b=", &bk_col[2]);
 	}
 	else {
 		LOG(log_level::info, "Could not open lib86dbg.ini file");
@@ -111,13 +123,13 @@ read_setting_files(cpu_t *cpu)
 	read_breakpoints_file(cpu);
 }
 
+template<typename T>
 static void
-write_value_to_ini(std::ofstream *ofs, std::string_view key, int value)
+write_value_to_ini(std::ofstream *ofs, std::string_view key, T value)
 {
-	constexpr size_t line_size = std::max(std::string_view("width=").size(), std::string_view("height=").size());
-	std::array<char, line_size + 9 + 2> line;
+	std::array<char, 50> line; // hopefully large enough to store any value
 	std::copy(key.begin(), key.end(), line.begin());
-	auto ret = std::to_chars(line.data() + key.size(), line.data() + line.size(), value, 10);
+	auto ret = std::to_chars(line.data() + key.size(), line.data() + line.size(), value);
 	assert(ret.ec == std::errc());
 	*ret.ptr++ = '\n';
 	*ret.ptr = '\0';
@@ -131,6 +143,15 @@ write_ini_file()
 	if (ofs.is_open()) {
 		write_value_to_ini(&ofs, "width=", main_wnd_w);
 		write_value_to_ini(&ofs, "height=", main_wnd_h);
+		write_value_to_ini(&ofs, "text_r=", text_col[0]);
+		write_value_to_ini(&ofs, "text_g=", text_col[1]);
+		write_value_to_ini(&ofs, "text_b=", text_col[2]);
+		write_value_to_ini(&ofs, "break_r=", break_col[0]);
+		write_value_to_ini(&ofs, "break_g=", break_col[1]);
+		write_value_to_ini(&ofs, "break_b=", break_col[2]);
+		write_value_to_ini(&ofs, "bk_r=", bk_col[0]);
+		write_value_to_ini(&ofs, "bk_g=", bk_col[1]);
+		write_value_to_ini(&ofs, "bk_b=", bk_col[2]);
 	}
 	else {
 		LOG(log_level::info, "Could not save lib86dbg.ini file");
