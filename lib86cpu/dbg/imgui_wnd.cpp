@@ -126,7 +126,7 @@ dbg_draw_disas_wnd(cpu_t *cpu)
 				instr_sel = 0;
 				dbg_apply_sw_breakpoints(cpu);
 				const char *text = "Not available while debuggee is running";
-				ImGui::SetCursorPos(ImVec2((wnd_w - 20) / 2 - (ImGui::CalcTextSize(text).x / 2), (wnd_h - 20) / 2 - (ImGui::CalcTextSize(text).y / 2)));
+				ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
 				ImGui::Text(text);
 				guest_running.test_and_set();
 				guest_running.notify_one();
@@ -134,7 +134,7 @@ dbg_draw_disas_wnd(cpu_t *cpu)
 		}
 		else {
 			const char *text = "Not available while debuggee is running";
-			ImGui::SetCursorPos(ImVec2((wnd_w - 20) / 2 - (ImGui::CalcTextSize(text).x / 2), (wnd_h - 20) / 2 - (ImGui::CalcTextSize(text).y / 2)));
+			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
 			ImGui::Text(text);
 		}
 	}
@@ -213,7 +213,7 @@ dbg_draw_disas_wnd(cpu_t *cpu)
 		}
 		else {
 			const char *text = "Not available while debuggee is running";
-			ImGui::SetCursorPos(ImVec2((wnd_w - 20) / 2 - (ImGui::CalcTextSize(text).x / 2), (wnd_h - 20) / 2 - (ImGui::CalcTextSize(text).y / 2)));
+			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
 			ImGui::Text(text);
 		}
 	}
