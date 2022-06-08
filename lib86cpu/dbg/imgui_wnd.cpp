@@ -36,6 +36,7 @@ dbg_draw_disas_wnd(cpu_t *cpu)
 		ImGui::ColorEdit3("Text color", text_col);
 		ImGui::ColorEdit3("Breakpoint color", break_col);
 		ImGui::ColorEdit3("Background color", bk_col);
+		ImGui::BeginChild("Disassembler view");
 		if (!guest_running.test()) {
 			// F5: continue execution, F9: toggle breakpoint
 			static std::vector<std::pair<addr_t, std::string>> disas_data;
@@ -137,6 +138,7 @@ dbg_draw_disas_wnd(cpu_t *cpu)
 			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
 			ImGui::Text(text);
 		}
+		ImGui::EndChild();
 	}
 	ImGui::End();
 
@@ -145,6 +147,7 @@ dbg_draw_disas_wnd(cpu_t *cpu)
 	if (ImGui::Begin("Registers")) {
 		ImGui::ColorEdit3("Text color", text_col);
 		ImGui::ColorEdit3("Background color", bk_col);
+		ImGui::BeginChild("Registers view");
 		if (!guest_running.test()) {
 			ImGui::Text("eax: 0x%08X  ecx: 0x%08X  edx: 0x%08X  ebx: 0x%08X  esp: 0x%08X  ebp: 0x%08X  esi: 0x%08X  edi: 0x%08X",
 				cpu->cpu_ctx.regs.eax,
@@ -216,6 +219,7 @@ dbg_draw_disas_wnd(cpu_t *cpu)
 			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
 			ImGui::Text(text);
 		}
+		ImGui::EndChild();
 	}
 	ImGui::End();
 
