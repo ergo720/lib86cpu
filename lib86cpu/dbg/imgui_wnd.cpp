@@ -15,7 +15,7 @@
 
 
 void
-dbg_draw_disas_wnd(cpu_t *cpu)
+dbg_draw_imgui_wnd(cpu_t *cpu)
 {
 	const int wnd_w = main_wnd_w;
 	const int wnd_h = main_wnd_h;

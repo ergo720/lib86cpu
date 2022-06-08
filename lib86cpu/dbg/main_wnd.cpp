@@ -84,7 +84,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		ImGui::NewFrame();
 
 		glfwGetWindowSize(main_wnd, &main_wnd_w, &main_wnd_h);
-		dbg_draw_disas_wnd(cpu);
+		dbg_draw_imgui_wnd(cpu);
 
 		ImGui::Render();
 
