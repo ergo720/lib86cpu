@@ -15,14 +15,16 @@
 
 
 void
-dbg_draw_disas_wnd(cpu_t *cpu, int wnd_w, int wnd_h)
+dbg_draw_disas_wnd(cpu_t *cpu)
 {
+	const int wnd_w = main_wnd_w;
+	const int wnd_h = main_wnd_h;
 	static const auto &[text_r, text_g, text_b] = text_col;
 	static const auto &[break_r, break_g, break_b] = break_col;
 	static const auto &[bk_r, bk_g, bk_b] = bk_col;
 
 	ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(wnd_w - 20, wnd_h - 20), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(wnd_w - 20, (wnd_h - 30) / 2), ImGuiCond_FirstUseEver);
 	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(text_r, text_g, text_b, 1.0f));
 	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(bk_r, bk_g, bk_b, 1.0f));
 	ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(bk_r, bk_g, bk_b, 1.0f));
@@ -137,5 +139,85 @@ dbg_draw_disas_wnd(cpu_t *cpu, int wnd_w, int wnd_h)
 		}
 	}
 	ImGui::End();
+
+	ImGui::SetNextWindowPos(ImVec2(10, wnd_h / 2 + 5), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(wnd_w - 20, (wnd_h - 30) / 2), ImGuiCond_FirstUseEver);
+	if (ImGui::Begin("Registers")) {
+		ImGui::ColorEdit3("Text color", text_col);
+		ImGui::ColorEdit3("Background color", bk_col);
+		if (!guest_running.test()) {
+			ImGui::Text("eax: 0x%08X  ecx: 0x%08X  edx: 0x%08X  ebx: 0x%08X  esp: 0x%08X  ebp: 0x%08X  esi: 0x%08X  edi: 0x%08X",
+				cpu->cpu_ctx.regs.eax,
+				cpu->cpu_ctx.regs.ecx,
+				cpu->cpu_ctx.regs.edx,
+				cpu->cpu_ctx.regs.ebx,
+				cpu->cpu_ctx.regs.esp,
+				cpu->cpu_ctx.regs.ebp,
+				cpu->cpu_ctx.regs.esi,
+				cpu->cpu_ctx.regs.edi
+			);
+			ImGui::Text("eflags: 0x%08X  eip: 0x%08X  cs: 0x%04hX  es: 0x%04hX  ss: 0x%04hX  ds: 0x%04hX  fs 0x%04hX  gs: 0x%04hX",
+				read_eflags(cpu),
+				cpu->cpu_ctx.regs.eip,
+				cpu->cpu_ctx.regs.cs,
+				cpu->cpu_ctx.regs.es,
+				cpu->cpu_ctx.regs.ss,
+				cpu->cpu_ctx.regs.ds,
+				cpu->cpu_ctx.regs.fs,
+				cpu->cpu_ctx.regs.gs
+			);
+			ImGui::Text("cr0: 0x%08X  cr2: 0x%08X  cr3: 0x%08X  cr4: 0x%08X  idtr: 0x%04hX  gdtr: 0x%04hX  ldtr: 0x%04hX  tr: 0x%04hX",
+				cpu->cpu_ctx.regs.cr0,
+				cpu->cpu_ctx.regs.cr2,
+				cpu->cpu_ctx.regs.cr3,
+				cpu->cpu_ctx.regs.cr4,
+				cpu->cpu_ctx.regs.idtr,
+				cpu->cpu_ctx.regs.gdtr,
+				cpu->cpu_ctx.regs.ldtr,
+				cpu->cpu_ctx.regs.tr
+			);
+			ImGui::Text("dr0: 0x%08X  dr1: 0x%08X  dr2: 0x%08X  dr3: 0x%08X  dr4: 0x%08X  dr5: 0x%08X  dr6: 0x%08X  dr7: 0x%08X",
+				cpu->cpu_ctx.regs.dr0,
+				cpu->cpu_ctx.regs.dr1,
+				cpu->cpu_ctx.regs.dr2,
+				cpu->cpu_ctx.regs.dr3,
+				cpu->cpu_ctx.regs.dr4,
+				cpu->cpu_ctx.regs.dr5,
+				cpu->cpu_ctx.regs.dr6,
+				cpu->cpu_ctx.regs.dr7
+			);
+			ImGui::Text("r0.h: 0x%04hX  r0.l: 0x%016llX  r1.h: 0x%04hX  r1.l: 0x%016llX  r2.h: 0x%04hX  r2.l: 0x%016llX  r3.h: 0x%04hX  r3.l: 0x%016llX",
+				cpu->cpu_ctx.regs.r0.high,
+				cpu->cpu_ctx.regs.r0.low,
+				cpu->cpu_ctx.regs.r1.high,
+				cpu->cpu_ctx.regs.r1.low,
+				cpu->cpu_ctx.regs.r2.high,
+				cpu->cpu_ctx.regs.r2.low,
+				cpu->cpu_ctx.regs.r3.high,
+				cpu->cpu_ctx.regs.r3.low
+			);
+			ImGui::Text("r4.h: 0x%04hX  r4.l: 0x%016llX  r5.h: 0x%04hX  r5.l: 0x%016llX  r6.h: 0x%04hX  r6.l: 0x%016llX  r7.h: 0x%04hX  r7.l: 0x%016llX",
+				cpu->cpu_ctx.regs.r4.high,
+				cpu->cpu_ctx.regs.r4.low,
+				cpu->cpu_ctx.regs.r5.high,
+				cpu->cpu_ctx.regs.r5.low,
+				cpu->cpu_ctx.regs.r6.high,
+				cpu->cpu_ctx.regs.r6.low,
+				cpu->cpu_ctx.regs.r7.high,
+				cpu->cpu_ctx.regs.r7.low
+			);
+			ImGui::Text("status: 0x%04hX  tag: 0x%04hX",
+				cpu->cpu_ctx.regs.status,
+				cpu->cpu_ctx.regs.tag
+			);
+		}
+		else {
+			const char *text = "Not available while debuggee is running";
+			ImGui::SetCursorPos(ImVec2((wnd_w - 20) / 2 - (ImGui::CalcTextSize(text).x / 2), (wnd_h - 20) / 2 - (ImGui::CalcTextSize(text).y / 2)));
+			ImGui::Text(text);
+		}
+	}
+	ImGui::End();
+
 	ImGui::PopStyleColor(3);
 }

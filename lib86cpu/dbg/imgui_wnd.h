@@ -4,4 +4,4 @@
 
 #pragma once
 
-void dbg_draw_disas_wnd(cpu_t *cpu, int wnd_w, int wnd_h);
+void dbg_draw_disas_wnd(cpu_t *cpu);

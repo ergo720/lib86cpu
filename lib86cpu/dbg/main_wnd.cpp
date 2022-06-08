@@ -83,9 +83,8 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		ImGui_ImplGlfw_NewFrame();
 		ImGui::NewFrame();
 
-		int wnd_w, wnd_h;
-		glfwGetWindowSize(main_wnd, &wnd_w, &wnd_h);
-		dbg_draw_disas_wnd(cpu, wnd_w, wnd_h);
+		glfwGetWindowSize(main_wnd, &main_wnd_w, &main_wnd_h);
+		dbg_draw_disas_wnd(cpu);
 
 		ImGui::Render();
 
