@@ -364,6 +364,42 @@ dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num)
 	return ret;
 }
 
+size_t
+dbg_ram_read(cpu_t *cpu, uint8_t *buffer, addr_t addr, size_t size)
+{
+	assert(size && (size <= PAGE_SIZE));
+
+	size_t size_read = 0;
+
+	try {
+		addr_t phys_addr = get_code_addr(cpu, addr, addr - cpu->cpu_ctx.regs.cs_hidden.base);
+
+		if ((addr & ~PAGE_MASK) != ((addr + size - 1) & ~PAGE_MASK)) {
+			size_t bytes_to_read, bytes_in_first_page;
+			bytes_to_read = bytes_in_first_page = (PAGE_SIZE - (addr & PAGE_MASK));
+			bytes_to_read = as_ram_dispatch_read(cpu, phys_addr, bytes_to_read, as_memory_search_addr<uint8_t>(cpu, phys_addr), buffer);
+			if (bytes_to_read < bytes_in_first_page) {
+				return bytes_to_read;
+			}
+
+			size_read = bytes_to_read;
+			addr_t phys_addr2 = get_code_addr(cpu, addr + bytes_in_first_page, addr - cpu->cpu_ctx.regs.cs_hidden.base);
+			bytes_to_read = (size - bytes_to_read);
+			buffer += bytes_in_first_page;
+			bytes_to_read = as_ram_dispatch_read(cpu, phys_addr2, bytes_to_read, as_memory_search_addr<uint8_t>(cpu, phys_addr2), buffer);
+			size_read = bytes_to_read + bytes_in_first_page;
+		}
+		else {
+			size_read = as_ram_dispatch_read(cpu, phys_addr, size, as_memory_search_addr<uint8_t>(cpu, phys_addr), buffer);
+		}
+
+		return size_read;
+	}
+	catch (host_exp_t type) {
+		return size_read;
+	}
+}
+
 void
 dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 {

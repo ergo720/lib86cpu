@@ -25,7 +25,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 	static const auto &[bk_r, bk_g, bk_b] = bk_col;
 
 	ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(wnd_w - 20, (wnd_h - 30) / 2), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2((wnd_w - 30) / 2, (wnd_h - 30) / 2), ImGuiCond_FirstUseEver);
 	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(text_r, text_g, text_b, 1.0f));
 	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(bk_r, bk_g, bk_b, 1.0f));
 	ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(bk_r, bk_g, bk_b, 1.0f));
@@ -135,6 +135,28 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 					ImGui::EndPopup();
 				}
 			}
+		}
+		else {
+			const char *text = "Not available while debuggee is running";
+			ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
+			ImGui::Text(text);
+		}
+		ImGui::EndChild();
+	}
+	ImGui::End();
+
+	ImGui::SetNextWindowPos(ImVec2(wnd_w / 2 + 5, 10), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2((wnd_w - 30) / 2, (wnd_h - 30) / 2), ImGuiCond_FirstUseEver);
+	if (ImGui::Begin("Memory editor")) {
+		ImGui::ColorEdit3("Text color", text_col);
+		ImGui::ColorEdit3("Background color", bk_col);
+		ImGui::BeginChild("Memory view");
+		if (!guest_running.test()) {
+			static MemoryEditor mem_editor;
+			static uint32_t mem_addr = break_pc;
+			uint8_t buff[PAGE_SIZE];
+			size_t size = dbg_ram_read(cpu, buff, mem_addr, sizeof(buff));
+			mem_editor.DrawContents(buff, size, mem_addr);
 		}
 		else {
 			const char *text = "Not available while debuggee is running";

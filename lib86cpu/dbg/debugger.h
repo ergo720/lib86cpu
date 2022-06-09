@@ -21,6 +21,7 @@ void dbg_update_bp_hook(cpu_ctx_t *cpu_ctx);
 void dbg_add_bp_hook(cpu_ctx_t *cpu_ctx);
 std::vector<std::pair<addr_t, std::string>> dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num);
 void dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx);
+size_t dbg_ram_read(cpu_t *cpu, uint8_t *buffer, addr_t addr, size_t size);
 
 inline std::atomic_flag guest_running;
 inline std::uint32_t break_pc;
