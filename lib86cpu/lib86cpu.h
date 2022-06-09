@@ -89,9 +89,9 @@ API_FUNC lc86_status mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, b
 API_FUNC lc86_status mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority);
 API_FUNC lc86_status mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int priority, const char *rom_path, uint8_t *&out);
 API_FUNC lc86_status mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space);
-API_FUNC lc86_status mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out);
-API_FUNC lc86_status mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer);
-API_FUNC lc86_status mem_fill_block(cpu_t *cpu, addr_t addr, size_t size, int val);
+API_FUNC lc86_status mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out, size_t *actual_size = nullptr);
+API_FUNC lc86_status mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer, size_t *actual_size = nullptr);
+API_FUNC lc86_status mem_fill_block(cpu_t *cpu, addr_t addr, size_t size, int val, size_t *actual_size = nullptr);
 API_FUNC uint8_t io_read_8(cpu_t *cpu, port_t port);
 API_FUNC uint16_t io_read_16(cpu_t *cpu, port_t port);
 API_FUNC uint32_t io_read_32(cpu_t *cpu, port_t port);

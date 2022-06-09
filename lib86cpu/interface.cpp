@@ -503,7 +503,7 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 }
 
 lc86_status
-mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out)
+mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out, size_t *actual_size)
 {
 	size_t vec_offset = 0;
 	size_t page_offset = addr & PAGE_MASK;
@@ -527,9 +527,6 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out)
 					std::memcpy(out + vec_offset, get_rom_host_ptr(cpu, region, phys_addr), bytes_to_read);
 					break;
 
-				case mem_type::mmio:
-					return set_last_error(lc86_status::invalid_parameter);
-
 				case mem_type::alias: {
 					memory_region_t<addr_t> *alias = region;
 					AS_RESOLVE_ALIAS();
@@ -538,18 +535,20 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out)
 				}
 				break;
 
+				case mem_type::mmio:
 				case mem_type::unmapped:
-					LOG(log_level::warn, "Memory read to unmapped memory at address %#010x with size %zu", phys_addr, bytes_to_read);
-					std::memcpy(out + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
-					break;
-
 				default:
+					if (actual_size) {
+						*actual_size = vec_offset;
+					}
 					return set_last_error(lc86_status::internal_error);
 				}
 			}
 			else {
-				LOG(log_level::warn, "Memory read at address %#010x with size %zu is not completely inside a memory region", phys_addr, bytes_to_read);
-				std::memcpy(out + vec_offset, std::vector<uint8_t>(bytes_to_read, 0xFF).data(), bytes_to_read);
+				if (actual_size) {
+					*actual_size = vec_offset;
+				}
+				return set_last_error(lc86_status::internal_error);
 			}
 
 			page_offset = 0;
@@ -558,10 +557,16 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out)
 			addr += bytes_to_read;
 		}
 
+		if (actual_size) {
+			*actual_size = vec_offset;
+		}
 		return lc86_status::success;
 	}
 	catch (host_exp_t type) {
 		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
+		if (actual_size) {
+			*actual_size = vec_offset;
+		}
 		return set_last_error(lc86_status::guest_exp);
 	}
 }
@@ -569,8 +574,9 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out)
 // NOTE1: this is not correct if the client writes to the same tc we are executing (because we pass nullptr as tc argument to tc_invalidate)
 // NOTE2: if a page fault is raised on a page after the first one is written to, this will result in a partial write. I'm not sure if this is a problem though
 template<bool fill>
-lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *buffer, int val)
+lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *buffer, int val, size_t *actual_size)
 {
+	size_t size_tot = 0;
 	size_t page_offset = addr & PAGE_MASK;
 	size_t size_left = size;
 
@@ -600,9 +606,6 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *
 				case mem_type::rom:
 					break;
 
-				case mem_type::mmio:
-					return set_last_error(lc86_status::invalid_parameter);
-
 				case mem_type::alias: {
 					memory_region_t<addr_t> *alias = region;
 					AS_RESOLVE_ALIAS();
@@ -611,42 +614,53 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *
 				}
 				break;
 
+				case mem_type::mmio:
 				case mem_type::unmapped:
-					LOG(log_level::warn, "Memory write to unmapped memory at address %#010x with size %zu", phys_addr, bytes_to_write);
-					break;
-
 				default:
+					if (actual_size) {
+						*actual_size = size_tot;
+					}
 					return set_last_error(lc86_status::internal_error);
 				}
 			}
 			else {
-				LOG(log_level::warn, "Memory write at address %#010x with size %zu is not completely inside a memory region", phys_addr, bytes_to_write);
+				if (actual_size) {
+					*actual_size = size_tot;
+				}
+				return set_last_error(lc86_status::internal_error);
 			}
 
 			page_offset = 0;
 			buffer = static_cast<const uint8_t *>(buffer) + bytes_to_write;
+			size_tot += bytes_to_write;
 			size_left -= bytes_to_write;
 			addr += bytes_to_write;
 		}
 
+		if (actual_size) {
+			*actual_size = size_tot;
+		}
 		return lc86_status::success;
 	}
 	catch (host_exp_t type) {
 		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
+		if (actual_size) {
+			*actual_size = size_tot;
+		}
 		return set_last_error(lc86_status::guest_exp);
 	}
 }
 
 lc86_status
-mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer)
+mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer, size_t *actual_size)
 {
-	return mem_write_handler<false>(cpu, addr, size, buffer, 0);
+	return mem_write_handler<false>(cpu, addr, size, buffer, 0, actual_size);
 }
 
 lc86_status
-mem_fill_block(cpu_t *cpu, addr_t addr, size_t size, int val)
+mem_fill_block(cpu_t *cpu, addr_t addr, size_t size, int val, size_t *actual_size)
 {
-	return mem_write_handler<true>(cpu, addr, size, nullptr, val);
+	return mem_write_handler<true>(cpu, addr, size, nullptr, val, actual_size);
 }
 
 uint8_t
