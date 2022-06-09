@@ -54,6 +54,7 @@ file (GLOB HEADERS
  "${LIB86CPU_ROOT_DIR}/lib86cpu/support.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/types.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/debugger.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/imgui_memory_editor.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/imgui_wnd.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/main_wnd.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/glad/glad.h"

@@ -5,6 +5,7 @@
  */
 
 #include "imgui.h"
+#include "imgui_memory_editor.h"
 #include "lib86cpu_priv.h"
 #include "imgui_wnd.h"
 #include "debugger.h"
