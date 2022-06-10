@@ -202,15 +202,49 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 				cpu->cpu_ctx.regs.fs,
 				cpu->cpu_ctx.regs.gs
 			);
-			ImGui::Text("cr0: 0x%08X  cr2: 0x%08X  cr3: 0x%08X  cr4: 0x%08X  idtr: 0x%04hX  gdtr: 0x%04hX  ldtr: 0x%04hX  tr: 0x%04hX",
+			ImGui::Text("cs.base: 0x%08X  cs.limit: 0x%08X  cs.flags: 0x%08X  es.base: 0x%08X  es.limit: 0x%08X  es.flags: 0x%08X  ss.base: 0x%08X  ss.limit: 0x%08X",
+				cpu->cpu_ctx.regs.cs_hidden.base,
+				cpu->cpu_ctx.regs.cs_hidden.limit,
+				cpu->cpu_ctx.regs.cs_hidden.flags,
+				cpu->cpu_ctx.regs.es_hidden.base,
+				cpu->cpu_ctx.regs.es_hidden.limit,
+				cpu->cpu_ctx.regs.es_hidden.flags,
+				cpu->cpu_ctx.regs.ss_hidden.base,
+				cpu->cpu_ctx.regs.ss_hidden.limit
+			);
+			ImGui::Text("ss.limit: 0x%08X  ds.base: 0x%08X  ds.limit: 0x%08X  ds.flags: 0x%08X  fs.base: 0x%08X  fs.limit: 0x%08X  fs.flags: 0x%08X  gs.base: 0x%08X",
+				cpu->cpu_ctx.regs.ss_hidden.flags,
+				cpu->cpu_ctx.regs.ds_hidden.base,
+				cpu->cpu_ctx.regs.ds_hidden.limit,
+				cpu->cpu_ctx.regs.ds_hidden.flags,
+				cpu->cpu_ctx.regs.fs_hidden.base,
+				cpu->cpu_ctx.regs.fs_hidden.limit,
+				cpu->cpu_ctx.regs.fs_hidden.flags,
+				cpu->cpu_ctx.regs.gs_hidden.base
+			);
+			ImGui::Text("gs.limit: 0x%08X  gs.flags: 0x%08X  ldtr: 0x%04hX  tr: 0x%04hX  idtr.base: 0x%08X  idtr.limit: 0x%08X  gdtr.base: 0x%08X  gdtr.limit: 0x%08X",
+				cpu->cpu_ctx.regs.gs_hidden.limit,
+				cpu->cpu_ctx.regs.gs_hidden.flags,
+				cpu->cpu_ctx.regs.ldtr,
+				cpu->cpu_ctx.regs.tr,
+				cpu->cpu_ctx.regs.idtr_hidden.base,
+				cpu->cpu_ctx.regs.idtr_hidden.limit,
+				cpu->cpu_ctx.regs.gdtr_hidden.base,
+				cpu->cpu_ctx.regs.gdtr_hidden.limit
+			);
+			ImGui::Text("ldtr.base: 0x%08X  ldtr.limit: 0x%08X  ldtr.flags: 0x%08X  tr.base: 0x%08X  tr.limit: 0x%08X  tr.flags: 0x%08X",
+				cpu->cpu_ctx.regs.ldtr_hidden.base,
+				cpu->cpu_ctx.regs.ldtr_hidden.limit,
+				cpu->cpu_ctx.regs.ldtr_hidden.flags,
+				cpu->cpu_ctx.regs.tr_hidden.base,
+				cpu->cpu_ctx.regs.tr_hidden.limit,
+				cpu->cpu_ctx.regs.tr_hidden.flags
+			);
+			ImGui::Text("cr0: 0x%08X  cr2: 0x%08X  cr3: 0x%08X  cr4: 0x%08X",
 				cpu->cpu_ctx.regs.cr0,
 				cpu->cpu_ctx.regs.cr2,
 				cpu->cpu_ctx.regs.cr3,
-				cpu->cpu_ctx.regs.cr4,
-				cpu->cpu_ctx.regs.idtr,
-				cpu->cpu_ctx.regs.gdtr,
-				cpu->cpu_ctx.regs.ldtr,
-				cpu->cpu_ctx.regs.tr
+				cpu->cpu_ctx.regs.cr4
 			);
 			ImGui::Text("dr0: 0x%08X  dr1: 0x%08X  dr2: 0x%08X  dr3: 0x%08X  dr4: 0x%08X  dr5: 0x%08X  dr6: 0x%08X  dr7: 0x%08X",
 				cpu->cpu_ctx.regs.dr0,
