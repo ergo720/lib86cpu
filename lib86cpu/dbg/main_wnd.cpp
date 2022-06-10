@@ -19,9 +19,30 @@
 
 
 static GLFWwindow *main_wnd = nullptr;
+static cpu_t *g_cpu = nullptr;
 static std::atomic_flag has_terminated;
 static std::atomic_flag exit_requested;
 
+
+void
+dbg_draw_wnd(GLFWwindow *wnd, int fb_w, int fb_h)
+{
+	ImGui_ImplOpenGL3_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+
+	glfwGetWindowSize(wnd, &main_wnd_w, &main_wnd_h);
+	dbg_draw_imgui_wnd(g_cpu);
+
+	ImGui::Render();
+
+	glViewport(0, 0, fb_w, fb_h);
+	glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+	glfwSwapBuffers(wnd);
+}
 
 void
 dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
@@ -58,6 +79,8 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		return;
 	}
 
+	glfwSetFramebufferSizeCallback(main_wnd, dbg_draw_wnd);
+
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 	ImGui::StyleColorsDark();
@@ -71,6 +94,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 	dbg_add_bp_hook(&cpu->cpu_ctx);
 	break_pc = get_pc(&cpu->cpu_ctx);
 	mem_pc = break_pc;
+	g_cpu = cpu;
 
 	has_terminated.clear();
 	exit_requested.clear();
@@ -78,25 +102,11 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 	has_err.set_value(false);
 
 	while (!glfwWindowShouldClose(main_wnd)) {
-		glfwWaitEvents();
-
-		ImGui_ImplOpenGL3_NewFrame();
-		ImGui_ImplGlfw_NewFrame();
-		ImGui::NewFrame();
-
-		glfwGetWindowSize(main_wnd, &main_wnd_w, &main_wnd_h);
-		dbg_draw_imgui_wnd(cpu);
-
-		ImGui::Render();
-
 		int fb_w, fb_h;
 		glfwGetFramebufferSize(main_wnd, &fb_w, &fb_h);
-		glViewport(0, 0, fb_w, fb_h);
-		glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
-		glClear(GL_COLOR_BUFFER_BIT);
-		ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+		dbg_draw_wnd(main_wnd, fb_w, fb_h);
 
-		glfwSwapBuffers(main_wnd);
+		glfwWaitEvents();
 	}
 
 	// raise a debug interrupt and wait until the guest stops execution
@@ -120,6 +130,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 	write_setting_files(cpu);
 
 	main_wnd = nullptr;
+	g_cpu = nullptr;
 	exit_requested.clear();
 	has_terminated.test_and_set();
 	has_terminated.notify_one();
