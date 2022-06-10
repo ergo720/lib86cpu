@@ -70,6 +70,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 
 	dbg_add_bp_hook(&cpu->cpu_ctx);
 	break_pc = get_pc(&cpu->cpu_ctx);
+	mem_pc = break_pc;
 
 	has_terminated.clear();
 	exit_requested.clear();

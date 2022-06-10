@@ -364,40 +364,76 @@ dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num)
 	return ret;
 }
 
-size_t
-dbg_ram_read(cpu_t *cpu, uint8_t *buffer, addr_t addr, size_t size)
+uint8_t
+dbg_ram_read(const uint8_t *data, size_t off)
 {
-	assert(size && (size <= PAGE_SIZE));
+	// we return a NULL byte so that the memory editor displays them grayed out if we can't read the byte
+	// NOTE1: we don't need to change the cpl and wp of cr0 because we only perform privileged read accesses
+	// NOTE2: off is the offset from the address that is displayed in the memory editor
 
-	size_t size_read = 0;
+	cpu_t *cpu = reinterpret_cast<cpu_t *>(const_cast<uint8_t *>(data));
+	addr_t addr = static_cast<addr_t>(off) + mem_pc;
+	uint8_t byte;
 
 	try {
-		addr_t phys_addr = get_code_addr(cpu, addr, addr - cpu->cpu_ctx.regs.cs_hidden.base);
-
-		if ((addr & ~PAGE_MASK) != ((addr + size - 1) & ~PAGE_MASK)) {
-			size_t bytes_to_read, bytes_in_first_page;
-			bytes_to_read = bytes_in_first_page = (PAGE_SIZE - (addr & PAGE_MASK));
-			bytes_to_read = as_ram_dispatch_read(cpu, phys_addr, bytes_to_read, as_memory_search_addr<uint8_t>(cpu, phys_addr), buffer);
-			if (bytes_to_read < bytes_in_first_page) {
-				return bytes_to_read;
-			}
-
-			size_read = bytes_to_read;
-			addr_t phys_addr2 = get_code_addr(cpu, addr + bytes_in_first_page, addr - cpu->cpu_ctx.regs.cs_hidden.base);
-			bytes_to_read = (size - bytes_to_read);
-			buffer += bytes_in_first_page;
-			bytes_to_read = as_ram_dispatch_read(cpu, phys_addr2, bytes_to_read, as_memory_search_addr<uint8_t>(cpu, phys_addr2), buffer);
-			size_read = bytes_to_read + bytes_in_first_page;
+		addr_t phys_addr = get_read_addr(cpu, addr, 2, addr - cpu->cpu_ctx.regs.cs_hidden.base);
+		size_t size_read = as_ram_dispatch_read(cpu, phys_addr, 1, as_memory_search_addr<uint8_t>(cpu, phys_addr), &byte);
+		if (size_read) {
+			return byte;
 		}
-		else {
-			size_read = as_ram_dispatch_read(cpu, phys_addr, size, as_memory_search_addr<uint8_t>(cpu, phys_addr), buffer);
-		}
-
-		return size_read;
 	}
 	catch (host_exp_t type) {
-		return size_read;
+		// just fallthrough
 	}
+
+	return 0;
+}
+
+void
+dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
+{
+	// NOTE: off is the offset from the address that is displayed in the memory editor
+
+	cpu_t *cpu = reinterpret_cast<cpu_t *>(data);
+	addr_t addr = static_cast<addr_t>(off) + mem_pc;
+
+	// clear wp of cr0, so that we can write to read-only pages
+	uint32_t old_wp = cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK;
+	cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK;
+
+	try {
+		uint8_t is_code;
+		addr_t phys_addr = get_write_addr(cpu, addr, 2, addr - cpu->cpu_ctx.regs.cs_hidden.base, &is_code);
+		memory_region_t<addr_t> *region = as_memory_search_addr<uint8_t>(cpu, phys_addr);
+
+		retry:
+		switch (region->type)
+		{
+		case mem_type::ram:
+			ram_write<uint8_t>(cpu, get_ram_host_ptr(cpu, region, addr), val);
+			if (is_code) {
+				tc_invalidate(&cpu->cpu_ctx, nullptr, addr, 1, addr - cpu->cpu_ctx.regs.cs_hidden.base);
+			}
+			break;
+
+		case mem_type::rom:
+			break;
+
+		case mem_type::alias: {
+			memory_region_t<addr_t> *alias = region;
+			AS_RESOLVE_ALIAS();
+			addr = region->start + alias_offset + (addr - alias->start);
+			goto retry;
+		}
+		break;
+
+		}
+	}
+	catch (host_exp_t type) {
+		// just fallthrough
+	}
+
+	(cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK) |= old_wp;
 }
 
 void

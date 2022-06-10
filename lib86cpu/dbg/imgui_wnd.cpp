@@ -153,10 +153,9 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 		ImGui::BeginChild("Memory view");
 		if (!guest_running.test()) {
 			static MemoryEditor mem_editor;
-			static uint32_t mem_addr = break_pc;
-			uint8_t buff[PAGE_SIZE];
-			size_t size = dbg_ram_read(cpu, buff, mem_addr, sizeof(buff));
-			mem_editor.DrawContents(buff, size, mem_addr);
+			mem_editor.ReadFn = &dbg_ram_read;
+			mem_editor.WriteFn = &dbg_ram_write;
+			mem_editor.DrawContents(cpu, PAGE_SIZE, mem_pc);
 		}
 		else {
 			const char *text = "Not available while debuggee is running";
