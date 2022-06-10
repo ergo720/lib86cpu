@@ -148,6 +148,10 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 	ImGui::SetNextWindowPos(ImVec2(wnd_w / 2 + 5, 10), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2((wnd_w - 30) / 2, (wnd_h - 30) / 2), ImGuiCond_FirstUseEver);
 	if (ImGui::Begin("Memory editor")) {
+		static char buff[9];
+		ImGui::PushItemWidth(80.0f);
+		bool enter_pressed = ImGui::InputText("Address", buff, IM_ARRAYSIZE(buff), ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue);
+		ImGui::PopItemWidth();
 		ImGui::ColorEdit3("Text color", text_col);
 		ImGui::ColorEdit3("Background color", bk_col);
 		ImGui::BeginChild("Memory view");
@@ -155,6 +159,11 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 			static MemoryEditor mem_editor;
 			mem_editor.ReadFn = &dbg_ram_read;
 			mem_editor.WriteFn = &dbg_ram_write;
+			if (enter_pressed) {
+				// NOTE: it can't fail because ImGui::InputText only accepts hex digits and mem_pc is large enough to store every possible 32 bit address
+				[[maybe_unused]] auto ret = std::from_chars(buff, buff + sizeof(buff), mem_pc, 16);
+				assert(ret.ec == std::errc());
+			}
 			mem_editor.DrawContents(cpu, PAGE_SIZE, mem_pc);
 		}
 		else {
