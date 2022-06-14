@@ -445,7 +445,7 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 	uint32_t ret_eip = mem_read<uint32_t>(cpu_ctx->cpu, cpu_ctx->regs.esp, 0, 0);
 	addr_t pc = cpu_ctx->regs.cs_hidden.base + ret_eip - 1; // if this is our int3, it will always be one byte large
 	if (break_list.contains(pc)) {
-		if (cpu_ctx->cpu->iret_fn.second != (cpu_ctx->hflags | (cpu_ctx->regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK)))) {
+		if (cpu_ctx->cpu->iret_fn.second != ((cpu_ctx->hflags & HFLG_CONST) | (cpu_ctx->regs.eflags & EFLAGS_CONST))) {
 			// the constant cpu state changed, so we need to regenerate the iret function
 			gen_iret_fn(cpu_ctx->cpu);
 		}

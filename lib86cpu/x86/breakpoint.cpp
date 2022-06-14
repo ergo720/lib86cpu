@@ -71,7 +71,7 @@ cpu_check_watchpoints(cpu_t *cpu, addr_t addr, size_t size, int type, uint32_t e
 		if (cpu_check_watchpoint_enabled(cpu, dr_idx) && cpu_check_watchpoint_overlap(cpu, addr, size, dr_idx)) {
 			int dr7_type = cpu_get_watchpoint_type(cpu, dr_idx);
 			if (type == DR7_TYPE_DATA_W) {
-				if ((dr7_type == DR7_TYPE_DATA_W) || (dr7_type == DR7_TYPE_DATA_RW)) {
+				if (((dr7_type == DR7_TYPE_DATA_W) || (dr7_type == DR7_TYPE_DATA_RW)) && !(cpu->cpu_ctx.hflags & HFLG_DBG_TRAP)) {
 					match = true;
 					break;
 				}
@@ -82,7 +82,7 @@ cpu_check_watchpoints(cpu_t *cpu, addr_t addr, size_t size, int type, uint32_t e
 					break;
 				}
 			}
-			else if (type == dr7_type) {
+			else if ((type == dr7_type) && !(cpu->cpu_ctx.hflags & HFLG_DBG_TRAP)) { // either DR7_TYPE_IO_RW or DR7_TYPE_DATA_RW
 				match = true;
 				break;
 			}

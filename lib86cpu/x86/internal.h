@@ -19,20 +19,29 @@ void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);
 void cpu_msr_read(cpu_ctx_t *cpu_ctx);
 inline addr_t get_pc(cpu_ctx_t *cpu_ctx);
 
-// cpu hidden flags (assumed to be constant during exec of a tc, together with tf, iopl, rf and ac of eflags)
+// cpu hidden flags (assumed to be constant during exec of a tc, together with a flag subset of eflags)
+// HFLG_CPL: cpl of cpu
+// HFLG_CS32: 16 or 32 bit code segment
+// HFLG_SS32: 16 or 32 bit stack segment
+// HFLG_PE_MODE: real or protected mode
+// HFLG_CR0_EM: em flag of cr0
 // HFLG_TRAMP: used to select the trampoline tc instead of the hook tc
+// HFLG_DBG_TRAP: used to suppress data/io watchpoints (not recorded in the tc flags)
 #define CPL_SHIFT       0
 #define CS32_SHIFT      2
 #define SS32_SHIFT      3
 #define PE_MODE_SHIFT   4
 #define EM_SHIFT        5
 #define TRAMP_SHIFT     6
+#define DBG_TRAP_SHIFT  7
 #define HFLG_CPL        (3 << CPL_SHIFT)
 #define HFLG_CS32       (1 << CS32_SHIFT)
 #define HFLG_SS32       (1 << SS32_SHIFT)
 #define HFLG_PE_MODE    (1 << PE_MODE_SHIFT)
 #define HFLG_CR0_EM     (1 << EM_SHIFT)
 #define HFLG_TRAMP      (1 << TRAMP_SHIFT)
+#define HFLG_DBG_TRAP   (1 << DBG_TRAP_SHIFT)
+#define HFLG_CONST      (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP)
 
 // cpu interrupt flags
 #define CPU_NO_INT   0
@@ -139,17 +148,18 @@ inline addr_t get_pc(cpu_ctx_t *cpu_ctx);
 #define F80_HIGH_idx    1
 
 // eflags macros
-#define TF_MASK     (1 << 8)
-#define IF_MASK     (1 << 9)
-#define DF_MASK     (1 << 10)
-#define IOPL_MASK   (3 << 12)
-#define NT_MASK     (1 << 14)
-#define RF_MASK     (1 << 16)
-#define VM_MASK     (1 << 17)
-#define AC_MASK     (1 << 18)
-#define VIF_MASK    (1 << 19)
-#define VIP_MASK    (1 << 20)
-#define ID_MASK     (1 << 21)
+#define TF_MASK        (1 << 8)
+#define IF_MASK        (1 << 9)
+#define DF_MASK        (1 << 10)
+#define IOPL_MASK      (3 << 12)
+#define NT_MASK        (1 << 14)
+#define RF_MASK        (1 << 16)
+#define VM_MASK        (1 << 17)
+#define AC_MASK        (1 << 18)
+#define VIF_MASK       (1 << 19)
+#define VIP_MASK       (1 << 20)
+#define ID_MASK        (1 << 21)
+#define EFLAGS_CONST   (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK)
 
 // exception numbers
 #define EXP_DE  0   // divide error

@@ -38,54 +38,6 @@ translated_code_t::~translated_code_t()
 	this->cpu->jit->free_code_block(this->ptr_code);
 }
 
-static translated_code_t *
-tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
-{
-	try {
-		// run the translated code
-		return tc->ptr_code(cpu_ctx);
-	}
-	catch (host_exp_t type) {
-		switch (type)
-		{
-		case host_exp_t::pf_exp: {
-			// page fault while excecuting the translated code
-			try {
-				// the exception handler always returns nullptr
-				return cpu_ctx->exp_fn(cpu_ctx);
-			}
-			catch (host_exp_t type) {
-				assert(type == host_exp_t::pf_exp);
-
-				// page fault while delivering another exception
-				// NOTE: we abort because we don't support double/triple faults yet
-				LIB86CPU_ABORT();
-			}
-		}
-		break;
-
-		case host_exp_t::de_exp:
-			// debug exception trap while excecuting the translated code
-			// we first remove the watchpoint for the faulting address, execute the trapping instruction,
-			// reinstall the watchpoint and jump to the debug handler
-			assert(cpu_ctx->exp_info.exp_data.idx == EXP_DB);
-
-			cpu_ctx->cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_DBG_TRAP);
-			cpu_ctx->tlb[cpu_ctx->exp_info.exp_data.fault_addr >> PAGE_SHIFT] &= ~TLB_WATCH;
-			cpu_ctx->regs.eip = cpu_ctx->exp_info.exp_data.eip;
-			tc_invalidate(cpu_ctx, nullptr, get_pc(cpu_ctx), 1, cpu_ctx->regs.eip); // force retranslation
-			[[fallthrough]];
-
-		case host_exp_t::cpu_mode_changed:
-		case host_exp_t::halt_tc:
-			return nullptr;
-
-		default:
-			LIB86CPU_ABORT_msg("Unknown host exception in %s", __func__);
-		}
-	}
-}
-
 static inline uint32_t
 tc_hash(addr_t pc)
 {
@@ -177,7 +129,7 @@ tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t 
 static translated_code_t *
 tc_cache_search(cpu_t *cpu, addr_t pc)
 {
-	uint32_t flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
+	uint32_t flags = (cpu->cpu_ctx.hflags & HFLG_CONST) | (cpu->cpu_ctx.regs.eflags & EFLAGS_CONST);
 	uint32_t idx = tc_hash(pc);
 	auto it = cpu->code_cache[idx].begin();
 	while (it != cpu->code_cache[idx].end()) {
@@ -422,13 +374,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 	init_instr_decoder(disas_ctx, &decoder);
 
-	// clear rf if it was set by the previous tc. Note that the cpu does this after having checked for instr breakpoints but before executing the instr. If we do
-	// this at the end of the tc, it's possible that one of the instr in the tc raise an exp and that wil prevent us from clearing the flag
-	if (cpu->cpu_ctx.regs.eflags & RF_MASK) {
-		assert(disas_ctx->flags & DISAS_FLG_ONE_INSTR);
-		ST(GEP_EFLAGS(), AND(LD(GEP_EFLAGS()), CONST32(~RF_MASK)));
-	}
-
 	do {
 		cpu->instr_eip = CONST32(pc - cpu_ctx->regs.cs_hidden.base);
 
@@ -436,6 +381,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			status = decode_instr(cpu, disas_ctx, &decoder, &instr);
 		}
 		catch (host_exp_t type) {
+			// this happens on instr breakpoints (not int3)
 			assert(type == host_exp_t::de_exp);
 			RAISEin0(EXP_DB);
 			return;
@@ -454,6 +400,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			LOG(log_level::debug, "0x%08X  %s", disas_ctx->virt_pc - bytes, instr_logfn(disas_ctx->virt_pc - bytes, &instr).c_str());
 		}
 		else {
+			// NOTE: if rf is set, then it means we are translating the instr that caused a breakpoint. However, the exp handler always clears rf on itw own,
+			// which means we do not need to do it again here in the case the original instr raises another kind of exp
 			switch (status)
 			{
 			case ZYDIS_STATUS_BAD_REGISTER:
@@ -2809,8 +2757,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							cpu->bb = vec_bb[1];
 						}
 						// invalidate the tc if it is an instr breakpoint. This, because those are only checked at translation time and not at runtime. If we don't, the existing
-						// tc's will stil break on the old address. Note that this is not a problem for data watchpoints because those are signaled as a flag in the tlb, which is
-						// always checked at runtime by the tc's
+						// tc's will still break on the old address. Note that this is not a problem for data watchpoints because the tc of the trapped instr is never inserted in
+						// the code cache
 						std::vector<BasicBlock *> vec_bb = getBBs(2);
 						BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(AND(SHR(LD_R32(DR7_idx), CONST32(DR7_TYPE_SHIFT + (dr_idx - DR_offset) * 4)), CONST32(3)), CONST32(DR7_TYPE_INSTR)));
 						cpu->bb = vec_bb[0];
@@ -5379,12 +5327,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		ST_R32(CONST32(pc - cpu_ctx->regs.cs_hidden.base), EIP_idx);
 	}
 
-	// unconditionally jump to the exp handler if we need to service a debug trap
-	if (cpu->cpu_flags & CPU_DBG_TRAP) {
-		Value *tlb_idx = GEP(cpu->ptr_tlb, CONST32(cpu->cpu_ctx.exp_info.exp_data.fault_addr >> PAGE_SHIFT));
-		ST(tlb_idx, OR(LD(tlb_idx), CONST32(TLB_WATCH)));
-		raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx) });
-		cpu->bb = getBB();
+	// clear rf if it is set. This happens in the one-instr tc that contains the instr that originally caused the instr breakpoint. This must be done at runtime
+	// because otherwise tc_cache_insert will register rf as clear, when it was set at the beginning of this tc
+	if (cpu->cpu_ctx.regs.eflags & RF_MASK) {
+		assert(disas_ctx->flags & DISAS_FLG_ONE_INSTR);
+		ST(GEP_EFLAGS(), AND(LD(GEP_EFLAGS()), CONST32(~RF_MASK)));
 	}
 }
 
@@ -5402,6 +5349,9 @@ cpu_do_int(cpu_ctx_t *cpu_ctx)
 	throw lc86_exp_abort("Hardware interrupts are not implemented yet", lc86_status::internal_error);
 }
 
+// forward declare for cpu_main_loop
+translated_code_t *tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc);
+
 template<bool is_tramp>
 void cpu_suppress_trampolines(cpu_t *cpu)
 {
@@ -5412,7 +5362,7 @@ void cpu_suppress_trampolines(cpu_t *cpu)
 	}
 }
 
-template<bool is_tramp, typename T>
+template<bool is_tramp, bool is_trap, typename T>
 void cpu_main_loop(cpu_t *cpu, T &&lambda)
 {
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
@@ -5447,7 +5397,11 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			goto retry;
 		}
 
-		ptr_tc = tc_cache_search(cpu, pc);
+		if constexpr (!is_trap) {
+			// if we are executing a trapped instr, we must always emit a new tc to run it and not consider other tc's in the cache. Doing so avoids having to invalidate
+			// the tc in the cache that contains the trapped instr
+			ptr_tc = tc_cache_search(cpu, pc);
+		}
 
 		if (ptr_tc == nullptr) {
 
@@ -5474,29 +5428,34 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			disas_ctx.flags = ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT) |
 				((cpu->cpu_ctx.hflags & HFLG_PE_MODE) >> (PE_MODE_SHIFT - 1)) |
 				(cpu->cpu_flags & CPU_DISAS_ONE) |
-				((cpu->cpu_ctx.regs.eflags & RF_MASK) >> 9); // if rf is set, we need to clear it after the first instr executed
+				((cpu->cpu_ctx.regs.eflags & RF_MASK) >> 9); // if rf is set, we need to clear it after the first instr executed, so only disas one instr
 			disas_ctx.virt_pc = virt_pc;
 			disas_ctx.pc = pc;
 
-			const auto it = cpu->hook_map.find(disas_ctx.virt_pc);
-			bool take_hook;
-			if constexpr (is_tramp) {
-				take_hook = (it != cpu->hook_map.end()) && !(cpu->cpu_ctx.hflags & HFLG_TRAMP);
-			}
-			else {
-				take_hook = it != cpu->hook_map.end();
-			}
+			if constexpr (!is_trap) {
+				const auto it = cpu->hook_map.find(disas_ctx.virt_pc);
+				bool take_hook;
+				if constexpr (is_tramp) {
+					take_hook = (it != cpu->hook_map.end()) && !(cpu->cpu_ctx.hflags & HFLG_TRAMP);
+				}
+				else {
+					take_hook = it != cpu->hook_map.end();
+				}
 
-			if (take_hook) {
-				// XXX: putting a hook on the addr of an instr that causes a debug exception will cause the watchpoint not to be
-				// reinstalled. That's because we will skip the call to cpu_translate below, which reinstalls it later
-				cpu->instr_eip = CONST32(disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
-				hook_emit(cpu, it->second.get());
-				cpu->tc->flags |= TC_FLG_HOOK;
+				if (take_hook) {
+					cpu->instr_eip = CONST32(disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
+					hook_emit(cpu, it->second.get());
+					cpu->tc->flags |= TC_FLG_HOOK;
+				}
+				else {
+					// start guest code translation
+					cpu_translate(cpu, &disas_ctx);
+				}
 			}
 			else {
-				// start guest code translation
+				// don't take hooks if we are executing a trapped instr. Otherwise, if the trapped instr is also hooked, we will take the hook instead of executing it
 				cpu_translate(cpu, &disas_ctx);
+				call_trap_handler_emit(cpu);
 			}
 
 			create_tc_epilogue(cpu);
@@ -5526,7 +5485,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 
 			tc->pc = pc;
 			tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
-			tc->cpu_flags = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
+			tc->cpu_flags = (cpu->cpu_ctx.hflags & HFLG_CONST) | (cpu->cpu_ctx.regs.eflags & EFLAGS_CONST);
 			tc->ptr_code = reinterpret_cast<entry_t>(cpu->jit->lookup("main")->getAddress());
 			assert(tc->ptr_code);
 			tc->jmp_offset[0] = reinterpret_cast<entry_t>(cpu->jit->lookup("exit")->getAddress());
@@ -5557,7 +5516,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 				}
 
 				cpu_suppress_trampolines<is_tramp>(cpu);
-				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE | CPU_FORCE_INSERT | CPU_DBG_TRAP);
+				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE | CPU_FORCE_INSERT);
 				tc_run_code(&cpu->cpu_ctx, ptr_tc);
 				prev_tc = nullptr;
 				continue;
@@ -5598,6 +5557,57 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 	}
 }
 
+translated_code_t *
+tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
+{
+	try {
+		// run the translated code
+		return tc->ptr_code(cpu_ctx);
+	}
+	catch (host_exp_t type) {
+		switch (type)
+		{
+		case host_exp_t::pf_exp: {
+			// page fault while excecuting the translated code
+			try {
+				// the exception handler always returns nullptr
+				return cpu_ctx->exp_fn(cpu_ctx);
+			}
+			catch (host_exp_t type) {
+				assert(type == host_exp_t::pf_exp);
+
+				// page fault while delivering another exception
+				// NOTE: we abort because we don't support double/triple faults yet
+				LIB86CPU_ABORT();
+			}
+		}
+		break;
+
+		case host_exp_t::de_exp: {
+			// debug exception trap (mem/io r/w watch) while excecuting the translated code.
+			// We set CPU_DBG_TRAP, so that we can execute the trapped instruction without triggering again a de exp,
+			// and then jump to the debug handler. Note thate eip points to the trapped instr, so we can execute it.
+			assert(cpu_ctx->exp_info.exp_data.idx == EXP_DB);
+
+			cpu_ctx->cpu->cpu_flags |= CPU_DISAS_ONE;
+			cpu_ctx->hflags |= HFLG_DBG_TRAP;
+			cpu_ctx->regs.eip = cpu_ctx->exp_info.exp_data.eip;
+			// run the main loop only once, since we only execute the trapped instr
+			int i = 0;
+			cpu_main_loop<false, true>(cpu_ctx->cpu, [&i]() { return i++ == 0; });
+		}
+		[[fallthrough]];
+
+		case host_exp_t::cpu_mode_changed:
+		case host_exp_t::halt_tc:
+			return nullptr;
+
+		default:
+			LIB86CPU_ABORT_msg("Unknown host exception in %s", __func__);
+		}
+	}
+}
+
 lc86_status
 cpu_start(cpu_t *cpu)
 {
@@ -5625,7 +5635,7 @@ cpu_start(cpu_t *cpu)
 
 	try {
 		gen_exp_fn(cpu);
-		cpu_main_loop<false>(cpu, []() { return true; });
+		cpu_main_loop<false, false>(cpu, []() { return true; });
 	}
 	catch (lc86_exp_abort &exp) {
 		if (cpu->cpu_flags & CPU_DBG_PRESENT) {
@@ -5646,5 +5656,5 @@ cpu_exec_trampoline(cpu_t *cpu, const uint32_t ret_eip)
 {
 	// set the trampoline flag, so that we can call the trampoline tc instead of the hook tc
 	cpu->cpu_ctx.hflags |= HFLG_TRAMP;
-	cpu_main_loop<true>(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
+	cpu_main_loop<true, false>(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
 }

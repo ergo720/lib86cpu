@@ -305,6 +305,15 @@ check_int_emit(cpu_t *cpu)
 }
 
 void
+call_trap_handler_emit(cpu_t *cpu)
+{
+	// clear HFLG_DBG_TRAP after we have executed the trapped instr, so traps are active again
+	ST(cpu->ptr_hflags, AND(LD(cpu->ptr_hflags), CONST32(~HFLG_DBG_TRAP)));
+	raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx) });
+	cpu->bb = getBB();
+}
+
+void
 link_direct_emit(cpu_t *cpu, const std::vector<addr_t> &vec_addr, Value *target_addr)
 {
 	// make sure we check for interrupts before jumping to the next tc
@@ -1001,7 +1010,7 @@ gen_iret_fn(cpu_t *cpu)
 	cpu->iret_fn.first = reinterpret_cast<iret_t>(cpu->jit->lookup("iret")->getAddress());
 	assert(cpu->iret_fn.first);
 	// save the current state of the constant cpu flags. This is necessary because they might change when we need to call iret again
-	cpu->iret_fn.second = cpu->cpu_ctx.hflags | (cpu->cpu_ctx.regs.eflags & (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK));
+	cpu->iret_fn.second = (cpu->cpu_ctx.hflags & HFLG_CONST) | (cpu->cpu_ctx.regs.eflags & EFLAGS_CONST);
 	cpu->jit->remove_symbols(std::vector<std::string> { "iret" });
 	cpu->tc = nullptr;
 	cpu->bb = nullptr;
@@ -2353,5 +2362,13 @@ hook_emit(cpu_t *cpu, hook *obj)
 	cpu->jit->define_absolute(cpu->jit->mangle(hook), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(obj->addr),
 		JITSymbolFlags::Absolute | JITSymbolFlags::Exported));
 	CallInst::Create(hook, args_val, "", cpu->bb);
+
+	// clear rf if it is set. This must be done at runtime because otherwise tc_cache_insert will register rf as clear, when it was set at the beginning of this tc.
+	// This also must be done after the hook is called, so that if the client uses a trampoline, the instr breakpoint is not triggered again, since it has
+	// already been triggered before the hook was called.
+	if (cpu->cpu_ctx.regs.eflags & RF_MASK) {
+		ST(GEP_EFLAGS(), AND(LD(GEP_EFLAGS()), CONST32(~RF_MASK)));
+	}
+
 	check_int_emit(cpu);
 }

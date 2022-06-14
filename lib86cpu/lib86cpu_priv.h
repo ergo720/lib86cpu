@@ -74,7 +74,7 @@ struct exp_data_t {
 	uint32_t fault_addr;    // addr that caused the exception
 	uint16_t code;          // error code used by the exception (if any)
 	uint16_t idx;           // index number of the exception
-	uint32_t eip;           // eip of the instr that generated the exception
+	uint32_t eip;           // eip to return to after the exception is serviced
 };
 
 struct exp_info_t {
