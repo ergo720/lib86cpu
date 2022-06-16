@@ -30,6 +30,8 @@ int get_reg_idx(ZydisRegister reg);
 int get_seg_prfx_idx(ZydisDecodedInstruction *instr);
 Value *mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_priv);
 void mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const unsigned is_priv);
+Value *io_read_emit(cpu_t *cpu, Value *port, const unsigned size_mode);
+void io_write_emit(cpu_t *cpu, Value *port, Value *value, const unsigned size_mode);
 void check_io_priv_emit(cpu_t *cpu, Value *port, uint8_t size_mode);
 void stack_push_emit(cpu_t *cpu, const std::vector<Value *> &vec, uint32_t size_mode);
 std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at = 0);
@@ -250,8 +252,8 @@ default: \
 #define MEM_PUSH(vec) stack_push_emit(cpu, vec, size_mode)
 #define MEM_POP(n) stack_pop_emit(cpu, size_mode, n)
 #define MEM_POP_AT(n, at) stack_pop_emit(cpu, size_mode, n, at)
-#define LD_IO(idx, port) CallInst::Create(cpu->ptr_mem_ldfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, port }, "", cpu->bb)
-#define ST_IO(idx, port, val) CallInst::Create(cpu->ptr_mem_stfn[idx], std::vector<Value *> { cpu->ptr_cpu_ctx, port, val }, "", cpu->bb)
+#define LD_IO(port) io_read_emit(cpu, port, size_mode)
+#define ST_IO(port, val) io_write_emit(cpu, port, val, size_mode)
 
 #define LD_PARITY(idx) LD(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST32(0), idx }, "", cpu->bb))
 #define RAISE(code, idx) raise_exception_emit(cpu, std::vector<Value *> { CONST32(0), code, CONST16(idx), cpu->instr_eip })

@@ -16,12 +16,13 @@
 
 // lib86cpu error flags
 enum class lc86_status : int32_t {
-	internal_error = -6,
+	internal_error = -7,
 	no_memory,
 	invalid_parameter,
 	already_exist,
 	not_found,
 	guest_exp,
+	too_many,
 	success,
 };
 

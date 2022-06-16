@@ -9,6 +9,45 @@
 #include <assert.h>
 
 
+void
+iotlb_fill(cpu_t *cpu, port_t port, memory_region_t<port_t> *io)
+{
+	auto it = std::find_if(cpu->iotlb_regions.begin(), cpu->iotlb_regions.end(), [io](const cached_io_region &region) {
+		return io == region.io;
+		});
+
+	if (it == cpu->iotlb_regions.end()) {
+		// note that emplace_back can invalidate all iterators/pointers, but not the element indices, so we don't need to flush the iotlb
+		cpu->iotlb_regions.emplace_back(io, io->read_handler, io->write_handler, io->opaque);
+		cpu->iotlb_regions_ptr = &cpu->iotlb_regions[0];
+		it = std::prev(cpu->iotlb_regions.end(), 1);
+	}
+
+	unsigned iotlb_idx = port >> IO_SHIFT;
+	cpu->cpu_ctx.iotlb[iotlb_idx] = ((cpu->cpu_ctx.iotlb[iotlb_idx] & IOTLB_WATCH) | (IOTLB_VALID | (std::distance(cpu->iotlb_regions.begin(), it) << IO_SHIFT)));
+}
+
+void
+iotlb_flush(cpu_t *cpu, memory_region_t<port_t> *io)
+{
+	auto it = std::find_if(cpu->iotlb_regions.begin(), cpu->iotlb_regions.end(), [io](const cached_io_region &region) {
+		return io == region.io;
+		});
+
+	if (it != cpu->iotlb_regions.end()) {
+		// erasing an element invalidates all iterators/pointers to that element and after it, and element indices are changed as well, so we need
+		// to flush all entries of the affected regions
+		std::for_each(it, cpu->iotlb_regions.end(), [cpu](const cached_io_region &region) {
+			for (port_t port = region.io->start; port <= region.io->end; port += IO_SIZE) {
+				unsigned iotlb_idx = port >> IO_SHIFT;
+				cpu->cpu_ctx.iotlb[iotlb_idx] = (cpu->cpu_ctx.iotlb[iotlb_idx] & IOTLB_WATCH);
+			}
+			});
+		cpu->iotlb_regions.erase(it);
+		cpu->iotlb_regions_ptr = &cpu->iotlb_regions[0];
+	}
+}
+
 static uint32_t
 tlb_gen_access_mask(cpu_t *cpu, uint8_t user, uint8_t is_write)
 {
@@ -302,16 +341,17 @@ get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip)
 }
 
 addr_t
-get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx)
+get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, uint32_t is_code, disas_ctx_t *disas_ctx)
 {
-	// overloaded get_code_addr that does not throw host exceptions
+	// overloaded get_code_addr that does not throw host exceptions, used in cpu_translate and by the debugger
+	// NOTE: the debugger should not set is_code, since it doesn't execute the instructions
 
 	uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
 	if ((tlb_entry & (tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL])) == 0) {
-		return mmu_translate_addr<false>(cpu, addr, TLB_CODE, eip, disas_ctx);
+		return mmu_translate_addr<false>(cpu, addr, is_code, eip, disas_ctx);
 	}
 
-	cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] = tlb_entry | TLB_CODE;
+	cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] = tlb_entry | is_code;
 	return (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
 }
 
@@ -362,7 +402,7 @@ ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer)
 			return;
 		}
 
-		addr_t addr = get_code_addr(cpu, disas_ctx->virt_pc + bytes_in_first_page, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, disas_ctx);
+		addr_t addr = get_code_addr(cpu, disas_ctx->virt_pc + bytes_in_first_page, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, TLB_CODE, disas_ctx);
 		if (disas_ctx->exp_data.idx == EXP_PF) {
 			// a page fault will be raised when fetching from the second page
 			disas_ctx->instr_buff_size = bytes_in_first_page;

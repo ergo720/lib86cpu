@@ -366,7 +366,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	addr_t pc = disas_ctx->virt_pc;
 	// we can use the same indexes for both loads and stores because they have the same order in cpu->ptr_mem_xxfn
 	static const uint8_t fn_idx[3] = { MEM_LD32_idx, MEM_LD16_idx, MEM_LD8_idx };
-	static const uint8_t fn_io_idx[3] = { IO_LD32_idx, IO_LD16_idx, IO_LD8_idx };
 
 	ZydisDecodedInstruction instr;
 	ZydisDecoder decoder;
@@ -429,7 +428,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case ZYDIS_STATUS_INSTRUCTION_TOO_LONG: {
 				// instruction length > 15 bytes
 				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
-				volatile addr_t addr = get_code_addr(cpu, disas_ctx->virt_pc + X86_MAX_INSTR_LENGTH, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, disas_ctx);
+				volatile addr_t addr = get_code_addr(cpu, disas_ctx->virt_pc + X86_MAX_INSTR_LENGTH, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, TLB_CODE, disas_ctx);
 				if (disas_ctx->exp_data.idx == EXP_PF) {
 					disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
 					RAISEin(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx, disas_ctx->exp_data.eip);
@@ -1836,7 +1835,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0xE5: {
 				Value *port = GET_IMM8();
 				check_io_priv_emit(cpu, ZEXT32(port), size_mode);
-				Value *val = LD_IO(fn_io_idx[size_mode], ZEXT16(port));
+				Value *val = LD_IO(ZEXT16(port));
 				size_mode == SIZE16 ? ST_R16(val, EAX_idx) : size_mode == SIZE32 ? ST_R32(val, EAX_idx) : ST_R8L(val, EAX_idx);
 			}
 			break;
@@ -1848,7 +1847,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0xED: {
 				Value *port = LD_R16(EDX_idx);
 				check_io_priv_emit(cpu, ZEXT32(port), size_mode);
-				Value *val = LD_IO(fn_io_idx[size_mode], port);
+				Value *val = LD_IO(port);
 				size_mode == SIZE16 ? ST_R16(val, EAX_idx) : size_mode == SIZE32 ? ST_R32(val, EAX_idx) : ST_R8L(val, EAX_idx);
 			}
 			break;
@@ -1949,19 +1948,19 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				{
 				case SIZE8:
 					val = CONST32(1);
-					io_val = LD_IO(IO_LD8_idx, port);
+					io_val = LD_IO(port);
 					ST_MEM(MEM_LD8_idx, addr, io_val);
 					break;
 
 				case SIZE16:
 					val = CONST32(2);
-					io_val = LD_IO(IO_LD16_idx, port);
+					io_val = LD_IO(port);
 					ST_MEM(MEM_LD16_idx, addr, io_val);
 					break;
 
 				case SIZE32:
 					val = CONST32(4);
-					io_val = LD_IO(IO_LD32_idx, port);
+					io_val = LD_IO(port);
 					ST_MEM(MEM_LD32_idx, addr, io_val);
 					break;
 
@@ -3344,7 +3343,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0xE7: {
 				Value *port = CONST8(instr.operands[OPNUM_DST].imm.value.u);
 				check_io_priv_emit(cpu, ZEXT32(port), size_mode);
-				ST_IO(fn_io_idx[size_mode], ZEXT16(port), size_mode == SIZE16 ? LD_R16(EAX_idx) : size_mode == SIZE32 ? LD_R32(EAX_idx) : LD_R8L(EAX_idx));
+				ST_IO(ZEXT16(port), size_mode == SIZE16 ? LD_R16(EAX_idx) : size_mode == SIZE32 ? LD_R32(EAX_idx) : LD_R8L(EAX_idx));
 			}
 			break;
 
@@ -3355,7 +3354,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0xEF: {
 				Value *port = LD_R16(EDX_idx);
 				check_io_priv_emit(cpu, ZEXT32(port), size_mode);
-				ST_IO(fn_io_idx[size_mode], port, size_mode == SIZE16 ? LD_R16(EAX_idx) : size_mode == SIZE32 ? LD_R32(EAX_idx) : LD_R8L(EAX_idx));
+				ST_IO(port, size_mode == SIZE16 ? LD_R16(EAX_idx) : size_mode == SIZE32 ? LD_R32(EAX_idx) : LD_R8L(EAX_idx));
 			}
 			break;
 
@@ -3402,19 +3401,19 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				case SIZE8:
 					val = CONST32(1);
 					io_val = LD_MEM(MEM_LD8_idx, addr);
-					ST_IO(IO_ST8_idx, port, io_val);
+					ST_IO(port, io_val);
 					break;
 
 				case SIZE16:
 					val = CONST32(2);
 					io_val = LD_MEM(MEM_LD16_idx, addr);
-					ST_IO(IO_ST16_idx, port, io_val);
+					ST_IO(port, io_val);
 					break;
 
 				case SIZE32:
 					val = CONST32(4);
 					io_val = LD_MEM(MEM_LD32_idx, addr);
-					ST_IO(IO_ST32_idx, port, io_val);
+					ST_IO(port, io_val);
 					break;
 
 				default:

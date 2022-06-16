@@ -17,12 +17,14 @@ while (region->aliased_region) { \
 }
 
 void tlb_flush(cpu_t *cpu, int n);
+void iotlb_fill(cpu_t * cpu, port_t port, memory_region_t<port_t> *io);
+void iotlb_flush(cpu_t * cpu, memory_region_t<port_t> *io);
 inline void *get_rom_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *rom, addr_t addr);
 inline void *get_ram_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *ram, addr_t addr);
 addr_t get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip);
 addr_t get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *is_code);
 addr_t get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip);
-addr_t get_code_addr(cpu_t * cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx);
+addr_t get_code_addr(cpu_t * cpu, addr_t addr, uint32_t eip, uint32_t is_code, disas_ctx_t *disas_ctx);
 uint8_t mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
 uint16_t mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
 uint32_t mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
@@ -147,11 +149,8 @@ T as_io_dispatch_read(cpu_t *cpu, port_t port, memory_region_t<port_t> *region)
 		switch (region->type)
 		{
 		case mem_type::pmio:
-			return static_cast<T>(region->read_handler(port, sizeof(T), region->opaque));
-
 		case mem_type::unmapped:
-			LOG(log_level::warn, "Memory read to unmapped memory at port %#06hx with size %d", port, sizeof(T));
-			return std::numeric_limits<T>::max();
+			return static_cast<T>(region->read_handler(port, sizeof(T), region->opaque));
 
 		default:
 			LIB86CPU_ABORT();
@@ -170,11 +169,8 @@ void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, memory_region_t<port
 		switch (region->type)
 		{
 		case mem_type::pmio:
-			region->write_handler(port, sizeof(T), value, region->opaque);
-			break;
-
 		case mem_type::unmapped:
-			LOG(log_level::warn, "Memory write to unmapped memory at port %#06hx with size %d", port, sizeof(T));
+			region->write_handler(port, sizeof(T), value, region->opaque);
 			break;
 
 		default:
@@ -316,11 +312,15 @@ void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t flags, tr
 template<typename T>
 T io_read(cpu_t *cpu, port_t port)
 {
-	return as_io_dispatch_read<T>(cpu, port, as_io_search_port<T>(cpu, port));
+	const auto region = as_io_search_port<T>(cpu, port);
+	iotlb_fill(cpu, port, region);
+	return as_io_dispatch_read<T>(cpu, port, region);
 }
 
 template<typename T>
 void io_write(cpu_t *cpu, port_t port, T value)
 {
-	as_io_dispatch_write<T>(cpu, port, value, as_io_search_port<T>(cpu, port));
+	const auto region = as_io_search_port<T>(cpu, port);
+	iotlb_fill(cpu, port, region);
+	as_io_dispatch_write<T>(cpu, port, value, region);
 }

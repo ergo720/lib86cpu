@@ -298,7 +298,7 @@ void
 check_int_emit(cpu_t *cpu)
 {
 	unsigned ptr_size = cpu->dl->getPointerSize();
-	Value *int_flg = ZEXTs(ptr_size * 8, LD_ATOMIC(GEP(cpu->ptr_cpu_ctx, 8), AtomicOrdering::Monotonic));
+	Value *int_flg = ZEXTs(ptr_size * 8, LD_ATOMIC(GEP(cpu->ptr_cpu_ctx, 9), AtomicOrdering::Monotonic));
 	Value *tc_jmp_int_ptr = INT2PTR(getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())),
 		ADD(CONSTs(ptr_size * 8, reinterpret_cast<uintptr_t>(&cpu->tc->jmp_offset[TC_JMP_INT_OFFSET])), MUL(int_flg, CONSTs(ptr_size * 8, ptr_size))));
 	CallInst::Create(LD(tc_jmp_int_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
@@ -451,6 +451,7 @@ gen_fn(cpu_t *cpu)
 	type_struct_cpu_ctx_t_fields.push_back(get_struct_eflags(cpu));
 	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(32));
 	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(32), TLB_MAX_SIZE));
+	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(16), IOTLB_MAX_SIZE));
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(getIntegerType(8)));
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(type_exp_t));
 	type_struct_cpu_ctx_t_fields.push_back(type_exp_info_t);
@@ -520,9 +521,11 @@ create_tc_prologue(cpu_t *cpu)
 	cpu->ptr_hflags->setName("hflags");
 	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, 4);
 	cpu->ptr_tlb->setName("tlb");
-	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 5));
+	cpu->ptr_iotlb = GEP(cpu->ptr_cpu_ctx, 5);
+	cpu->ptr_iotlb->setName("iotlb");
+	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 6));
 	cpu->ptr_ram->setName("ram");
-	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 6));
+	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 7));
 	cpu->ptr_exp_fn->setName("exp_fn");
 }
 
@@ -546,7 +549,7 @@ gen_int_fn(cpu_t *cpu)
 	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
 	cpu->tc = nullptr;
 
-	ST_ATOMIC(GEP(func->arg_begin(), 8), func->arg_begin() + 1, AtomicOrdering::Monotonic);
+	ST_ATOMIC(GEP(func->arg_begin(), 9), func->arg_begin() + 1, AtomicOrdering::Monotonic);
 	ReturnInst::Create(CTX(), cpu->bb);
 
 	if (cpu->cpu_flags & CPU_PRINT_IR) {
@@ -609,11 +612,13 @@ gen_exp_fn(cpu_t *cpu)
 	cpu->ptr_hflags->setName("hflags");
 	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, 4);
 	cpu->ptr_tlb->setName("tlb");
-	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 5));
+	cpu->ptr_iotlb = GEP(cpu->ptr_cpu_ctx, 5);
+	cpu->ptr_iotlb->setName("iotlb");
+	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 6));
 	cpu->ptr_ram->setName("ram");
-	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 6));
+	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 7));
 	cpu->ptr_exp_fn->setName("exp_fn");
-	Value *ptr_exp_info = GEP(cpu->ptr_cpu_ctx, 7);
+	Value *ptr_exp_info = GEP(cpu->ptr_cpu_ctx, 8);
 	ptr_exp_info->setName("exp_info");
 
 	get_ext_fn(cpu);
@@ -976,9 +981,11 @@ gen_iret_fn(cpu_t *cpu)
 	cpu->ptr_hflags->setName("hflags");
 	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, 4);
 	cpu->ptr_tlb->setName("tlb");
-	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 5));
+	cpu->ptr_iotlb = GEP(cpu->ptr_cpu_ctx, 5);
+	cpu->ptr_iotlb->setName("iotlb");
+	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 6));
 	cpu->ptr_ram->setName("ram");
-	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 6));
+	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 7));
 	cpu->ptr_exp_fn->setName("exp_fn");
 
 	get_ext_fn(cpu);
@@ -1038,7 +1045,7 @@ create_tc_epilogue(cpu_t *cpu)
 void
 raise_exp_inline_emit(cpu_t *cpu, const std::vector<Value *> &exp_data)
 {
-	Value *ptr_exp_data = GEP(GEP(cpu->ptr_cpu_ctx, 7), 0);
+	Value *ptr_exp_data = GEP(GEP(cpu->ptr_cpu_ctx, 8), 0);
 	ST(GEP(ptr_exp_data, 0), exp_data[0]);
 	ST(GEP(ptr_exp_data, 1), exp_data[1]);
 	ST(GEP(ptr_exp_data, 2), exp_data[2]);
@@ -1890,6 +1897,96 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	// tlb miss, acccess the memory region with is_phys flag=0
 	cpu->bb = vec_bb[1];
 	CallInst::Create(cpu->ptr_mem_stfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv), tc_ptr }, "", cpu->bb);
+	BR_UNCOND(vec_bb[2]);
+
+	cpu->bb = vec_bb[2];
+}
+
+Value *
+io_read_emit(cpu_t *cpu, Value *port, const unsigned size_mode)
+{
+	static const uint8_t fn_io_idx[3] = { IO_LD32_idx, IO_LD16_idx, IO_LD8_idx };
+	static const uint8_t op_size_to_mem_size[3] = { 4, 2, 1 };
+	const unsigned size = op_size_to_mem_size[size_mode];
+
+	std::vector<BasicBlock *> vec_bb = getBBs(3);
+	Value *ret = ALLOCs(size * 8);
+	Value *iotlb_idx1 = SHR(port, CONST16(IO_SHIFT));
+	Value *iotlb_idx2 = SHR(SUB(ADD(port, CONST16(size)), CONST16(1)), CONST16(IO_SHIFT));
+	Value *iotlb_entry = LD(GEP(cpu->ptr_iotlb, iotlb_idx1));
+
+	// interrogate the iotlb
+	// this checks if the last byte of the read is in the same io entry as the first (port + size - 1)
+	// reads that cross io entries or that reside in an entry where a watchpoint is installed always result in iotlb misses
+	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(iotlb_entry, CONST16(IOTLB_VALID | IOTLB_WATCH)), SHL(iotlb_idx1, CONST16(IO_SHIFT))),
+		OR(CONST16(IOTLB_VALID), SHL(iotlb_idx2, CONST16(IO_SHIFT)))), CONST16(0)));
+
+	// iotlb hit
+	cpu->bb = vec_bb[0];
+	FunctionType *type_io_read_t = FunctionType::get(
+		getIntegerType(64),                                                                                                 // ret
+		std::vector<Type *> { getIntegerType(32), getIntegerType(sizeof(size_t) * 8), getPointerType(getIntegerType(8)) },  // port, size, opaque
+		false);
+	std::vector<Type *> type_struct_io_fields;
+	type_struct_io_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque io region struct
+	type_struct_io_fields.push_back(getPointerType(type_io_read_t));
+	type_struct_io_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque io write func
+	type_struct_io_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque io value
+	StructType *type_io_t = StructType::create(CTX(), type_struct_io_fields, "", false);
+
+	Value *io_ptr = INT2PTR(getPointerType(getPointerType(type_io_t)), CONSTs(cpu->dl->getPointerSize() * 8, reinterpret_cast<uintptr_t>(&cpu->iotlb_regions_ptr)));
+	Value *io = GetElementPtrInst::CreateInBounds(type_io_t, LD(io_ptr), SHR(iotlb_entry, CONST16(IO_SHIFT)), "", cpu->bb);
+	ST(ret, TRUNCs(size * 8, CallInst::Create(LD(GEP(io, 1)), std::vector<Value *> { ZEXT32(port), CONSTs(sizeof(size_t) * 8, size), LD(GEP(io, 3)) }, "", cpu->bb)));
+	BR_UNCOND(vec_bb[2]);
+
+	// iotlb miss
+	cpu->bb = vec_bb[1];
+	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[fn_io_idx[size_mode]], std::vector<Value *> { cpu->ptr_cpu_ctx, port }, "", cpu->bb));
+	BR_UNCOND(vec_bb[2]);
+
+	cpu->bb = vec_bb[2];
+	return LD(ret);
+}
+
+void
+io_write_emit(cpu_t *cpu, Value *port, Value *value, const unsigned size_mode)
+{
+	static const uint8_t fn_io_idx[3] = { IO_LD32_idx, IO_LD16_idx, IO_LD8_idx };
+	static const uint8_t op_size_to_mem_size[3] = { 4, 2, 1 };
+	const unsigned size = op_size_to_mem_size[size_mode];
+
+	std::vector<BasicBlock *> vec_bb = getBBs(3);
+	Value *iotlb_idx1 = SHR(port, CONST16(IO_SHIFT));
+	Value *iotlb_idx2 = SHR(SUB(ADD(port, CONST16(size)), CONST16(1)), CONST16(IO_SHIFT));
+	Value *iotlb_entry = LD(GEP(cpu->ptr_iotlb, iotlb_idx1));
+
+	// interrogate the iotlb
+	// this checks if the last byte of the write is in the same io entry as the first (port + size - 1)
+	// writes that cross io entries or that reside in an entry where a watchpoint is installed always result in iotlb misses
+	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(iotlb_entry, CONST16(IOTLB_VALID | IOTLB_WATCH)), SHL(iotlb_idx1, CONST16(IO_SHIFT))),
+		OR(CONST16(IOTLB_VALID), SHL(iotlb_idx2, CONST16(IO_SHIFT)))), CONST16(0)));
+
+	// iotlb hit
+	cpu->bb = vec_bb[0];
+	FunctionType *type_io_write_t = FunctionType::get(
+		getVoidType(),                                                                                                                          // void ret
+		std::vector<Type *> { getIntegerType(32), getIntegerType(sizeof(size_t) * 8), getIntegerType(64), getPointerType(getIntegerType(8)) },  // port, size, val, opaque
+		false);
+	std::vector<Type *> type_struct_io_fields;
+	type_struct_io_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque io region struct
+	type_struct_io_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque io read func
+	type_struct_io_fields.push_back(getPointerType(type_io_write_t));
+	type_struct_io_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque io value
+	StructType *type_io_t = StructType::create(CTX(), type_struct_io_fields, "", false);
+
+	Value *io_ptr = INT2PTR(getPointerType(getPointerType(type_io_t)), CONSTs(cpu->dl->getPointerSize() * 8, reinterpret_cast<uintptr_t>(&cpu->iotlb_regions_ptr)));
+	Value *io = GetElementPtrInst::CreateInBounds(type_io_t, LD(io_ptr), SHR(iotlb_entry, CONST16(IO_SHIFT)), "", cpu->bb);
+	CallInst::Create(LD(GEP(io, 2)), std::vector<Value *> { ZEXT32(port), CONSTs(sizeof(size_t) * 8, size), ZEXT64(value), LD(GEP(io, 3)) }, "", cpu->bb);
+	BR_UNCOND(vec_bb[2]);
+
+	// iotlb miss
+	cpu->bb = vec_bb[1];
+	CallInst::Create(cpu->ptr_mem_stfn[fn_io_idx[size_mode]], std::vector<Value *>{ cpu->ptr_cpu_ctx, port, value }, "", cpu->bb);
 	BR_UNCOND(vec_bb[2]);
 
 	cpu->bb = vec_bb[2];

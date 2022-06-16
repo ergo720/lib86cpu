@@ -12,6 +12,32 @@
 #include <fstream>
 
 
+static void
+default_mmio_write_handler(addr_t addr, size_t size, const uint64_t value, void *opaque)
+{
+	LOG(log_level::warn, "Unhandled MMIO write at address %#010x with size %d", addr, size);
+}
+
+static uint64_t
+default_mmio_read_handler(addr_t addr, size_t size, void *opaque)
+{
+	LOG(log_level::warn, "Unhandled MMIO read at address %#010x with size %d", addr, size);
+	return std::numeric_limits<uint64_t>::max();
+}
+
+static void
+default_pmio_write_handler(addr_t addr, size_t size, const uint64_t value, void *opaque)
+{
+	LOG(log_level::warn, "Unhandled PMIO write at port %#06x with size %d", addr, size);
+}
+
+static uint64_t
+default_pmio_read_handler(addr_t addr, size_t size, void *opaque)
+{
+	LOG(log_level::warn, "Unhandled PMIO read at port %#06x with size %d", addr, size);
+	return std::numeric_limits<uint64_t>::max();
+}
+
 lc86_status
 cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee)
 {
@@ -49,6 +75,8 @@ cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee)
 	cpu->io_space_tree = interval_tree<port_t, std::unique_ptr<memory_region_t<port_t>>>::create();
 	io_region->start = 0;
 	io_region->end = UINT16_MAX;
+	io_region->read_handler = default_pmio_read_handler;
+	io_region->write_handler = default_pmio_write_handler;
 	cpu->io_space_tree->insert(io_region->start, io_region->end, std::move(io_region));
 
 	cpu->jit = std::move(lc86_jit::create(cpu));
@@ -181,32 +209,6 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 	}
 }
 
-static void
-default_mmio_write_handler(addr_t addr, size_t size, const uint64_t value, void *opaque)
-{
-	LOG(log_level::warn, "Unhandled MMIO write at address %#010x with size %d", addr, size);
-}
-
-static uint64_t
-default_mmio_read_handler(addr_t addr, size_t size, void *opaque)
-{
-	LOG(log_level::warn, "Unhandled MMIO read at address %#010x with size %d", addr, size);
-	return std::numeric_limits<uint64_t>::max();
-}
-
-static void
-default_pmio_write_handler(addr_t addr, size_t size, const uint64_t value, void *opaque)
-{
-	LOG(log_level::warn, "Unhandled PMIO write at port %#06x with size %d", addr, size);
-}
-
-static uint64_t
-default_pmio_read_handler(addr_t addr, size_t size, void *opaque)
-{
-	LOG(log_level::warn, "Unhandled PMIO read at port %#06x with size %d", addr, size);
-	return std::numeric_limits<uint64_t>::max();
-}
-
 lc86_status
 mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 {
@@ -245,8 +247,6 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 lc86_status
 mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read read_func, fp_write write_func, void *opaque, int priority)
 {
-	bool inserted;
-
 	if (size == 0) {
 		return set_last_error(lc86_status::invalid_parameter);
 	}
@@ -254,7 +254,15 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 	if (io_space) {
 		std::unique_ptr<memory_region_t<port_t>> io(new memory_region_t<port_t>);
 
-		if (start > 65535 || (start + size) > 65536) {
+		if (cpu->num_io_regions == ((IO_MAX_PORT / IO_SIZE) - 1)) {
+			return set_last_error(lc86_status::too_many);
+		}
+
+		if (start > (IO_MAX_PORT - 1) || (start + size) > IO_MAX_PORT) {
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+
+		if ((start % IO_SIZE) != 0 || ((size % IO_SIZE) != 0)) {
 			return set_last_error(lc86_status::invalid_parameter);
 		}
 
@@ -288,7 +296,10 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 			io->opaque = opaque;
 		}
 
-		inserted = cpu->io_space_tree->insert(start_io, end, std::move(io));
+		if (cpu->io_space_tree->insert(start_io, end, std::move(io))) {
+			cpu->num_io_regions++;
+			return lc86_status::success;
+		}
 	}
 	else {
 		std::unique_ptr<memory_region_t<addr_t>> io(new memory_region_t<addr_t>);
@@ -321,15 +332,12 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 			io->opaque = opaque;
 		}
 
-		inserted = cpu->memory_space_tree->insert(start, end, std::move(io));
+		if (cpu->memory_space_tree->insert(start, end, std::move(io))) {
+			return lc86_status::success;
+		}
 	}
 
-	if (inserted) {
-		return lc86_status::success;
-	}
-	else {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
+	return set_last_error(lc86_status::invalid_parameter);
 }
 
 // XXX Are aliased regions allowed in the io space as well?
@@ -459,15 +467,23 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int 
 lc86_status
 mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 {
-	bool deleted;
-	int rom_idx = -1;
-
 	if (io_space) {
 		port_t start_io = static_cast<port_t>(start);
-		port_t end = start + size - 1;
-		deleted = cpu->io_space_tree->erase(start_io, end);
+		port_t end_io = start + size - 1;
+		cpu->io_space_tree->search(start_io, end_io, cpu->io_out);
+		const auto region = cpu->io_out.begin()->get().get();
+		if ((region->type == mem_type::pmio) && (region->start == start_io) && (region->end == end_io)) {
+			// if the above conditions are satisfied, then the erase below is going to succeed, so we can flush the iotlb and avoid needless flushes
+			iotlb_flush(cpu, region);
+			[[maybe_unused]] bool deleted = cpu->io_space_tree->erase(start_io, end_io);
+			assert(deleted);
+			return lc86_status::success;
+		}
+
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 	else {
+		int rom_idx = -1;
 		bool found = false;
 		addr_t end = start + size - 1;
 		cpu->memory_space_tree->search(start, end, cpu->memory_out);
@@ -485,19 +501,16 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 			return set_last_error(lc86_status::invalid_parameter);
 		}
 
-		deleted = cpu->memory_space_tree->erase(start, end);
-	}
-
-	if (deleted) {
-		if (rom_idx != -1) {
-			cpu->vec_rom[rom_idx].second--;
-			if (cpu->vec_rom[rom_idx].second == 0) {
-				cpu->vec_rom.erase(cpu->vec_rom.begin() + rom_idx);
+		if (cpu->memory_space_tree->erase(start, end)) {
+			if (rom_idx != -1) {
+				cpu->vec_rom[rom_idx].second--;
+				if (cpu->vec_rom[rom_idx].second == 0) {
+					cpu->vec_rom.erase(cpu->vec_rom.begin() + rom_idx);
+				}
 			}
+			return lc86_status::success;
 		}
-		return lc86_status::success;
-	}
-	else {
+
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 }

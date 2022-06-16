@@ -314,7 +314,7 @@ dbg_disas_code_block(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, 
 			addr_t next_pc = disas_ctx->virt_pc + bytes;
 			if ((disas_ctx->virt_pc & ~PAGE_MASK) != ((next_pc - 1) & ~PAGE_MASK)) {
 				// page crossing, needs to translate virt_pc again and disable debug exp in the new page
-				disas_ctx->pc = get_code_addr(cpu, next_pc, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, disas_ctx);
+				disas_ctx->pc = get_code_addr(cpu, next_pc, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, 0, disas_ctx);
 				cpu->cpu_ctx.tlb[disas_ctx->virt_pc >> PAGE_SHIFT] = tlb_entry;
 				if (disas_ctx->exp_data.idx == EXP_PF) {
 					// page fault in the new page, cannot display remaining instr
@@ -347,7 +347,7 @@ dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num)
 	disas_ctx.flags = ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT) |
 		((cpu->cpu_ctx.hflags & HFLG_PE_MODE) >> (PE_MODE_SHIFT - 1));
 	disas_ctx.virt_pc = pc;
-	disas_ctx.pc = get_code_addr(cpu, disas_ctx.virt_pc, cpu->cpu_ctx.regs.eip, &disas_ctx);
+	disas_ctx.pc = get_code_addr(cpu, disas_ctx.virt_pc, cpu->cpu_ctx.regs.eip, 0, &disas_ctx);
 	if (disas_ctx.exp_data.idx == EXP_PF) {
 		// page fault, cannot display instr
 		return {};
@@ -410,7 +410,7 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 		switch (region->type)
 		{
 		case mem_type::ram:
-			ram_write<uint8_t>(cpu, get_ram_host_ptr(cpu, region, addr), val);
+			ram_write<uint8_t>(cpu, get_ram_host_ptr(cpu, region, phys_addr), val);
 			if (is_code) {
 				tc_invalidate(&cpu->cpu_ctx, nullptr, addr, 1, addr - cpu->cpu_ctx.regs.cs_hidden.base);
 			}

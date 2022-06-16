@@ -13,6 +13,7 @@
 
 #define CODE_CACHE_MAX_SIZE (1 << 15)
 #define TLB_MAX_SIZE (1 << 20)
+#define IOTLB_MAX_SIZE (1 << 14)
 
  // used to generate the parity table
  // borrowed from Bit Twiddling Hacks by Sean Eron Anderson (public domain)
@@ -59,6 +60,13 @@ struct memory_region_t {
 	int rom_idx;
 	memory_region_t() : start(0), end(0), alias_offset(0), type(mem_type::unmapped), priority(0), read_handler(nullptr), write_handler(nullptr),
 		opaque(nullptr), aliased_region(nullptr), rom_idx(-1) {};
+};
+
+struct cached_io_region {
+	memory_region_t<port_t> *io;
+	fp_read read_handler;
+	fp_write write_handler;
+	void *opaque;
 };
 
 template<typename T>
@@ -131,6 +139,7 @@ struct cpu_ctx_t {
 	lazy_eflags_t lazy_eflags;
 	uint32_t hflags;
 	uint32_t tlb[TLB_MAX_SIZE];
+	uint16_t iotlb[IOTLB_MAX_SIZE];
 	uint8_t *ram;
 	raise_exp_t exp_fn;
 	exp_info_t exp_info;
@@ -152,6 +161,9 @@ struct cpu_t {
 	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
 	std::vector<std::pair<std::unique_ptr<uint8_t[]>, int>> vec_rom;
 	std::unordered_map<addr_t, std::unique_ptr<hook>> hook_map;
+	std::vector<cached_io_region> iotlb_regions;
+	cached_io_region *iotlb_regions_ptr;
+	uint16_t num_io_regions;
 	uint16_t num_tc;
 	struct {
 		uint64_t tsc;
@@ -180,6 +192,7 @@ struct cpu_t {
 	llvm::Value *ptr_eflags;
 	llvm::Value *ptr_hflags;
 	llvm::Value *ptr_tlb;
+	llvm::Value *ptr_iotlb;
 	llvm::Value *ptr_ram;
 	llvm::Value *ptr_exp_fn;
 	llvm::Value *ptr_invtc_fn;

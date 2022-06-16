@@ -52,6 +52,9 @@ lc86status_to_str(lc86_status status)
 	case lc86_status::guest_exp:
 		return "A guest exception was raised by lib86cpu while executing the operation";
 
+	case lc86_status::too_many:
+		return "Maximum allowed number of objects exceeded";
+
 	case lc86_status::success:
 		return "The operation completed successfully";
 

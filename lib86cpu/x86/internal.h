@@ -214,6 +214,15 @@ inline addr_t get_pc(cpu_ctx_t *cpu_ctx);
 #define TLB_keep_rc     1
 #define TLB_no_g        2
 
+// io macros
+#define IO_SHIFT        2
+#define IO_SIZE         4
+#define IO_MAX_PORT     65536
+
+// iotlb macros
+#define IOTLB_VALID    (1 << 0)
+#define IOTLB_WATCH    (1 << 1)
+
 // control register flags
 #define CR0_PG_MASK (1 << 31)
 #define CR0_CD_MASK (1 << 30)
