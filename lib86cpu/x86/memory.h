@@ -188,7 +188,7 @@ void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, memory_region_t<port
 void *
 get_rom_host_ptr(cpu_t *cpu, memory_region_t<addr_t> *rom, addr_t addr)
 {
-	return &cpu->vec_rom[rom->rom_idx].first[addr - rom->start];
+	return &cpu->vec_rom[rom->rom_idx][addr - rom->start];
 }
 
 void *

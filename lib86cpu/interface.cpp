@@ -394,44 +394,12 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 }
 
 lc86_status
-mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int priority, const char *rom_path, uint8_t *&out)
+mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, int priority, std::unique_ptr<uint8_t[]> buffer)
 {
 	std::unique_ptr<memory_region_t<addr_t>> rom(new memory_region_t<addr_t>);
 
-	if (out == nullptr) {
-		std::ifstream ifs(rom_path, std::ios_base::in | std::ios_base::binary);
-		if (!ifs.is_open()) {
-			return set_last_error(lc86_status::invalid_parameter);
-		}
-		ifs.seekg(0, ifs.end);
-		size_t length = ifs.tellg();
-		ifs.seekg(0, ifs.beg);
-
-		if (length == 0) {
-			return set_last_error(lc86_status::invalid_parameter);
-		}
-		else if (offset + size > length) {
-			return set_last_error(lc86_status::invalid_parameter);
-		}
-
-		std::unique_ptr<uint8_t[]> rom_ptr(new uint8_t[size]);
-		ifs.seekg(offset);
-		ifs.read(reinterpret_cast<char *>(&rom_ptr[0]), size);
-		ifs.close();
-		cpu->vec_rom.push_back(std::make_pair(std::move(rom_ptr), 0));
-		rom->rom_idx = cpu->vec_rom.size() - 1;
-	}
-	else {
-		for (int i = 0; i < cpu->vec_rom.size(); i++) {
-			if (cpu->vec_rom[i].first.get() == out) {
-				rom->rom_idx = i;
-				break;
-			}
-		}
-
-		if (rom->rom_idx == -1) {
-			return set_last_error(lc86_status::invalid_parameter);
-		}
+	if (!buffer) {
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	addr_t end = start + size - 1;
@@ -439,9 +407,6 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int 
 
 	for (auto &region : cpu->memory_out) {
 		if (region.get()->priority == priority) {
-			if (out == nullptr) {
-				cpu->vec_rom.pop_back();
-			}
 			return set_last_error(lc86_status::invalid_parameter);
 		}
 	}
@@ -450,18 +415,15 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint32_t offset, int 
 	rom->end = end;
 	rom->type = mem_type::rom;
 	rom->priority = priority;
+	rom->rom_idx = cpu->vec_rom.size();
 
-	auto &rom_ref = cpu->vec_rom[rom->rom_idx];
 	if (cpu->memory_space_tree->insert(start, end, std::move(rom))) {
-		out = rom_ref.first.get();
-		rom_ref.second++;
+		cpu->vec_rom.push_back(std::move(buffer));
 		return lc86_status::success;
 	}
-
-	if (out == nullptr) {
-		cpu->vec_rom.pop_back();
+	else {
+		return set_last_error(lc86_status::invalid_parameter);
 	}
-	return set_last_error(lc86_status::invalid_parameter);
 }
 
 lc86_status
@@ -484,34 +446,22 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 	}
 	else {
 		int rom_idx = -1;
-		bool found = false;
 		addr_t end = start + size - 1;
 		cpu->memory_space_tree->search(start, end, cpu->memory_out);
-		for (auto &region : cpu->memory_out) {
-			if ((region.get().get()->start == start) && (region.get().get()->end == end)) {
-				if (region.get().get()->type == mem_type::rom) {
-					rom_idx = region.get().get()->rom_idx;
-				}
-				found = true;
-				break;
-			}
-		}
-
-		if (!found) {
-			return set_last_error(lc86_status::invalid_parameter);
+		auto region = cpu->memory_out.begin()->get().get();
+		if (region->type == mem_type::rom) {
+			rom_idx = region->rom_idx;
 		}
 
 		if (cpu->memory_space_tree->erase(start, end)) {
 			if (rom_idx != -1) {
-				cpu->vec_rom[rom_idx].second--;
-				if (cpu->vec_rom[rom_idx].second == 0) {
-					cpu->vec_rom.erase(cpu->vec_rom.begin() + rom_idx);
-				}
+				cpu->vec_rom.erase(cpu->vec_rom.begin() + rom_idx);
 			}
 			return lc86_status::success;
 		}
-
-		return set_last_error(lc86_status::invalid_parameter);
+		else {
+			return set_last_error(lc86_status::invalid_parameter);
+		}
 	}
 }
 

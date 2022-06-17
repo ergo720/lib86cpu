@@ -159,7 +159,7 @@ struct cpu_t {
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<port_t>>>, sort_by_priority<port_t>> io_out;
 	std::forward_list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
 	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
-	std::vector<std::pair<std::unique_ptr<uint8_t[]>, int>> vec_rom;
+	std::vector<std::unique_ptr<uint8_t[]>> vec_rom;
 	std::unordered_map<addr_t, std::unique_ptr<hook>> hook_map;
 	std::vector<cached_io_region> iotlb_regions;
 	cached_io_region *iotlb_regions_ptr;
