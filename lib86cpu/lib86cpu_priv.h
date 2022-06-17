@@ -143,7 +143,7 @@ struct cpu_ctx_t {
 	uint8_t *ram;
 	raise_exp_t exp_fn;
 	exp_info_t exp_info;
-	uint8_t int_pending;
+	uint8_t alignas(1) int_pending;
 };
 
 class lc86_jit;

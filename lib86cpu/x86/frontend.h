@@ -22,8 +22,8 @@ StructType *get_struct_eflags(cpu_t *cpu);
 Value *gep_emit(cpu_t *cpu, Value *gep_start, const int gep_index);
 Value *gep_emit(cpu_t *cpu, Value *gep_start, Value *gep_index);
 Value *gep_emit(cpu_t *cpu, Value *gep_start, const std::vector<Value *> &vec_index);
-Value *store_atomic_emit(cpu_t *cpu, Value *ptr, Value *val, AtomicOrdering order);
-Value *load_atomic_emit(cpu_t *cpu, Value *ptr, AtomicOrdering order);
+Value *store_atomic_emit(cpu_t *cpu, Value *ptr, Value *val, AtomicOrdering order, uint8_t align);
+Value *load_atomic_emit(cpu_t *cpu, Value *ptr, AtomicOrdering order, uint8_t align);
 Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
 Value *get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum);
 int get_reg_idx(ZydisRegister reg);
@@ -128,8 +128,8 @@ default: \
 
 #define ST(ptr, v) new StoreInst(v, ptr, cpu->bb)
 #define LD(ptr) new LoadInst(ptr, "", false, cpu->bb)
-#define ST_ATOMIC(ptr, v, order) store_atomic_emit(cpu, ptr, v, order)
-#define LD_ATOMIC(ptr, order) load_atomic_emit(cpu, ptr, order)
+#define ST_ATOMIC(ptr, v, order, align) store_atomic_emit(cpu, ptr, v, order, align)
+#define LD_ATOMIC(ptr, order, align) load_atomic_emit(cpu, ptr, order, align)
 
 #define UNREACH() new UnreachableInst(CTX(), cpu->bb)
 #define INTRINSIC(id) CallInst::Create(Intrinsic::getDeclaration(cpu->mod, Intrinsic::id), "", cpu->bb)

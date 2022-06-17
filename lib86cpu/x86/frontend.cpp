@@ -277,18 +277,20 @@ floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits)
 }
 
 Value *
-store_atomic_emit(cpu_t *cpu, Value *ptr, Value *val, AtomicOrdering order)
+store_atomic_emit(cpu_t *cpu, Value *ptr, Value *val, AtomicOrdering order, uint8_t align)
 {
 	StoreInst *instr = ST(ptr, val);
 	instr->setOrdering(order);
+	instr->setAlignment(align);
 	return instr;
 }
 
 Value *
-load_atomic_emit(cpu_t *cpu, Value *ptr, AtomicOrdering order)
+load_atomic_emit(cpu_t *cpu, Value *ptr, AtomicOrdering order, uint8_t align)
 {
 	LoadInst *instr = LD(ptr);
 	instr->setOrdering(order);
+	instr->setAlignment(align);
 	return instr;
 }
 
@@ -296,7 +298,7 @@ void
 check_int_emit(cpu_t *cpu)
 {
 	unsigned ptr_size = cpu->dl->getPointerSize();
-	Value *int_flg = ZEXTs(ptr_size * 8, LD_ATOMIC(GEP(cpu->ptr_cpu_ctx, 9), AtomicOrdering::Monotonic));
+	Value *int_flg = ZEXTs(ptr_size * 8, LD_ATOMIC(GEP(cpu->ptr_cpu_ctx, 9), AtomicOrdering::Monotonic, 1));
 	Value *tc_jmp_int_ptr = INT2PTR(getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())),
 		ADD(CONSTs(ptr_size * 8, reinterpret_cast<uintptr_t>(&cpu->tc->jmp_offset[TC_JMP_INT_OFFSET])), MUL(int_flg, CONSTs(ptr_size * 8, ptr_size))));
 	CallInst::Create(LD(tc_jmp_int_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
@@ -547,7 +549,7 @@ gen_int_fn(cpu_t *cpu)
 	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
 	cpu->tc = nullptr;
 
-	ST_ATOMIC(GEP(func->arg_begin(), 9), func->arg_begin() + 1, AtomicOrdering::Monotonic);
+	ST_ATOMIC(GEP(func->arg_begin(), 9), func->arg_begin() + 1, AtomicOrdering::Monotonic, 1);
 	ReturnInst::Create(CTX(), cpu->bb);
 
 	if (cpu->cpu_flags & CPU_PRINT_IR) {
