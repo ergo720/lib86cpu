@@ -100,9 +100,7 @@ get_reg_idx(ZydisRegister reg)
 Value *
 get_r8h_pointer(cpu_t *cpu, Value *gep_start)
 {
-	std::vector<Value *> ptr_11_indices;
-	ptr_11_indices.push_back(CONST8(1));
-	return GetElementPtrInst::CreateInBounds(getIntegerType(8) , gep_start, ptr_11_indices, "", cpu->bb);
+	return GetElementPtrInst::CreateInBounds(getIntegerType(8) , gep_start, CONST8(1), "", cpu->bb);
 }
 
 StructType *
