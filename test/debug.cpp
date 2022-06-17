@@ -167,7 +167,7 @@ gen_dbg_test()
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_io(cpu, DBG_POST_PORT, 0x1, true, nullptr, dbg_write_handler, nullptr, 1))) {
+	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_io(cpu, DBG_POST_PORT - 3, 4, true, nullptr, dbg_write_handler, nullptr, 1))) {
 		std::printf("Failed to initialize post i/o port for debug test!\n");
 		return false;
 	}
