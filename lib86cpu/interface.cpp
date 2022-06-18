@@ -38,6 +38,13 @@ default_pmio_read_handler(addr_t addr, size_t size, void *opaque)
 	return std::numeric_limits<uint64_t>::max();
 }
 
+/*
+* cpu_new -> creates a new cpu instance. Only a single instance should exist at a time
+* ramsize: size in bytes of ram buffer internally created (must be a multiple of 4096)
+* out: returned cpu instance
+* (optional) debuggee: name of the debuggee program to run
+* ret: the status of the operation
+*/
 lc86_status
 cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee)
 {
@@ -94,6 +101,11 @@ cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee)
 	return lc86_status::success;
 }
 
+/*
+* cpu_free -> destroys a cpu instance. Only call this after cpu_run has returned
+* cpu: a valid cpu instance
+* ret: nothing
+*/
 void
 cpu_free(cpu_t *cpu)
 {
@@ -113,6 +125,11 @@ cpu_free(cpu_t *cpu)
 	delete cpu;
 }
 
+/*
+* cpu_run -> starts the emulation. Only returns when there is an error in lib86cpu
+* cpu: a valid cpu instance
+* ret: nothing
+*/
 lc86_status
 cpu_run(cpu_t *cpu)
 {
@@ -120,6 +137,11 @@ cpu_run(cpu_t *cpu)
 	return cpu_start(cpu);
 }
 
+/*
+* cpu_sync_state -> synchronizes internal cpu flags with the current cpu state. Only call this before cpu_run
+* cpu: a valid cpu instance
+* ret: nothing
+*/
 void
 cpu_sync_state(cpu_t *cpu)
 {
@@ -139,6 +161,11 @@ cpu_sync_state(cpu_t *cpu)
 	}
 }
 
+/*
+* cpu_set_flags -> sets lib86cpu flags with the current cpu state. Only call this before cpu_run
+* cpu: a valid cpu instance
+* ret: the status of the operation
+*/
 lc86_status
 cpu_set_flags(cpu_t *cpu, uint32_t flags)
 {
@@ -158,6 +185,11 @@ cpu_set_flags(cpu_t *cpu, uint32_t flags)
 	return lc86_status::success;
 }
 
+/*
+* register_log_func -> registers a log function to receive log events from lib86cpu
+* logger: the function to call
+* ret: nothing
+*/
 void
 register_log_func(logfn_t logger)
 {
@@ -171,18 +203,33 @@ register_log_func(logfn_t logger)
 	}
 }
 
+/*
+* get_last_error -> returns a string representation of the last lib86cpu error
+* ret: the error string
+*/
 std::string
 get_last_error()
 {
 	return last_error;
 }
 
+/*
+* get_ram_ptr -> returns a pointer to the internally allocated ram buffer. Do not modify its contents directly, but instead use the memory api
+* cpu: a valid cpu instance
+* ret: a pointer to the ram buffer
+*/
 uint8_t *
 get_ram_ptr(cpu_t *cpu)
 {
 	return cpu->cpu_ctx.ram;
 }
 
+/*
+* get_host_ptr -> returns a host pointer that maps the guest ram/rom at the specified address. This memory might not be contiguous in host memory
+* cpu: a valid cpu instance
+* addr: a guest virtual address pointing to a ram or rom region
+* ret: a host pointer to the specified guest address, or nullptr if the address doesn't map to ram/rom or a guest exception occurs
+*/
 uint8_t *
 get_host_ptr(cpu_t *cpu, addr_t addr)
 {
@@ -209,6 +256,14 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 	}
 }
 
+/*
+* mem_init_region_ram -> creates a ram region. Only call this before cpu_run
+* cpu: a valid cpu instance
+* start: the guest physical address where the ram starts. Must be 4k aligned
+* size: size in bytes of ram. Must be a multiple of 4096
+* priority: the priority of the region. Overlapping higher prority regions will take precedence over regions with lower priority
+* ret: the status of the operation
+*/
 lc86_status
 mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 {
@@ -244,6 +299,18 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 	}
 }
 
+/*
+* mem_init_region_io -> creates an mmio or pmio region. Only call this before cpu_run
+* cpu: a valid cpu instance
+* start: where the region starts. A guest physical address for mmio, and a port for pmio. For pmio, the port must be 4 byte aligned
+* size: size of the region. For pmio, it must be a multiple of 4
+* io_space: true for pmio, and false for mmio
+* read_func: the function to call when this region is read from the guest
+* write_func: the function to call when this region is written to from the guest
+* opaque: an arbitrary host pointer which is passed to the registered r/w function for the region
+* priority: the priority of the region. Overlapping higher prority regions will take precedence over regions with lower priority
+* ret: the status of the operation
+*/
 lc86_status
 mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read read_func, fp_write write_func, void *opaque, int priority)
 {
@@ -340,7 +407,15 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 	return set_last_error(lc86_status::invalid_parameter);
 }
 
-// XXX Are aliased regions allowed in the io space as well?
+/*
+* mem_init_region_alias -> creates a region that points to another region (which must not be pmio). Only call this before cpu_run
+* cpu: a valid cpu instance
+* alias_start: the guest physical address where the alias starts
+* ori_start: the guest physical address where the original region starts
+* ori_size: size in bytes of alias
+* priority: the priority of the region. Overlapping higher prority regions will take precedence over regions with lower priority
+* ret: the status of the operation
+*/
 lc86_status
 mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority)
 {
@@ -393,6 +468,15 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 	}
 }
 
+/*
+* mem_init_region_rom -> creates a rom region. Only call this before cpu_run
+* cpu: a valid cpu instance
+* start: the guest physical address where the rom starts
+* size: size in bytes of rom
+* priority: the priority of the region. Overlapping higher prority regions will take precedence over regions with lower priority
+* buffer: a buffer that holds the rom that the region refers to
+* ret: the status of the operation
+*/
 lc86_status
 mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, int priority, std::unique_ptr<uint8_t[]> buffer)
 {
@@ -426,6 +510,14 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, int priority, std::un
 	}
 }
 
+/*
+* mem_destroy_region -> destroys a region. At the moemnt, this is only safe for pmio
+* cpu: a valid cpu instance
+* start: the guest physical address where the region starts
+* size: size in bytes of region
+* io_space: true for pmio, and false for mmio
+* ret: the status of the operation
+*/
 lc86_status
 mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 {
@@ -465,6 +557,15 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 	}
 }
 
+/*
+* mem_read_block -> reads a block of memory from ram/rom. Only call this from an mmio/pmio/hook callback
+* cpu: a valid cpu instance
+* addr: the guest virtual address to read from
+* size: number of bytes to read
+* out: pointer where the read contents are stored to
+* actual_size: number of bytes actually read
+* ret: the status of the operation
+*/
 lc86_status
 mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out, size_t *actual_size)
 {
@@ -614,18 +715,42 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *
 	}
 }
 
+/*
+* mem_write_block -> writes a block of memory to ram/rom. Only call this from an mmio/pmio/hook callback
+* cpu: a valid cpu instance
+* addr: the guest virtual address to write to
+* size: number of bytes to write
+* buffer: pointer to a buffer that holds the bytes to write
+* actual_size: number of bytes actually written
+* ret: the status of the operation
+*/
 lc86_status
 mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer, size_t *actual_size)
 {
 	return mem_write_handler<false>(cpu, addr, size, buffer, 0, actual_size);
 }
 
+/*
+* mem_fill_block -> fills ram/rom with a value. Only call this from an mmio/pmio/hook callback
+* cpu: a valid cpu instance
+* addr: the guest virtual address to write to
+* size: number of bytes to write
+* val: the value to write
+* actual_size: number of bytes actually written
+* ret: the status of the operation
+*/
 lc86_status
 mem_fill_block(cpu_t *cpu, addr_t addr, size_t size, int val, size_t *actual_size)
 {
 	return mem_write_handler<true>(cpu, addr, size, nullptr, val, actual_size);
 }
 
+/*
+* io_read_8/16/32 -> reads 8/16/32 bits from a pmio port. Only call this from an mmio/pmio/hook callback
+* cpu: a valid cpu instance
+* port: the port to read from
+* ret: the read value
+*/
 uint8_t
 io_read_8(cpu_t *cpu, port_t port)
 {
@@ -644,6 +769,13 @@ io_read_32(cpu_t *cpu, port_t port)
 	return io_read<uint32_t>(cpu, port);
 }
 
+/*
+* io_write_8/16/32 -> writes 8/16/32 bits to a pmio port. Only call this from an mmio/pmio/hook callback
+* cpu: a valid cpu instance
+* port: the port to write to
+* value: the value to write
+* ret: nothing
+*/
 void
 io_write_8(cpu_t *cpu, port_t port, uint8_t value)
 {
@@ -662,6 +794,13 @@ io_write_32(cpu_t *cpu, port_t port, uint32_t value)
 	io_write<uint32_t>(cpu, port, value);
 }
 
+/*
+* tlb_invalidate -> flushes tlb entries in the specified range. Only call this from an mmio/pmio/hook callback
+* cpu: a valid cpu instance
+* addr_start: a guest virtual address where the flush starts
+* addr_end: a guest virtual address where the flush end
+* ret: nothing
+*/
 void
 tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end)
 {
@@ -670,6 +809,13 @@ tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end)
 	}
 }
 
+/*
+* hook_add -> adds a hook to intercept a guest function and redirect it to a host function
+* cpu: a valid cpu instance
+* addr: the virtual address of the first instruction of the guest function to intercept
+* obj: an object that holds additional data on the hook
+* ret: the status of the operation
+*/
 lc86_status
 hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 {
@@ -697,6 +843,12 @@ hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 	return lc86_status::success;
 }
 
+/*
+* hook_remove -> removes a hook
+* cpu: a valid cpu instance
+* addr: the virtual address of the first instruction of the guest function to intercept
+* ret: the status of the operation
+*/
 lc86_status
 hook_remove(cpu_t *cpu, addr_t addr)
 {
@@ -711,6 +863,12 @@ hook_remove(cpu_t *cpu, addr_t addr)
 	return lc86_status::success;
 }
 
+/*
+* trampoline_call -> calls the original intercepted guest function. Only call this from a hook
+* cpu: a valid cpu instance
+* ret_eip: the virtual address to which the original guest function returns to after if finishes execution
+* ret: nothing
+*/
 void
 trampoline_call(cpu_t *cpu, const uint32_t ret_eip)
 {
@@ -722,12 +880,23 @@ trampoline_call(cpu_t *cpu, const uint32_t ret_eip)
 	cpu_exec_trampoline(cpu, ret_eip);
 }
 
-regs_t *get_regs_ptr(cpu_t *cpu)
+/*
+* get_regs_ptr -> returns a pointer to the cpu registers (eip and eflags won't be accurate)
+* cpu: a valid cpu instance
+* ret: a pointer to the registers
+*/
+regs_t *
+get_regs_ptr(cpu_t *cpu)
 {
 	// Reading the eip at runtime will not yield the correct result because we only update it at the end of a tc
 	return &cpu->cpu_ctx.regs;
 }
 
+/*
+* read_eflags -> reads the current value of eflags
+* cpu: a valid cpu instance
+* ret: eflags
+*/
 uint32_t
 read_eflags(cpu_t *cpu)
 {
@@ -742,6 +911,13 @@ read_eflags(cpu_t *cpu)
 	return cpu->cpu_ctx.regs.eflags | arth_flags;
 }
 
+/*
+* write_eflags -> writes a new value to eflags
+* cpu: a valid cpu instance
+* value: the value to write
+* reg32: true to write to eflags, false to write to flags
+* ret: nothing
+*/
 void
 write_eflags(cpu_t *cpu, uint32_t value, bool reg32)
 {
