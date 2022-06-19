@@ -635,8 +635,6 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out, size_t *actua
 	}
 }
 
-// NOTE1: this is not correct if the client writes to the same tc we are executing (because we pass nullptr as tc argument to tc_invalidate)
-// NOTE2: if a page fault is raised on a page after the first one is written to, this will result in a partial write. I'm not sure if this is a problem though
 template<bool fill>
 lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *buffer, int val, size_t *actual_size)
 {
@@ -650,7 +648,7 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *
 			size_t bytes_to_write = std::min(PAGE_SIZE - page_offset, size_left);
 			addr_t phys_addr = get_write_addr(cpu, addr, 0, 0, &is_code);
 			if (is_code) {
-				tc_invalidate(&cpu->cpu_ctx, nullptr, phys_addr, bytes_to_write, 0);
+				tc_invalidate(&cpu->cpu_ctx, phys_addr, bytes_to_write, cpu->cpu_ctx.regs.eip);
 			}
 
 			memory_region_t<addr_t> *region = as_memory_search_addr<uint8_t>(cpu, phys_addr);
@@ -716,7 +714,7 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *
 }
 
 /*
-* mem_write_block -> writes a block of memory to ram/rom. Only call this from an mmio/pmio/hook callback
+* mem_write_block -> writes a block of memory to ram/rom. Only call this from a hook
 * cpu: a valid cpu instance
 * addr: the guest virtual address to write to
 * size: number of bytes to write
@@ -810,7 +808,7 @@ tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end)
 }
 
 /*
-* hook_add -> adds a hook to intercept a guest function and redirect it to a host function
+* hook_add -> adds a hook to intercept a guest function and redirect it to a host function. Only call this from a hook
 * cpu: a valid cpu instance
 * addr: the virtual address of the first instruction of the guest function to intercept
 * obj: an object that holds additional data on the hook
@@ -838,13 +836,20 @@ hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 
 	cpu->hook_map.emplace(addr, std::move(obj));
 
-	tc_invalidate(&cpu->cpu_ctx, nullptr, addr, 1, 0);
+	try {
+		uint8_t is_code;
+		volatile addr_t phys_addr = get_write_addr(cpu, addr, 2, cpu->cpu_ctx.regs.eip, &is_code);
+		tc_invalidate(&cpu->cpu_ctx, addr, 1, cpu->cpu_ctx.regs.eip);
+	}
+	catch (host_exp_t type) {
+		return set_last_error(lc86_status::guest_exp);
+	}
 
 	return lc86_status::success;
 }
 
 /*
-* hook_remove -> removes a hook
+* hook_remove -> removes a hook. Only call this from a hook. If called from the same hook which is being removed, it won't return and it will throw an exception instead
 * cpu: a valid cpu instance
 * addr: the virtual address of the first instruction of the guest function to intercept
 * ret: the status of the operation
@@ -857,8 +862,15 @@ hook_remove(cpu_t *cpu, addr_t addr)
 		return set_last_error(lc86_status::not_found);
 	}
 
-	tc_invalidate(&cpu->cpu_ctx, nullptr, it->first, 1, 0);
-	cpu->hook_map.erase(it);
+	try {
+		uint8_t is_code;
+		volatile addr_t phys_addr = get_write_addr(cpu, addr, 2, cpu->cpu_ctx.regs.eip, &is_code);
+		cpu->hook_map.erase(it);
+		tc_invalidate<true>(&cpu->cpu_ctx, addr);
+	}
+	catch (host_exp_t type) {
+		return set_last_error(lc86_status::guest_exp);
+	}
 
 	return lc86_status::success;
 }

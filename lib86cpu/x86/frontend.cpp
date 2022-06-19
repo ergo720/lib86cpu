@@ -224,9 +224,6 @@ get_ext_fn(cpu_t *cpu)
 			getIntegerType(16), getIntegerType(bit_size[i])));
 	}
 
-	cpu->ptr_invtc_fn = cast<Function>(cpu->mod->getOrInsertFunction("tc_invalidate", getVoidType(), cpu_ctx_ty,
-		tc_ty, getIntegerType(32), getIntegerType(8), getIntegerType(32)));
-
 	Function *abort_func = cast<Function>(cpu->mod->getOrInsertFunction("cpu_runtime_abort", getVoidType(), getPointerType(getIntegerType(8))));
 	abort_func->addAttribute(0, Attribute::AttrKind::NoReturn);
 	cpu->ptr_abort_fn = abort_func;
@@ -1848,7 +1845,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	const uint8_t mem_idx = idx_remap[idx];
 	const uint8_t mem_size = idx_to_size[mem_idx];
 
-	std::vector<BasicBlock *> vec_bb = getBBs((cpu->cpu_flags & CPU_ALLOW_CODE_WRITE) ? 5 : 6);
+	std::vector<BasicBlock *> vec_bb = getBBs(5);
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
 	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
@@ -1859,20 +1856,19 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	// this checks the page privilege access (mem_access), if the last byte of the write is in the same page as the first (addr + (mem_size / 8) - 1) and
 	// the tlb dirty flag. Writes that cross pages or that reside in a page where a watchpoint is installed always result in tlb misses
 	// and writes without the dirty flag set miss only once
-	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(tlb_entry, OR(mem_access, CONST32(TLB_WATCH))), SHL(tlb_idx1, CONST32(PAGE_SHIFT))),
+	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(tlb_entry, OR(mem_access, CONST32(TLB_CODE | TLB_WATCH))), SHL(tlb_idx1, CONST32(PAGE_SHIFT))),
 		OR(mem_access, SHL(tlb_idx2, CONST32(PAGE_SHIFT)))), CONST32(0)));
 
 	// tlb hit, check if it's ram
 	cpu->bb = vec_bb[0];
 	Value *ram_offset = ALLOC32();
 	ST(ram_offset, OR(AND(tlb_entry, CONST32(~PAGE_MASK)), AND(addr, CONST32(PAGE_MASK))));
-	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM | TLB_CODE)), vec_bb[4]);
+	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM)), vec_bb[4]);
 	swi->SWITCH_add(32, TLB_RAM, vec_bb[3]);
-	swi->SWITCH_add(32, TLB_RAM | TLB_CODE, cpu->cpu_flags & CPU_ALLOW_CODE_WRITE ? vec_bb[3] : vec_bb[5]);
 
-	// no, acccess the memory region with is_phys flag=1
+	// no, acccess the memory region with the external handler
 	cpu->bb = vec_bb[4];
-	CallInst::Create(cpu->ptr_mem_stfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(ram_offset), value, cpu->instr_eip, CONST8(1 | is_priv), tc_ptr }, "", cpu->bb);
+	CallInst::Create(cpu->ptr_mem_stfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv), tc_ptr }, "", cpu->bb);
 	BR_UNCOND(vec_bb[2]);
 
 	// yes, access ram directly
@@ -1887,14 +1883,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	ST(IBITCASTp(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(ram_offset) })), LD(val_ptr));
 	BR_UNCOND(vec_bb[2]);
 
-	if (!(cpu->cpu_flags & CPU_ALLOW_CODE_WRITE)) {
-		// yes, but we are writing to a page which holds translated code, check for self-modifying code
-		cpu->bb = vec_bb[5];
-		CallInst::Create(cpu->ptr_invtc_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, tc_ptr, addr, CONST8(mem_size / 8), cpu->instr_eip }, "", cpu->bb);
-		BR_UNCOND(vec_bb[3]);
-	}
-
-	// tlb miss, acccess the memory region with is_phys flag=0
+	// tlb miss, acccess the memory region with the external handler
 	cpu->bb = vec_bb[1];
 	CallInst::Create(cpu->ptr_mem_stfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv), tc_ptr }, "", cpu->bb);
 	BR_UNCOND(vec_bb[2]);

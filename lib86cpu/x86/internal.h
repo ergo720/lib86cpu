@@ -13,7 +13,10 @@
 
 using namespace llvm;
 
-void tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t size, uint32_t eip);
+template<bool remove_hook = false>
+void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size = 0, [[maybe_unused]] uint32_t eip = 0);
+extern template void tc_invalidate<true>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
+extern template void tc_invalidate<false>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
 uint8_t cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes);
 void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);
 void cpu_msr_read(cpu_ctx_t *cpu_ctx);
@@ -52,6 +55,7 @@ inline addr_t get_pc(cpu_ctx_t *cpu_ctx);
 #define DISAS_FLG_CS32         (1 << 0)
 #define DISAS_FLG_PAGE_CROSS   (1 << 2)
 #define DISAS_FLG_FETCH_FAULT  DISAS_FLG_PAGE_CROSS
+#define DISAS_FLG_DBG_FAULT    DISAS_FLG_PAGE_CROSS
 #define DISAS_FLG_ONE_INSTR    CPU_DISAS_ONE
 
 // tc struct flags/offsets
@@ -62,7 +66,6 @@ inline addr_t get_pc(cpu_ctx_t *cpu_ctx);
 #define TC_FLG_INDIRECT   (1 << 2)
 #define TC_FLG_DIRECT     (1 << 3)
 #define TC_FLG_JMP_TAKEN  (3 << 4)
-#define TC_FLG_HOOK       (1 << 6)
 #define TC_FLG_DST_ONLY   (1 << 7)
 #define TC_FLG_LINK_MASK  (TC_FLG_INDIRECT | TC_FLG_DIRECT | TC_FLG_DST_ONLY)
 #define TC_JMP_INT_OFFSET 2

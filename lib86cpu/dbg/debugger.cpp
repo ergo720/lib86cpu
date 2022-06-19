@@ -412,7 +412,7 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 		case mem_type::ram:
 			ram_write<uint8_t>(cpu, get_ram_host_ptr(cpu, region, phys_addr), val);
 			if (is_code) {
-				tc_invalidate(&cpu->cpu_ctx, nullptr, addr, 1, addr - cpu->cpu_ctx.regs.cs_hidden.base);
+				tc_invalidate(&cpu->cpu_ctx, addr, 1, cpu->cpu_ctx.regs.eip);
 			}
 			break;
 
@@ -431,6 +431,9 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 	}
 	catch (host_exp_t type) {
 		// just fallthrough
+		if (type == host_exp_t::halt_tc) {
+			cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
+		}
 	}
 
 	(cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK) |= old_wp;

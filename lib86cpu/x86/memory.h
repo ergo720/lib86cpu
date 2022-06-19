@@ -261,48 +261,43 @@ T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t flags)
 template<typename T>
 void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t flags, translated_code_t *tc)
 {
-	if (!(flags & 1)) {
-		// NOTE: is_phys can only be set if TLB_WATCH is not set
-		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_W, eip);
-		if ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK)) {
-			uint8_t is_code1, is_code2;
-			uint8_t i = 0;
-			int8_t j = sizeof(T) - 1;
-			addr_t phys_addr_s = get_write_addr(cpu, addr, flags & 2, eip, &is_code1);
-			addr_t phys_addr_e = get_write_addr(cpu, addr + sizeof(T) - 1, flags & 2, eip, &is_code2);
-			addr_t phys_addr = phys_addr_s;
-			uint8_t bytes_in_page = ((addr + sizeof(T) - 1) & ~PAGE_MASK) - addr;
-			if (is_code1) {
-				tc_invalidate(&cpu->cpu_ctx, tc, phys_addr_s, bytes_in_page, eip);
-			}
-			if (is_code2) {
-				tc_invalidate(&cpu->cpu_ctx, tc, phys_addr_e & ~PAGE_MASK, sizeof(T) - bytes_in_page, eip);
-			}
-			if constexpr (is_big_endian) {
-				sys::swapByteOrder<T>(value);
-			}
-			while (i < sizeof(T)) {
-				memory_region_t<addr_t> *region = as_memory_search_addr<T>(cpu, phys_addr);
-				as_memory_dispatch_write<uint8_t>(cpu, phys_addr, value >> (j * 8), region);
-				phys_addr++;
-				i++;
-				j--;
-				if (i == bytes_in_page) {
-					phys_addr = phys_addr_e & ~PAGE_MASK;
-				}
-			}
+	// NOTE: is_phys is never set because tc_invalidate needs a virtual address
+	cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_W, eip);
+	if ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK)) {
+		uint8_t is_code1, is_code2;
+		uint8_t i = 0;
+		int8_t j = sizeof(T) - 1;
+		addr_t phys_addr_s = get_write_addr(cpu, addr, flags & 2, eip, &is_code1);
+		addr_t phys_addr_e = get_write_addr(cpu, addr + sizeof(T) - 1, flags & 2, eip, &is_code2);
+		addr_t phys_addr = phys_addr_s;
+		uint8_t bytes_in_page = ((addr + sizeof(T) - 1) & ~PAGE_MASK) - addr;
+		if (is_code1) {
+			tc_invalidate(&cpu->cpu_ctx, addr, bytes_in_page, eip);
 		}
-		else {
-			uint8_t is_code;
-			addr_t phys_addr = get_write_addr(cpu, addr, flags & 2, eip, &is_code);
-			if (is_code) {
-				tc_invalidate(&cpu->cpu_ctx, tc, phys_addr, sizeof(T), eip);
+		if (is_code2) {
+			tc_invalidate(&cpu->cpu_ctx, addr + sizeof(T) - 1, sizeof(T) - bytes_in_page, eip);
+		}
+		if constexpr (is_big_endian) {
+			sys::swapByteOrder<T>(value);
+		}
+		while (i < sizeof(T)) {
+			memory_region_t<addr_t> *region = as_memory_search_addr<T>(cpu, phys_addr);
+			as_memory_dispatch_write<uint8_t>(cpu, phys_addr, value >> (j * 8), region);
+			phys_addr++;
+			i++;
+			j--;
+			if (i == bytes_in_page) {
+				phys_addr = phys_addr_e & ~PAGE_MASK;
 			}
-			as_memory_dispatch_write<T>(cpu, phys_addr, value, as_memory_search_addr<T>(cpu, phys_addr));
 		}
 	}
 	else {
-		as_memory_dispatch_write<T>(cpu, addr, value, as_memory_search_addr<T>(cpu, addr));
+		uint8_t is_code;
+		addr_t phys_addr = get_write_addr(cpu, addr, flags & 2, eip, &is_code);
+		if (is_code) {
+			tc_invalidate(&cpu->cpu_ctx, addr, sizeof(T), eip);
+		}
+		as_memory_dispatch_write<T>(cpu, phys_addr, value, as_memory_search_addr<T>(cpu, phys_addr));
 	}
 }
 

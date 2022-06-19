@@ -157,7 +157,7 @@ struct cpu_t {
 	std::unique_ptr<interval_tree<port_t, std::unique_ptr<memory_region_t<port_t>>>> io_space_tree;
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<addr_t>>>, sort_by_priority<addr_t>> memory_out;
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<port_t>>>, sort_by_priority<port_t>> io_out;
-	std::forward_list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
+	std::list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
 	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
 	std::vector<std::unique_ptr<uint8_t[]>> vec_rom;
 	std::unordered_map<addr_t, std::unique_ptr<hook>> hook_map;
@@ -195,7 +195,6 @@ struct cpu_t {
 	llvm::Value *ptr_iotlb;
 	llvm::Value *ptr_ram;
 	llvm::Value *ptr_exp_fn;
-	llvm::Value *ptr_invtc_fn;
 	llvm::Value *ptr_abort_fn;
 	llvm::Value *instr_eip;
 	llvm::BasicBlock *bb; // bb to which we are currently adding llvm instructions

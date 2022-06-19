@@ -44,28 +44,50 @@ tc_hash(addr_t pc)
 	return pc & (CODE_CACHE_MAX_SIZE - 1);
 }
 
-void
-tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t size, uint32_t eip)
+template<bool remove_hook>
+void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip)
 {
 	bool halt_tc = false;
-	std::vector<std::unordered_set<translated_code_t *>::iterator> tc_to_delete;
+	addr_t phys_addr;
+	uint8_t is_code;
 
-	if ((tc != nullptr) && !(tc->flags & TC_FLG_HOOK) &&
-		!(std::min(addr + size - 1, tc->pc + tc->size - 1) < std::max(addr, tc->pc))) {
-		// worst case: the write overlaps with the tc we are currently executing
-		halt_tc = true;
-		cpu_ctx->cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
+	if constexpr (remove_hook) {
+		phys_addr = get_write_addr(cpu_ctx->cpu, addr, 2, cpu_ctx->regs.eip, &is_code);
+	}
+	else {
+		if (cpu_ctx->cpu->cpu_flags & CPU_ALLOW_CODE_WRITE) {
+			return;
+		}
+
+		try {
+			phys_addr = get_write_addr(cpu_ctx->cpu, addr, 2, eip, &is_code);
+		}
+		catch (host_exp_t type) {
+			// because all callers of this function translate the address already, this should never happen
+			LIB86CPU_ABORT_msg("Unexpected page fault in %s", __func__);
+		}
 	}
 
 	// find all tc's in the page addr belongs to
-	auto it_map = cpu_ctx->cpu->tc_page_map.find(addr >> PAGE_SHIFT);
+	auto it_map = cpu_ctx->cpu->tc_page_map.find(phys_addr >> PAGE_SHIFT);
 	if (it_map != cpu_ctx->cpu->tc_page_map.end()) {
 		auto it_set = it_map->second.begin();
+		uint32_t flags = (cpu_ctx->hflags & HFLG_CONST) | (cpu_ctx->regs.eflags & EFLAGS_CONST);
+		std::vector<std::unordered_set<translated_code_t *>::iterator> tc_to_delete;
 		// iterate over all tc's found in the page
 		while (it_set != it_map->second.end()) {
 			translated_code_t *tc_in_page = *it_set;
-			// only invalidate the tc if addr is included in the translated address range of the tc
-			if (!(std::min(addr + size - 1, tc_in_page->pc + tc_in_page->size - 1) < std::max(addr, tc_in_page->pc))) {
+			// only invalidate the tc if phys_addr is included in the translated address range of the tc
+			// hook tc's have a zero guest code size, so they are unaffected by guest writes and do not need to be considered by tc_invalidate
+			bool remove_tc;
+			if constexpr (remove_hook) {
+				remove_tc = !tc_in_page->size && (tc_in_page->pc == phys_addr);
+			}
+			else {
+				remove_tc = tc_in_page->size && !(std::min(phys_addr + size - 1, tc_in_page->pc + tc_in_page->size - 1) < std::max(phys_addr, tc_in_page->pc));
+			}
+
+			if (remove_tc) {
 				auto it_list = tc_in_page->linked_tc.begin();
 				// now unlink all other tc's which jump to this tc
 				while (it_list != tc_in_page->linked_tc.end()) {
@@ -81,35 +103,46 @@ tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t 
 				// delete the found tc from the code cache
 				uint32_t idx = tc_hash(tc_in_page->pc);
 				auto it = cpu_ctx->cpu->code_cache[idx].begin();
-				auto it_prev = it;
-				uint8_t found = 0;
 				while (it != cpu_ctx->cpu->code_cache[idx].end()) {
-					translated_code_t *tc = it->get();
-					if (tc == tc_in_page) {
-						found = 1;
-						if (it == cpu_ctx->cpu->code_cache[idx].begin()) {
-							cpu_ctx->cpu->code_cache[idx].pop_front();
+					if (it->get() == tc_in_page) {
+						try {
+							if (it->get()->cs_base == cpu_ctx->regs.cs_hidden.base &&
+								it->get()->pc == get_code_addr(cpu_ctx->cpu, get_pc(cpu_ctx), cpu_ctx->regs.eip) &&
+								it->get()->cpu_flags == flags) {
+								// worst case: the write overlaps with the tc we are currently executing
+								halt_tc = true;
+								if constexpr (!remove_hook) {
+									cpu_ctx->cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
+								}
+							}
 						}
-						else {
-							cpu_ctx->cpu->code_cache[idx].erase_after(it_prev);
+						catch (host_exp_t type) {
+							// the current tc cannot fault
 						}
+						cpu_ctx->cpu->code_cache[idx].erase(it);
 						cpu_ctx->cpu->num_tc--;
 						break;
 					}
-					it_prev = it;
 					it++;
 				}
 
-				assert(found);
-				// we can't delete the tc in tc_page_map right now because it would invalidate its iterator, which is still needed below
-				tc_to_delete.push_back(it_set);
+				if constexpr (remove_hook) {
+					it_map->second.erase(it_set);
+					break;
+				}
+				else {
+					// we can't delete the tc in tc_page_map right now because it would invalidate its iterator, which is still needed below
+					tc_to_delete.push_back(it_set);
+				}
 			}
 			it_set++;
 		}
 
-		// delete the found tc's from the tc_page_map
-		for (auto &it : tc_to_delete) {
-			it_map->second.erase(it);
+		if constexpr (!remove_hook) {
+			// delete the found tc's from the tc_page_map
+			for (auto &it : tc_to_delete) {
+				it_map->second.erase(it);
+			}
 		}
 
 		// if the tc_page_map for addr is now empty, also clear TLB_CODE and its key in the map
@@ -121,10 +154,15 @@ tc_invalidate(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint32_t addr, uint8_t 
 
 	if (halt_tc) {
 		// in this case the tc we were executing has been destroyed and thus we must return to the translator with an exception
-		cpu_ctx->regs.eip = eip;
+		if constexpr (!remove_hook) {
+			cpu_ctx->regs.eip = eip;
+		}
 		throw host_exp_t::halt_tc;
 	}
 }
+
+template void tc_invalidate<true>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
+template void tc_invalidate<false>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
 
 static translated_code_t *
 tc_cache_search(cpu_t *cpu, addr_t pc)
@@ -149,10 +187,7 @@ static void
 tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc)
 {
 	cpu->num_tc++;
-	if (!(tc->flags & TC_FLG_HOOK)) {
-		// hook tc's have a zero guest code size, so they are unaffected by guest writes and do not need to be considered by tc_invalidate
-		cpu->tc_page_map[pc >> PAGE_SHIFT].insert(tc.get());
-	}
+	cpu->tc_page_map[pc >> PAGE_SHIFT].insert(tc.get());
 	cpu->code_cache[tc_hash(pc)].push_front(std::move(tc));
 }
 
@@ -382,6 +417,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			// this happens on instr breakpoints (not int3)
 			assert(type == host_exp_t::de_exp);
 			RAISEin0(EXP_DB);
+			disas_ctx->flags |= DISAS_FLG_DBG_FAULT;
 			return;
 		}
 
@@ -2754,16 +2790,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							BR_UNCOND(vec_bb[1]);
 							cpu->bb = vec_bb[1];
 						}
-						// invalidate the tc if it is an instr breakpoint. This, because those are only checked at translation time and not at runtime. If we don't, the existing
-						// tc's will still break on the old address. Note that this is not a problem for data watchpoints because the tc of the trapped instr is never inserted in
-						// the code cache
-						std::vector<BasicBlock *> vec_bb = getBBs(2);
-						BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(AND(SHR(LD_R32(DR7_idx), CONST32(DR7_TYPE_SHIFT + (dr_idx - DR_offset) * 4)), CONST32(3)), CONST32(DR7_TYPE_INSTR)));
-						cpu->bb = vec_bb[0];
-						CallInst::Create(cpu->ptr_invtc_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, ConstantExpr::getIntToPtr(CONSTp(cpu->tc), cpu->bb->getParent()->getReturnType()),
-							LD_R32(dr_idx), CONST8(1), cpu->instr_eip }, "", cpu->bb);
-						BR_UNCOND(vec_bb[1]);
-						cpu->bb = vec_bb[1];
 					}
 					break;
 
@@ -2790,7 +2816,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					case DR7_idx: {
 						ST(reg, OR(LD(reg), CONST32(DR7_RES_MASK)));
 						for (int idx = 0; idx < 4; ++idx) {
-							std::vector<BasicBlock *> vec_bb = getBBs(7);
+							std::vector<BasicBlock *> vec_bb = getBBs(5);
 							Value *curr_watch_addr = LD_R32(DR_offset + idx);
 							Value *tlb_idx = GEP(cpu->ptr_tlb, SHR(curr_watch_addr, CONST32(PAGE_SHIFT)));
 							// we don't support task switches, so local and global enable flags are the same for now
@@ -2809,13 +2835,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							ST(tlb_idx, AND(LD(tlb_idx), CONST32(~TLB_WATCH))); // remove watchpoint
 							BR_UNCOND(vec_bb[4]);
 							cpu->bb = vec_bb[4];
-							BR_COND(vec_bb[5], vec_bb[6], ICMP_EQ(AND(SHR(LD(reg), CONST32(DR7_TYPE_SHIFT + idx * 4)), CONST32(3)), CONST32(DR7_TYPE_INSTR)));
-							cpu->bb = vec_bb[5];
-							// invalidate the tc if it is an instr breakpoint. Same as above
-							CallInst::Create(cpu->ptr_invtc_fn, std::vector<Value *> { cpu->ptr_cpu_ctx, ConstantExpr::getIntToPtr(CONSTp(cpu->tc), cpu->bb->getParent()->getReturnType()),
-								curr_watch_addr, CONST8(1), cpu->instr_eip }, "", cpu->bb);
-							BR_UNCOND(vec_bb[6]);
-							cpu->bb = vec_bb[6];
 						}
 					}
 					break;
@@ -5443,7 +5462,6 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 				if (take_hook) {
 					cpu->instr_eip = CONST32(disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
 					hook_emit(cpu, it->second.get());
-					cpu->tc->flags |= TC_FLG_HOOK;
 				}
 				else {
 					// start guest code translation
