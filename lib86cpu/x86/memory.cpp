@@ -10,6 +10,22 @@
 
 
 void
+rom_flush_cached(cpu_t *cpu, memory_region_t<addr_t> *rom)
+{
+	auto it = std::find_if(cpu->rom_regions.begin(), cpu->rom_regions.end(), [rom](const cached_rom_region &region) {
+		return rom == region.rom;
+		});
+
+	if (it != cpu->rom_regions.end()) {
+		// erasing an element invalidates all iterators/pointers to that element and after it, and element indices are changed as well, so we need
+		// to flush all entries of the affected regions
+		tlb_flush(cpu, TLB_rom);
+		cpu->rom_regions.erase(it);
+		cpu->rom_regions_ptr = &cpu->rom_regions[0];
+	}
+}
+
+void
 iotlb_fill(cpu_t *cpu, port_t port, memory_region_t<port_t> *io)
 {
 	auto it = std::find_if(cpu->iotlb_regions.begin(), cpu->iotlb_regions.end(), [io](const cached_io_region &region) {
@@ -77,16 +93,33 @@ tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 {
 	assert((prot & ~PAGE_MASK) == 0);
 
+	unsigned tlb_idx = addr >> PAGE_SHIFT;
 	memory_region_t<addr_t> *region = as_memory_search_addr<uint8_t>(cpu, phys_addr);
 	if (region->type == mem_type::ram) {
 		phys_addr -= region->start;
-		prot |= TLB_RAM;
+		cpu->cpu_ctx.tlb[tlb_idx] = (phys_addr & ~PAGE_MASK) | (prot | TLB_RAM) | (cpu->cpu_ctx.tlb[tlb_idx] & TLB_WATCH);
 	}
 	else if (region->type == mem_type::rom) {
 		prot &= ~TLB_CODE;
-	}
 
-	cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] = (phys_addr & ~PAGE_MASK) | prot;
+		auto it = std::find_if(cpu->rom_regions.begin(), cpu->rom_regions.end(), [region](const cached_rom_region &region2) {
+			return region == region2.rom;
+			});
+
+		if (it == cpu->rom_regions.end()) {
+			// note that emplace_back can invalidate all iterators/pointers, but not the element indices, so we don't need to flush the iotlb
+			cpu->rom_regions.emplace_back(region, cpu->vec_rom[region->rom_idx].get());
+			cpu->rom_regions_ptr = &cpu->rom_regions[0];
+			it = std::prev(cpu->rom_regions.end(), 1);
+		}
+
+		phys_addr -= region->start;
+		cpu->cpu_ctx.tlb[tlb_idx] = (phys_addr & ~PAGE_MASK) | prot | TLB_ROM | (cpu->cpu_ctx.tlb[tlb_idx] & TLB_WATCH);
+		cpu->cpu_ctx.tlb_region_idx[tlb_idx] = std::distance(cpu->rom_regions.begin(), it);
+	}
+	else {
+		cpu->cpu_ctx.tlb[tlb_idx] = (phys_addr & ~PAGE_MASK) | prot | (cpu->cpu_ctx.tlb[tlb_idx] & TLB_WATCH);
+	}
 }
 
 void
@@ -96,20 +129,28 @@ tlb_flush(cpu_t *cpu, int n)
 	{
 	case TLB_zero:
 		for (uint32_t &tlb_entry : cpu->cpu_ctx.tlb) {
-			tlb_entry = 0;
+			tlb_entry = (tlb_entry & TLB_WATCH);
 		}
 		break;
 
-	case TLB_keep_rc:
+	case TLB_keep_cw:
 		for (uint32_t &tlb_entry : cpu->cpu_ctx.tlb) {
-			tlb_entry = (tlb_entry & (TLB_RAM | TLB_CODE));
+			tlb_entry = (tlb_entry & (TLB_CODE | TLB_WATCH));
 		}
 		break;
 
 	case TLB_no_g:
 		for (uint32_t &tlb_entry : cpu->cpu_ctx.tlb) {
 			if (!(tlb_entry & TLB_GLOBAL)) {
-				tlb_entry = (tlb_entry & (TLB_RAM | TLB_CODE));
+				tlb_entry = (tlb_entry & (TLB_CODE | TLB_WATCH));
+			}
+		}
+		break;
+
+	case TLB_rom:
+		for (uint32_t &tlb_entry : cpu->cpu_ctx.tlb) {
+			if (tlb_entry & TLB_ROM) {
+				tlb_entry = (tlb_entry & TLB_WATCH);
 			}
 		}
 		break;

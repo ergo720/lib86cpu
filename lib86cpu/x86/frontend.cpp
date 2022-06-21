@@ -295,7 +295,7 @@ void
 check_int_emit(cpu_t *cpu)
 {
 	unsigned ptr_size = cpu->dl->getPointerSize();
-	Value *int_flg = ZEXTs(ptr_size * 8, LD_ATOMIC(GEP(cpu->ptr_cpu_ctx, 9), AtomicOrdering::Monotonic, 1));
+	Value *int_flg = ZEXTs(ptr_size * 8, LD_ATOMIC(GEP(cpu->ptr_cpu_ctx, 10), AtomicOrdering::Monotonic, 1));
 	Value *tc_jmp_int_ptr = INT2PTR(getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())),
 		ADD(CONSTs(ptr_size * 8, reinterpret_cast<uintptr_t>(&cpu->tc->jmp_offset[TC_JMP_INT_OFFSET])), MUL(int_flg, CONSTs(ptr_size * 8, ptr_size))));
 	CallInst::Create(LD(tc_jmp_int_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
@@ -448,6 +448,7 @@ gen_fn(cpu_t *cpu)
 	type_struct_cpu_ctx_t_fields.push_back(get_struct_eflags(cpu));
 	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(32));
 	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(32), TLB_MAX_SIZE));
+	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(16), TLB_MAX_SIZE));
 	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(16), IOTLB_MAX_SIZE));
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(getIntegerType(8)));
 	type_struct_cpu_ctx_t_fields.push_back(getPointerType(type_exp_t));
@@ -518,11 +519,13 @@ create_tc_prologue(cpu_t *cpu)
 	cpu->ptr_hflags->setName("hflags");
 	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, 4);
 	cpu->ptr_tlb->setName("tlb");
-	cpu->ptr_iotlb = GEP(cpu->ptr_cpu_ctx, 5);
+	cpu->ptr_tlb_region_idx = GEP(cpu->ptr_cpu_ctx, 5);
+	cpu->ptr_tlb_region_idx->setName("tlb_region_idx");
+	cpu->ptr_iotlb = GEP(cpu->ptr_cpu_ctx, 6);
 	cpu->ptr_iotlb->setName("iotlb");
-	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 6));
+	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 7));
 	cpu->ptr_ram->setName("ram");
-	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 7));
+	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 8));
 	cpu->ptr_exp_fn->setName("exp_fn");
 }
 
@@ -546,7 +549,7 @@ gen_int_fn(cpu_t *cpu)
 	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
 	cpu->tc = nullptr;
 
-	ST_ATOMIC(GEP(func->arg_begin(), 9), func->arg_begin() + 1, AtomicOrdering::Monotonic, 1);
+	ST_ATOMIC(GEP(func->arg_begin(), 10), func->arg_begin() + 1, AtomicOrdering::Monotonic, 1);
 	ReturnInst::Create(CTX(), cpu->bb);
 
 	if (cpu->cpu_flags & CPU_PRINT_IR) {
@@ -609,13 +612,15 @@ gen_exp_fn(cpu_t *cpu)
 	cpu->ptr_hflags->setName("hflags");
 	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, 4);
 	cpu->ptr_tlb->setName("tlb");
-	cpu->ptr_iotlb = GEP(cpu->ptr_cpu_ctx, 5);
+	cpu->ptr_tlb_region_idx = GEP(cpu->ptr_cpu_ctx, 5);
+	cpu->ptr_tlb_region_idx->setName("tlb_region_idx");
+	cpu->ptr_iotlb = GEP(cpu->ptr_cpu_ctx, 6);
 	cpu->ptr_iotlb->setName("iotlb");
-	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 6));
+	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 7));
 	cpu->ptr_ram->setName("ram");
-	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 7));
+	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 8));
 	cpu->ptr_exp_fn->setName("exp_fn");
-	Value *ptr_exp_info = GEP(cpu->ptr_cpu_ctx, 8);
+	Value *ptr_exp_info = GEP(cpu->ptr_cpu_ctx, 9);
 	ptr_exp_info->setName("exp_info");
 
 	get_ext_fn(cpu);
@@ -978,11 +983,13 @@ gen_iret_fn(cpu_t *cpu)
 	cpu->ptr_hflags->setName("hflags");
 	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, 4);
 	cpu->ptr_tlb->setName("tlb");
-	cpu->ptr_iotlb = GEP(cpu->ptr_cpu_ctx, 5);
+	cpu->ptr_tlb_region_idx = GEP(cpu->ptr_cpu_ctx, 5);
+	cpu->ptr_tlb_region_idx->setName("tlb_region_idx");
+	cpu->ptr_iotlb = GEP(cpu->ptr_cpu_ctx, 6);
 	cpu->ptr_iotlb->setName("iotlb");
-	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 6));
+	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 7));
 	cpu->ptr_ram->setName("ram");
-	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 7));
+	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 8));
 	cpu->ptr_exp_fn->setName("exp_fn");
 
 	get_ext_fn(cpu);
@@ -1042,7 +1049,7 @@ create_tc_epilogue(cpu_t *cpu)
 void
 raise_exp_inline_emit(cpu_t *cpu, const std::vector<Value *> &exp_data)
 {
-	Value *ptr_exp_data = GEP(GEP(cpu->ptr_cpu_ctx, 8), 0);
+	Value *ptr_exp_data = GEP(GEP(cpu->ptr_cpu_ctx, 9), 0);
 	ST(GEP(ptr_exp_data, 0), exp_data[0]);
 	ST(GEP(ptr_exp_data, 1), exp_data[1]);
 	ST(GEP(ptr_exp_data, 2), exp_data[2]);
@@ -1792,7 +1799,7 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_pri
 	const uint8_t mem_idx = idx_remap[idx];
 	const uint8_t mem_size = idx_to_size[mem_idx];
 
-	std::vector<BasicBlock *> vec_bb = getBBs(5);
+	std::vector<BasicBlock *> vec_bb = getBBs(6);
 	Value *ret = ALLOCs(mem_size);
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
@@ -1805,25 +1812,41 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_pri
 	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(tlb_entry, OR(mem_access, CONST32(TLB_WATCH))), SHL(tlb_idx1, CONST32(PAGE_SHIFT))),
 		OR(mem_access, SHL(tlb_idx2, CONST32(PAGE_SHIFT)))), CONST32(0)));
 
-	// tlb hit, check if it's ram
+	// tlb hit, check the region type
 	cpu->bb = vec_bb[0];
-	Value *ram_offset = ALLOC32();
-	ST(ram_offset, OR(AND(tlb_entry, CONST32(~PAGE_MASK)), AND(addr, CONST32(PAGE_MASK))));
-	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM)), vec_bb[4]);
+	Value *phys_addr = ALLOC32();
+	ST(phys_addr, OR(AND(tlb_entry, CONST32(~PAGE_MASK)), AND(addr, CONST32(PAGE_MASK))));
+	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM | TLB_ROM)), vec_bb[4]);
 	swi->SWITCH_add(32, TLB_RAM, vec_bb[3]);
+	swi->SWITCH_add(32, TLB_ROM, vec_bb[5]);
 
-	// no, acccess the memory region with is_phys flag=1
+	// unknown region type, acccess the memory region with the external handler
 	cpu->bb = vec_bb[4];
-	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(ram_offset), cpu->instr_eip, CONST8(1 | is_priv) }, "", cpu->bb));
+	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(phys_addr), cpu->instr_eip, CONST8(1 | is_priv) }, "", cpu->bb));
 	BR_UNCOND(vec_bb[2]);
 
-	// yes, access ram directly
+	// it's ram, access it directly
 	cpu->bb = vec_bb[3];
-	ST(ret, LD(IBITCASTp(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(ram_offset) }))));
+	ST(ret, LD(IBITCASTp(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(phys_addr) }))));
 	if (is_big_endian && (mem_size != 8)) {
 		std::vector<Type *> vec_types { getIntegerType(mem_size) };
 		std::vector<Value *> vec_params { LD(ret) };
 		ST(ret, INTRINSIC_ty(bswap, vec_types, vec_params));
+	}
+	BR_UNCOND(vec_bb[2]);
+
+	// it's rom, find the buffer pointer and access it directly
+	cpu->bb = vec_bb[5];
+	std::vector<Type *> type_struct_rom_fields;
+	type_struct_rom_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque rom region struct
+	type_struct_rom_fields.push_back(getPointerType(getIntegerType(8)));  // rom buffer ptr
+	StructType *type_rom_t = StructType::create(CTX(), type_struct_rom_fields, "", false);
+
+	Value *rom_ptr = INT2PTR(getPointerType(getPointerType(type_rom_t)), CONSTs(cpu->dl->getPointerSize() * 8, reinterpret_cast<uintptr_t>(&cpu->rom_regions_ptr)));
+	Value *rom = GetElementPtrInst::CreateInBounds(type_rom_t, LD(rom_ptr), LD(GEP(cpu->ptr_tlb_region_idx, tlb_idx1)), "", cpu->bb);
+	ST(ret, LD(IBITCASTp(mem_size, GEP(LD(GEP(rom, 1)), std::vector<Value *> { LD(phys_addr) }))));
+	if (is_big_endian && (mem_size != 8)) {
+		ST(ret, INTRINSIC_ty(bswap, getIntegerType(mem_size), LD(ret)));
 	}
 	BR_UNCOND(vec_bb[2]);
 
@@ -1845,7 +1868,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	const uint8_t mem_idx = idx_remap[idx];
 	const uint8_t mem_size = idx_to_size[mem_idx];
 
-	std::vector<BasicBlock *> vec_bb = getBBs(5);
+	std::vector<BasicBlock *> vec_bb = getBBs(6);
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
 	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
@@ -1859,28 +1882,31 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(tlb_entry, OR(mem_access, CONST32(TLB_CODE | TLB_WATCH))), SHL(tlb_idx1, CONST32(PAGE_SHIFT))),
 		OR(mem_access, SHL(tlb_idx2, CONST32(PAGE_SHIFT)))), CONST32(0)));
 
-	// tlb hit, check if it's ram
+	// tlb hit, check the region type
 	cpu->bb = vec_bb[0];
 	Value *ram_offset = ALLOC32();
 	ST(ram_offset, OR(AND(tlb_entry, CONST32(~PAGE_MASK)), AND(addr, CONST32(PAGE_MASK))));
-	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM)), vec_bb[4]);
+	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM | TLB_ROM)), vec_bb[4]);
 	swi->SWITCH_add(32, TLB_RAM, vec_bb[3]);
+	swi->SWITCH_add(32, TLB_ROM, vec_bb[5]);
 
-	// no, acccess the memory region with the external handler
+	// unknown region type, acccess the memory region with the external handler
 	cpu->bb = vec_bb[4];
 	CallInst::Create(cpu->ptr_mem_stfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv), tc_ptr }, "", cpu->bb);
 	BR_UNCOND(vec_bb[2]);
 
-	// yes, access ram directly
+	// it's ram, access it directly
 	cpu->bb = vec_bb[3];
 	Value *val_ptr = ALLOCs(mem_size);
 	ST(val_ptr, value);
 	if (is_big_endian && (mem_size != 8)) {
-		std::vector<Type *> vec_types { getIntegerType(mem_size) };
-		std::vector<Value *> vec_params { LD(val_ptr) };
-		ST(val_ptr, INTRINSIC_ty(bswap, vec_types, vec_params));
+		ST(val_ptr, INTRINSIC_ty(bswap, getIntegerType(mem_size), LD(val_ptr)));
 	}
 	ST(IBITCASTp(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(ram_offset) })), LD(val_ptr));
+	BR_UNCOND(vec_bb[2]);
+
+	// it's rom, ignore it
+	cpu->bb = vec_bb[5];
 	BR_UNCOND(vec_bb[2]);
 
 	// tlb miss, acccess the memory region with the external handler

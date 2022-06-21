@@ -43,6 +43,7 @@ template<typename T> T ram_read(cpu_t *cpu, void *ram_ptr);
 template<typename T> void ram_write(cpu_t *cpu, void *ram_ptr, T value);
 void ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer);
 size_t as_ram_dispatch_read(cpu_t *cpu, addr_t addr, size_t size, memory_region_t<addr_t> *region, uint8_t *buffer);
+void rom_flush_cached(cpu_t * cpu, memory_region_t<addr_t> *rom);
 
 inline const uint8_t tlb_access[2][4] = {
 	{ TLB_SUP_READ, TLB_SUP_READ, TLB_SUP_READ, TLB_USER_READ },

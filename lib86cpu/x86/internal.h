@@ -17,6 +17,7 @@ template<bool remove_hook = false>
 void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size = 0, [[maybe_unused]] uint32_t eip = 0);
 extern template void tc_invalidate<true>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
 extern template void tc_invalidate<false>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
+void tc_cache_clear(cpu_t *cpu);
 uint8_t cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes);
 void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);
 void cpu_msr_read(cpu_ctx_t *cpu_ctx);
@@ -210,12 +211,14 @@ inline addr_t get_pc(cpu_ctx_t *cpu_ctx);
 #define TLB_USER_WRITE  (1 << 3)
 #define TLB_CODE        (1 << 4)
 #define TLB_RAM         (1 << 5)
+#define TLB_ROM         (1 << 6)
 #define TLB_GLOBAL      (1 << 8)
 #define TLB_DIRTY       (1 << 9)
 #define TLB_WATCH       (1 << 10)
 #define TLB_zero        0
-#define TLB_keep_rc     1
+#define TLB_keep_cw     1
 #define TLB_no_g        2
+#define TLB_rom         3
 
 // io macros
 #define IO_SHIFT        2
@@ -280,3 +283,4 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define IA32_MTRR_PHYSMASK(n) (MTRR_PHYSMASK_base + (n * 2))
 
 #define X86_MAX_INSTR_LENGTH 15
+#define ROM_MAX_NUM ((1 << 16) - 1)

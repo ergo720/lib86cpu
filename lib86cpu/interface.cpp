@@ -471,8 +471,8 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 /*
 * mem_init_region_rom -> creates a rom region. Only call this before cpu_run
 * cpu: a valid cpu instance
-* start: the guest physical address where the rom starts
-* size: size in bytes of rom
+* start: the guest physical address where the rom starts. Must be 4k aligned
+* size: size in bytes of rom. Must be a multiple of 4096
 * priority: the priority of the region. Overlapping higher prority regions will take precedence over regions with lower priority
 * buffer: a buffer that holds the rom that the region refers to
 * ret: the status of the operation
@@ -484,6 +484,14 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, int priority, std::un
 
 	if (!buffer) {
 		return set_last_error(lc86_status::invalid_parameter);
+	}
+
+	if ((start % PAGE_SIZE) != 0 || ((size % PAGE_SIZE) != 0)) {
+		return set_last_error(lc86_status::invalid_parameter);
+	}
+
+	if (cpu->num_rom_regions == ROM_MAX_NUM) {
+		return set_last_error(lc86_status::too_many);
 	}
 
 	addr_t end = start + size - 1;
@@ -503,6 +511,7 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, int priority, std::un
 
 	if (cpu->memory_space_tree->insert(start, end, std::move(rom))) {
 		cpu->vec_rom.push_back(std::move(buffer));
+		cpu->num_rom_regions++;
 		return lc86_status::success;
 	}
 	else {
@@ -511,7 +520,7 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, int priority, std::un
 }
 
 /*
-* mem_destroy_region -> destroys a region. At the moemnt, this is only safe for pmio
+* mem_destroy_region -> destroys a region. At the moemnt, this is only safe for pmio and rom
 * cpu: a valid cpu instance
 * start: the guest physical address where the region starts
 * size: size in bytes of region
@@ -531,24 +540,29 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 			iotlb_flush(cpu, region);
 			[[maybe_unused]] bool deleted = cpu->io_space_tree->erase(start_io, end_io);
 			assert(deleted);
+			cpu->num_io_regions--;
 			return lc86_status::success;
 		}
 
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 	else {
-		int rom_idx = -1;
 		addr_t end = start + size - 1;
 		cpu->memory_space_tree->search(start, end, cpu->memory_out);
 		auto region = cpu->memory_out.begin()->get().get();
-		if (region->type == mem_type::rom) {
-			rom_idx = region->rom_idx;
-		}
 
-		if (cpu->memory_space_tree->erase(start, end)) {
-			if (rom_idx != -1) {
-				cpu->vec_rom.erase(cpu->vec_rom.begin() + rom_idx);
-			}
+		if ((region->type == mem_type::rom) && (region->start == start) && (region->end == end)) {
+			// if the above conditions are satisfied, then the erase below is going to succeed, so we can flush the tlb and avoid needless flushes
+			// we must also flush the code cache because code can exist in a rom region
+			rom_flush_cached(cpu, region);
+			cpu->vec_rom.erase(cpu->vec_rom.begin() + region->rom_idx);
+			tc_cache_clear(cpu);
+			[[maybe_unused]] bool deleted = cpu->memory_space_tree->erase(start, end);
+			assert(deleted);
+			cpu->num_rom_regions--;
+			return lc86_status::success;
+		}
+		else if (cpu->memory_space_tree->erase(start, end)) {
 			return lc86_status::success;
 		}
 		else {

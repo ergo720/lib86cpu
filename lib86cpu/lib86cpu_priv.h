@@ -69,6 +69,11 @@ struct cached_io_region {
 	void *opaque;
 };
 
+struct cached_rom_region {
+	memory_region_t<addr_t> *rom;
+	uint8_t *buffer;
+};
+
 template<typename T>
 struct sort_by_priority
 {
@@ -139,6 +144,7 @@ struct cpu_ctx_t {
 	lazy_eflags_t lazy_eflags;
 	uint32_t hflags;
 	uint32_t tlb[TLB_MAX_SIZE];
+	uint16_t tlb_region_idx[TLB_MAX_SIZE];
 	uint16_t iotlb[IOTLB_MAX_SIZE];
 	uint8_t *ram;
 	raise_exp_t exp_fn;
@@ -163,7 +169,10 @@ struct cpu_t {
 	std::unordered_map<addr_t, std::unique_ptr<hook>> hook_map;
 	std::vector<cached_io_region> iotlb_regions;
 	cached_io_region *iotlb_regions_ptr;
+	std::vector<cached_rom_region> rom_regions;
+	cached_rom_region *rom_regions_ptr;
 	uint16_t num_io_regions;
+	uint16_t num_rom_regions;
 	uint16_t num_tc;
 	struct {
 		uint64_t tsc;
@@ -192,6 +201,7 @@ struct cpu_t {
 	llvm::Value *ptr_eflags;
 	llvm::Value *ptr_hflags;
 	llvm::Value *ptr_tlb;
+	llvm::Value *ptr_tlb_region_idx;
 	llvm::Value *ptr_iotlb;
 	llvm::Value *ptr_ram;
 	llvm::Value *ptr_exp_fn;

@@ -191,7 +191,7 @@ tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc)
 	cpu->code_cache[tc_hash(pc)].push_front(std::move(tc));
 }
 
-static void
+void
 tc_cache_clear(cpu_t *cpu)
 {
 	cpu->num_tc = 0;
@@ -306,7 +306,7 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 		}
 
 		if ((cpu_ctx->regs.cr0 & (CR0_WP_MASK | CR0_PG_MASK)) != (new_cr & (CR0_WP_MASK | CR0_PG_MASK))) {
-			tlb_flush(cpu_ctx->cpu, TLB_keep_rc);
+			tlb_flush(cpu_ctx->cpu, TLB_keep_cw);
 		}
 
 		// mov cr0, reg always terminates the tc, so we must update the eip here
@@ -316,7 +316,12 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 
 	case 3:
 		if (cpu_ctx->regs.cr0 & CR0_PG_MASK) {
-			tlb_flush(cpu_ctx->cpu, TLB_no_g);
+			if (cpu_ctx->regs.cr4 & CR4_PGE_MASK) {
+				tlb_flush(cpu_ctx->cpu, TLB_no_g);
+			}
+			else {
+				tlb_flush(cpu_ctx->cpu, TLB_keep_cw);
+			}
 		}
 
 		cpu_ctx->regs.cr3 = (new_cr & CR3_FLG_MASK);
@@ -332,7 +337,7 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 		}
 
 		if ((cpu_ctx->regs.cr4 & (CR4_PSE_MASK | CR4_PGE_MASK)) != (new_cr & (CR4_PSE_MASK | CR4_PGE_MASK))) {
-			tlb_flush(cpu_ctx->cpu, TLB_keep_rc);
+			tlb_flush(cpu_ctx->cpu, TLB_keep_cw);
 		}
 
 		cpu_ctx->regs.cr4 = new_cr;
