@@ -26,6 +26,22 @@ rom_flush_cached(cpu_t *cpu, memory_region_t<addr_t> *rom)
 }
 
 void
+mmio_flush_cached(cpu_t *cpu, memory_region_t<addr_t> *mmio)
+{
+	auto it = std::find_if(cpu->mmio_regions.begin(), cpu->mmio_regions.end(), [mmio](const cached_mmio_region &region) {
+		return mmio == region.mmio;
+		});
+
+	if (it != cpu->mmio_regions.end()) {
+		// erasing an element invalidates all iterators/pointers to that element and after it, and element indices are changed as well, so we need
+		// to flush all entries of the affected regions
+		tlb_flush(cpu, TLB_mmio);
+		cpu->mmio_regions.erase(it);
+		cpu->mmio_regions_ptr = &cpu->mmio_regions[0];
+	}
+}
+
+void
 iotlb_fill(cpu_t *cpu, port_t port, memory_region_t<port_t> *io)
 {
 	auto it = std::find_if(cpu->iotlb_regions.begin(), cpu->iotlb_regions.end(), [io](const cached_io_region &region) {
@@ -117,6 +133,21 @@ tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 		cpu->cpu_ctx.tlb[tlb_idx] = (phys_addr & ~PAGE_MASK) | prot | TLB_ROM | (cpu->cpu_ctx.tlb[tlb_idx] & TLB_WATCH);
 		cpu->cpu_ctx.tlb_region_idx[tlb_idx] = std::distance(cpu->rom_regions.begin(), it);
 	}
+	else if (region->type == mem_type::mmio) {
+		auto it = std::find_if(cpu->mmio_regions.begin(), cpu->mmio_regions.end(), [region](const cached_mmio_region &region2) {
+			return region == region2.mmio;
+			});
+
+		if (it == cpu->mmio_regions.end()) {
+			// note that emplace_back can invalidate all iterators/pointers, but not the element indices, so we don't need to flush the iotlb
+			cpu->mmio_regions.emplace_back(region, region->read_handler, region->write_handler, region->opaque);
+			cpu->mmio_regions_ptr = &cpu->mmio_regions[0];
+			it = std::prev(cpu->mmio_regions.end(), 1);
+		}
+
+		cpu->cpu_ctx.tlb[tlb_idx] = (phys_addr & ~PAGE_MASK) | prot | TLB_MMIO | (cpu->cpu_ctx.tlb[tlb_idx] & TLB_WATCH);
+		cpu->cpu_ctx.tlb_region_idx[tlb_idx] = std::distance(cpu->mmio_regions.begin(), it);
+	}
 	else {
 		cpu->cpu_ctx.tlb[tlb_idx] = (phys_addr & ~PAGE_MASK) | prot | (cpu->cpu_ctx.tlb[tlb_idx] & TLB_WATCH);
 	}
@@ -150,6 +181,14 @@ tlb_flush(cpu_t *cpu, int n)
 	case TLB_rom:
 		for (uint32_t &tlb_entry : cpu->cpu_ctx.tlb) {
 			if (tlb_entry & TLB_ROM) {
+				tlb_entry = (tlb_entry & TLB_WATCH);
+			}
+		}
+		break;
+
+	case TLB_mmio:
+		for (uint32_t &tlb_entry : cpu->cpu_ctx.tlb) {
+			if (tlb_entry & TLB_MMIO) {
 				tlb_entry = (tlb_entry & TLB_WATCH);
 			}
 		}

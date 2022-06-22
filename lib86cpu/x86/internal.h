@@ -212,6 +212,7 @@ inline addr_t get_pc(cpu_ctx_t *cpu_ctx);
 #define TLB_CODE        (1 << 4)
 #define TLB_RAM         (1 << 5)
 #define TLB_ROM         (1 << 6)
+#define TLB_MMIO        (1 << 7)
 #define TLB_GLOBAL      (1 << 8)
 #define TLB_DIRTY       (1 << 9)
 #define TLB_WATCH       (1 << 10)
@@ -219,6 +220,7 @@ inline addr_t get_pc(cpu_ctx_t *cpu_ctx);
 #define TLB_keep_cw     1
 #define TLB_no_g        2
 #define TLB_rom         3
+#define TLB_mmio        4
 
 // io macros
 #define IO_SHIFT        2
@@ -284,3 +286,4 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 
 #define X86_MAX_INSTR_LENGTH 15
 #define ROM_MAX_NUM ((1 << 16) - 1)
+#define MMIO_MAX_NUM ROM_MAX_NUM

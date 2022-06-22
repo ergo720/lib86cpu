@@ -69,6 +69,13 @@ struct cached_io_region {
 	void *opaque;
 };
 
+struct cached_mmio_region {
+	memory_region_t<addr_t> *mmio;
+	fp_read read_handler;
+	fp_write write_handler;
+	void *opaque;
+};
+
 struct cached_rom_region {
 	memory_region_t<addr_t> *rom;
 	uint8_t *buffer;
@@ -171,7 +178,10 @@ struct cpu_t {
 	cached_io_region *iotlb_regions_ptr;
 	std::vector<cached_rom_region> rom_regions;
 	cached_rom_region *rom_regions_ptr;
+	std::vector<cached_mmio_region> mmio_regions;
+	cached_mmio_region *mmio_regions_ptr;
 	uint16_t num_io_regions;
+	uint16_t num_mmio_regions;
 	uint16_t num_rom_regions;
 	uint16_t num_tc;
 	struct {

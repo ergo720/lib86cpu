@@ -302,8 +302,8 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 /*
 * mem_init_region_io -> creates an mmio or pmio region. Only call this before cpu_run
 * cpu: a valid cpu instance
-* start: where the region starts. A guest physical address for mmio, and a port for pmio. For pmio, the port must be 4 byte aligned
-* size: size of the region. For pmio, it must be a multiple of 4
+* start: where the region starts. A 4K aligned guest physical address for mmio, and a 4 byte aligned port for pmio
+* size: size of the region. For mmio, it must be a multiple of 4096, while for pmio, it must be a multiple of 4
 * io_space: true for pmio, and false for mmio
 * read_func: the function to call when this region is read from the guest
 * write_func: the function to call when this region is written to from the guest
@@ -369,7 +369,16 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 		}
 	}
 	else {
-		std::unique_ptr<memory_region_t<addr_t>> io(new memory_region_t<addr_t>);
+		std::unique_ptr<memory_region_t<addr_t>> mmio(new memory_region_t<addr_t>);
+
+		if ((start % PAGE_SIZE) != 0 || ((size % PAGE_SIZE) != 0)) {
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+
+		if (cpu->num_mmio_regions == MMIO_MAX_NUM) {
+			return set_last_error(lc86_status::too_many);
+		}
+
 		addr_t end = start + size - 1;
 		cpu->memory_space_tree->search(start, end, cpu->memory_out);
 
@@ -379,27 +388,28 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 			}
 		}
 
-		io->start = start;
-		io->end = end;
-		io->type = mem_type::mmio;
-		io->priority = priority;
+		mmio->start = start;
+		mmio->end = end;
+		mmio->type = mem_type::mmio;
+		mmio->priority = priority;
 		if (read_func) {
-			io->read_handler = read_func;
+			mmio->read_handler = read_func;
 		}
 		else {
-			io->read_handler = default_mmio_read_handler;
+			mmio->read_handler = default_mmio_read_handler;
 		}
 		if (write_func) {
-			io->write_handler = write_func;
+			mmio->write_handler = write_func;
 		}
 		else {
-			io->write_handler = default_mmio_write_handler;
+			mmio->write_handler = default_mmio_write_handler;
 		}
 		if (opaque) {
-			io->opaque = opaque;
+			mmio->opaque = opaque;
 		}
 
-		if (cpu->memory_space_tree->insert(start, end, std::move(io))) {
+		if (cpu->memory_space_tree->insert(start, end, std::move(mmio))) {
+			cpu->num_mmio_regions++;
 			return lc86_status::success;
 		}
 	}
@@ -520,7 +530,7 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, int priority, std::un
 }
 
 /*
-* mem_destroy_region -> destroys a region. At the moemnt, this is only safe for pmio and rom
+* mem_destroy_region -> destroys a region. At the moemnt, this is only safe for pmio, mmio and rom
 * cpu: a valid cpu instance
 * start: the guest physical address where the region starts
 * size: size in bytes of region
@@ -560,6 +570,14 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 			[[maybe_unused]] bool deleted = cpu->memory_space_tree->erase(start, end);
 			assert(deleted);
 			cpu->num_rom_regions--;
+			return lc86_status::success;
+		}
+		else if ((region->type == mem_type::mmio) && (region->start == start) && (region->end == end)) {
+			// if the above conditions are satisfied, then the erase below is going to succeed, so we can flush the tlb and avoid needless flushes
+			mmio_flush_cached(cpu, region);
+			[[maybe_unused]] bool deleted = cpu->memory_space_tree->erase(start, end);
+			assert(deleted);
+			cpu->num_mmio_regions--;
 			return lc86_status::success;
 		}
 		else if (cpu->memory_space_tree->erase(start, end)) {

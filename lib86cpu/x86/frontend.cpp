@@ -1799,7 +1799,7 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_pri
 	const uint8_t mem_idx = idx_remap[idx];
 	const uint8_t mem_size = idx_to_size[mem_idx];
 
-	std::vector<BasicBlock *> vec_bb = getBBs(6);
+	std::vector<BasicBlock *> vec_bb = getBBs(7);
 	Value *ret = ALLOCs(mem_size);
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
@@ -1816,9 +1816,10 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_pri
 	cpu->bb = vec_bb[0];
 	Value *phys_addr = ALLOC32();
 	ST(phys_addr, OR(AND(tlb_entry, CONST32(~PAGE_MASK)), AND(addr, CONST32(PAGE_MASK))));
-	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM | TLB_ROM)), vec_bb[4]);
+	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM | TLB_ROM | TLB_MMIO)), vec_bb[4]);
 	swi->SWITCH_add(32, TLB_RAM, vec_bb[3]);
 	swi->SWITCH_add(32, TLB_ROM, vec_bb[5]);
+	swi->SWITCH_add(32, TLB_MMIO, vec_bb[6]);
 
 	// unknown region type, acccess the memory region with the external handler
 	cpu->bb = vec_bb[4];
@@ -1850,6 +1851,30 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_pri
 	}
 	BR_UNCOND(vec_bb[2]);
 
+	// it's mmio, invoke the handler directly
+	cpu->bb = vec_bb[6];
+	FunctionType *type_mmio_read_t = FunctionType::get(
+		getIntegerType(64),                                                                                                 // ret
+		std::vector<Type *> { getIntegerType(32), getIntegerType(sizeof(size_t) * 8), getPointerType(getIntegerType(8)) },  // addr, size, opaque
+		false);
+	std::vector<Type *> type_struct_mmio_fields;
+	type_struct_mmio_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque mmio region struct
+	type_struct_mmio_fields.push_back(getPointerType(type_mmio_read_t));
+	type_struct_mmio_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque mmio write func
+	type_struct_mmio_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque mmio value
+	StructType *type_mmio_t = StructType::create(CTX(), type_struct_mmio_fields, "", false);
+
+	Value *mmio_ptr = INT2PTR(getPointerType(getPointerType(type_mmio_t)), CONSTs(cpu->dl->getPointerSize() * 8, reinterpret_cast<uintptr_t>(&cpu->mmio_regions_ptr)));
+	Value *mmio = GetElementPtrInst::CreateInBounds(type_mmio_t, LD(mmio_ptr), LD(GEP(cpu->ptr_tlb_region_idx, tlb_idx1)), "", cpu->bb);
+	if (Value *mmio_val = CallInst::Create(LD(GEP(mmio, 1)), std::vector<Value *> { LD(phys_addr), CONSTs(sizeof(size_t) * 8, mem_size / 8), LD(GEP(mmio, 3)) }, "", cpu->bb);
+		mem_size == 64) {
+		ST(ret, mmio_val);
+	}
+	else {
+		ST(ret, TRUNCs(mem_size, mmio_val));
+	}
+	BR_UNCOND(vec_bb[2]);
+
 	// tlb miss, acccess the memory region with is_phys flag=0
 	cpu->bb = vec_bb[1];
 	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, cpu->instr_eip, CONST8(is_priv) }, "", cpu->bb));
@@ -1868,7 +1893,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	const uint8_t mem_idx = idx_remap[idx];
 	const uint8_t mem_size = idx_to_size[mem_idx];
 
-	std::vector<BasicBlock *> vec_bb = getBBs(6);
+	std::vector<BasicBlock *> vec_bb = getBBs(7);
 	Value *tlb_idx1 = SHR(addr, CONST32(PAGE_SHIFT));
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
 	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
@@ -1884,11 +1909,12 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 
 	// tlb hit, check the region type
 	cpu->bb = vec_bb[0];
-	Value *ram_offset = ALLOC32();
-	ST(ram_offset, OR(AND(tlb_entry, CONST32(~PAGE_MASK)), AND(addr, CONST32(PAGE_MASK))));
-	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM | TLB_ROM)), vec_bb[4]);
+	Value *phys_addr = ALLOC32();
+	ST(phys_addr, OR(AND(tlb_entry, CONST32(~PAGE_MASK)), AND(addr, CONST32(PAGE_MASK))));
+	SwitchInst *swi = SWITCH_new(2, AND(tlb_entry, CONST32(TLB_RAM | TLB_ROM | TLB_MMIO)), vec_bb[4]);
 	swi->SWITCH_add(32, TLB_RAM, vec_bb[3]);
 	swi->SWITCH_add(32, TLB_ROM, vec_bb[5]);
+	swi->SWITCH_add(32, TLB_MMIO, vec_bb[6]);
 
 	// unknown region type, acccess the memory region with the external handler
 	cpu->bb = vec_bb[4];
@@ -1902,11 +1928,29 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	if (is_big_endian && (mem_size != 8)) {
 		ST(val_ptr, INTRINSIC_ty(bswap, getIntegerType(mem_size), LD(val_ptr)));
 	}
-	ST(IBITCASTp(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(ram_offset) })), LD(val_ptr));
+	ST(IBITCASTp(mem_size, GEP(cpu->ptr_ram, std::vector<Value *> { LD(phys_addr) })), LD(val_ptr));
 	BR_UNCOND(vec_bb[2]);
 
 	// it's rom, ignore it
 	cpu->bb = vec_bb[5];
+	BR_UNCOND(vec_bb[2]);
+
+	// it's mmio, invoke the handler directly
+	cpu->bb = vec_bb[6];
+	FunctionType *type_mmio_write_t = FunctionType::get(
+		getVoidType(),                                                                                                                          // void ret
+		std::vector<Type *> { getIntegerType(32), getIntegerType(sizeof(size_t) * 8), getIntegerType(64), getPointerType(getIntegerType(8)) },  // addr, size, val, opaque
+		false);
+	std::vector<Type *> type_struct_mmio_fields;
+	type_struct_mmio_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque mmio region struct
+	type_struct_mmio_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque mmio read func
+	type_struct_mmio_fields.push_back(getPointerType(type_mmio_write_t));
+	type_struct_mmio_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque mmio value
+	StructType *type_mmio_t = StructType::create(CTX(), type_struct_mmio_fields, "", false);
+
+	Value *mmio_ptr = INT2PTR(getPointerType(getPointerType(type_mmio_t)), CONSTs(cpu->dl->getPointerSize() * 8, reinterpret_cast<uintptr_t>(&cpu->mmio_regions_ptr)));
+	Value *mmio = GetElementPtrInst::CreateInBounds(type_mmio_t, LD(mmio_ptr), LD(GEP(cpu->ptr_tlb_region_idx, tlb_idx1)), "", cpu->bb);
+	CallInst::Create(LD(GEP(mmio, 2)), std::vector<Value *> { LD(phys_addr), CONSTs(sizeof(size_t) * 8, mem_size / 8), (mem_size != 64) ? ZEXT64(value) : value, LD(GEP(mmio, 3)) }, "", cpu->bb);
 	BR_UNCOND(vec_bb[2]);
 
 	// tlb miss, acccess the memory region with the external handler
