@@ -420,9 +420,9 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 /*
 * mem_init_region_alias -> creates a region that points to another region (which must not be pmio). Only call this before cpu_run
 * cpu: a valid cpu instance
-* alias_start: the guest physical address where the alias starts
-* ori_start: the guest physical address where the original region starts
-* ori_size: size in bytes of alias
+* alias_start: the guest physical address where the alias starts. Must be 4k aligned
+* ori_start: the guest physical address where the original region starts. Must be 4k aligned
+* ori_size: size in bytes of alias. Must be a multiple of 4096
 * priority: the priority of the region. Overlapping higher prority regions will take precedence over regions with lower priority
 * ret: the status of the operation
 */
@@ -435,18 +435,20 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 
+	if ((alias_start % PAGE_SIZE) != 0 || (ori_start % PAGE_SIZE) != 0 || ((ori_size % PAGE_SIZE) != 0)) {
+		return set_last_error(lc86_status::invalid_parameter);
+	}
+
 	memory_region_t<addr_t> *aliased_region = nullptr;
 	addr_t end = ori_start + ori_size - 1;
 	cpu->memory_space_tree->search(ori_start, end, cpu->memory_out);
 
-	if (cpu->memory_out.empty()) {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
-
 	for (auto &region : cpu->memory_out) {
 		if ((region.get()->start <= ori_start) && (region.get()->end >= end)) {
-			aliased_region = region.get().get();
-			break;
+			if (region.get()->type != mem_type::unmapped) {
+				aliased_region = region.get().get();
+				break;
+			}
 		}
 	}
 
@@ -530,7 +532,7 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, int priority, std::un
 }
 
 /*
-* mem_destroy_region -> destroys a region. At the moemnt, this is only safe for pmio, mmio and rom
+* mem_destroy_region -> destroys a region. At the moemnt, this is only safe for pmio, mmio, alias and rom
 * cpu: a valid cpu instance
 * start: the guest physical address where the region starts
 * size: size in bytes of region
@@ -561,24 +563,38 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 		cpu->memory_space_tree->search(start, end, cpu->memory_out);
 		auto region = cpu->memory_out.begin()->get().get();
 
-		if ((region->type == mem_type::rom) && (region->start == start) && (region->end == end)) {
-			// if the above conditions are satisfied, then the erase below is going to succeed, so we can flush the tlb and avoid needless flushes
-			// we must also flush the code cache because code can exist in a rom region
-			rom_flush_cached(cpu, region);
-			cpu->vec_rom.erase(cpu->vec_rom.begin() + region->rom_idx);
-			tc_cache_clear(cpu);
-			[[maybe_unused]] bool deleted = cpu->memory_space_tree->erase(start, end);
-			assert(deleted);
-			cpu->num_rom_regions--;
-			return lc86_status::success;
+		if (region->type == mem_type::alias) {
+			AS_RESOLVE_ALIAS();
 		}
-		else if ((region->type == mem_type::mmio) && (region->start == start) && (region->end == end)) {
-			// if the above conditions are satisfied, then the erase below is going to succeed, so we can flush the tlb and avoid needless flushes
-			mmio_flush_cached(cpu, region);
-			[[maybe_unused]] bool deleted = cpu->memory_space_tree->erase(start, end);
-			assert(deleted);
-			cpu->num_mmio_regions--;
-			return lc86_status::success;
+
+		if (region->type == mem_type::rom) {
+			if ((region->start == start) && (region->end == end)) {
+				// if the above conditions are satisfied, then the erase below is going to succeed, so we can flush the tlb and avoid needless flushes
+				// we must also flush the code cache because code can exist in a rom region
+				rom_flush_cached(cpu, region);
+				cpu->vec_rom.erase(cpu->vec_rom.begin() + region->rom_idx);
+				tc_cache_clear(cpu);
+				[[maybe_unused]] bool deleted = cpu->memory_space_tree->erase(start, end);
+				assert(deleted);
+				cpu->num_rom_regions--;
+				return lc86_status::success;
+			}
+			else {
+				return set_last_error(lc86_status::invalid_parameter);
+			}
+		}
+		else if (region->type == mem_type::mmio) {
+			if ((region->start == start) && (region->end == end)) {
+				// if the above conditions are satisfied, then the erase below is going to succeed, so we can flush the tlb and avoid needless flushes
+				mmio_flush_cached(cpu, region);
+				[[maybe_unused]] bool deleted = cpu->memory_space_tree->erase(start, end);
+				assert(deleted);
+				cpu->num_mmio_regions--;
+				return lc86_status::success;
+			}
+			else {
+				return set_last_error(lc86_status::invalid_parameter);
+			}
 		}
 		else if (cpu->memory_space_tree->erase(start, end)) {
 			return lc86_status::success;

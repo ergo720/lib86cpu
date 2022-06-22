@@ -1822,6 +1822,7 @@ mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_pri
 	swi->SWITCH_add(32, TLB_MMIO, vec_bb[6]);
 
 	// unknown region type, acccess the memory region with the external handler
+	// because all other region types are cached, this should only happen with the unmapped region
 	cpu->bb = vec_bb[4];
 	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, LD(phys_addr), cpu->instr_eip, CONST8(1 | is_priv) }, "", cpu->bb));
 	BR_UNCOND(vec_bb[2]);
@@ -1917,6 +1918,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	swi->SWITCH_add(32, TLB_MMIO, vec_bb[6]);
 
 	// unknown region type, acccess the memory region with the external handler
+	// because all other region types are cached, this should only happen with the unmapped region
 	cpu->bb = vec_bb[4];
 	CallInst::Create(cpu->ptr_mem_stfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv), tc_ptr }, "", cpu->bb);
 	BR_UNCOND(vec_bb[2]);

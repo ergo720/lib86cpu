@@ -109,10 +109,19 @@ tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 {
 	assert((prot & ~PAGE_MASK) == 0);
 
+	uint32_t offset = 0;
 	unsigned tlb_idx = addr >> PAGE_SHIFT;
 	memory_region_t<addr_t> *region = as_memory_search_addr<uint8_t>(cpu, phys_addr);
+
+	if (region->type == mem_type::alias) {
+		while (region->aliased_region) {
+			offset += (region->start - (region->alias_offset + region->aliased_region->start));
+			region = region->aliased_region;
+		}
+	}
+
 	if (region->type == mem_type::ram) {
-		phys_addr -= region->start;
+		phys_addr -= (offset - region->start);
 		cpu->cpu_ctx.tlb[tlb_idx] = (phys_addr & ~PAGE_MASK) | (prot | TLB_RAM) | (cpu->cpu_ctx.tlb[tlb_idx] & TLB_WATCH);
 	}
 	else if (region->type == mem_type::rom) {
@@ -129,7 +138,7 @@ tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 			it = std::prev(cpu->rom_regions.end(), 1);
 		}
 
-		phys_addr -= region->start;
+		phys_addr -= (offset - region->start);
 		cpu->cpu_ctx.tlb[tlb_idx] = (phys_addr & ~PAGE_MASK) | prot | TLB_ROM | (cpu->cpu_ctx.tlb[tlb_idx] & TLB_WATCH);
 		cpu->cpu_ctx.tlb_region_idx[tlb_idx] = std::distance(cpu->rom_regions.begin(), it);
 	}

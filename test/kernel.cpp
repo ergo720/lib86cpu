@@ -204,7 +204,7 @@ gen_cxbxrkrnl_test(const std::string &executable)
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_ram(cpu, CONTIGUOUS_MEMORY_BASE, ramsize, 1))) {
+	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_alias(cpu, CONTIGUOUS_MEMORY_BASE, 0, ramsize, 1))) {
 		std::printf("Failed to initialize contiguous memory!\n");
 		return false;
 	}
