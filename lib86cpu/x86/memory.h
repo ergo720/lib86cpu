@@ -29,10 +29,10 @@ uint8_t mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys
 uint16_t mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
 uint32_t mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
 uint64_t mem_read64(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
-void mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip, uint8_t is_phys, translated_code_t * tc);
-void mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip, uint8_t is_phys, translated_code_t * tc);
-void mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip, uint8_t is_phys, translated_code_t * tc);
-void mem_write64(cpu_ctx_t * cpu_ctx, addr_t addr, uint64_t value, uint32_t eip, uint8_t is_phys, translated_code_t * tc);
+void mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip, uint8_t is_phys);
+void mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip, uint8_t is_phys);
+void mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip, uint8_t is_phys);
+void mem_write64(cpu_ctx_t * cpu_ctx, addr_t addr, uint64_t value, uint32_t eip, uint8_t is_phys);
 uint8_t io_read8(cpu_ctx_t *cpu_ctx, port_t port);
 uint16_t io_read16(cpu_ctx_t *cpu_ctx, port_t port);
 uint32_t io_read32(cpu_ctx_t *cpu_ctx, port_t port);
@@ -261,7 +261,7 @@ T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t flags)
 }
 
 template<typename T>
-void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t flags, translated_code_t *tc)
+void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t flags)
 {
 	// NOTE: is_phys is never set because tc_invalidate needs a virtual address
 	cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_W, eip);

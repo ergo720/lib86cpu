@@ -529,7 +529,7 @@ dbg_apply_sw_breakpoints(cpu_t *cpu)
 
 		// the mem accesses below cannot raise page faults since break_list can only contain valid pages because of the checks done in insert_sw_breakpoint
 		uint8_t original_byte = mem_read<uint8_t>(cpu, addr, cpu->cpu_ctx.regs.eip, 0);
-		mem_write<uint8_t>(cpu, addr, 0xCC, cpu->cpu_ctx.regs.eip, 0, nullptr);
+		mem_write<uint8_t>(cpu, addr, 0xCC, cpu->cpu_ctx.regs.eip, 0);
 		break_list.insert_or_assign(addr, original_byte);
 
 		cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] = tlb_entry;
@@ -555,7 +555,7 @@ dbg_remove_sw_breakpoints(cpu_t *cpu)
 		cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] &= ~TLB_WATCH;
 
 		try {
-			mem_write<uint8_t>(cpu, addr, original_byte, cpu->cpu_ctx.regs.eip, 0, nullptr);
+			mem_write<uint8_t>(cpu, addr, original_byte, cpu->cpu_ctx.regs.eip, 0);
 		}
 		catch (host_exp_t type) {
 			// this can only happen when the page is invalid

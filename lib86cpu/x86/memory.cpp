@@ -533,27 +533,27 @@ mem_read64(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys)
 }
 
 void
-mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip, uint8_t is_phys, translated_code_t *tc)
+mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip, uint8_t is_phys)
 {
-	mem_write<uint8_t>(cpu_ctx->cpu, addr, value, eip, is_phys, tc);
+	mem_write<uint8_t>(cpu_ctx->cpu, addr, value, eip, is_phys);
 }
 
 void
-mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip, uint8_t is_phys, translated_code_t *tc)
+mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip, uint8_t is_phys)
 {
-	mem_write<uint16_t>(cpu_ctx->cpu, addr, value, eip, is_phys, tc);
+	mem_write<uint16_t>(cpu_ctx->cpu, addr, value, eip, is_phys);
 }
 
 void
-mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip, uint8_t is_phys, translated_code_t *tc)
+mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip, uint8_t is_phys)
 {
-	mem_write<uint32_t>(cpu_ctx->cpu, addr, value, eip, is_phys, tc);
+	mem_write<uint32_t>(cpu_ctx->cpu, addr, value, eip, is_phys);
 }
 
 void
-mem_write64(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t value, uint32_t eip, uint8_t is_phys, translated_code_t *tc)
+mem_write64(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t value, uint32_t eip, uint8_t is_phys)
 {
-	mem_write<uint64_t>(cpu_ctx->cpu, addr, value, eip, is_phys, tc);
+	mem_write<uint64_t>(cpu_ctx->cpu, addr, value, eip, is_phys);
 }
 
 uint8_t

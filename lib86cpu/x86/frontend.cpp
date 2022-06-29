@@ -204,7 +204,6 @@ get_ext_fn(cpu_t *cpu)
 	static const char *func_name_ld[7] = { "mem_read8", "mem_read16", "mem_read32", "mem_read64", "io_read8", "io_read16", "io_read32" };
 	static const char *func_name_st[7] = { "mem_write8", "mem_write16", "mem_write32", "mem_write64", "io_write8", "io_write16", "io_write32" };
 	Type *cpu_ctx_ty = cpu->bb->getParent()->arg_begin()->getType();
-	Type *tc_ty = cpu->bb->getParent()->getReturnType();
 
 	for (uint8_t i = 0; i < 4; i++) {
 		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(bit_size[i]), cpu_ctx_ty,
@@ -217,7 +216,7 @@ get_ext_fn(cpu_t *cpu)
 
 	for (uint8_t i = 0; i < 4; i++) {
 		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), cpu_ctx_ty,
-			getIntegerType(32), getIntegerType(bit_size[i]), getIntegerType(32), getIntegerType(8), tc_ty));
+			getIntegerType(32), getIntegerType(bit_size[i]), getIntegerType(32), getIntegerType(8)));
 	}
 	for (uint8_t i = 4; i < 7; i++) {
 		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), cpu_ctx_ty,
@@ -1899,7 +1898,6 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	Value *tlb_idx2 = SHR(SUB(ADD(addr, CONST32(mem_size / 8)), CONST32(1)), CONST32(PAGE_SHIFT));
 	Value *tlb_entry = LD(GEP(cpu->ptr_tlb, tlb_idx1));
 	Value *mem_access = CONST32((tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv]) | TLB_DIRTY);
-	Value *tc_ptr = ConstantExpr::getIntToPtr(CONSTp(cpu->tc), cpu->bb->getParent()->getReturnType());
 
 	// interrogate the tlb
 	// this checks the page privilege access (mem_access), if the last byte of the write is in the same page as the first (addr + (mem_size / 8) - 1) and
@@ -1920,7 +1918,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	// unknown region type, acccess the memory region with the external handler
 	// because all other region types are cached, this should only happen with the unmapped region
 	cpu->bb = vec_bb[4];
-	CallInst::Create(cpu->ptr_mem_stfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv), tc_ptr }, "", cpu->bb);
+	CallInst::Create(cpu->ptr_mem_stfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv) }, "", cpu->bb);
 	BR_UNCOND(vec_bb[2]);
 
 	// it's ram, access it directly
@@ -1957,7 +1955,7 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 
 	// tlb miss, acccess the memory region with the external handler
 	cpu->bb = vec_bb[1];
-	CallInst::Create(cpu->ptr_mem_stfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv), tc_ptr }, "", cpu->bb);
+	CallInst::Create(cpu->ptr_mem_stfn[mem_idx], std::vector<Value *> { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv) }, "", cpu->bb);
 	BR_UNCOND(vec_bb[2]);
 
 	cpu->bb = vec_bb[2];
