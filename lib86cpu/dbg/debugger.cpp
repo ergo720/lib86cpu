@@ -422,7 +422,7 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 		case mem_type::alias: {
 			memory_region_t<addr_t> *alias = region;
 			AS_RESOLVE_ALIAS();
-			addr = region->start + alias_offset + (addr - alias->start);
+			phys_addr = region->start + alias_offset + (phys_addr - alias->start);
 			goto retry;
 		}
 		break;
