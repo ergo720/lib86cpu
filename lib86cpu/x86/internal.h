@@ -22,6 +22,7 @@ uint8_t cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_
 void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);
 void cpu_msr_read(cpu_ctx_t *cpu_ctx);
 inline addr_t get_pc(cpu_ctx_t *cpu_ctx);
+void check_dbl_exp(cpu_ctx_t *cpu_ctx, uint16_t idx);
 
 // cpu hidden flags (assumed to be constant during exec of a tc, together with a flag subset of eflags)
 // HFLG_CPL: cpl of cpu
@@ -184,6 +185,7 @@ inline addr_t get_pc(cpu_ctx_t *cpu_ctx);
 #define EXP_AC  17  // alignment check
 #define EXP_MC  18  // machine check
 #define EXP_XF  19  // SIMD floating point exception
+#define EXP_INVALID 0xFFFF
 
 // pte flags
 #define PTE_PRESENT   (1 << 0)

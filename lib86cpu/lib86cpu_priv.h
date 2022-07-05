@@ -99,7 +99,7 @@ struct exp_data_t {
 
 struct exp_info_t {
 	exp_data_t exp_data;
-	uint8_t exp_in_flight;  // one when servicing an exception, zero otherwise
+	uint16_t old_exp;       // the exception we were previously servicing
 };
 
 struct cpu_ctx_t;

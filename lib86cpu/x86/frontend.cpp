@@ -430,7 +430,7 @@ gen_fn(cpu_t *cpu)
 
 	std::vector<Type *> type_struct_exp_info_t_fields;
 	type_struct_exp_info_t_fields.push_back(type_exp_data_t);
-	type_struct_exp_info_t_fields.push_back(getIntegerType(8));
+	type_struct_exp_info_t_fields.push_back(getIntegerType(16));
 	StructType *type_exp_info_t = StructType::create(CTX(),
 		type_struct_exp_info_t_fields, "struct.exp_info_t", false);
 
@@ -597,7 +597,6 @@ gen_exp_fn(cpu_t *cpu)
 	}
 
 	Function *func = gen_fn<fn_emit_t::exp_t>(cpu);
-
 	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
 	cpu->tc = nullptr;
 	cpu->instr_eip = CONST32(0);
@@ -621,19 +620,13 @@ gen_exp_fn(cpu_t *cpu)
 	cpu->ptr_exp_fn->setName("exp_fn");
 	Value *ptr_exp_info = GEP(cpu->ptr_cpu_ctx, 9);
 	ptr_exp_info->setName("exp_info");
-
 	get_ext_fn(cpu);
+
+	Function *dbl_exp_func = cast<Function>(cpu->mod->getOrInsertFunction("check_dbl_exp", getVoidType(), cpu->ptr_cpu_ctx->getType(), getIntegerType(16)));
 	Value *ptr_exp_data = GEP(ptr_exp_info, 0);
 	ptr_exp_data->setName("exp_data");
-	BasicBlock *bb_exp_in_flight = BasicBlock::Create(CTX(), "", func, 0);
-	BasicBlock *bb_next = BasicBlock::Create(CTX(), "", func, 0);
-	BR_COND(bb_exp_in_flight, bb_next, ICMP_NE(LD(GEP(ptr_exp_info, 1)), CONST8(0)));
-	cpu->bb = bb_exp_in_flight;
-	// we don't handle double and triple faults yet, so just abort
-	ABORT("A double or triple fault occoured while attempting to deliver another exception");
-	UNREACH();
-	cpu->bb = bb_next;
-	ST(GEP(ptr_exp_info, 1), CONST8(1));
+	CallInst::Create(dbl_exp_func, ArrayRef<Value *> { cpu->ptr_cpu_ctx, LD(GEP(ptr_exp_data, 2)) }, "", cpu->bb);
+
 	Value *fault_addr = LD(GEP(ptr_exp_data, 0));
 	Value *code = ZEXT32(LD(GEP(ptr_exp_data, 1)));
 	Value *idx = ZEXT32(LD(GEP(ptr_exp_data, 2)));
@@ -857,41 +850,71 @@ gen_exp_fn(cpu_t *cpu)
 		BR_UNCOND(vec_bb[38]);
 		cpu->bb = vec_bb[38];
 		ST_R32(AND(LD_R32(DR7_idx), CONST32(~DR7_GD_MASK)), DR7_idx); // also clear gd of dr7 in the case this is a DB exception
-		ST(GEP(ptr_exp_info, 1), CONST8(0));
+		ST(GEP(ptr_exp_info, 1), CONST16(EXP_INVALID));
 		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(CONSTp(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
-		ABORT("IDT limit exceeded (protected mode)");
-		UNREACH();
+		ST(GEP(ptr_exp_data, 1), TRUNC16(idx));
+		ST(GEP(ptr_exp_data, 2), CONST16(EXP_GP));
+		CallInst *ci0 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
+		ci0->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		ReturnInst::Create(CTX(), ci0, cpu->bb);
 		cpu->bb = vec_bb[39];
 		ABORT("Task gate descriptors are not supported yet while delivering an exception");
 		UNREACH();
 		cpu->bb = vec_bb[40];
-		ABORT("Attempted to use an unknown descriptor while delivering an exception");
-		UNREACH();
+		ST(GEP(ptr_exp_data, 1), TRUNC16(idx));
+		ST(GEP(ptr_exp_data, 2), CONST16(EXP_GP));
+		CallInst *ci1 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
+		ci1->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		ReturnInst::Create(CTX(), ci1, cpu->bb);
 		cpu->bb = vec_bb[41];
-		ABORT("Descriptor used by the exception handler has the present bit clear");
-		UNREACH();
+		ST(GEP(ptr_exp_data, 1), TRUNC16(idx));
+		ST(GEP(ptr_exp_data, 2), CONST16(EXP_NP));
+		CallInst *ci2 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
+		ci2->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		ReturnInst::Create(CTX(), ci2, cpu->bb);
 		cpu->bb = vec_bb[42];
-		ABORT("The segment selector specified by the gate used by the exception handler is zero");
-		UNREACH();
+		ST(GEP(ptr_exp_data, 1), CONST16(0));
+		ST(GEP(ptr_exp_data, 2), CONST16(EXP_GP));
+		CallInst *ci3 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
+		ci3->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		ReturnInst::Create(CTX(), ci3, cpu->bb);
 		cpu->bb = vec_bb[43];
-		ABORT("Destination code segment for the exception handler is outside of descriptor table limit");
-		UNREACH();
+		ST(GEP(ptr_exp_data, 1), sel);
+		ST(GEP(ptr_exp_data, 2), CONST16(EXP_GP));
+		CallInst *ci4 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
+		ci4->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		ReturnInst::Create(CTX(), ci4, cpu->bb);
 		cpu->bb = vec_bb[44];
-		ABORT("Exception handler destination code segment's dpl > cpl");
-		UNREACH();
+		ST(GEP(ptr_exp_data, 1), sel);
+		ST(GEP(ptr_exp_data, 2), CONST16(EXP_GP));
+		CallInst *ci5 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
+		ci5->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		ReturnInst::Create(CTX(), ci5, cpu->bb);
 		cpu->bb = vec_bb[45];
-		ABORT("The destination code segment used by the exception handler has the present bit clear");
-		UNREACH();
+		ST(GEP(ptr_exp_data, 1), sel);
+		ST(GEP(ptr_exp_data, 2), CONST16(EXP_NP));
+		CallInst *ci6 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
+		ci6->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		ReturnInst::Create(CTX(), ci6, cpu->bb);
 		cpu->bb = vec_bb[46];
-		ABORT("An exception occured while reading the stack pointer from the tss used by the exception handler");
-		UNREACH();
+		ST(GEP(ptr_exp_data, 1), AND(LD_SEG(TR_idx), CONST16(0xFFFC)));
+		ST(GEP(ptr_exp_data, 2), CONST16(EXP_TS));
+		CallInst *ci7 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
+		ci7->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		ReturnInst::Create(CTX(), ci7, cpu->bb);
 		cpu->bb = vec_bb[47];
-		ABORT("The stack segment selector used by the exception handler is zero");
-		UNREACH();
+		ST(GEP(ptr_exp_data, 1), AND(LD(new_ss), CONST16(0xFFFC)));
+		ST(GEP(ptr_exp_data, 2), CONST16(EXP_TS));
+		CallInst *ci8 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
+		ci8->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		ReturnInst::Create(CTX(), ci8, cpu->bb);
 		cpu->bb = vec_bb[48];
-		ABORT("An exception occured while reading the stack segment descriptor used by the exception handler or when performing the privilege checks on it");
-		UNREACH();
+		ST(GEP(ptr_exp_data, 1), AND(LD(new_ss), CONST16(0xFFFC)));
+		ST(GEP(ptr_exp_data, 2), CONST16(EXP_TS));
+		CallInst *ci9 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
+		ci9->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		ReturnInst::Create(CTX(), ci9, cpu->bb);
 	}
 	else {
 		std::vector<BasicBlock *> vec_bb = getBBs(2);
@@ -914,12 +937,14 @@ gen_exp_fn(cpu_t *cpu)
 		ST_SEG_HIDDEN(SHL(ZEXT32(LD_SEG(CS_idx)), CONST32(4)), CS_idx, SEG_BASE_idx);
 		ST_R32(AND(vec_entry, CONST32(0xFFFF)), EIP_idx);
 		ST_R32(AND(LD_R32(DR7_idx), CONST32(~DR7_GD_MASK)), DR7_idx); // also clear gd of dr7 in the case this is a DB exception
-		ST(GEP(ptr_exp_info, 1), CONST8(0));
+		ST(GEP(ptr_exp_info, 1), CONST16(EXP_INVALID));
 		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(CONSTp(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
-		// we don't handle double and triple faults yet, so just abort
-		ABORT("IDT limit exceeded (real mode)");
-		UNREACH();
+		ST(GEP(ptr_exp_data, 1), TRUNC16(idx));
+		ST(GEP(ptr_exp_data, 2), CONST16(EXP_GP));
+		CallInst *ci = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
+		ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		ReturnInst::Create(CTX(), ci, cpu->bb);
 	}
 
 	if (cpu->cpu_flags & CPU_PRINT_IR) {

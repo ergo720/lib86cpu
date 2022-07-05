@@ -5357,6 +5357,31 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	}
 }
 
+void
+check_dbl_exp(cpu_ctx_t *cpu_ctx, uint16_t idx)
+{
+	bool old_contributory = cpu_ctx->exp_info.old_exp == 0 || (cpu_ctx->exp_info.old_exp >= 10 && cpu_ctx->exp_info.old_exp <= 13);
+	bool curr_contributory = idx == 0 || (idx >= 10 && idx <= 13);
+
+	LOG(log_level::info, "%s old: %u new %u", __func__, cpu_ctx->exp_info.old_exp, idx);
+
+	if (cpu_ctx->exp_info.old_exp == EXP_DF) {
+		throw lc86_exp_abort("The guest has triple faulted, cannot continue", lc86_status::success);
+	}
+
+	if ((old_contributory && curr_contributory) || (cpu_ctx->exp_info.old_exp == EXP_PF && (curr_contributory || (idx == EXP_PF)))) {
+		cpu_ctx->exp_info.exp_data.code = 0;
+		cpu_ctx->exp_info.exp_data.eip = 0;
+		idx = EXP_DF;
+	}
+
+	if (curr_contributory || (idx == EXP_PF) || (idx == EXP_DF)) {
+		cpu_ctx->exp_info.old_exp = idx;
+	}
+
+	cpu_ctx->exp_info.exp_data.idx = idx;
+}
+
 static translated_code_t *
 cpu_dbg_int(cpu_ctx_t *cpu_ctx)
 {
@@ -5404,16 +5429,16 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			cpu_suppress_trampolines<is_tramp>(cpu);
 
 			// this is either a page fault or a debug exception. In both cases, we have to call the exception handler
+			retry_exp:
 			try {
 				// the exception handler always returns nullptr
 				prev_tc = cpu->cpu_ctx.exp_fn(&cpu->cpu_ctx);
 			}
 			catch (host_exp_t type) {
-				assert(type == host_exp_t::pf_exp);
+				assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
 
-				// page fault while delivering another exception
-				// NOTE: we abort because we don't support double/triple faults yet
-				LIB86CPU_ABORT();
+				// page fault or debug exception while delivering another exception
+				goto retry_exp;
 			}
 
 			goto retry;
@@ -5590,16 +5615,16 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 		{
 		case host_exp_t::pf_exp: {
 			// page fault while excecuting the translated code
+			retry_exp:
 			try {
 				// the exception handler always returns nullptr
 				return cpu_ctx->exp_fn(cpu_ctx);
 			}
 			catch (host_exp_t type) {
-				assert(type == host_exp_t::pf_exp);
+				assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
 
-				// page fault while delivering another exception
-				// NOTE: we abort because we don't support double/triple faults yet
-				LIB86CPU_ABORT();
+				// page fault or debug exception while delivering another exception
+				goto retry_exp;
 			}
 		}
 		break;
