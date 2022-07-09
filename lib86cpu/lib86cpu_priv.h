@@ -200,6 +200,7 @@ struct cpu_t {
 	std::pair<iret_t, uint32_t> iret_fn;
 	std::string dbg_name;
 	addr_t bp_addr;
+	addr_t db_addr;
 
 	// llvm specific variables
 	std::unique_ptr<lc86_jit> jit;

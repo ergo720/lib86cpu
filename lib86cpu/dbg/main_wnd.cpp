@@ -91,7 +91,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		dbg_insert_sw_breakpoint(cpu, elem.first);
 	}
 
-	dbg_add_bp_hook(&cpu->cpu_ctx);
+	dbg_add_exp_hook(&cpu->cpu_ctx);
 	break_pc = get_pc(&cpu->cpu_ctx);
 	mem_pc = break_pc;
 	g_cpu = cpu;

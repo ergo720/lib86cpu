@@ -293,6 +293,7 @@ cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, u
 			// remove all breakpoints if the debugger is present
 			if (cpu_ctx->cpu->cpu_flags & CPU_DBG_PRESENT) {
 				hook_remove(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr);
+				hook_remove(cpu_ctx->cpu, cpu_ctx->cpu->db_addr);
 				dbg_remove_sw_breakpoints(cpu_ctx->cpu);
 				break_list.clear();
 				LOG(log_level::info, "Removed all breakpoints because cpu mode changed");
@@ -5349,11 +5350,25 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		ST_R32(CONST32(pc - cpu_ctx->regs.cs_hidden.base), EIP_idx);
 	}
 
-	// clear rf if it is set. This happens in the one-instr tc that contains the instr that originally caused the instr breakpoint. This must be done at runtime
-	// because otherwise tc_cache_insert will register rf as clear, when it was set at the beginning of this tc
-	if (cpu->cpu_ctx.regs.eflags & RF_MASK) {
+	if ((cpu->cpu_ctx.regs.eflags & (RF_MASK | TF_MASK)) | (cpu->cpu_flags & CPU_SINGLE_STEP)) {
 		assert(disas_ctx->flags & DISAS_FLG_ONE_INSTR);
-		ST(GEP_EFLAGS(), AND(LD(GEP_EFLAGS()), CONST32(~RF_MASK)));
+
+		if (cpu->cpu_ctx.regs.eflags & (RF_MASK | TF_MASK)) {
+			cpu->cpu_flags |= CPU_FORCE_INSERT;
+		}
+
+		if (cpu->cpu_ctx.regs.eflags & RF_MASK) {
+			// clear rf if it is set. This happens in the one-instr tc that contains the instr that originally caused the instr breakpoint. This must be done at runtime
+			// because otherwise tc_cache_insert will register rf as clear, when it was set at the beginning of this tc
+			ST(GEP_EFLAGS(), AND(LD(GEP_EFLAGS()), CONST32(~RF_MASK)));
+		}
+
+		if ((cpu->cpu_ctx.regs.eflags & TF_MASK) | (cpu->cpu_flags & CPU_SINGLE_STEP)) {
+			// NOTE: if this instr also has a watchpoint, the other DB exp won't be generated
+			ST_R32(OR(LD_R32(DR6_idx), CONST32(DR6_BS_MASK)), DR6_idx);
+			raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx) });
+			cpu->bb = getBB();
+		}
 	}
 }
 
@@ -5475,7 +5490,9 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			disas_ctx.flags = ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT) |
 				((cpu->cpu_ctx.hflags & HFLG_PE_MODE) >> (PE_MODE_SHIFT - 1)) |
 				(cpu->cpu_flags & CPU_DISAS_ONE) |
-				((cpu->cpu_ctx.regs.eflags & RF_MASK) >> 9); // if rf is set, we need to clear it after the first instr executed, so only disas one instr
+				((cpu->cpu_flags & CPU_SINGLE_STEP) >> 3) |
+				((cpu->cpu_ctx.regs.eflags & RF_MASK) >> 9) | // if rf is set, we need to clear it after the first instr executed
+				((cpu->cpu_ctx.regs.eflags & TF_MASK) >> 1); // if tf is set, we need to raise a DB exp after every instruction
 			disas_ctx.virt_pc = virt_pc;
 			disas_ctx.pc = pc;
 
@@ -5501,7 +5518,8 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			else {
 				// don't take hooks if we are executing a trapped instr. Otherwise, if the trapped instr is also hooked, we will take the hook instead of executing it
 				cpu_translate(cpu, &disas_ctx);
-				call_trap_handler_emit(cpu);
+				raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx) });
+				cpu->bb = getBB();
 			}
 
 			create_tc_epilogue(cpu);

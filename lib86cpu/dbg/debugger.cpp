@@ -211,93 +211,105 @@ write_setting_files(cpu_t *cpu)
 }
 
 void
-dbg_update_bp_hook(cpu_ctx_t *cpu_ctx)
+dbg_update_exp_hook(cpu_ctx_t *cpu_ctx)
 {
 	hook_remove(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr);
-	dbg_add_bp_hook(cpu_ctx);
+	hook_remove(cpu_ctx->cpu, cpu_ctx->cpu->db_addr);
+	dbg_add_exp_hook(cpu_ctx);
 }
 
 void
-dbg_add_bp_hook(cpu_ctx_t *cpu_ctx)
+dbg_add_exp_hook(cpu_ctx_t *cpu_ctx)
 {
 	try {
 		// NOTE: we don't need to change the cpl and wp of cr0 because we only perform privileged read accesses
 		if (cpu_ctx->hflags & HFLG_PE_MODE) {
 			if (EXP_BP * 8 + 7 > cpu_ctx->regs.idtr_hidden.limit) {
-				LOG(log_level::warn, "Failed to install hook for the breakpoint exception handler: IDT limit exceeded");
+				LOG(log_level::warn, "Failed to install hook for the exception handler: IDT limit exceeded");
 				return;
 			}
-			uint64_t desc = mem_read<uint64_t>(cpu_ctx->cpu, cpu_ctx->regs.idtr_hidden.base + EXP_BP * 8, cpu_ctx->regs.eip, 2);
-			uint16_t type = (desc >> 40) & 0x1F;
-			uint32_t new_eip, new_base;
-			switch (type)
-			{
-			case 6:  // interrupt gate, 16 bit
-			case 14: // interrupt gate, 32 bit
-				new_eip = ((desc & 0xFFFF000000000000) >> 32) | (desc & 0xFFFF);
-				break;
+			unsigned exp_idx = EXP_BP;
+			for (int i = 0; i < 2; ++i) {
+				uint64_t desc = mem_read<uint64_t>(cpu_ctx->cpu, cpu_ctx->regs.idtr_hidden.base + exp_idx * 8, cpu_ctx->regs.eip, 2);
+				uint16_t type = (desc >> 40) & 0x1F;
+				uint32_t new_eip, new_base;
+				switch (type)
+				{
+				case 6:  // interrupt gate, 16 bit
+				case 14: // interrupt gate, 32 bit
+					new_eip = ((desc & 0xFFFF000000000000) >> 32) | (desc & 0xFFFF);
+					break;
 
-			case 7:  // trap gate, 16 bit
-			case 15: // trap gate, 32 bit
-				new_eip = ((desc & 0xFFFF000000000000) >> 32) | (desc & 0xFFFF);
-				break;
+				case 7:  // trap gate, 16 bit
+				case 15: // trap gate, 32 bit
+					new_eip = ((desc & 0xFFFF000000000000) >> 32) | (desc & 0xFFFF);
+					break;
 
-			default:
-				// task gates are not supported
-				LOG(log_level::warn, "Failed to install hook for the breakpoint exception handler: unknown IDT descriptor type");
-				return;
-			}
-			if ((desc & SEG_DESC_P) == 0) {
-				LOG(log_level::warn, "Failed to install hook for the breakpoint exception handler: IDT descriptor not present");
-				return;
-			}
-			uint16_t sel = (desc & 0xFFFF0000) >> 16;
-			if ((sel & 0xFFFC) == 0) {
-				LOG(log_level::warn, "Failed to install hook for the breakpoint exception handler: selector specified by the IDT descriptor points to the null GDT descriptor");
-				return;
-			}
-			uint16_t sel_idx = sel >> 3;
-			uint32_t base, limit;
-			if (sel & 4) {
-				base = cpu_ctx->regs.ldtr_hidden.base;
-				limit = cpu_ctx->regs.ldtr_hidden.limit;
-			}
-			else {
-				base = cpu_ctx->regs.gdtr_hidden.base;
-				limit = cpu_ctx->regs.gdtr_hidden.limit;
-			}
+				default:
+					// task gates are not supported
+					LOG(log_level::warn, "Failed to install hook for the exception handler: unknown IDT descriptor type");
+					return;
+				}
+				if ((desc & SEG_DESC_P) == 0) {
+					LOG(log_level::warn, "Failed to install hook for the exception handler: IDT descriptor not present");
+					return;
+				}
+				uint16_t sel = (desc & 0xFFFF0000) >> 16;
+				if ((sel & 0xFFFC) == 0) {
+					LOG(log_level::warn, "Failed to install hook for the exception handler: selector specified by the IDT descriptor points to the null GDT descriptor");
+					return;
+				}
+				uint16_t sel_idx = sel >> 3;
+				uint32_t base, limit;
+				if (sel & 4) {
+					base = cpu_ctx->regs.ldtr_hidden.base;
+					limit = cpu_ctx->regs.ldtr_hidden.limit;
+				}
+				else {
+					base = cpu_ctx->regs.gdtr_hidden.base;
+					limit = cpu_ctx->regs.gdtr_hidden.limit;
+				}
 
-			if (sel_idx * 8 + 7 > limit) {
-				LOG(log_level::warn, "Failed to install hook for the breakpoint exception handler: GDT or LDT limit exceeded");
-				return;
+				if (sel_idx * 8 + 7 > limit) {
+					LOG(log_level::warn, "Failed to install hook for the exception handler: GDT or LDT limit exceeded");
+					return;
+				}
+				desc = mem_read<uint64_t>(cpu_ctx->cpu, base + sel_idx * 8, cpu_ctx->regs.eip, 2);
+				if ((desc & SEG_DESC_P) == 0) {
+					LOG(log_level::warn, "Failed to install hook for the exception handler: GDT or LDT descriptor not present");
+					return;
+				}
+				new_base = ((desc & 0xFFFF0000) >> 16) | ((desc & 0xFF00000000) >> 16) | ((desc & 0xFF00000000000000) >> 32);
+				if (exp_idx == EXP_BP) {
+					cpu_ctx->cpu->bp_addr = new_base + new_eip;
+					exp_idx = EXP_DB;
+				}
+				else {
+					cpu_ctx->cpu->db_addr = new_base + new_eip;
+				}
 			}
-			desc = mem_read<uint64_t>(cpu_ctx->cpu, base + sel_idx * 8, cpu_ctx->regs.eip, 2);
-			if ((desc & SEG_DESC_P) == 0) {
-				LOG(log_level::warn, "Failed to install hook for the breakpoint exception handler: GDT or LDT descriptor not present");
-				return;
-			}
-			new_base = ((desc & 0xFFFF0000) >> 16) | ((desc & 0xFF00000000) >> 16) | ((desc & 0xFF00000000000000) >> 32);
-			cpu_ctx->cpu->bp_addr = new_base + new_eip;
 		}
 		else {
 			if (EXP_BP * 4 + 3 > cpu_ctx->regs.idtr_hidden.limit) {
-				LOG(log_level::warn, "Failed to install hook for the breakpoint exception handler: IDT limit exceeded");
+				LOG(log_level::warn, "Failed to install hook for the exception handler: IDT limit exceeded");
 				return;
 			}
-			uint32_t vec_entry = mem_read<uint32_t>(cpu_ctx->cpu, cpu_ctx->regs.idtr_hidden.base + EXP_BP * 4, cpu_ctx->regs.eip, 0);
-			uint32_t new_base = (vec_entry >> 16) << 4;
-			uint32_t new_eip = vec_entry & 0xFFFF;
-			cpu_ctx->cpu->bp_addr = new_base + new_eip;
+			uint32_t vec_bp_entry = mem_read<uint32_t>(cpu_ctx->cpu, cpu_ctx->regs.idtr_hidden.base + EXP_BP * 4, cpu_ctx->regs.eip, 0);
+			cpu_ctx->cpu->bp_addr = ((vec_bp_entry >> 16) << 4) + (vec_bp_entry & 0xFFFF);
+			uint32_t vec_db_entry = mem_read<uint32_t>(cpu_ctx->cpu, cpu_ctx->regs.idtr_hidden.base + EXP_DB * 4, cpu_ctx->regs.eip, 0);
+			cpu_ctx->cpu->db_addr = ((vec_db_entry >> 16) << 4) + (vec_db_entry & 0xFFFF);
 		}
 	}
 	catch (host_exp_t type) {
 		// this is either a page fault or a debug exception
-		LOG(log_level::warn, "Failed to install hook for the breakpoint exception handler: a guest exception was raised");
+		LOG(log_level::warn, "Failed to install hook for the exception handler: a guest exception was raised");
 		return;
 	}
 
 	hook_add(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr, std::unique_ptr<hook>(new hook({ std::vector<arg_types> { arg_types::ptr },
-	std::vector<uint64_t> { reinterpret_cast<uintptr_t>(cpu_ctx) }, "dbg_sw_breakpoint_handler", &dbg_sw_breakpoint_handler })));
+	std::vector<uint64_t> { reinterpret_cast<uintptr_t>(cpu_ctx) }, "dbg_exp_handler", &dbg_exp_handler })));
+	hook_add(cpu_ctx->cpu, cpu_ctx->cpu->db_addr, std::unique_ptr<hook>(new hook({ std::vector<arg_types> { arg_types::ptr },
+	std::vector<uint64_t> { reinterpret_cast<uintptr_t>(cpu_ctx) }, "dbg_exp_handler", &dbg_exp_handler })));
 }
 
 static std::vector<std::pair<addr_t, std::string>>
@@ -439,7 +451,47 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 	(cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK) |= old_wp;
 }
 
-void
+static void
+dbg_single_step_handler(cpu_ctx_t *cpu_ctx)
+{
+	// NOTE1: this is called from the emulation thread
+	// NOTE2: since the cpu has just pushed the ret_eip on the stack of the exception handler and no other guest code runs before we are called
+	// in this hook, then mem_read cannot raise page faults now
+	uint32_t ret_eip = mem_read<uint32_t>(cpu_ctx->cpu, cpu_ctx->regs.esp, 0, 0);
+	addr_t pc = cpu_ctx->regs.cs_hidden.base + ret_eip;
+	if (cpu_ctx->cpu->cpu_flags & CPU_SINGLE_STEP) {
+		if (cpu_ctx->cpu->iret_fn.second != ((cpu_ctx->hflags & HFLG_CONST) | (cpu_ctx->regs.eflags & EFLAGS_CONST))) {
+			// the constant cpu state changed, so we need to regenerate the iret function
+			gen_iret_fn(cpu_ctx->cpu);
+		}
+
+		// disable all breakpoints so that we can show the original instructions in the disassembler
+		dbg_remove_sw_breakpoints(cpu_ctx->cpu);
+
+		// wait until the debugger continues execution
+		break_pc = mem_pc = pc;
+		guest_running.clear();
+		guest_running.notify_one();
+		guest_running.wait(false);
+
+		cpu_ctx->regs.dr6 &= ~DR6_BS_MASK;
+
+		try {
+			// execute an iret instruction so that we can correctly return to the interrupted code
+			cpu_ctx->cpu->iret_fn.first(cpu_ctx);
+		}
+		catch (host_exp_t type) {
+			// we can't handle an exception here, so abort
+			LIB86CPU_ABORT_msg("Unhandled exception while returning from a breakpoint");
+		}
+	}
+	else {
+		// this debug exception wasn't generated by the debugger, so handle control back to the guest
+		cpu_exec_trampoline(cpu_ctx->cpu, ret_eip);
+	}
+}
+
+static void
 dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 {
 	// NOTE1: this is called from the emulation thread
@@ -457,7 +509,7 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 		dbg_remove_sw_breakpoints(cpu_ctx->cpu);
 
 		// wait until the debugger continues execution
-		break_pc = pc;
+		break_pc = mem_pc = pc;
 		guest_running.clear();
 		guest_running.notify_one();
 		guest_running.wait(false);
@@ -475,6 +527,18 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 	else {
 		// this breakpoint exception wasn't generated by the debugger, so handle control back to the guest
 		cpu_exec_trampoline(cpu_ctx->cpu, ret_eip);
+	}
+}
+
+void
+dbg_exp_handler(cpu_ctx_t *cpu_ctx)
+{
+	// NOTE: the guest could be using the same exception handler for both DB and BP exceptions, so we distinguish them by looking at dr6
+	if (cpu_ctx->regs.dr6 & DR6_BS_MASK) {
+		dbg_single_step_handler(cpu_ctx);
+	}
+	else {
+		dbg_sw_breakpoint_handler(cpu_ctx);
 	}
 }
 

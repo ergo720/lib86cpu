@@ -265,6 +265,7 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define DR6_B2_MASK      (1 << 2)
 #define DR6_B3_MASK      (1 << 3)
 #define DR6_BD_MASK      (1 << 13)
+#define DR6_BS_MASK      (1 << 14)
 #define DR6_RES_MASK     0xFFFF0FF0 // dr6 reserved bits
 #define DR7_GD_MASK      (1 << 13)
 #define DR7_RES_MASK     0x400 // dr7 reserved bits

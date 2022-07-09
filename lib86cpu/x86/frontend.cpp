@@ -301,15 +301,6 @@ check_int_emit(cpu_t *cpu)
 }
 
 void
-call_trap_handler_emit(cpu_t *cpu)
-{
-	// clear HFLG_DBG_TRAP after we have executed the trapped instr, so traps are active again
-	ST(cpu->ptr_hflags, AND(LD(cpu->ptr_hflags), CONST32(~HFLG_DBG_TRAP)));
-	raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx) });
-	cpu->bb = getBB();
-}
-
-void
 link_direct_emit(cpu_t *cpu, const std::vector<addr_t> &vec_addr, Value *target_addr)
 {
 	// make sure we check for interrupts before jumping to the next tc
@@ -646,7 +637,7 @@ gen_exp_fn(cpu_t *cpu)
 		);
 
 	if (cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
-		std::vector<BasicBlock *> vec_bb = getBBs(49);
+		std::vector<BasicBlock *> vec_bb = getBBs(51);
 		Value *cpl = TRUNC16(AND(LD(cpu->ptr_hflags), CONST32(HFLG_CPL)));
 		BR_COND(vec_bb[0], vec_bb[1], ICMP_UGT(ADD(MUL(idx, CONST32(8)), CONST32(7)), LD_SEG_HIDDEN(IDTR_idx, SEG_LIMIT_idx)));
 		cpu->bb = vec_bb[1];
@@ -849,7 +840,14 @@ gen_exp_fn(cpu_t *cpu)
 		ST_R32(fault_addr, CR2_idx);
 		BR_UNCOND(vec_bb[38]);
 		cpu->bb = vec_bb[38];
-		ST_R32(AND(LD_R32(DR7_idx), CONST32(~DR7_GD_MASK)), DR7_idx); // also clear gd of dr7 in the case this is a DB exception
+		// always clear HFLG_DBG_TRAP
+		ST(cpu->ptr_hflags, AND(LD(cpu->ptr_hflags), CONST32(~HFLG_DBG_TRAP)));
+		// if this a db exp, also clear gd of dr7
+		BR_COND(vec_bb[49], vec_bb[50], ICMP_EQ(idx, CONST32(EXP_DB)));
+		cpu->bb = vec_bb[49];
+		ST_R32(AND(LD_R32(DR7_idx), CONST32(~DR7_GD_MASK)), DR7_idx);
+		BR_UNCOND(vec_bb[50]);
+		cpu->bb = vec_bb[50];
 		ST(GEP(ptr_exp_info, 1), CONST16(EXP_INVALID));
 		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(CONSTp(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
@@ -917,7 +915,7 @@ gen_exp_fn(cpu_t *cpu)
 		ReturnInst::Create(CTX(), ci9, cpu->bb);
 	}
 	else {
-		std::vector<BasicBlock *> vec_bb = getBBs(2);
+		std::vector<BasicBlock *> vec_bb = getBBs(4);
 		BR_COND(vec_bb[0], vec_bb[1], ICMP_UGT(ADD(MUL(idx, CONST32(4)), CONST32(3)), LD_SEG_HIDDEN(IDTR_idx, SEG_LIMIT_idx)));
 		cpu->bb = vec_bb[1];
 		Value *vec_entry = LD_MEM(MEM_LD32_idx, ADD(LD_SEG_HIDDEN(IDTR_idx, SEG_BASE_idx), MUL(idx, CONST32(4))));
@@ -936,7 +934,14 @@ gen_exp_fn(cpu_t *cpu)
 		ST_SEG(TRUNC16(SHR(vec_entry, CONST32(16))), CS_idx);
 		ST_SEG_HIDDEN(SHL(ZEXT32(LD_SEG(CS_idx)), CONST32(4)), CS_idx, SEG_BASE_idx);
 		ST_R32(AND(vec_entry, CONST32(0xFFFF)), EIP_idx);
-		ST_R32(AND(LD_R32(DR7_idx), CONST32(~DR7_GD_MASK)), DR7_idx); // also clear gd of dr7 in the case this is a DB exception
+		// always clear HFLG_DBG_TRAP
+		ST(cpu->ptr_hflags, AND(LD(cpu->ptr_hflags), CONST32(~HFLG_DBG_TRAP)));
+		// if this a db exp, also clear gd of dr7
+		BR_COND(vec_bb[2], vec_bb[50], ICMP_EQ(idx, CONST32(EXP_DB)));
+		cpu->bb = vec_bb[2];
+		ST_R32(AND(LD_R32(DR7_idx), CONST32(~DR7_GD_MASK)), DR7_idx);
+		BR_UNCOND(vec_bb[3]);
+		cpu->bb = vec_bb[3];
 		ST(GEP(ptr_exp_info, 1), CONST16(EXP_INVALID));
 		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(CONSTp(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
 		cpu->bb = vec_bb[0];
@@ -2544,12 +2549,7 @@ hook_emit(cpu_t *cpu, hook *obj)
 		JITSymbolFlags::Absolute | JITSymbolFlags::Exported));
 	CallInst::Create(hook, args_val, "", cpu->bb);
 
-	// clear rf if it is set. This must be done at runtime because otherwise tc_cache_insert will register rf as clear, when it was set at the beginning of this tc.
-	// This also must be done after the hook is called, so that if the client uses a trampoline, the instr breakpoint is not triggered again, since it has
-	// already been triggered before the hook was called.
-	if (cpu->cpu_ctx.regs.eflags & RF_MASK) {
-		ST(GEP_EFLAGS(), AND(LD(GEP_EFLAGS()), CONST32(~RF_MASK)));
-	}
+	// NOTE: hooks don't execute any guest instr, so we don't clear rf here
 
 	check_int_emit(cpu);
 }

@@ -64,7 +64,6 @@ void update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag, bool is_wr
 void write_eflags(cpu_t *cpu, Value *eflags, Value *mask);
 void hook_emit(cpu_t *cpu, hook *obj);
 void check_int_emit(cpu_t *cpu);
-void call_trap_handler_emit(cpu_t *cpu);
 
 
 #define CTX() (*cpu->ctx)
