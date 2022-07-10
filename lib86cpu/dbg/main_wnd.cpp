@@ -106,7 +106,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		glfwGetFramebufferSize(main_wnd, &fb_w, &fb_h);
 		dbg_draw_wnd(main_wnd, fb_w, fb_h);
 
-		glfwWaitEvents();
+		glfwWaitEventsTimeout(0.5);
 	}
 
 	// raise a debug interrupt and wait until the guest stops execution
