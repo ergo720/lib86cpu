@@ -2851,7 +2851,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 					ST_R32(LD(reg), dr_idx + dr_offset);
 					ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
-					if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
+					// instr breakpoint are checked at compile time, so we cannot jump to the next tc if we are writing to anything but dr6
+					if ((((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) && ((dr_idx + dr_offset) == DR6_idx)) {
 						link_dst_only_emit(cpu);
 						cpu->bb = getBB();
 						cpu->tc->flags |= TC_FLG_DST_ONLY;
