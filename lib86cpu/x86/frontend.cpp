@@ -300,9 +300,53 @@ check_int_emit(cpu_t *cpu)
 	CallInst::Create(LD(tc_jmp_int_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
 }
 
+bool
+check_rf_single_step_emit(cpu_t *cpu)
+{
+	if ((cpu->cpu_ctx.regs.eflags & (RF_MASK | TF_MASK)) | (cpu->cpu_flags & CPU_SINGLE_STEP)) {
+
+		if (cpu->cpu_ctx.regs.eflags & (RF_MASK | TF_MASK)) {
+			cpu->cpu_flags |= CPU_FORCE_INSERT;
+		}
+
+		if (cpu->cpu_ctx.regs.eflags & RF_MASK) {
+			// clear rf if it is set. This happens in the one-instr tc that contains the instr that originally caused the instr breakpoint. This must be done at runtime
+			// because otherwise tc_cache_insert will register rf as clear, when it was set at the beginning of this tc
+			ST(GEP_EFLAGS(), AND(LD(GEP_EFLAGS()), CONST32(~RF_MASK)));
+		}
+
+		if ((cpu->cpu_ctx.regs.eflags & TF_MASK) | (cpu->cpu_flags & CPU_SINGLE_STEP)) {
+			// NOTE: if this instr also has a watchpoint, the other DB exp won't be generated
+			ST_R32(OR(LD_R32(DR6_idx), CONST32(DR6_BS_MASK)), DR6_idx);
+			raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx) });
+			cpu->bb = getBB();
+			return true;
+		}
+	}
+
+	return false;
+}
+
+void
+link_indirect_emit(cpu_t *cpu)
+{
+	// XXX: incomplete, actually perform some tc linking here
+
+	if (check_rf_single_step_emit(cpu)) {
+		return;
+	}
+
+	// make sure we check for interrupts before jumping to the next tc
+	check_int_emit(cpu);
+}
+
 void
 link_direct_emit(cpu_t *cpu, const std::vector<addr_t> &vec_addr, Value *target_addr)
 {
+	if (check_rf_single_step_emit(cpu)) {
+		return;
+	}
+
 	// make sure we check for interrupts before jumping to the next tc
 	check_int_emit(cpu);
 
@@ -394,6 +438,10 @@ link_direct_emit(cpu_t *cpu, const std::vector<addr_t> &vec_addr, Value *target_
 void
 link_dst_only_emit(cpu_t *cpu)
 {
+	if (check_rf_single_step_emit(cpu)) {
+		return;
+	}
+
 	// make sure we check for interrupts before jumping to the next tc
 	check_int_emit(cpu);
 

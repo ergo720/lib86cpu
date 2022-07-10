@@ -990,8 +990,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					lcall_pe_emit(cpu, std::vector<Value *> { CONST16(new_sel), CONST32(call_eip), cs, eip }, size_mode, ret_eip);
-					// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
-					check_int_emit(cpu);
+					link_indirect_emit(cpu);
 					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else {
@@ -1035,8 +1034,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						call_eip = ZEXT32(call_eip);
 					}
 					ST_R32(call_eip, EIP_idx);
-					// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
-					check_int_emit(cpu);
+					link_indirect_emit(cpu);
 					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else if (instr.raw.modrm.reg == 3) {
@@ -1070,8 +1068,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						ST_R32(call_eip, EIP_idx);
 						ST_SEG_HIDDEN(SHL(ZEXT32(call_cs), CONST32(4)), CS_idx, SEG_BASE_idx);
 					}
-					// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
-					check_int_emit(cpu);
+					link_indirect_emit(cpu);
 					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else {
@@ -2060,8 +2057,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			iret_emit(cpu, size_mode);
 
-			// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
-			check_int_emit(cpu);
+			link_indirect_emit(cpu);
 			cpu->tc->flags |= TC_FLG_INDIRECT;
 			translate_next = 0;
 		}
@@ -2221,8 +2217,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				uint16_t new_sel = instr.operands[OPNUM_SINGLE].ptr.segment;
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					ljmp_pe_emit(cpu, CONST16(new_sel), size_mode, new_eip);
-					// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
-					check_int_emit(cpu);
+					link_indirect_emit(cpu);
 					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else {
@@ -2248,8 +2243,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						new_eip = offset;
 						ST_R32(new_eip, EIP_idx);
 					}
-					// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
-					check_int_emit(cpu);
+					link_indirect_emit(cpu);
 					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
 				else if (instr.raw.modrm.reg == 5) {
@@ -4067,8 +4061,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				BAD;
 			}
 
-			// XXX: when indirect linking is implemented, move this inside the indirect linking emission function
-			check_int_emit(cpu);
+			link_indirect_emit(cpu);
 			cpu->tc->flags |= TC_FLG_INDIRECT;
 			translate_next = 0;
 		}
@@ -5351,25 +5344,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		ST_R32(CONST32(pc - cpu_ctx->regs.cs_hidden.base), EIP_idx);
 	}
 
-	if ((cpu->cpu_ctx.regs.eflags & (RF_MASK | TF_MASK)) | (cpu->cpu_flags & CPU_SINGLE_STEP)) {
-		assert(disas_ctx->flags & DISAS_FLG_ONE_INSTR);
-
-		if (cpu->cpu_ctx.regs.eflags & (RF_MASK | TF_MASK)) {
-			cpu->cpu_flags |= CPU_FORCE_INSERT;
-		}
-
-		if (cpu->cpu_ctx.regs.eflags & RF_MASK) {
-			// clear rf if it is set. This happens in the one-instr tc that contains the instr that originally caused the instr breakpoint. This must be done at runtime
-			// because otherwise tc_cache_insert will register rf as clear, when it was set at the beginning of this tc
-			ST(GEP_EFLAGS(), AND(LD(GEP_EFLAGS()), CONST32(~RF_MASK)));
-		}
-
-		if ((cpu->cpu_ctx.regs.eflags & TF_MASK) | (cpu->cpu_flags & CPU_SINGLE_STEP)) {
-			// NOTE: if this instr also has a watchpoint, the other DB exp won't be generated
-			ST_R32(OR(LD_R32(DR6_idx), CONST32(DR6_BS_MASK)), DR6_idx);
-			raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx) });
-			cpu->bb = getBB();
-		}
+	// TC_FLG_INDIRECT, TC_FLG_DIRECT and TC_FLG_DST_ONLY already check for rf/single step, so we only need to check them here with
+	// TC_FLG_COND_DST_ONLY and if no linking code was emitted
+	if ((cpu->tc->flags & TC_FLG_COND_DST_ONLY) || ((cpu->tc->flags & TC_FLG_LINK_MASK) == 0)) {
+		check_rf_single_step_emit(cpu);
 	}
 }
 
