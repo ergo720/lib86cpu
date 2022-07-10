@@ -2621,7 +2621,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						cpu->bb = vec_bb[0];
 						link_dst_only_emit(cpu);
 						cpu->bb = vec_bb[1];
-						cpu->tc->flags |= TC_FLG_DST_ONLY;
+						cpu->tc->flags |= TC_FLG_COND_DST_ONLY;
 					}
 					translate_next = 0;
 				}
@@ -2911,7 +2911,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							cpu->bb = vec_bb[0];
 							link_dst_only_emit(cpu);
 							cpu->bb = vec_bb[1];
-							cpu->tc->flags |= TC_FLG_DST_ONLY;
+							cpu->tc->flags |= TC_FLG_COND_DST_ONLY;
 						}
 						translate_next = 0;
 					}
@@ -3547,7 +3547,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 								cpu->bb = vec_bb[0];
 								link_dst_only_emit(cpu);
 								cpu->bb = vec_bb[1];
-								cpu->tc->flags |= TC_FLG_DST_ONLY;
+								cpu->tc->flags |= TC_FLG_COND_DST_ONLY;
 							}
 							translate_next = 0;
 						}
@@ -3676,7 +3676,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				cpu->bb = vec_bb[0];
 				link_dst_only_emit(cpu);
 				cpu->bb = vec_bb[1];
-				cpu->tc->flags |= TC_FLG_DST_ONLY;
+				cpu->tc->flags |= TC_FLG_COND_DST_ONLY;
 			}
 			translate_next = 0;
 		}
@@ -5606,6 +5606,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 				break;
 
 			case TC_FLG_DST_ONLY:
+			case TC_FLG_COND_DST_ONLY:
 				tc_link_dst_only(prev_tc, ptr_tc);
 				break;
 

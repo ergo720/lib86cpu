@@ -64,12 +64,13 @@ void check_dbl_exp(cpu_ctx_t *cpu_ctx, uint16_t idx);
 #define TC_FLG_DST_PC     0
 #define TC_FLG_NEXT_PC    1
 #define TC_FLG_RET        2
-#define TC_FLG_NUM_JMP    (3 << 0)
-#define TC_FLG_INDIRECT   (1 << 2)
-#define TC_FLG_DIRECT     (1 << 3)
-#define TC_FLG_JMP_TAKEN  (3 << 4)
-#define TC_FLG_DST_ONLY   (1 << 7)
-#define TC_FLG_LINK_MASK  (TC_FLG_INDIRECT | TC_FLG_DIRECT | TC_FLG_DST_ONLY)
+#define TC_FLG_NUM_JMP         (3 << 0)
+#define TC_FLG_INDIRECT        (1 << 2)
+#define TC_FLG_DIRECT          (1 << 3)
+#define TC_FLG_JMP_TAKEN       (3 << 4)
+#define TC_FLG_DST_ONLY        (1 << 7)  // jump(dest_pc)
+#define TC_FLG_COND_DST_ONLY   (1 << 8)  // if [runtime] (cond) jump(dst_pc)
+#define TC_FLG_LINK_MASK  (TC_FLG_INDIRECT | TC_FLG_DIRECT | TC_FLG_DST_ONLY | TC_FLG_COND_DST_ONLY)
 #define TC_JMP_INT_OFFSET 2
 
 // segment descriptor flags
