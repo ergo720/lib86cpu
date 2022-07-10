@@ -937,7 +937,7 @@ gen_exp_fn(cpu_t *cpu)
 		// always clear HFLG_DBG_TRAP
 		ST(cpu->ptr_hflags, AND(LD(cpu->ptr_hflags), CONST32(~HFLG_DBG_TRAP)));
 		// if this a db exp, also clear gd of dr7
-		BR_COND(vec_bb[2], vec_bb[50], ICMP_EQ(idx, CONST32(EXP_DB)));
+		BR_COND(vec_bb[2], vec_bb[3], ICMP_EQ(idx, CONST32(EXP_DB)));
 		cpu->bb = vec_bb[2];
 		ST_R32(AND(LD_R32(DR7_idx), CONST32(~DR7_GD_MASK)), DR7_idx);
 		BR_UNCOND(vec_bb[3]);
