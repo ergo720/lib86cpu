@@ -80,14 +80,14 @@ lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetM
 	m_dtor_runner(m_sym_table)
 {
 	m_sym_table.setGenerator(*orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(m_dl));
-	define_absolute(mangle("mem_read8"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read8), JITSymbolFlags::Absolute));
-	define_absolute(mangle("mem_read16"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read16), JITSymbolFlags::Absolute));
-	define_absolute(mangle("mem_read32"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read32), JITSymbolFlags::Absolute));
-	define_absolute(mangle("mem_read64"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read64), JITSymbolFlags::Absolute));
-	define_absolute(mangle("mem_write8"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_write8), JITSymbolFlags::Absolute));
-	define_absolute(mangle("mem_write16"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_write16), JITSymbolFlags::Absolute));
-	define_absolute(mangle("mem_write32"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_write32), JITSymbolFlags::Absolute));
-	define_absolute(mangle("mem_write64"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_write64), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_read_helper8"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read_helper<uint8_t>), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_read_helper16"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read_helper<uint16_t>), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_read_helper32"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read_helper<uint32_t>), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_read_helper64"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read_helper<uint64_t>), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_write_helper8"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_write_helper<uint8_t>), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_write_helper16"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_write_helper<uint16_t>), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_write_helper32"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_write_helper<uint32_t>), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mem_write_helper64"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_write_helper<uint64_t>), JITSymbolFlags::Absolute));
 	define_absolute(mangle("io_read8"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_read8), JITSymbolFlags::Absolute));
 	define_absolute(mangle("io_read16"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_read16), JITSymbolFlags::Absolute));
 	define_absolute(mangle("io_read32"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_read32), JITSymbolFlags::Absolute));

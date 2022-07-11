@@ -177,9 +177,7 @@ struct cpu_t {
 	std::vector<cached_io_region> iotlb_regions;
 	cached_io_region *iotlb_regions_ptr;
 	std::vector<cached_rom_region> rom_regions;
-	cached_rom_region *rom_regions_ptr;
 	std::vector<cached_mmio_region> mmio_regions;
-	cached_mmio_region *mmio_regions_ptr;
 	uint16_t num_io_regions;
 	uint16_t num_mmio_regions;
 	uint16_t num_rom_regions;

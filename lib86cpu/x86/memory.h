@@ -25,14 +25,6 @@ addr_t get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip);
 addr_t get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *is_code);
 addr_t get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip);
 addr_t get_code_addr(cpu_t * cpu, addr_t addr, uint32_t eip, uint32_t is_code, disas_ctx_t *disas_ctx);
-uint8_t mem_read8(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
-uint16_t mem_read16(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
-uint32_t mem_read32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
-uint64_t mem_read64(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_phys);
-void mem_write8(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t value, uint32_t eip, uint8_t is_phys);
-void mem_write16(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t value, uint32_t eip, uint8_t is_phys);
-void mem_write32(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t value, uint32_t eip, uint8_t is_phys);
-void mem_write64(cpu_ctx_t * cpu_ctx, addr_t addr, uint64_t value, uint32_t eip, uint8_t is_phys);
 uint8_t io_read8(cpu_ctx_t *cpu_ctx, port_t port);
 uint16_t io_read16(cpu_ctx_t *cpu_ctx, port_t port);
 uint32_t io_read32(cpu_ctx_t *cpu_ctx, port_t port);
@@ -45,6 +37,8 @@ void ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer);
 size_t as_ram_dispatch_read(cpu_t *cpu, addr_t addr, size_t size, memory_region_t<addr_t> *region, uint8_t *buffer);
 void rom_flush_cached(cpu_t * cpu, memory_region_t<addr_t> *rom);
 void mmio_flush_cached(cpu_t * cpu, memory_region_t<addr_t> *mmio);
+template<typename T> T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
+template<typename T> void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint8_t is_priv);
 
 inline const uint8_t tlb_access[2][4] = {
 	{ TLB_SUP_READ, TLB_SUP_READ, TLB_SUP_READ, TLB_USER_READ },
