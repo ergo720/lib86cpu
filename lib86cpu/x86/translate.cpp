@@ -998,7 +998,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					ST_SEG(CONST16(new_sel), CS_idx);
 					ST_R32(CONST32(call_eip), EIP_idx);
 					ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
-					link_direct_emit(cpu, std::vector <addr_t> { pc, (static_cast<uint32_t>(new_sel) << 4) + call_eip },
+					link_direct_emit(cpu, pc, (static_cast<uint32_t>(new_sel) << 4) + call_eip, nullptr,
 						CONST32((static_cast<uint32_t>(new_sel) << 4) + call_eip));
 					cpu->tc->flags |= TC_FLG_DIRECT;
 				}
@@ -1016,7 +1016,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				vec.push_back(size_mode == SIZE16 ? CONST16(ret_eip) : CONST32(ret_eip));
 				MEM_PUSH(vec);
 				ST_R32(CONST32(call_eip), EIP_idx);
-				link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + call_eip, pc + bytes },
+				addr_t next_pc = pc + bytes;
+				link_direct_emit(cpu, pc, cpu_ctx->regs.cs_hidden.base + call_eip, &next_pc,
 					CONST32(cpu_ctx->regs.cs_hidden.base + call_eip));
 				cpu->tc->flags |= TC_FLG_DIRECT;
 			}
@@ -2191,7 +2192,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			BR_UNCOND(vec_bb[2]);
 
 			cpu->bb = vec_bb[2];
-			link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + jump_eip, pc + bytes }, LD(dst_pc));
+			addr_t next_pc2 = pc + bytes;
+			link_direct_emit(cpu, pc, cpu_ctx->regs.cs_hidden.base + jump_eip, &next_pc2, LD(dst_pc));
 			cpu->tc->flags |= TC_FLG_DIRECT;
 			translate_next = 0;
 		}
@@ -2207,7 +2209,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					new_eip &= 0x0000FFFF;
 				}
 				ST_R32(CONST32(new_eip), EIP_idx);
-				link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + new_eip }, CONST32(cpu_ctx->regs.cs_hidden.base + new_eip));
+				link_direct_emit(cpu, pc, cpu_ctx->regs.cs_hidden.base + new_eip, nullptr, CONST32(cpu_ctx->regs.cs_hidden.base + new_eip));
 				cpu->tc->flags |= TC_FLG_DIRECT;
 			}
 			break;
@@ -2225,7 +2227,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					ST_SEG(CONST16(new_sel), CS_idx);
 					ST_R32(CONST32(new_eip), EIP_idx);
 					ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
-					link_direct_emit(cpu, std::vector <addr_t> { pc, (static_cast<uint32_t>(new_sel) << 4) + new_eip }, CONST32((static_cast<uint32_t>(new_sel) << 4) + new_eip));
+					link_direct_emit(cpu, pc, (static_cast<uint32_t>(new_sel) << 4) + new_eip, nullptr, CONST32((static_cast<uint32_t>(new_sel) << 4) + new_eip));
 					cpu->tc->flags |= TC_FLG_DIRECT;
 				}
 			}
@@ -2385,7 +2387,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				GET_RM(OPNUM_SINGLE, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
 				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
 				cpu->bb = vec_bb[0];
-				write_seg_reg_emit(cpu, LDTR_idx, std::vector<Value *> { sel, CONST32(0), CONST32(0), CONST32(0) });
+				write_seg_reg_emit(cpu, LDTR_idx, sel, CONST32(0), CONST32(0), CONST32(0));
 				BR_UNCOND(vec_bb[4]);
 				cpu->bb = vec_bb[1];
 				Value *desc = read_seg_desc_emit(cpu, sel)[1];
@@ -2398,8 +2400,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				bb_exp = RAISE(AND(sel, CONST16(0xFFFC)), EXP_NP);
 				BR_COND(bb_exp, vec_bb[3], ICMP_EQ(p, CONST64(0))); // segment not present
 				cpu->bb = vec_bb[3];
-				write_seg_reg_emit(cpu, LDTR_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, desc),
-					read_seg_desc_limit_emit(cpu, desc), read_seg_desc_flags_emit(cpu, desc)});
+				write_seg_reg_emit(cpu, LDTR_idx, sel, read_seg_desc_base_emit(cpu, desc),
+					read_seg_desc_limit_emit(cpu, desc), read_seg_desc_flags_emit(cpu, desc));
 				BR_UNCOND(vec_bb[4]);
 				cpu->bb = vec_bb[4];
 			}
@@ -2555,7 +2557,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			BR_UNCOND(vec_bb[2]);
 
 			cpu->bb = vec_bb[2];
-			link_direct_emit(cpu, std::vector <addr_t> { pc, cpu_ctx->regs.cs_hidden.base + loop_eip, pc + bytes }, LD(dst_pc));
+			addr_t next_pc = pc + bytes;
+			link_direct_emit(cpu, pc, cpu_ctx->regs.cs_hidden.base + loop_eip, &next_pc, LD(dst_pc));
 			cpu->tc->flags |= TC_FLG_DIRECT;
 			translate_next = 0;
 		}
@@ -2605,8 +2608,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				if (sel_idx == SS_idx) {
 					vec = check_ss_desc_priv_emit(cpu, sel);
 					set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
-					write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, vec[1]),
-						read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
+					write_seg_reg_emit(cpu, sel_idx, sel, read_seg_desc_base_emit(cpu, vec[1]),
+						read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1]));
 					ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
 					ST_REG_val(offset, GET_REG(OPNUM_DST));
 					if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
@@ -2623,13 +2626,13 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					std::vector<BasicBlock *> vec_bb = getBBs(3);
 					BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
 					cpu->bb = vec_bb[0];
-					write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, CONST32(0), CONST32(0), CONST32(0) });
+					write_seg_reg_emit(cpu, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
 					BR_UNCOND(vec_bb[2]);
 					cpu->bb = vec_bb[1];
 					vec = check_seg_desc_priv_emit(cpu, sel);
 					set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
-					write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel /* & rpl?? */, read_seg_desc_base_emit(cpu, vec[1]),
-						read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
+					write_seg_reg_emit(cpu, sel_idx, sel /* & rpl?? */, read_seg_desc_base_emit(cpu, vec[1]),
+						read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1]));
 					BR_UNCOND(vec_bb[2]);
 					cpu->bb = vec_bb[2];
 					ST_REG_val(offset, GET_REG(OPNUM_DST));
@@ -2656,7 +2659,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				GET_RM(OPNUM_SINGLE, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
 				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
 				cpu->bb = vec_bb[0];
-				write_seg_reg_emit(cpu, TR_idx, std::vector<Value *> { sel, CONST32(0), CONST32(0), CONST32(0) });
+				write_seg_reg_emit(cpu, TR_idx, sel, CONST32(0), CONST32(0), CONST32(0));
 				BR_UNCOND(vec_bb[4]);
 				cpu->bb = vec_bb[1];
 				std::vector<Value *> vec = read_tss_desc_emit(cpu, sel);
@@ -2672,8 +2675,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				BR_COND(bb_exp, vec_bb[3], ICMP_EQ(p, CONST64(0))); // segment not present
 				cpu->bb = vec_bb[3];
 				ST_MEM_PRIV(MEM_LD64_idx, vec[0], OR(desc, CONST64(SEG_DESC_BY)));
-				write_seg_reg_emit(cpu, TR_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, desc),
-					read_seg_desc_limit_emit(cpu, desc), read_seg_desc_flags_emit(cpu, desc)});
+				write_seg_reg_emit(cpu, TR_idx, sel, read_seg_desc_base_emit(cpu, desc),
+					read_seg_desc_limit_emit(cpu, desc), read_seg_desc_flags_emit(cpu, desc));
 				BR_UNCOND(vec_bb[4]);
 				cpu->bb = vec_bb[4];
 			}
@@ -2896,8 +2899,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					if (sel_idx == SS_idx) {
 						vec = check_ss_desc_priv_emit(cpu, sel);
 						set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
-						write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, vec[1]),
-							read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
+						write_seg_reg_emit(cpu, sel_idx, sel, read_seg_desc_base_emit(cpu, vec[1]),
+							read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1]));
 						ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
 						if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
 							std::vector<BasicBlock *> vec_bb = getBBs(2);
@@ -2913,13 +2916,13 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						std::vector<BasicBlock *> vec_bb = getBBs(3);
 						BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
 						cpu->bb = vec_bb[0];
-						write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, CONST32(0), CONST32(0), CONST32(0) });
+						write_seg_reg_emit(cpu, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
 						BR_UNCOND(vec_bb[2]);
 						cpu->bb = vec_bb[1];
 						vec = check_seg_desc_priv_emit(cpu, sel);
 						set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
-						write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel /* & rpl?? */, read_seg_desc_base_emit(cpu, vec[1]),
-							read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
+						write_seg_reg_emit(cpu, sel_idx, sel /* & rpl?? */, read_seg_desc_base_emit(cpu, vec[1]),
+							read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1]));
 						BR_UNCOND(vec_bb[2]);
 						cpu->bb = vec_bb[2];
 					}
@@ -3531,8 +3534,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						if (sel_idx == SS_idx) {
 							vec = check_ss_desc_priv_emit(cpu, sel);
 							set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
-							write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, vec[1]),
-								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
+							write_seg_reg_emit(cpu, sel_idx, sel, read_seg_desc_base_emit(cpu, vec[1]),
+								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1]));
 							ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
 							ST_REG_val(vec_pop[1], vec_pop[2]);
 							if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
@@ -3549,13 +3552,13 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							std::vector<BasicBlock *> vec_bb = getBBs(3);
 							BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
 							cpu->bb = vec_bb[0];
-							write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, CONST32(0), CONST32(0), CONST32(0) });
+							write_seg_reg_emit(cpu, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
 							BR_UNCOND(vec_bb[2]);
 							cpu->bb = vec_bb[1];
 							vec = check_seg_desc_priv_emit(cpu, sel);
 							set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
-							write_seg_reg_emit(cpu, sel_idx, std::vector<Value *> { sel, read_seg_desc_base_emit(cpu, vec[1]),
-								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1])});
+							write_seg_reg_emit(cpu, sel_idx, sel, read_seg_desc_base_emit(cpu, vec[1]),
+								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1]));
 							BR_UNCOND(vec_bb[2]);
 							cpu->bb = vec_bb[2];
 							ST_REG_val(vec_pop[1], vec_pop[2]);
@@ -5505,7 +5508,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			else {
 				// don't take hooks if we are executing a trapped instr. Otherwise, if the trapped instr is also hooked, we will take the hook instead of executing it
 				cpu_translate(cpu, &disas_ctx);
-				raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx) });
+				raise_exp_inline_emit(cpu, CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx));
 				cpu->bb = getBB();
 			}
 

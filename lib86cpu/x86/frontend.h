@@ -21,7 +21,6 @@ StructType *get_struct_reg(cpu_t *cpu);
 StructType *get_struct_eflags(cpu_t *cpu);
 Value *gep_emit(cpu_t *cpu, Value *gep_start, const int gep_index);
 Value *gep_emit(cpu_t *cpu, Value *gep_start, Value *gep_index);
-Value *gep_emit(cpu_t *cpu, Value *gep_start, const std::vector<Value *> &vec_index);
 Value *store_atomic_emit(cpu_t *cpu, Value *ptr, Value *val, AtomicOrdering order, uint8_t align);
 Value *load_atomic_emit(cpu_t *cpu, Value *ptr, AtomicOrdering order, uint8_t align);
 Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
@@ -35,13 +34,13 @@ void io_write_emit(cpu_t *cpu, Value *port, Value *value, const unsigned size_mo
 void check_io_priv_emit(cpu_t *cpu, Value *port, uint8_t size_mode);
 void stack_push_emit(cpu_t *cpu, const std::vector<Value *> &vec, uint32_t size_mode);
 std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at = 0);
-void link_direct_emit(cpu_t *cpu, const std::vector<addr_t> &vec_addr, Value *target_addr);
+void link_direct_emit(cpu_t *cpu, addr_t instr_pc, addr_t dst_pc, addr_t *next_pc, Value *target_addr);
 void link_indirect_emit(cpu_t *cpu);
 void link_dst_only_emit(cpu_t *cpu);
 Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
 Value *floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits);
-void raise_exp_inline_emit(cpu_t *cpu, const std::vector<Value *> &exp_data);
-BasicBlock *raise_exception_emit(cpu_t *cpu, const std::vector<Value *> &exp_data);
+void raise_exp_inline_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
+BasicBlock *raise_exception_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
 void lcall_pe_emit(cpu_t *cpu, std::vector<Value *> vec, uint8_t size_mode, uint32_t ret_eip);
 void ljmp_pe_emit(cpu_t *cpu, Value *sel, uint8_t size_mode, uint32_t eip);
 void ret_pe_emit(cpu_t *cpu, uint8_t size_mode, bool is_iret);
@@ -55,11 +54,11 @@ Value *read_seg_desc_limit_emit(cpu_t *cpu, Value *desc);
 Value *read_seg_desc_flags_emit(cpu_t *cpu, Value *desc);
 std::vector<Value *> read_tss_desc_emit(cpu_t *cpu, Value *sel);
 std::vector<Value *> read_stack_ptr_from_tss_emit(cpu_t *cpu, Value *cpl, BasicBlock *bb_exp = nullptr);
-void write_seg_reg_emit(cpu_t *cpu, const unsigned reg, const std::vector<Value *> &vec);
+void write_seg_reg_emit(cpu_t *cpu, const unsigned reg, Value *sel, Value *base, Value *limit, Value *flags);
 Value *get_immediate_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx, uint8_t size_mode);
 Value *get_register_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx);
-void set_flags_sum(cpu_t *cpu, const std::vector<Value *> &vec, uint8_t size_mode);
-void set_flags_sub(cpu_t *cpu, const std::vector<Value *> &vec, uint8_t size_mode);
+void set_flags_sum(cpu_t *cpu, Value *sum, Value *a, Value *b, uint8_t size_mode);
+void set_flags_sub(cpu_t *cpu, Value *sub, Value *a, Value *b, uint8_t size_mode);
 void set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode);
 void update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag, bool is_write);
 void write_eflags(cpu_t *cpu, Value *eflags, Value *mask);
@@ -256,15 +255,15 @@ default: \
 #define LD_IO(port) io_read_emit(cpu, port, size_mode)
 #define ST_IO(port, val) io_write_emit(cpu, port, val, size_mode)
 
-#define LD_PARITY(idx) LD(GetElementPtrInst::CreateInBounds(GEP_PARITY(), std::vector<Value *> { CONST32(0), idx }, "", cpu->bb))
-#define RAISE(code, idx) raise_exception_emit(cpu, std::vector<Value *> { CONST32(0), code, CONST16(idx), cpu->instr_eip })
-#define RAISE0(idx) raise_exception_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(idx), cpu->instr_eip })
-#define RAISEin(addr, code, idx, eip) raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(addr), CONST16(code), CONST16(idx), CONST32(eip) }); \
-cpu->bb = getBBs(1)[0]
-#define RAISEin0(idx) raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(idx), cpu->instr_eip }); \
-cpu->bb = getBBs(1)[0]
-#define SET_FLG_SUM(sum, a, b) set_flags_sum(cpu, std::vector<Value *> { sum, a , b }, size_mode)
-#define SET_FLG_SUB(sub, a, b) set_flags_sub(cpu, std::vector<Value *> { sub, a , b }, size_mode)
+#define LD_PARITY(idx) LD(GetElementPtrInst::CreateInBounds(GEP_PARITY(), { CONST32(0), idx }, "", cpu->bb))
+#define RAISE(code, idx) raise_exception_emit(cpu, CONST32(0), code, CONST16(idx), cpu->instr_eip)
+#define RAISE0(idx) raise_exception_emit(cpu, CONST32(0), CONST16(0), CONST16(idx), cpu->instr_eip)
+#define RAISEin(addr, code, idx, eip) raise_exp_inline_emit(cpu, CONST32(addr), CONST16(code), CONST16(idx), CONST32(eip)); \
+cpu->bb = getBB()
+#define RAISEin0(idx) raise_exp_inline_emit(cpu, CONST32(0), CONST16(0), CONST16(idx), cpu->instr_eip); \
+cpu->bb = getBB()
+#define SET_FLG_SUM(sum, a, b) set_flags_sum(cpu, sum, a , b, size_mode)
+#define SET_FLG_SUB(sub, a, b) set_flags_sub(cpu, sub, a , b, size_mode)
 #define SET_FLG(res, aux) set_flags(cpu, res, aux, size_mode)
 #define UPDATE_FPU_AFTER_MMX(tag, idx, w) update_fpu_state_after_mmx_emit(cpu, idx, tag, w)
 #define UPDATE_FPU_AFTER_MMX_w(tag, idx) UPDATE_FPU_AFTER_MMX(tag, idx, true)

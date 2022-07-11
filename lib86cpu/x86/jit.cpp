@@ -168,6 +168,16 @@ lc86_jit::remove_symbols(const std::vector<std::string> &names)
 	assert(!err);
 }
 
+void
+lc86_jit::remove_symbols(const std::string &names)
+{
+	MangleAndInterner mangle(*m_es, m_dl);
+	orc::SymbolNameSet module_symbol_names;
+	module_symbol_names.insert(mangle(names));
+	[[maybe_unused]] auto err = m_sym_table.remove(module_symbol_names);
+	assert(!err);
+}
+
 Error
 lc86_jit::define_absolute(StringRef name, JITEvaluatedSymbol sym)
 {

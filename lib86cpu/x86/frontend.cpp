@@ -107,22 +107,9 @@ StructType *
 get_struct_reg(cpu_t *cpu)
 {
 	std::vector<Type *>type_struct_reg_t_fields;
-	std::vector<Type *>type_struct_seg_t_fields;
-	std::vector<Type *>type_struct_hiddenseg_t_fields;
-	std::vector<Type *>type_struct_fp80_t_fields;
-
-	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
-	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
-	type_struct_hiddenseg_t_fields.push_back(getIntegerType(32));
-	StructType *type_struct_hiddenseg_t = StructType::create(CTX(), type_struct_hiddenseg_t_fields, "struct.hiddenseg_t", false);
-
-	type_struct_seg_t_fields.push_back(getIntegerType(16));
-	type_struct_seg_t_fields.push_back(type_struct_hiddenseg_t);
-	StructType *type_struct_seg_t = StructType::create(CTX(), type_struct_seg_t_fields, "struct.seg_t", false);
-
-	type_struct_fp80_t_fields.push_back(getIntegerType(64));
-	type_struct_fp80_t_fields.push_back(getIntegerType(16));
-	StructType *type_struct_fp80_t = StructType::create(CTX(), type_struct_fp80_t_fields, "struct.fp80_t", true);
+	StructType *type_struct_hiddenseg_t = StructType::create(CTX(), { getIntegerType(32) , getIntegerType(32) , getIntegerType(32) }, "struct.hiddenseg_t", false);
+	StructType *type_struct_seg_t = StructType::create(CTX(), { getIntegerType(16), type_struct_hiddenseg_t }, "struct.seg_t", false);
+	StructType *type_struct_fp80_t = StructType::create(CTX(), { getIntegerType(64), getIntegerType(16) }, "struct.fp80_t", true);
 
 	for (uint8_t n = 0; n < CPU_NUM_REGS; n++) {
 		switch (n)
@@ -162,13 +149,7 @@ get_struct_reg(cpu_t *cpu)
 StructType *
 get_struct_eflags(cpu_t *cpu)
 {
-	std::vector<Type *>type_struct_eflags_t_fields;
-
-	type_struct_eflags_t_fields.push_back(getIntegerType(32));
-	type_struct_eflags_t_fields.push_back(getIntegerType(32));
-	type_struct_eflags_t_fields.push_back(getArrayType(getIntegerType(8), 256));
-
-	return StructType::create(CTX(), type_struct_eflags_t_fields, "struct.eflags_t", false);
+	return StructType::create(CTX(), { getIntegerType(32), getIntegerType(32), getArrayType(getIntegerType(8), 256) }, "struct.eflags_t", false);
 }
 
 std::vector<BasicBlock *>
@@ -230,19 +211,13 @@ get_ext_fn(cpu_t *cpu)
 Value *
 gep_emit(cpu_t *cpu, Value *gep_start, const int gep_index)
 {
-	return gep_emit(cpu, gep_start, std::vector<Value *> { CONST32(0), CONST32(gep_index) });
+	return GetElementPtrInst::CreateInBounds(gep_start, { CONST32(0), CONST32(gep_index) }, "", cpu->bb);
 }
 
 Value *
 gep_emit(cpu_t *cpu, Value *gep_start, Value *gep_index)
 {
-	return gep_emit(cpu, gep_start, std::vector<Value *> { CONST32(0), gep_index });
-}
-
-Value *
-gep_emit(cpu_t *cpu, Value *gep_start, const std::vector<Value *> &vec_index)
-{
-	return GetElementPtrInst::CreateInBounds(gep_start, vec_index, "", cpu->bb);
+	return GetElementPtrInst::CreateInBounds(gep_start, { CONST32(0), gep_index }, "", cpu->bb);
 }
 
 Value *
@@ -317,7 +292,7 @@ check_rf_single_step_emit(cpu_t *cpu)
 		if ((cpu->cpu_ctx.regs.eflags & TF_MASK) | (cpu->cpu_flags & CPU_SINGLE_STEP)) {
 			// NOTE: if this instr also has a watchpoint, the other DB exp won't be generated
 			ST_R32(OR(LD_R32(DR6_idx), CONST32(DR6_BS_MASK)), DR6_idx);
-			raise_exp_inline_emit(cpu, std::vector<Value *> { CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx) });
+			raise_exp_inline_emit(cpu, CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx));
 			cpu->bb = getBB();
 			return true;
 		}
@@ -340,7 +315,7 @@ link_indirect_emit(cpu_t *cpu)
 }
 
 void
-link_direct_emit(cpu_t *cpu, const std::vector<addr_t> &vec_addr, Value *target_addr)
+link_direct_emit(cpu_t *cpu, addr_t instr_pc, addr_t dst_pc, addr_t *next_pc, Value *target_addr)
 {
 	if (check_rf_single_step_emit(cpu)) {
 		return;
@@ -350,13 +325,12 @@ link_direct_emit(cpu_t *cpu, const std::vector<addr_t> &vec_addr, Value *target_
 	check_int_emit(cpu);
 
 	// vec_addr: instr_pc, dst_pc, next_pc
-	addr_t page_addr = vec_addr[0] & ~PAGE_MASK;
-	uint32_t n, dst = (vec_addr[1] & ~PAGE_MASK) == page_addr;
-	if (vec_addr.size() == 3) {
-		n = dst + ((vec_addr[2] & ~PAGE_MASK) == page_addr);
+	addr_t page_addr = instr_pc & ~PAGE_MASK;
+	uint32_t n, dst = (dst_pc & ~PAGE_MASK) == page_addr;
+	if (next_pc) {
+		n = dst + ((*next_pc & ~PAGE_MASK) == page_addr);
 	}
 	else {
-		assert(vec_addr.size() == 2);
 		n = dst;
 	}
 	cpu->tc->flags |= (n & TC_FLG_NUM_JMP);
@@ -372,59 +346,63 @@ link_direct_emit(cpu_t *cpu, const std::vector<addr_t> &vec_addr, Value *target_
 	switch (n)
 	{
 	case 1: {
-		if (vec_addr.size() == 3) { // if(dst_pc) -> cond jmp dst_pc; if(next_pc) -> cond jmp next_pc
+		if (next_pc) { // if(dst_pc) -> cond jmp dst_pc; if(next_pc) -> cond jmp next_pc
 			if (dst) {
-				std::vector<BasicBlock *> vec_bb = getBBs(2);
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[1])));
-				cpu->bb = vec_bb[0];
+				BasicBlock *bb0 = getBB();
+				BasicBlock *bb1 = getBB();
+				BR_COND(bb0, bb1, ICMP_EQ(target_addr, CONST32(dst_pc)));
+				cpu->bb = bb0;
 				ST(tc_flg_ptr, AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)));
-				CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+				CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
 				ci->setCallingConv(CallingConv::C);
 				ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 				ReturnInst::Create(CTX(), ci, cpu->bb);
-				cpu->bb = vec_bb[1];
+				cpu->bb = bb1;
 				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_RET << 4)));
 			}
 			else {
-				std::vector<BasicBlock *> vec_bb = getBBs(2);
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[2])));
-				cpu->bb = vec_bb[0];
+				BasicBlock *bb0 = getBB();
+				BasicBlock *bb1 = getBB();
+				BR_COND(bb0, bb1, ICMP_EQ(target_addr, CONST32(*next_pc)));
+				cpu->bb = bb0;
 				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_NEXT_PC << 4)));
-				CallInst *ci = CallInst::Create(LD(tc_jmp1_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+				CallInst *ci = CallInst::Create(LD(tc_jmp1_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
 				ci->setCallingConv(CallingConv::C);
 				ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 				ReturnInst::Create(CTX(), ci, cpu->bb);
-				cpu->bb = vec_bb[1];
+				cpu->bb = bb1;
 				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_RET << 4)));
 			}
 		}
 		else { // uncond jmp dst_pc
-			CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+			CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
 			ci->setCallingConv(CallingConv::C);
 			ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 			ReturnInst::Create(CTX(), ci, cpu->bb);
-			cpu->bb = BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0);
+			cpu->bb = getBB();
 			ABORT("Unreachable code in link_direct_emit reached with n = 1");
 		}
 	}
 	break;
 
 	case 2: { // cond jmp next_pc + uncond jmp dst_pc
-		std::vector<BasicBlock *> vec_bb = getBBs(3);
-		BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(target_addr, CONST32(vec_addr[2])));
-		cpu->bb = vec_bb[0];
+		BasicBlock *bb0 = getBB();
+		BasicBlock *bb1 = getBB();
+		BasicBlock *bb2 = getBB();
+		BR_COND(bb0, bb1, ICMP_EQ(target_addr, CONST32(*next_pc)));
+		cpu->bb = bb0;
 		ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_NEXT_PC << 4)));
-		CallInst *ci1 = CallInst::Create(LD(tc_jmp1_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+		CallInst *ci1 = CallInst::Create(LD(tc_jmp1_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
 		ci1->setCallingConv(CallingConv::C);
 		ci1->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 		ReturnInst::Create(CTX(), ci1, cpu->bb);
-		cpu->bb = vec_bb[1];
+		cpu->bb = bb1;
 		ST(tc_flg_ptr, AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)));
-		CallInst *ci2 = CallInst::Create(LD(tc_jmp0_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+		CallInst *ci2 = CallInst::Create(LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
 		ci2->setCallingConv(CallingConv::C);
 		ci2->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 		ReturnInst::Create(CTX(), ci2, cpu->bb);
-		cpu->bb = vec_bb[2];
+		cpu->bb = bb2;
 		ABORT("Unreachable code in link_direct_emit reached with n = 2");
 	}
 	break;
@@ -447,7 +425,7 @@ link_dst_only_emit(cpu_t *cpu)
 	cpu->tc->flags |= (1 & TC_FLG_NUM_JMP);
 
 	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[0]), getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())));
-	CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), std::vector<Value *> { cpu->ptr_cpu_ctx }, "", cpu->bb);
+	CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
 	ci->setCallingConv(CallingConv::C);
 	ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
 	ReturnInst::Create(CTX(), ci, cpu->bb);
@@ -458,19 +436,11 @@ static Function *
 gen_fn(cpu_t *cpu)
 {
 	StructType *cpu_ctx_struct_type = StructType::create(CTX(), "struct.cpu_ctx_t");
-	std::vector<Type *> type_struct_exp_data_t_fields;
-	type_struct_exp_data_t_fields.push_back(getIntegerType(32));
-	type_struct_exp_data_t_fields.push_back(getIntegerType(16));
-	type_struct_exp_data_t_fields.push_back(getIntegerType(16));
-	type_struct_exp_data_t_fields.push_back(getIntegerType(32));
 	StructType *type_exp_data_t = StructType::create(CTX(),
-		type_struct_exp_data_t_fields, "struct.exp_data_t", false);
+		{ getIntegerType(32), getIntegerType(16), getIntegerType(16), getIntegerType(32) }, "struct.exp_data_t", false);
 
-	std::vector<Type *> type_struct_exp_info_t_fields;
-	type_struct_exp_info_t_fields.push_back(type_exp_data_t);
-	type_struct_exp_info_t_fields.push_back(getIntegerType(16));
 	StructType *type_exp_info_t = StructType::create(CTX(),
-		type_struct_exp_info_t_fields, "struct.exp_info_t", false);
+		{ type_exp_data_t, getIntegerType(16) }, "struct.exp_info_t", false);
 
 	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");  // NOTE: opaque tc struct
 	FunctionType *type_iret_t, *type_exp_t, *type_entry_t;
@@ -479,19 +449,19 @@ gen_fn(cpu_t *cpu)
 		getPointerType(cpu_ctx_struct_type),  // cpu_ctx
 		false);
 
-	std::vector<Type *> type_struct_cpu_ctx_t_fields;
-	type_struct_cpu_ctx_t_fields.push_back(getPointerType(StructType::create(CTX(), "struct.cpu_t")));  // NOTE: opaque cpu struct
-	type_struct_cpu_ctx_t_fields.push_back(get_struct_reg(cpu));
-	type_struct_cpu_ctx_t_fields.push_back(get_struct_eflags(cpu));
-	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(32));
-	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(32), TLB_MAX_SIZE));
-	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(16), TLB_MAX_SIZE));
-	type_struct_cpu_ctx_t_fields.push_back(getArrayType(getIntegerType(16), IOTLB_MAX_SIZE));
-	type_struct_cpu_ctx_t_fields.push_back(getPointerType(getIntegerType(8)));
-	type_struct_cpu_ctx_t_fields.push_back(getPointerType(type_exp_t));
-	type_struct_cpu_ctx_t_fields.push_back(type_exp_info_t);
-	type_struct_cpu_ctx_t_fields.push_back(getIntegerType(8));
-	cpu_ctx_struct_type->setBody(type_struct_cpu_ctx_t_fields, false);
+	cpu_ctx_struct_type->setBody({
+		getPointerType(StructType::create(CTX(), "struct.cpu_t")),  // NOTE: opaque cpu struct
+		get_struct_reg(cpu),
+		get_struct_eflags(cpu),
+		getIntegerType(32),
+		getArrayType(getIntegerType(32), TLB_MAX_SIZE),
+		getArrayType(getIntegerType(16), TLB_MAX_SIZE),
+		getArrayType(getIntegerType(16), IOTLB_MAX_SIZE),
+		getPointerType(getIntegerType(8)),
+		getPointerType(type_exp_t),
+		type_exp_info_t,
+		getIntegerType(8)
+		}, false);
 	PointerType *type_pcpu_ctx_t = getPointerType(cpu_ctx_struct_type);
 
 	Function *func = nullptr;
@@ -513,8 +483,8 @@ gen_fn(cpu_t *cpu)
 	}
 	else if constexpr (fn_type == fn_emit_t::int_t) {
 		FunctionType *type_int_t = FunctionType::get(
-			getVoidType(),                                                                   // void ret
-			std::vector<Type *> { getPointerType(cpu_ctx_struct_type), getIntegerType(8) },  // cpu_ctx, int flag
+			getVoidType(),                                               // void ret
+			{ getPointerType(cpu_ctx_struct_type), getIntegerType(8) },  // cpu_ctx, int flag
 			false);
 
 		func = Function::Create(
@@ -613,7 +583,7 @@ gen_int_fn(cpu_t *cpu)
 	cpu->jit->add_ir_module(std::move(tsm));
 	cpu->int_fn = reinterpret_cast<raise_int_t>(cpu->jit->lookup("cpu_raise_interrupt")->getAddress());
 	assert(cpu->int_fn);
-	cpu->jit->remove_symbols(std::vector<std::string> { "cpu_raise_interrupt" });
+	cpu->jit->remove_symbols("cpu_raise_interrupt");
 	cpu->tc = nullptr;
 	cpu->bb = nullptr;
 }
@@ -1023,7 +993,7 @@ gen_exp_fn(cpu_t *cpu)
 	cpu->jit->add_ir_module(std::move(tsm));
 	cpu->cpu_ctx.exp_fn = reinterpret_cast<raise_exp_t>(cpu->jit->lookup("cpu_raise_exception")->getAddress());
 	assert(cpu->cpu_ctx.exp_fn);
-	cpu->jit->remove_symbols(std::vector<std::string> { "cpu_raise_exception" });
+	cpu->jit->remove_symbols("cpu_raise_exception");
 	cpu->tc = nullptr;
 	cpu->bb = nullptr;
 }
@@ -1098,7 +1068,7 @@ gen_iret_fn(cpu_t *cpu)
 	assert(cpu->iret_fn.first);
 	// save the current state of the constant cpu flags. This is necessary because they might change when we need to call iret again
 	cpu->iret_fn.second = (cpu->cpu_ctx.hflags & HFLG_CONST) | (cpu->cpu_ctx.regs.eflags & EFLAGS_CONST);
-	cpu->jit->remove_symbols(std::vector<std::string> { "iret" });
+	cpu->jit->remove_symbols("iret");
 	cpu->tc = nullptr;
 	cpu->bb = nullptr;
 }
@@ -1123,25 +1093,25 @@ create_tc_epilogue(cpu_t *cpu)
 }
 
 void
-raise_exp_inline_emit(cpu_t *cpu, const std::vector<Value *> &exp_data)
+raise_exp_inline_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip)
 {
 	Value *ptr_exp_data = GEP(GEP(cpu->ptr_cpu_ctx, 9), 0);
-	ST(GEP(ptr_exp_data, 0), exp_data[0]);
-	ST(GEP(ptr_exp_data, 1), exp_data[1]);
-	ST(GEP(ptr_exp_data, 2), exp_data[2]);
-	ST(GEP(ptr_exp_data, 3), exp_data[3]);
+	ST(GEP(ptr_exp_data, 0), fault_addr);
+	ST(GEP(ptr_exp_data, 1), code);
+	ST(GEP(ptr_exp_data, 2), idx);
+	ST(GEP(ptr_exp_data, 3), eip);
 	CallInst *ci = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
 	ci->setCallingConv(CallingConv::C);
 	ReturnInst::Create(CTX(), ci, cpu->bb);
 }
 
 BasicBlock *
-raise_exception_emit(cpu_t *cpu, const std::vector<Value *> &exp_data)
+raise_exception_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip)
 {
 	BasicBlock *bb_exp = BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0);
 	BasicBlock *bb = cpu->bb;
 	cpu->bb = bb_exp;
-	raise_exp_inline_emit(cpu, exp_data);
+	raise_exp_inline_emit(cpu, fault_addr, code, idx, eip);
 	cpu->bb = bb;
 	return bb_exp;
 }
@@ -1161,45 +1131,47 @@ write_eflags(cpu_t *cpu, Value *eflags, Value *mask)
 static void
 validate_seg_emit(cpu_t *cpu, const unsigned reg)
 {
-	std::vector<BasicBlock *> vec_bb = getBBs(2);
+	BasicBlock *bb0 = getBB();
+	BasicBlock *bb1 = getBB();
 	Value *flags = LD_SEG_HIDDEN(reg, SEG_FLG_idx);
 	Value *c = AND(flags, CONST32(1 << 10));
 	Value *d = AND(flags, CONST32(1 << 11));
 	Value *s = AND(flags, CONST32(1 << 12));
 	Value *dpl = SHR(AND(flags, CONST32(3 << 13)), CONST32(13));
 	Value *cpl = AND(LD(cpu->ptr_hflags), CONST32(HFLG_CPL));
-	BR_COND(vec_bb[0], vec_bb[1], AND(ICMP_UGT(cpl, dpl), AND(ICMP_NE(s, CONST32(0)), OR(ICMP_EQ(d, CONST32(0)), ICMP_EQ(c, CONST32(0))))));
-	cpu->bb = vec_bb[0];
-	write_seg_reg_emit(cpu, reg, std::vector<Value *> { CONST16(0), CONST32(0), CONST32(0), CONST32(0) });
-	BR_UNCOND(vec_bb[1]);
-	cpu->bb = vec_bb[1];
+	BR_COND(bb0, bb1, AND(ICMP_UGT(cpl, dpl), AND(ICMP_NE(s, CONST32(0)), OR(ICMP_EQ(d, CONST32(0)), ICMP_EQ(c, CONST32(0))))));
+	cpu->bb = bb0;
+	write_seg_reg_emit(cpu, reg, CONST16(0), CONST32(0), CONST32(0), CONST32(0));
+	BR_UNCOND(bb1);
+	cpu->bb = bb1;
 }
 
 void
-write_seg_reg_emit(cpu_t *cpu, const unsigned reg, const std::vector<Value *> &vec)
+write_seg_reg_emit(cpu_t *cpu, const unsigned reg, Value *sel, Value *base, Value *limit, Value *flags)
 {
-	ST_SEG(vec[0], reg);
-	ST_SEG_HIDDEN(vec[1], reg, SEG_BASE_idx);
-	ST_SEG_HIDDEN(vec[2], reg, SEG_LIMIT_idx);
-	ST_SEG_HIDDEN(vec[3], reg, SEG_FLG_idx);
+	ST_SEG(sel, reg);
+	ST_SEG_HIDDEN(base, reg, SEG_BASE_idx);
+	ST_SEG_HIDDEN(limit, reg, SEG_LIMIT_idx);
+	ST_SEG_HIDDEN(flags, reg, SEG_FLG_idx);
 
 	if (reg == CS_idx) {
-		ST(cpu->ptr_hflags, OR(SHR(AND(vec[3], CONST32(SEG_HIDDEN_DB)), CONST32(20)), AND(LD(cpu->ptr_hflags), CONST32(~HFLG_CS32))));
+		ST(cpu->ptr_hflags, OR(OR(SHR(AND(flags, CONST32(SEG_HIDDEN_DB)), CONST32(20)), AND(ZEXT32(sel), CONST32(3))), AND(LD(cpu->ptr_hflags), CONST32(~(HFLG_CS32 | HFLG_CPL)))));
 	}
 	else if (reg == SS_idx) {
-		ST(cpu->ptr_hflags, OR(OR(SHR(AND(vec[3], CONST32(SEG_HIDDEN_DB)), CONST32(19)), AND(ZEXT32(vec[0]), CONST32(3))), AND(LD(cpu->ptr_hflags), CONST32(~(HFLG_SS32 | HFLG_CPL)))));
+		ST(cpu->ptr_hflags, OR(SHR(AND(flags, CONST32(SEG_HIDDEN_DB)), CONST32(19)), AND(LD(cpu->ptr_hflags), CONST32(~HFLG_SS32))));
 	}
 }
 
 void
 set_access_flg_seg_desc_emit(cpu_t *cpu, Value *desc, Value *desc_addr)
 {
-	std::vector<BasicBlock *> vec_bb = getBBs(2);
-	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(OR(SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(44)), SHR(AND(desc, CONST64(SEG_DESC_A)), CONST64(39))), CONST64(1)));
-	cpu->bb = vec_bb[0];
+	BasicBlock *bb0 = getBB();
+	BasicBlock *bb1 = getBB();
+	BR_COND(bb0, bb1, ICMP_EQ(OR(SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(44)), SHR(AND(desc, CONST64(SEG_DESC_A)), CONST64(39))), CONST64(1)));
+	cpu->bb = bb0;
 	ST_MEM_PRIV(MEM_ST64_idx, desc_addr, OR(desc, CONST64(SEG_DESC_A)));
-	BR_UNCOND(vec_bb[1]);
-	cpu->bb = vec_bb[1];
+	BR_UNCOND(bb1);
+	cpu->bb = bb1;
 }
 
 Value *
@@ -1217,14 +1189,15 @@ read_seg_desc_flags_emit(cpu_t *cpu, Value *desc)
 Value *
 read_seg_desc_limit_emit(cpu_t *cpu, Value *desc)
 {
-	std::vector<BasicBlock *> vec_bb = getBBs(2);
+	BasicBlock *bb0 = getBB();
+	BasicBlock *bb1 = getBB();
 	Value *limit = ALLOC32();
 	ST(limit, TRUNC32(OR(AND(desc, CONST64(0xFFFF)), SHR(AND(desc, CONST64(0xF000000000000)), CONST64(32)))));
-	BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(desc, CONST64(SEG_DESC_G)), CONST64(0)));
-	cpu->bb = vec_bb[0];
+	BR_COND(bb0, bb1, ICMP_NE(AND(desc, CONST64(SEG_DESC_G)), CONST64(0)));
+	cpu->bb = bb0;
 	ST(limit, OR(SHL(LD(limit), CONST32(12)), CONST32(PAGE_MASK)));
-	BR_UNCOND(vec_bb[1]);
-	cpu->bb = vec_bb[1];
+	BR_UNCOND(bb1);
+	cpu->bb = bb1;
 	return LD(limit);
 }
 
@@ -1232,26 +1205,29 @@ std::vector<Value *>
 read_seg_desc_emit(cpu_t *cpu, Value *sel, BasicBlock *bb_exp)
 {
 	std::vector<Value *> vec;
-	std::vector<BasicBlock *> vec_bb = getBBs(4);
+	BasicBlock *bb0 = getBB();
+	BasicBlock *bb1 = getBB();
+	BasicBlock *bb2 = getBB();
+	BasicBlock *bb3 = getBB();
 	Value *base = ALLOC32();
 	Value *limit = ALLOC32();
 	Value *idx = SHR(sel, CONST16(3));
 	Value *ti = SHR(AND(sel, CONST16(4)), CONST16(2));
-	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(ti, CONST16(0)));
-	cpu->bb = vec_bb[0];
+	BR_COND(bb0, bb1, ICMP_EQ(ti, CONST16(0)));
+	cpu->bb = bb0;
 	ST(base, LD_SEG_HIDDEN(GDTR_idx, SEG_BASE_idx));
 	ST(limit, LD_SEG_HIDDEN(GDTR_idx, SEG_LIMIT_idx));
-	BR_UNCOND(vec_bb[2]);
-	cpu->bb = vec_bb[1];
+	BR_UNCOND(bb2);
+	cpu->bb = bb1;
 	ST(base, LD_SEG_HIDDEN(LDTR_idx, SEG_BASE_idx));
 	ST(limit, LD_SEG_HIDDEN(LDTR_idx, SEG_LIMIT_idx));
-	BR_UNCOND(vec_bb[2]);
-	cpu->bb = vec_bb[2];
+	BR_UNCOND(bb2);
+	cpu->bb = bb2;
 	Value *desc_addr = ADD(LD(base), ZEXT32(MUL(idx, CONST16(8))));
 	vec.push_back(desc_addr);
 	BR_COND(bb_exp ? bb_exp : RAISE(AND(sel, CONST16(0xFFFC)), EXP_GP),
-		vec_bb[3], ICMP_UGT(ADD(desc_addr, CONST32(7)), ADD(LD(base), LD(limit)))); // sel idx outside of descriptor table
-	cpu->bb = vec_bb[3];
+		bb3, ICMP_UGT(ADD(desc_addr, CONST32(7)), ADD(LD(base), LD(limit)))); // sel idx outside of descriptor table
+	cpu->bb = bb3;
 	Value *desc = LD_MEM_PRIV(MEM_LD64_idx, desc_addr);
 	vec.push_back(desc);
 	return vec;
@@ -1261,18 +1237,19 @@ std::vector<Value *>
 read_tss_desc_emit(cpu_t *cpu, Value *sel)
 {
 	std::vector<Value *> vec;
-	std::vector<BasicBlock *> vec_bb = getBBs(2);
+	BasicBlock *bb0 = getBB();
+	BasicBlock *bb1 = getBB();
 	Value *idx = SHR(sel, CONST16(3));
 	Value *ti = SHR(AND(sel, CONST16(4)), CONST16(2));
 	BasicBlock *bb_exp = RAISE(AND(sel, CONST16(0xFFFC)), EXP_GP);
-	BR_COND(bb_exp, vec_bb[0], ICMP_NE(ti, CONST16(0))); // must be in the gdt
-	cpu->bb = vec_bb[0];
+	BR_COND(bb_exp, bb0, ICMP_NE(ti, CONST16(0))); // must be in the gdt
+	cpu->bb = bb0;
 	Value *base = LD_SEG_HIDDEN(GDTR_idx, SEG_BASE_idx);
 	Value *limit = LD_SEG_HIDDEN(GDTR_idx, SEG_LIMIT_idx);
 	Value *desc_addr = ADD(base, ZEXT32(MUL(idx, CONST16(8))));
 	vec.push_back(desc_addr);
-	BR_COND(bb_exp, vec_bb[1], ICMP_UGT(ADD(desc_addr, CONST32(7)), ADD(base, limit))); // sel idx outside of descriptor table
-	cpu->bb = vec_bb[1];
+	BR_COND(bb_exp, bb1, ICMP_UGT(ADD(desc_addr, CONST32(7)), ADD(base, limit))); // sel idx outside of descriptor table
+	cpu->bb = bb1;
 	Value *desc = LD_MEM_PRIV(MEM_LD64_idx, desc_addr);
 	vec.push_back(desc);
 	return vec;
@@ -1282,28 +1259,31 @@ std::vector<Value *>
 read_stack_ptr_from_tss_emit(cpu_t *cpu, Value *cpl, BasicBlock *bb_exp)
 {
 	std::vector<Value *> vec;
-	std::vector<BasicBlock *> vec_bb = getBBs(4);
+	BasicBlock *bb0 = getBB();
+	BasicBlock *bb1 = getBB();
+	BasicBlock *bb2 = getBB();
+	BasicBlock *bb3 = getBB();
 	Value *esp = ALLOC32();
 	Value *ss = ALLOC16();
 	Value *type = SHR(AND(LD_SEG_HIDDEN(TR_idx, SEG_FLG_idx), CONST32(SEG_HIDDEN_TSS_TY)), CONST32(11));
 	Value *idx = ADD(SHL(CONST32(2), type), MUL(ZEXT32(cpl), SHL(CONST32(4), type)));
 	BR_COND(bb_exp ? bb_exp : RAISE(AND(LD_SEG(TR_idx), CONST16(0xFFFC)), EXP_TS),
-		vec_bb[0], ICMP_UGT(SUB(ADD(idx, SHL(CONST32(4), type)), CONST32(1)), LD_SEG_HIDDEN(TR_idx, SEG_LIMIT_idx)));
-	cpu->bb = vec_bb[0];
-	BR_COND(vec_bb[1], vec_bb[2], ICMP_NE(type, CONST32(0)));
-	cpu->bb = vec_bb[1];
+		bb0, ICMP_UGT(SUB(ADD(idx, SHL(CONST32(4), type)), CONST32(1)), LD_SEG_HIDDEN(TR_idx, SEG_LIMIT_idx)));
+	cpu->bb = bb0;
+	BR_COND(bb1, bb2, ICMP_NE(type, CONST32(0)));
+	cpu->bb = bb1;
 	Value *temp1 = LD_MEM(MEM_LD32_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), idx));
 	ST(esp, temp1);
 	temp1 = LD_MEM(MEM_LD16_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), ADD(idx, CONST32(4))));
 	ST(ss, temp1);
-	BR_UNCOND(vec_bb[3]);
-	cpu->bb = vec_bb[2];
+	BR_UNCOND(bb3);
+	cpu->bb = bb2;
 	Value *temp2 = LD_MEM(MEM_LD16_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), idx));
 	ST(esp, ZEXT32(temp2));
 	temp2 = LD_MEM(MEM_LD16_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), ADD(idx, CONST32(2))));
 	ST(ss, temp2);
-	BR_UNCOND(vec_bb[3]);
-	cpu->bb = vec_bb[3];
+	BR_UNCOND(bb3);
+	cpu->bb = bb3;
 	vec.push_back(LD(esp));
 	vec.push_back(LD(ss));
 	return vec;
@@ -1312,10 +1292,12 @@ read_stack_ptr_from_tss_emit(cpu_t *cpu, Value *cpl, BasicBlock *bb_exp)
 std::vector<Value *>
 check_ss_desc_priv_emit(cpu_t *cpu, Value *sel, Value *cs, Value *cpl, BasicBlock *bb_exp)
 {
-	std::vector<BasicBlock *> vec_bb = getBBs(3);
+	BasicBlock *bb0 = getBB();
+	BasicBlock *bb1 = getBB();
+	BasicBlock *bb2 = getBB();
 	BR_COND(bb_exp ? bb_exp : RAISE(CONST16(0), EXP_GP),
-		vec_bb[0], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0))); // sel == NULL
-	cpu->bb = vec_bb[0];
+		bb0, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0))); // sel == NULL
+	cpu->bb = bb0;
 	std::vector<Value *> vec = read_seg_desc_emit(cpu, sel, bb_exp);
 	Value *desc = vec[1];
 	Value *s = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(44))); // cannot be a system segment
@@ -1334,12 +1316,12 @@ check_ss_desc_priv_emit(cpu_t *cpu, Value *sel, Value *cs, Value *cpl, BasicBloc
 		val = XOR(OR(OR(OR(OR(s, d), w), dpl), rpl), OR(OR(OR(OR(CONST16(1), CONST16(0)), CONST16(4)), SHL(rpl_cs, CONST16(3))), SHL(rpl_cs, CONST16(5))));
 	}
 	BR_COND(bb_exp ? bb_exp : RAISE(AND(sel, CONST16(0xFFFC)), EXP_GP),
-		vec_bb[1], ICMP_NE(val, CONST16(0)));
-	cpu->bb = vec_bb[1];
+		bb1, ICMP_NE(val, CONST16(0)));
+	cpu->bb = bb1;
 	Value *p = AND(desc, CONST64(SEG_DESC_P));
 	BR_COND(bb_exp ? bb_exp : RAISE(AND(sel, CONST16(0xFFFC)), EXP_SS),
-		vec_bb[2], ICMP_EQ(p, CONST64(0))); // segment not present
-	cpu->bb = vec_bb[2];
+		bb2, ICMP_EQ(p, CONST64(0))); // segment not present
+	cpu->bb = bb2;
 	return vec;
 }
 
@@ -1422,8 +1404,8 @@ lcall_pe_emit(cpu_t *cpu, std::vector<Value *> vec, uint8_t size_mode, uint32_t 
 	cpu->bb = vec_bb[7];
 	MEM_PUSH(vec);
 	set_access_flg_seg_desc_emit(cpu, LD(desc), LD(desc_addr));
-	write_seg_reg_emit(cpu, CS_idx, std::vector<Value *> { OR(AND(sel, CONST16(0xFFFC)), cpl), read_seg_desc_base_emit(cpu, LD(desc)),
-		read_seg_desc_limit_emit(cpu, LD(desc)), read_seg_desc_flags_emit(cpu, LD(desc))});
+	write_seg_reg_emit(cpu, CS_idx, OR(AND(sel, CONST16(0xFFFC)), cpl), read_seg_desc_base_emit(cpu, LD(desc)),
+		read_seg_desc_limit_emit(cpu, LD(desc)), read_seg_desc_flags_emit(cpu, LD(desc)));
 	ST_R32(call_eip, EIP_idx);
 	BR_UNCOND(vec_bb[37]);
 
@@ -1580,13 +1562,13 @@ lcall_pe_emit(cpu_t *cpu, std::vector<Value *> vec, uint8_t size_mode, uint32_t 
 	// commmon path for call gates
 	cpu->bb = vec_bb[29];
 	set_access_flg_seg_desc_emit(cpu, LD(desc), LD(desc_addr));
-	write_seg_reg_emit(cpu, SS_idx, std::vector<Value *> { OR(AND(LD(ss), CONST16(0xFFFC)), LD(dpl)), LD(stack_base), // load ss
-		read_seg_desc_limit_emit(cpu, LD(desc)), read_seg_desc_flags_emit(cpu, LD(desc))});
+	write_seg_reg_emit(cpu, SS_idx, OR(AND(LD(ss), CONST16(0xFFFC)), LD(dpl)), LD(stack_base), // load ss
+		read_seg_desc_limit_emit(cpu, LD(desc)), read_seg_desc_flags_emit(cpu, LD(desc)));
 	BR_UNCOND(vec_bb[36]);
 	cpu->bb = vec_bb[36];
 	set_access_flg_seg_desc_emit(cpu, cs_desc, cs_desc_addr);
-	write_seg_reg_emit(cpu, CS_idx, std::vector<Value *> { OR(AND(code_sel, CONST16(0xFFFC)), LD(dpl)), read_seg_desc_base_emit(cpu, cs_desc), // load cs
-		read_seg_desc_limit_emit(cpu, cs_desc), read_seg_desc_flags_emit(cpu, cs_desc)});
+	write_seg_reg_emit(cpu, CS_idx, OR(AND(code_sel, CONST16(0xFFFC)), LD(dpl)), read_seg_desc_base_emit(cpu, cs_desc), // load cs
+		read_seg_desc_limit_emit(cpu, cs_desc), read_seg_desc_flags_emit(cpu, cs_desc));
 	ST_R32(OR(AND(LD_R32(ESP_idx), NOT(LD(stack_mask))), AND(LD(esp), LD(stack_mask))), ESP_idx);
 	ST_R32(new_eip, EIP_idx);
 	BR_UNCOND(vec_bb[37]);
@@ -1633,8 +1615,8 @@ ljmp_pe_emit(cpu_t *cpu, Value *sel, uint8_t size_mode, uint32_t eip)
 	BR_COND(bb_exp, vec_bb[7], ICMP_EQ(AND(LD(desc), CONST64(SEG_DESC_P)), CONST64(0))); // p == 0
 	cpu->bb = vec_bb[7];
 	set_access_flg_seg_desc_emit(cpu, LD(desc), LD(desc_addr));
-	write_seg_reg_emit(cpu, CS_idx, std::vector<Value *> { OR(AND(sel, CONST16(0xFFFC)), cpl), read_seg_desc_base_emit(cpu, LD(desc)),
-		read_seg_desc_limit_emit(cpu, LD(desc)), read_seg_desc_flags_emit(cpu, LD(desc))});
+	write_seg_reg_emit(cpu, CS_idx, OR(AND(sel, CONST16(0xFFFC)), cpl), read_seg_desc_base_emit(cpu, LD(desc)),
+		read_seg_desc_limit_emit(cpu, LD(desc)), read_seg_desc_flags_emit(cpu, LD(desc)));
 	ST_R32(CONST32(size_mode == SIZE16 ? eip & 0xFFFF : eip), EIP_idx);
 	BR_UNCOND(vec_bb[17]);
 
@@ -1681,8 +1663,8 @@ ljmp_pe_emit(cpu_t *cpu, Value *sel, uint8_t size_mode, uint32_t eip)
 	BR_COND(bb_exp, vec_bb[14], ICMP_EQ(AND(LD(desc), CONST64(SEG_DESC_P)), CONST64(0))); // p == 0
 	cpu->bb = vec_bb[14];
 	set_access_flg_seg_desc_emit(cpu, LD(desc), LD(desc_addr));
-	write_seg_reg_emit(cpu, CS_idx, std::vector<Value *> { OR(AND(sel, CONST16(0xFFFC)), cpl), read_seg_desc_base_emit(cpu, LD(desc)),
-		read_seg_desc_limit_emit(cpu, LD(desc)), read_seg_desc_flags_emit(cpu, LD(desc))});
+	write_seg_reg_emit(cpu, CS_idx, OR(AND(sel, CONST16(0xFFFC)), cpl), read_seg_desc_base_emit(cpu, LD(desc)),
+		read_seg_desc_limit_emit(cpu, LD(desc)), read_seg_desc_flags_emit(cpu, LD(desc)));
 	Value *temp_eip = ALLOC32();
 	ST(temp_eip, CONST32(eip));
 	BR_COND(vec_bb[15], vec_bb[16], ICMP_EQ(LD(sys_ty), CONST8(0)));
@@ -1798,11 +1780,11 @@ ret_pe_emit(cpu_t *cpu, uint8_t size_mode, bool is_iret)
 	Value *ss_desc_addr = vec_ss[0];
 	Value *ss_desc = vec_ss[1];
 	set_access_flg_seg_desc_emit(cpu, ss_desc, ss_desc_addr);
-	write_seg_reg_emit(cpu, SS_idx, std::vector<Value *> { ss, read_seg_desc_base_emit(cpu, ss_desc),
-		read_seg_desc_limit_emit(cpu, ss_desc), read_seg_desc_flags_emit(cpu, ss_desc)});
+	write_seg_reg_emit(cpu, SS_idx, ss, read_seg_desc_base_emit(cpu, ss_desc),
+		read_seg_desc_limit_emit(cpu, ss_desc), read_seg_desc_flags_emit(cpu, ss_desc));
 	set_access_flg_seg_desc_emit(cpu, cs_desc, cs_desc_addr);
-	write_seg_reg_emit(cpu, CS_idx, std::vector<Value *> { cs, read_seg_desc_base_emit(cpu, cs_desc),
-		read_seg_desc_limit_emit(cpu, cs_desc), read_seg_desc_flags_emit(cpu, cs_desc)});
+	write_seg_reg_emit(cpu, CS_idx, cs, read_seg_desc_base_emit(cpu, cs_desc),
+		read_seg_desc_limit_emit(cpu, cs_desc), read_seg_desc_flags_emit(cpu, cs_desc));
 	Value *stack_mask = ALLOC32();
 	BR_COND(vec_bb[6], vec_bb[7], ICMP_NE(AND(LD_SEG_HIDDEN(SS_idx, SEG_FLG_idx), CONST32(SEG_HIDDEN_DB)), CONST32(0)));
 	cpu->bb = vec_bb[6];
@@ -1826,8 +1808,8 @@ ret_pe_emit(cpu_t *cpu, uint8_t size_mode, bool is_iret)
 	ST_REG_val(esp_old, esp_old_ptr);
 	ST_R32(eip, EIP_idx);
 	set_access_flg_seg_desc_emit(cpu, cs_desc, cs_desc_addr);
-	write_seg_reg_emit(cpu, CS_idx, std::vector<Value *> { cs, read_seg_desc_base_emit(cpu, cs_desc),
-		read_seg_desc_limit_emit(cpu, cs_desc), read_seg_desc_flags_emit(cpu, cs_desc)});
+	write_seg_reg_emit(cpu, CS_idx, cs, read_seg_desc_base_emit(cpu, cs_desc),
+		read_seg_desc_limit_emit(cpu, cs_desc), read_seg_desc_flags_emit(cpu, cs_desc));
 	BR_UNCOND(vec_bb[9]);
 	cpu->bb = vec_bb[9];
 	if (is_iret) {
@@ -1885,7 +1867,9 @@ io_read_emit(cpu_t *cpu, Value *port, const unsigned size_mode)
 	static const uint8_t op_size_to_mem_size[3] = { 4, 2, 1 };
 	const unsigned size = op_size_to_mem_size[size_mode];
 
-	std::vector<BasicBlock *> vec_bb = getBBs(3);
+	BasicBlock *bb0 = getBB();
+	BasicBlock *bb1 = getBB();
+	BasicBlock *bb2 = getBB();
 	Value *ret = ALLOCs(size * 8);
 	Value *iotlb_idx1 = SHR(port, CONST16(IO_SHIFT));
 	Value *iotlb_idx2 = SHR(SUB(ADD(port, CONST16(size)), CONST16(1)), CONST16(IO_SHIFT));
@@ -1894,33 +1878,33 @@ io_read_emit(cpu_t *cpu, Value *port, const unsigned size_mode)
 	// interrogate the iotlb
 	// this checks if the last byte of the read is in the same io entry as the first (port + size - 1)
 	// reads that cross io entries or that reside in an entry where a watchpoint is installed always result in iotlb misses
-	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(iotlb_entry, CONST16(IOTLB_VALID | IOTLB_WATCH)), SHL(iotlb_idx1, CONST16(IO_SHIFT))),
+	BR_COND(bb0, bb1, ICMP_EQ(XOR(OR(AND(iotlb_entry, CONST16(IOTLB_VALID | IOTLB_WATCH)), SHL(iotlb_idx1, CONST16(IO_SHIFT))),
 		OR(CONST16(IOTLB_VALID), SHL(iotlb_idx2, CONST16(IO_SHIFT)))), CONST16(0)));
 
 	// iotlb hit
-	cpu->bb = vec_bb[0];
+	cpu->bb = bb0;
 	FunctionType *type_io_read_t = FunctionType::get(
-		getIntegerType(64),                                                                                                 // ret
-		std::vector<Type *> { getIntegerType(32), getIntegerType(sizeof(size_t) * 8), getPointerType(getIntegerType(8)) },  // port, size, opaque
+		getIntegerType(64),                                                                             // ret
+		{ getIntegerType(32), getIntegerType(sizeof(size_t) * 8), getPointerType(getIntegerType(8)) },  // port, size, opaque
 		false);
-	std::vector<Type *> type_struct_io_fields;
-	type_struct_io_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque io region struct
-	type_struct_io_fields.push_back(getPointerType(type_io_read_t));
-	type_struct_io_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque io write func
-	type_struct_io_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque io value
-	StructType *type_io_t = StructType::create(CTX(), type_struct_io_fields, "", false);
+	StructType *type_io_t = StructType::create(CTX(), {
+		getPointerType(getIntegerType(8)),  // NOTE: opaque io region struct
+		getPointerType(type_io_read_t),
+		getPointerType(getIntegerType(8)),  // NOTE: opaque io write func
+		getPointerType(getIntegerType(8))   // NOTE: opaque io value
+		}, "", false);
 
 	Value *io_ptr = INT2PTR(getPointerType(getPointerType(type_io_t)), CONSTs(cpu->dl->getPointerSize() * 8, reinterpret_cast<uintptr_t>(&cpu->iotlb_regions_ptr)));
 	Value *io = GetElementPtrInst::CreateInBounds(type_io_t, LD(io_ptr), SHR(iotlb_entry, CONST16(IO_SHIFT)), "", cpu->bb);
-	ST(ret, TRUNCs(size * 8, CallInst::Create(LD(GEP(io, 1)), std::vector<Value *> { ZEXT32(port), CONSTs(sizeof(size_t) * 8, size), LD(GEP(io, 3)) }, "", cpu->bb)));
-	BR_UNCOND(vec_bb[2]);
+	ST(ret, TRUNCs(size * 8, CallInst::Create(LD(GEP(io, 1)), { ZEXT32(port), CONSTs(sizeof(size_t) * 8, size), LD(GEP(io, 3)) }, "", cpu->bb)));
+	BR_UNCOND(bb2);
 
 	// iotlb miss
-	cpu->bb = vec_bb[1];
-	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[fn_io_idx[size_mode]], std::vector<Value *> { cpu->ptr_cpu_ctx, port }, "", cpu->bb));
-	BR_UNCOND(vec_bb[2]);
+	cpu->bb = bb1;
+	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[fn_io_idx[size_mode]], { cpu->ptr_cpu_ctx, port }, "", cpu->bb));
+	BR_UNCOND(bb2);
 
-	cpu->bb = vec_bb[2];
+	cpu->bb = bb2;
 	return LD(ret);
 }
 
@@ -1931,7 +1915,9 @@ io_write_emit(cpu_t *cpu, Value *port, Value *value, const unsigned size_mode)
 	static const uint8_t op_size_to_mem_size[3] = { 4, 2, 1 };
 	const unsigned size = op_size_to_mem_size[size_mode];
 
-	std::vector<BasicBlock *> vec_bb = getBBs(3);
+	BasicBlock *bb0 = getBB();
+	BasicBlock *bb1 = getBB();
+	BasicBlock *bb2 = getBB();
 	Value *iotlb_idx1 = SHR(port, CONST16(IO_SHIFT));
 	Value *iotlb_idx2 = SHR(SUB(ADD(port, CONST16(size)), CONST16(1)), CONST16(IO_SHIFT));
 	Value *iotlb_entry = LD(GEP(cpu->ptr_iotlb, iotlb_idx1));
@@ -1939,33 +1925,33 @@ io_write_emit(cpu_t *cpu, Value *port, Value *value, const unsigned size_mode)
 	// interrogate the iotlb
 	// this checks if the last byte of the write is in the same io entry as the first (port + size - 1)
 	// writes that cross io entries or that reside in an entry where a watchpoint is installed always result in iotlb misses
-	BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(XOR(OR(AND(iotlb_entry, CONST16(IOTLB_VALID | IOTLB_WATCH)), SHL(iotlb_idx1, CONST16(IO_SHIFT))),
+	BR_COND(bb0, bb1, ICMP_EQ(XOR(OR(AND(iotlb_entry, CONST16(IOTLB_VALID | IOTLB_WATCH)), SHL(iotlb_idx1, CONST16(IO_SHIFT))),
 		OR(CONST16(IOTLB_VALID), SHL(iotlb_idx2, CONST16(IO_SHIFT)))), CONST16(0)));
 
 	// iotlb hit
-	cpu->bb = vec_bb[0];
+	cpu->bb = bb0;
 	FunctionType *type_io_write_t = FunctionType::get(
-		getVoidType(),                                                                                                                          // void ret
-		std::vector<Type *> { getIntegerType(32), getIntegerType(sizeof(size_t) * 8), getIntegerType(64), getPointerType(getIntegerType(8)) },  // port, size, val, opaque
+		getVoidType(),                                                                                                      // void ret
+		{ getIntegerType(32), getIntegerType(sizeof(size_t) * 8), getIntegerType(64), getPointerType(getIntegerType(8)) },  // port, size, val, opaque
 		false);
-	std::vector<Type *> type_struct_io_fields;
-	type_struct_io_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque io region struct
-	type_struct_io_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque io read func
-	type_struct_io_fields.push_back(getPointerType(type_io_write_t));
-	type_struct_io_fields.push_back(getPointerType(getIntegerType(8)));  // NOTE: opaque io value
-	StructType *type_io_t = StructType::create(CTX(), type_struct_io_fields, "", false);
+	StructType *type_io_t = StructType::create(CTX(), {
+		getPointerType(getIntegerType(8)),  // NOTE: opaque io region struct
+		getPointerType(getIntegerType(8)),  // NOTE: opaque io read func
+		getPointerType(type_io_write_t),
+		getPointerType(getIntegerType(8))   // NOTE: opaque io value
+		}, "", false);
 
 	Value *io_ptr = INT2PTR(getPointerType(getPointerType(type_io_t)), CONSTs(cpu->dl->getPointerSize() * 8, reinterpret_cast<uintptr_t>(&cpu->iotlb_regions_ptr)));
 	Value *io = GetElementPtrInst::CreateInBounds(type_io_t, LD(io_ptr), SHR(iotlb_entry, CONST16(IO_SHIFT)), "", cpu->bb);
-	CallInst::Create(LD(GEP(io, 2)), std::vector<Value *> { ZEXT32(port), CONSTs(sizeof(size_t) * 8, size), ZEXT64(value), LD(GEP(io, 3)) }, "", cpu->bb);
-	BR_UNCOND(vec_bb[2]);
+	CallInst::Create(LD(GEP(io, 2)), { ZEXT32(port), CONSTs(sizeof(size_t) * 8, size), ZEXT64(value), LD(GEP(io, 3)) }, "", cpu->bb);
+	BR_UNCOND(bb2);
 
 	// iotlb miss
-	cpu->bb = vec_bb[1];
-	CallInst::Create(cpu->ptr_mem_stfn[fn_io_idx[size_mode]], std::vector<Value *>{ cpu->ptr_cpu_ctx, port, value }, "", cpu->bb);
-	BR_UNCOND(vec_bb[2]);
+	cpu->bb = bb1;
+	CallInst::Create(cpu->ptr_mem_stfn[fn_io_idx[size_mode]], { cpu->ptr_cpu_ctx, port, value }, "", cpu->bb);
+	BR_UNCOND(bb2);
 
-	cpu->bb = vec_bb[2];
+	cpu->bb = bb2;
 }
 
 void
@@ -1974,22 +1960,24 @@ check_io_priv_emit(cpu_t *cpu, Value *port, uint8_t size_mode)
 	static const uint8_t op_size_to_mem_size[3] = { 4, 2, 1 };
 
 	if ((cpu->cpu_ctx.hflags & HFLG_PE_MODE) && ((cpu->cpu_ctx.hflags & HFLG_CPL) > ((cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12))) {
-		std::vector<BasicBlock *> vec_bb = getBBs(3);
+		BasicBlock *bb0 = getBB();
+		BasicBlock *bb1 = getBB();
+		BasicBlock *bb2 = getBB();
 		BasicBlock *bb_exp = RAISE0(EXP_GP);
 		Value *base = LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx);
 		Value *limit = LD_SEG_HIDDEN(TR_idx, SEG_LIMIT_idx);
-		BR_COND(bb_exp, vec_bb[0], ICMP_ULT(limit, CONST32(103)));
-		cpu->bb = vec_bb[0];
+		BR_COND(bb_exp, bb0, ICMP_ULT(limit, CONST32(103)));
+		cpu->bb = bb0;
 		Value *io_map_offset = LD_MEM(MEM_LD16_idx, ADD(base, CONST32(102)));
 		Value *io_port_offset = ADD(ZEXT32(io_map_offset), SHR(port, CONST32(3)));
-		BR_COND(bb_exp, vec_bb[1], ICMP_UGT(ADD(io_port_offset, CONST32(1)), limit));
-		cpu->bb = vec_bb[1];
+		BR_COND(bb_exp, bb1, ICMP_UGT(ADD(io_port_offset, CONST32(1)), limit));
+		cpu->bb = bb1;
 		Value *temp, *value = ALLOC32();
 		temp = LD_MEM(MEM_LD16_idx, ADD(base, io_port_offset));
 		ST(value, ZEXT32(temp));
 		ST(value, SHR(LD(value), AND(port, CONST32(7))));
-		BR_COND(bb_exp, vec_bb[2], ICMP_NE(AND(LD(value), CONST32((1 << op_size_to_mem_size[size_mode]) - 1)), CONST32(0)));
-		cpu->bb = vec_bb[2];
+		BR_COND(bb_exp, bb2, ICMP_NE(AND(LD(value), CONST32((1 << op_size_to_mem_size[size_mode]) - 1)), CONST32(0)));
+		cpu->bb = bb2;
 	}
 }
 
@@ -2140,23 +2128,23 @@ get_register_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx)
 }
 
 void
-set_flags_sum(cpu_t *cpu, const std::vector<Value *> &vec, uint8_t size_mode)
+set_flags_sum(cpu_t *cpu, Value *sum, Value *a, Value *b, uint8_t size_mode)
 {
 	switch (size_mode)
 	{
 	case SIZE8:
-		ST_FLG_RES_ext(vec[0]);
-		ST_FLG_SUM_AUX8(vec[1], vec[2], vec[0]);
+		ST_FLG_RES_ext(sum);
+		ST_FLG_SUM_AUX8(a, b, sum);
 		break;
 
 	case SIZE16:
-		ST_FLG_RES_ext(vec[0]);
-		ST_FLG_SUM_AUX16(vec[1], vec[2], vec[0]);
+		ST_FLG_RES_ext(sum);
+		ST_FLG_SUM_AUX16(a, b, sum);
 		break;
 
 	case SIZE32:
-		ST_FLG_RES(vec[0]);
-		ST_FLG_SUM_AUX32(vec[1], vec[2], vec[0]);
+		ST_FLG_RES(sum);
+		ST_FLG_SUM_AUX32(a, b, sum);
 		break;
 
 	default:
@@ -2165,23 +2153,23 @@ set_flags_sum(cpu_t *cpu, const std::vector<Value *> &vec, uint8_t size_mode)
 }
 
 void
-set_flags_sub(cpu_t *cpu, const std::vector<Value *> &vec, uint8_t size_mode)
+set_flags_sub(cpu_t *cpu, Value *sub, Value *a, Value *b, uint8_t size_mode)
 {
 	switch (size_mode)
 	{
 	case SIZE8:
-		ST_FLG_RES_ext(vec[0]);
-		ST_FLG_SUB_AUX8(vec[1], vec[2], vec[0]);
+		ST_FLG_RES_ext(sub);
+		ST_FLG_SUB_AUX8(a, b, sub);
 		break;
 
 	case SIZE16:
-		ST_FLG_RES_ext(vec[0]);
-		ST_FLG_SUB_AUX16(vec[1], vec[2], vec[0]);
+		ST_FLG_RES_ext(sub);
+		ST_FLG_SUB_AUX16(a, b, sub);
 		break;
 
 	case SIZE32:
-		ST_FLG_RES(vec[0]);
-		ST_FLG_SUB_AUX32(vec[1], vec[2], vec[0]);
+		ST_FLG_RES(sub);
+		ST_FLG_SUB_AUX32(a, b, sub);
 		break;
 
 	default:
