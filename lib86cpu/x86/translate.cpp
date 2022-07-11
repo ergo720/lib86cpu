@@ -4037,7 +4037,15 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			case 0xCB: {
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
-					ret_pe_emit(cpu, size_mode, false);
+					Function *lret_helper = cast<Function>(cpu->mod->getOrInsertFunction("lret_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
+						getIntegerType(8), getIntegerType(32)));
+					CallInst *ci = CallInst::Create(lret_helper, { cpu->ptr_cpu_ctx, CONST8(size_mode), cpu->instr_eip }, "", cpu->bb);
+					std::vector<BasicBlock *>vec_bb = getBBs(2);
+					BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(ci, CONST8(0)));
+					cpu->bb = vec_bb[0];
+					CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
+					ReturnInst::Create(CTX(), ci2, cpu->bb);
+					cpu->bb = vec_bb[1];
 				}
 				else {
 					std::vector<Value *> vec = MEM_POP(2);
