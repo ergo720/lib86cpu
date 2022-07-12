@@ -2234,7 +2234,16 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				addr_t new_eip = instr.operands[OPNUM_SINGLE].ptr.offset;
 				uint16_t new_sel = instr.operands[OPNUM_SINGLE].ptr.segment;
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
-					ljmp_pe_emit(cpu, CONST16(new_sel), size_mode, new_eip);
+					Function *ljmp_helper = cast<Function>(cpu->mod->getOrInsertFunction("ljmp_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
+						getIntegerType(16), getIntegerType(8), getIntegerType(32), getIntegerType(32)));
+					CallInst *ci = CallInst::Create(ljmp_helper, { cpu->ptr_cpu_ctx, CONST16(new_sel), CONST8(size_mode), CONST32(new_eip), cpu->instr_eip }, "", cpu->bb);
+					BasicBlock *bb0 = getBB();
+					BasicBlock *bb1 = getBB();
+					BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
+					cpu->bb = bb0;
+					CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
+					ReturnInst::Create(CTX(), ci2, cpu->bb);
+					cpu->bb = bb1;
 					link_indirect_emit(cpu);
 					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}

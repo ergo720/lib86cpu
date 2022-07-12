@@ -255,5 +255,119 @@ iret_real_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
 	write_eflags_helper(cpu, temp_eflags, eflags_mask);
 }
 
+uint8_t
+ljmp_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint8_t size_mode, uint32_t jmp_eip, uint32_t eip)
+{
+	cpu_t *cpu = cpu_ctx->cpu;
+	uint16_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
+
+	if ((sel >> 2) == 0) { // sel == NULL
+		return raise_exp_helper(cpu, 0, EXP_GP, eip);
+	}
+
+	addr_t desc_addr;
+	uint64_t desc;
+	if (read_seg_desc_helper(cpu, sel, desc_addr, desc, eip)) {
+		return 1;
+	}
+
+	if (desc & SEG_DESC_S) {
+		// non-system desc
+
+		if ((desc & SEG_DESC_DC) == 0) { // !(data desc)
+			return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP, eip);
+		}
+
+		uint16_t dpl = (desc & SEG_DESC_DPL) >> 45;
+
+		if (desc & SEG_DESC_C) {
+			// conforming
+
+			if (dpl > cpl) { // dpl > cpl
+				return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP, eip);
+			}
+		}
+		else {
+			// non-conforming
+
+			uint16_t rpl = sel & 3;
+			if ((rpl > cpl) || (dpl != cpl)) { // rpl > cpl || dpl != cpl
+				return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP, eip);
+			}
+		}
+
+		// commmon path for conf/non-conf
+
+		if ((desc & SEG_DESC_P) == 0) { // segment not present
+			return raise_exp_helper(cpu, sel & 0xFFFC, EXP_NP, eip);
+		}
+
+		set_access_flg_seg_desc_helper(cpu, desc, desc_addr, eip);
+		write_seg_reg_helper<CS_idx>(cpu, (sel & 0xFFFC) | cpl, read_seg_desc_base_helper(cpu, desc), read_seg_desc_limit_helper(cpu, desc), read_seg_desc_flags_helper(cpu, desc));
+		cpu_ctx->regs.eip = size_mode == SIZE16 ? jmp_eip & 0xFFFF : jmp_eip;
+	}
+	else {
+		// system desc
+
+		uint8_t sys_ty = (desc & SEG_DESC_TY) >> 40;
+		switch (sys_ty)
+		{
+		case 1:
+		case 5:
+		case 9:
+			LIB86CPU_ABORT_msg("Task and tss gates in jmp instructions are not supported yet");
+
+		case 4: // call gate, 16 bit
+		case 12: // call gate, 32 bit
+			break;
+
+		default:
+			return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP, eip);
+		}
+
+		sys_ty >>= 3;
+		uint16_t dpl = (desc & SEG_DESC_DPL) >> 45;
+		uint16_t rpl = sel & 3;
+
+		if ((dpl < cpl) || (rpl > dpl)) { // dpl < cpl || rpl > dpl
+			return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP, eip);
+		}
+
+		if ((desc & SEG_DESC_P) == 0) { // segment not present
+			return raise_exp_helper(cpu, sel & 0xFFFC, EXP_NP, eip);
+		}
+
+		uint16_t code_sel = (desc & 0xFFFF0000) >> 16;
+		if ((code_sel >> 2) == 0) { // code_sel == NULL
+			return raise_exp_helper(cpu, 0, EXP_GP, eip);
+		}
+
+		if (read_seg_desc_helper(cpu, code_sel, desc_addr, desc, eip)) { // read code desc pointed to by the call gate sel
+			return 1;
+		}
+
+		dpl = (desc & SEG_DESC_DPL) >> 45;
+		if (((((desc & SEG_DESC_S) >> 43) | ((desc & SEG_DESC_DC) >> 43)) != 3) || // !(code desc) || (conf && dpl > cpl) || (non-conf && dpl != cpl)
+			((desc & SEG_DESC_C) && (dpl > cpl)) ||
+			(((desc & SEG_DESC_C) == 0) && (dpl != cpl))) {
+			return raise_exp_helper(cpu, code_sel & 0xFFFC, EXP_GP, eip);
+		}
+
+		if ((desc & SEG_DESC_P) == 0) { // segment not present
+			return raise_exp_helper(cpu, code_sel & 0xFFFC, EXP_NP, eip);
+		}
+
+		set_access_flg_seg_desc_helper(cpu, desc, desc_addr, eip);
+		write_seg_reg_helper<CS_idx>(cpu, (sel & 0xFFFC) | cpl, read_seg_desc_base_helper(cpu, desc), read_seg_desc_limit_helper(cpu, desc), read_seg_desc_flags_helper(cpu, desc));
+
+		if (sys_ty == 0) {
+			jmp_eip &= 0xFFFF;
+		}
+		cpu_ctx->regs.eip = jmp_eip;
+	}
+
+	return 0;
+}
+
 template uint8_t lret_pe_helper<true>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
 template uint8_t lret_pe_helper<false>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
