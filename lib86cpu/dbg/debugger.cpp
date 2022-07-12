@@ -7,6 +7,7 @@
 #include "memory.h"
 #include "frontend.h"
 #include "debugger.h"
+#include "instructions.h"
 #include <fstream>
 #include <charconv>
 
@@ -460,11 +461,6 @@ dbg_single_step_handler(cpu_ctx_t *cpu_ctx)
 	uint32_t ret_eip = mem_read<uint32_t>(cpu_ctx->cpu, cpu_ctx->regs.esp, 0, 0);
 	addr_t pc = cpu_ctx->regs.cs_hidden.base + ret_eip;
 	if (cpu_ctx->cpu->cpu_flags & CPU_SINGLE_STEP) {
-		if (cpu_ctx->cpu->iret_fn.second != ((cpu_ctx->hflags & HFLG_CONST) | (cpu_ctx->regs.eflags & EFLAGS_CONST))) {
-			// the constant cpu state changed, so we need to regenerate the iret function
-			gen_iret_fn(cpu_ctx->cpu);
-		}
-
 		// disable all breakpoints so that we can show the original instructions in the disassembler
 		dbg_remove_sw_breakpoints(cpu_ctx->cpu);
 
@@ -478,11 +474,19 @@ dbg_single_step_handler(cpu_ctx_t *cpu_ctx)
 
 		try {
 			// execute an iret instruction so that we can correctly return to the interrupted code
-			cpu_ctx->cpu->iret_fn.first(cpu_ctx);
+			if	(cpu_ctx->hflags & HFLG_PE_MODE) {
+				if (lret_pe_helper<true>(cpu_ctx, ((cpu_ctx->hflags & HFLG_CS32) >> CS32_SHIFT) ^ 1, cpu_ctx->regs.eip)) {
+					// we can't handle an exception here, so abort
+					LIB86CPU_ABORT_msg("Unhandled exception while returning from a single step");
+				}
+			}
+			else {
+				iret_real_helper(cpu_ctx, ((cpu_ctx->hflags & HFLG_CS32) >> CS32_SHIFT) ^ 1, cpu_ctx->regs.eip);
+			}
 		}
 		catch (host_exp_t type) {
 			// we can't handle an exception here, so abort
-			LIB86CPU_ABORT_msg("Unhandled exception while returning from a breakpoint");
+			LIB86CPU_ABORT_msg("Unhandled exception while returning from a single step");
 		}
 	}
 	else {
@@ -500,11 +504,6 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 	uint32_t ret_eip = mem_read<uint32_t>(cpu_ctx->cpu, cpu_ctx->regs.esp, 0, 0);
 	addr_t pc = cpu_ctx->regs.cs_hidden.base + ret_eip - 1; // if this is our int3, it will always be one byte large
 	if (break_list.contains(pc)) {
-		if (cpu_ctx->cpu->iret_fn.second != ((cpu_ctx->hflags & HFLG_CONST) | (cpu_ctx->regs.eflags & EFLAGS_CONST))) {
-			// the constant cpu state changed, so we need to regenerate the iret function
-			gen_iret_fn(cpu_ctx->cpu);
-		}
-
 		// disable all breakpoints so that we can show the original instructions in the disassembler
 		dbg_remove_sw_breakpoints(cpu_ctx->cpu);
 
@@ -516,7 +515,15 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 
 		try {
 			// execute an iret instruction so that we can correctly return to the interrupted code
-			cpu_ctx->cpu->iret_fn.first(cpu_ctx);
+			if (cpu_ctx->hflags & HFLG_PE_MODE) {
+				if (lret_pe_helper<true>(cpu_ctx, ((cpu_ctx->hflags & HFLG_CS32) >> CS32_SHIFT) ^ 1, cpu_ctx->regs.eip)) {
+					// we can't handle an exception here, so abort
+					LIB86CPU_ABORT_msg("Unhandled exception while returning from a breakpoint");
+				}
+			}
+			else {
+				iret_real_helper(cpu_ctx, ((cpu_ctx->hflags & HFLG_CS32) >> CS32_SHIFT) ^ 1, cpu_ctx->regs.eip);
+			}
 			cpu_ctx->regs.eip = ret_eip - 1;
 		}
 		catch (host_exp_t type) {

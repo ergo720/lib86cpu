@@ -195,7 +195,6 @@ struct cpu_t {
 		} phys_var[8];
 	} mtrr;
 	raise_int_t int_fn;
-	std::pair<iret_t, uint32_t> iret_fn;
 	std::string dbg_name;
 	addr_t bp_addr;
 	addr_t db_addr;

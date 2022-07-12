@@ -2056,7 +2056,23 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_IRETD: {
 			assert(instr.opcode == 0xCF);
 
-			iret_emit(cpu, size_mode);
+			if (cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
+				Function *iret_helper = cast<Function>(cpu->mod->getOrInsertFunction("iret_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
+					getIntegerType(8), getIntegerType(32)));
+				CallInst *ci = CallInst::Create(iret_helper, { cpu->ptr_cpu_ctx, CONST8(size_mode), cpu->instr_eip }, "", cpu->bb);
+				BasicBlock *bb0 = getBB();
+				BasicBlock *bb1 = getBB();
+				BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
+				cpu->bb = bb0;
+				CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
+				ReturnInst::Create(CTX(), ci2, cpu->bb);
+				cpu->bb = bb1;
+			}
+			else {
+				Function *iret_helper = cast<Function>(cpu->mod->getOrInsertFunction("iret_real_helper", getVoidType(), cpu->ptr_cpu_ctx->getType(),
+					getIntegerType(8), getIntegerType(32)));
+				CallInst::Create(iret_helper, { cpu->ptr_cpu_ctx, CONST8(size_mode), cpu->instr_eip }, "", cpu->bb);
+			}
 
 			link_indirect_emit(cpu);
 			cpu->tc->flags |= TC_FLG_INDIRECT;
@@ -4043,12 +4059,13 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					Function *lret_helper = cast<Function>(cpu->mod->getOrInsertFunction("lret_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
 						getIntegerType(8), getIntegerType(32)));
 					CallInst *ci = CallInst::Create(lret_helper, { cpu->ptr_cpu_ctx, CONST8(size_mode), cpu->instr_eip }, "", cpu->bb);
-					std::vector<BasicBlock *>vec_bb = getBBs(2);
-					BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(ci, CONST8(0)));
-					cpu->bb = vec_bb[0];
+					BasicBlock *bb0 = getBB();
+					BasicBlock *bb1 = getBB();
+					BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
+					cpu->bb = bb0;
 					CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
 					ReturnInst::Create(CTX(), ci2, cpu->bb);
-					cpu->bb = vec_bb[1];
+					cpu->bb = bb1;
 				}
 				else {
 					std::vector<Value *> vec = MEM_POP(2);
@@ -5669,7 +5686,6 @@ cpu_start(cpu_t *cpu)
 	// guard against the case gen_int_fn raises an exception before the debugger is even initialized
 	try {
 		gen_int_fn(cpu);
-		gen_iret_fn(cpu);
 	}
 	catch (lc86_exp_abort &exp) {
 		last_error = exp.what();

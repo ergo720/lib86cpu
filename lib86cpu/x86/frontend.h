@@ -12,7 +12,6 @@
 std::vector<BasicBlock *> gen_bbs(cpu_t *cpu, const unsigned num);
 void gen_int_fn(cpu_t *cpu);
 void gen_exp_fn(cpu_t *cpu);
-void gen_iret_fn(cpu_t *cpu);
 void optimize(cpu_t *cpu);
 void get_ext_fn(cpu_t *cpu);
 void create_tc_prologue(cpu_t *cpu);
@@ -43,8 +42,6 @@ void raise_exp_inline_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *id
 BasicBlock *raise_exception_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
 void lcall_pe_emit(cpu_t *cpu, std::vector<Value *> vec, uint8_t size_mode, uint32_t ret_eip);
 void ljmp_pe_emit(cpu_t *cpu, Value *sel, uint8_t size_mode, uint32_t eip);
-void ret_pe_emit(cpu_t *cpu, uint8_t size_mode, bool is_iret);
-void iret_emit(cpu_t *cpu, uint8_t size_mode);
 std::vector<Value *> check_ss_desc_priv_emit(cpu_t *cpu, Value *sel, Value *cs = nullptr, Value *cpl = nullptr, BasicBlock *bb_exp = nullptr);
 std::vector<Value *> check_seg_desc_priv_emit(cpu_t *cpu, Value *sel);
 void set_access_flg_seg_desc_emit(cpu_t *cpu, Value *desc, Value *desc_addr);

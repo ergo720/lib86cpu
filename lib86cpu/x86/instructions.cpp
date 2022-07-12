@@ -107,13 +107,50 @@ validate_seg_helper(cpu_t *cpu)
 	}
 }
 
-uint8_t
-lret_pe_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
+template<bool is_iret>
+uint8_t lret_pe_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
 {
 	cpu_t *cpu = cpu_ctx->cpu;
+	uint32_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
 	uint32_t esp = cpu->cpu_ctx.regs.esp;
-	uint32_t ret_eip = stack_pop_helper(cpu, size_mode, esp, eip);
-	uint16_t cs = stack_pop_helper(cpu, size_mode, esp, eip);
+	uint32_t ret_eip, temp_eflags, eflags_mask;
+	uint16_t cs;
+
+	if constexpr (is_iret) {
+		uint32_t eflags = cpu_ctx->regs.eflags;
+		if (eflags & VM_MASK) {
+			LIB86CPU_ABORT_msg("Virtual 8086 mode is not supported in iret instructions yet");
+		}
+		if (eflags & NT_MASK) {
+			LIB86CPU_ABORT_msg("Task returns are not supported in iret instructions yet");
+		}
+
+		ret_eip = stack_pop_helper(cpu, size_mode, esp, eip);
+		cs = stack_pop_helper(cpu, size_mode, esp, eip);
+		temp_eflags = stack_pop_helper(cpu, size_mode, esp, eip);
+
+		if (temp_eflags & VM_MASK) {
+			LIB86CPU_ABORT_msg("Virtual 8086 mode returns are not supported in iret instructions yet");
+		}
+
+		if (size_mode == SIZE16) {
+			eflags_mask = NT_MASK | DF_MASK | TF_MASK;
+		}
+		else {
+			eflags_mask = ID_MASK | AC_MASK | RF_MASK | NT_MASK | DF_MASK | TF_MASK;
+			if (cpl == 0) {
+				eflags_mask |= (VIP_MASK | VIF_MASK | VM_MASK | IOPL_MASK);
+			}
+		}
+
+		if (cpl <= ((cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12)) {
+			eflags_mask |= IF_MASK;
+		}
+	}
+	else {
+		ret_eip = stack_pop_helper(cpu, size_mode, esp, eip);
+		cs = stack_pop_helper(cpu, size_mode, esp, eip);
+	}
 	
 	if ((cs >> 2) == 0) { // sel == NULL
 		return raise_exp_helper(cpu, 0, EXP_GP, eip);
@@ -132,7 +169,7 @@ lret_pe_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
 	}
 
 	uint32_t rpl = cs & 3;
-	if (rpl < (cpu->cpu_ctx.hflags & HFLG_CPL)) { // rpl < cpl
+	if (rpl < cpl) { // rpl < cpl
 		return raise_exp_helper(cpu, cs & 0xFFFC, EXP_GP, eip);
 	}
 
@@ -147,7 +184,7 @@ lret_pe_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
 		return raise_exp_helper(cpu, cs & 0xFFFC, EXP_NP, eip);
 	}
 
-	if (rpl > (cpu->cpu_ctx.hflags & HFLG_CPL)) {
+	if (rpl > cpl) {
 		// less privileged
 
 		uint32_t ret_esp = stack_pop_helper(cpu, size_mode, esp, eip);
@@ -186,5 +223,37 @@ lret_pe_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
 		write_seg_reg_helper<CS_idx>(cpu, cs, read_seg_desc_base_helper(cpu, cs_desc), read_seg_desc_limit_helper(cpu, cs_desc), read_seg_desc_flags_helper(cpu, cs_desc));
 	}
 
+	if constexpr (is_iret) {
+		write_eflags_helper(cpu, temp_eflags, eflags_mask);
+	}
+
 	return 0;
 }
+
+void
+iret_real_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
+{
+	cpu_t *cpu = cpu_ctx->cpu;
+	uint32_t esp = cpu->cpu_ctx.regs.esp;
+	uint32_t eflags_mask;
+
+	uint32_t ret_eip = stack_pop_helper(cpu, size_mode, esp, eip);
+	uint16_t cs = stack_pop_helper(cpu, size_mode, esp, eip);
+	uint32_t temp_eflags = stack_pop_helper(cpu, size_mode, esp, eip);
+
+	if (size_mode == SIZE16) {
+		eflags_mask = NT_MASK | IOPL_MASK | DF_MASK | IF_MASK | TF_MASK;
+	}
+	else {
+		eflags_mask = ID_MASK | AC_MASK | RF_MASK | NT_MASK | IOPL_MASK | DF_MASK | IF_MASK | TF_MASK;
+	}
+
+	cpu->cpu_ctx.regs.esp = esp;
+	cpu_ctx->regs.eip = ret_eip;
+	cpu_ctx->regs.cs = cs;
+	cpu_ctx->regs.cs_hidden.base = cs << 4;
+	write_eflags_helper(cpu, temp_eflags, eflags_mask);
+}
+
+template uint8_t lret_pe_helper<true>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
+template uint8_t lret_pe_helper<false>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);

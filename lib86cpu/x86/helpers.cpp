@@ -150,3 +150,15 @@ check_ss_desc_priv_helper(cpu_t *cpu, uint16_t sel, uint16_t *cs, addr_t &desc_a
 	}
 	return 0;
 }
+
+void
+write_eflags_helper(cpu_t *cpu, uint32_t eflags, uint32_t mask)
+{
+	cpu->cpu_ctx.regs.eflags = ((cpu->cpu_ctx.regs.eflags & ~mask) | (eflags & mask)) | 2;
+	uint32_t cf_new = eflags & 1;
+	uint32_t of_new = (((eflags & 0x800) >> 11) ^ cf_new) << 30;
+	uint32_t sfd = (eflags & 0x80) >> 7;
+	uint32_t pdb = (4 ^ (eflags & 4)) << 6;
+	cpu->cpu_ctx.lazy_eflags.result = ((eflags & 0x40) ^ 0x40) << 2;
+	cpu->cpu_ctx.lazy_eflags.auxbits = (((((cf_new << 31) | ((eflags & 0x10) >> 1)) | of_new) | sfd) | pdb);
+}
