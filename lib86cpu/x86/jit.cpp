@@ -105,6 +105,8 @@ lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetM
 	define_absolute(mangle("iret_real_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&iret_real_helper), JITSymbolFlags::Absolute));
 	define_absolute(mangle("ljmp_pe_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&ljmp_pe_helper), JITSymbolFlags::Absolute));
 	define_absolute(mangle("lcall_pe_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&lcall_pe_helper), JITSymbolFlags::Absolute));
+	define_absolute(mangle("verr_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&verrw_helper<true>), JITSymbolFlags::Absolute));
+	define_absolute(mangle("verw_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&verrw_helper<false>), JITSymbolFlags::Absolute));
 
 #ifdef _WIN32
 	// workaround for llvm bug D65548

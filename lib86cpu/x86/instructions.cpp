@@ -582,5 +582,54 @@ lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t siz
 	return 0;
 }
 
+template<bool is_verr>
+void verrw_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
+{
+	cpu_t *cpu = cpu_ctx->cpu;
+
+	if ((sel >> 2) == 0) { // sel == NULL
+		cpu_ctx->lazy_eflags.result |= 0x100;
+		return;
+	}
+
+	addr_t desc_addr;
+	uint64_t desc;
+	if (read_seg_desc_helper(cpu, sel, desc_addr, desc, eip)) { // gdt or ldt limit exceeded
+		// NOTE: ignore possible gp exp raised by read_seg_desc_helper
+		cpu_ctx->lazy_eflags.result |= 0x100;
+		return;
+	}
+
+	uint16_t dpl = (desc & SEG_DESC_DPL) >> 45;
+	if (((desc & SEG_DESC_S) == 0) || // system desc
+		(((desc & SEG_DESC_TYC) != 0xC0000000000) && // code, conf desc
+		(((cpu->cpu_ctx.hflags & HFLG_CPL) > dpl) || ((sel & 3) > dpl))) // cpl > dpl || rpl > dpl
+		) {
+		cpu_ctx->lazy_eflags.result |= 0x100;
+		return;
+	}
+
+	if constexpr (is_verr) {
+		if ((desc & SEG_DESC_DCRW) == 0x80000000000) { // code, exec only
+			cpu_ctx->lazy_eflags.result |= 0x100;
+			return;
+		}
+	}
+	else {
+		if ((desc & SEG_DESC_DCRW) != 0x20000000000) { // data, r/w
+			cpu_ctx->lazy_eflags.result |= 0x100;
+			return;
+		}
+	}
+
+	uint32_t sfd = (cpu_ctx->lazy_eflags.result >> 31) ^ (cpu_ctx->lazy_eflags.auxbits & 1);
+	uint32_t pdb = (cpu_ctx->lazy_eflags.result ^ (cpu_ctx->lazy_eflags.auxbits >> 8) & 0xFF) << 8;
+	cpu_ctx->lazy_eflags.result = 0;
+	cpu_ctx->lazy_eflags.auxbits = (cpu_ctx->lazy_eflags.auxbits & 0xFFFF00FE) | (sfd | pdb);
+}
+
 template uint8_t lret_pe_helper<true>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
 template uint8_t lret_pe_helper<false>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
+
+template void verrw_helper<true>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template void verrw_helper<false>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);

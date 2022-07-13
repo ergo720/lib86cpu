@@ -5247,32 +5247,16 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			Value *rm, *sel;
 			GET_RM(OPNUM_SINGLE, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
-			std::vector<BasicBlock *> vec_bb = getBBs(5);
-			BasicBlock *bb_fail = vec_bb[0];
-			BR_COND(bb_fail, vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0))); // sel == NULL
-			cpu->bb = vec_bb[1];
-			Value *desc = read_seg_desc_emit(cpu, sel, bb_fail)[1];
-			Value *dpl = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_DPL)), CONST64(45)));
-			BR_COND(bb_fail, vec_bb[2], OR(ICMP_EQ(AND(desc, CONST64(SEG_DESC_S)), CONST64(0)), // system desc
-				AND(ICMP_NE(AND(desc, CONST64(SEG_DESC_TYC)), CONST64(0xC0000000000)), // code, conf desc
-					OR(ICMP_UGT(CONST16(cpu->cpu_ctx.hflags & HFLG_CPL), dpl), ICMP_UGT(AND(sel, CONST16(3)), dpl))))); // cpl > dpl || rpl > dpl
-			cpu->bb = vec_bb[2];
 			if (instr.mnemonic == ZYDIS_MNEMONIC_VERR) {
-				BR_COND(bb_fail, vec_bb[3], ICMP_EQ(AND(desc, CONST64(SEG_DESC_DCRW)), CONST64(0x80000000000))); // code, exec only
+				Function *verr_helper = cast<Function>(cpu->mod->getOrInsertFunction("verr_helper", getVoidType(), cpu->ptr_cpu_ctx->getType(),
+					getIntegerType(16), getIntegerType(32)));
+				CallInst::Create(verr_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 			}
 			else {
-				BR_COND(bb_fail, vec_bb[3], ICMP_NE(AND(desc, CONST64(SEG_DESC_DCRW)), CONST64(0x20000000000))); // data, r/w
+				Function *verw_helper = cast<Function>(cpu->mod->getOrInsertFunction("verw_helper", getVoidType(), cpu->ptr_cpu_ctx->getType(),
+					getIntegerType(16), getIntegerType(32)));
+				CallInst::Create(verw_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 			}
-			cpu->bb = vec_bb[3];
-			Value *new_sfd = XOR(LD_SF(), CONST32(0));
-			Value *new_pdb = SHL(XOR(AND(XOR(LD_FLG_RES(), SHR(LD_FLG_AUX(), CONST32(8))), CONST32(0xFF)), CONST32(0)), CONST32(8));
-			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0xFFFF00FE)), OR(new_sfd, new_pdb)));
-			ST_FLG_RES(CONST32(0));
-			BR_UNCOND(vec_bb[4]);
-			cpu->bb = bb_fail;
-			ST_FLG_RES(OR(LD_FLG_RES(), CONST32(0x100)));
-			BR_UNCOND(vec_bb[4]);
-			cpu->bb = vec_bb[4];
 		}
 		break;
 
