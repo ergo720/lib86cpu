@@ -94,9 +94,9 @@ lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetM
 	define_absolute(mangle("io_write8"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_write8), JITSymbolFlags::Absolute));
 	define_absolute(mangle("io_write16"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_write16), JITSymbolFlags::Absolute));
 	define_absolute(mangle("io_write32"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_write32), JITSymbolFlags::Absolute));
-	define_absolute(mangle("cpu_update_crN"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_update_crN), JITSymbolFlags::Absolute));
+	define_absolute(mangle("update_crN_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&update_crN_helper), JITSymbolFlags::Absolute));
 	define_absolute(mangle("cpu_rdtsc_handler"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_rdtsc_handler), JITSymbolFlags::Absolute));
-	define_absolute(mangle("cpu_msr_read"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_msr_read), JITSymbolFlags::Absolute));
+	define_absolute(mangle("msr_read_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&msr_read_helper), JITSymbolFlags::Absolute));
 	define_absolute(mangle("cpu_runtime_abort"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_runtime_abort), JITSymbolFlags::Absolute));
 	define_absolute(mangle("dbg_update_bp_hook"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&dbg_update_exp_hook), JITSymbolFlags::Absolute));
 	define_absolute(mangle("check_dbl_exp"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&check_dbl_exp), JITSymbolFlags::Absolute));

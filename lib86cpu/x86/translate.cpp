@@ -259,142 +259,6 @@ tc_link_dst_only(translated_code_t *prev_tc, translated_code_t *ptr_tc)
 	}
 }
 
-uint8_t
-cpu_update_crN(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes)
-{
-	switch (idx)
-	{
-	case 0:
-		if (((new_cr & CR0_PE_MASK) == 0 && (new_cr & CR0_PG_MASK) >> 31 == 1) ||
-			((new_cr & CR0_CD_MASK) == 0 && (new_cr & CR0_NW_MASK) >> 29 == 1)) {
-			return 1;
-		}
-
-		cpu_ctx->hflags = (((new_cr & CR0_EM_MASK) << 3) | (cpu_ctx->hflags & ~HFLG_CR0_EM));
-
-		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
-			tc_cache_clear(cpu_ctx->cpu);
-			tlb_flush(cpu_ctx->cpu, TLB_zero);
-			if (new_cr & CR0_PE_MASK) {
-				// real -> protected
-				if (cpu_ctx->regs.cs_hidden.flags & SEG_HIDDEN_DB) {
-					cpu_ctx->hflags |= HFLG_CS32;
-				}
-				if (cpu_ctx->regs.ss_hidden.flags & SEG_HIDDEN_DB) {
-					cpu_ctx->hflags |= HFLG_SS32;
-				}
-				cpu_ctx->hflags |= (HFLG_PE_MODE | (cpu_ctx->regs.cs & HFLG_CPL));
-			}
-			else {
-				// protected -> real
-				cpu_ctx->hflags &= ~(HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE);
-			}
-
-			// remove all breakpoints if the debugger is present
-			if (cpu_ctx->cpu->cpu_flags & CPU_DBG_PRESENT) {
-				hook_remove(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr);
-				hook_remove(cpu_ctx->cpu, cpu_ctx->cpu->db_addr);
-				dbg_remove_sw_breakpoints(cpu_ctx->cpu);
-				break_list.clear();
-				LOG(log_level::info, "Removed all breakpoints because cpu mode changed");
-			}
-
-			// since tc_cache_clear has deleted the calling code block, we must return to the translator with an exception
-			cpu_ctx->regs.eip = (eip + bytes);
-			cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
-			gen_exp_fn(cpu_ctx->cpu);
-			throw host_exp_t::cpu_mode_changed;
-		}
-
-		if ((cpu_ctx->regs.cr0 & (CR0_WP_MASK | CR0_PG_MASK)) != (new_cr & (CR0_WP_MASK | CR0_PG_MASK))) {
-			tlb_flush(cpu_ctx->cpu, TLB_keep_cw);
-		}
-
-		// mov cr0, reg always terminates the tc, so we must update the eip here
-		cpu_ctx->regs.eip = (eip + bytes);
-		cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
-		break;
-
-	case 3:
-		if (cpu_ctx->regs.cr0 & CR0_PG_MASK) {
-			if (cpu_ctx->regs.cr4 & CR4_PGE_MASK) {
-				tlb_flush(cpu_ctx->cpu, TLB_no_g);
-			}
-			else {
-				tlb_flush(cpu_ctx->cpu, TLB_keep_cw);
-			}
-		}
-
-		cpu_ctx->regs.cr3 = (new_cr & CR3_FLG_MASK);
-		break;
-
-	case 4: {
-		if (new_cr & CR4_RES_MASK) {
-			return 1;
-		}
-
-		if (new_cr & (CR4_VME_MASK | CR4_PAE_MASK)) {
-			LIB86CPU_ABORT_msg("Attempted to set an unsupported bit in cr4, new_cr was 0x%08X", new_cr);
-		}
-
-		if ((cpu_ctx->regs.cr4 & (CR4_PSE_MASK | CR4_PGE_MASK)) != (new_cr & (CR4_PSE_MASK | CR4_PGE_MASK))) {
-			tlb_flush(cpu_ctx->cpu, TLB_keep_cw);
-		}
-
-		cpu_ctx->regs.cr4 = new_cr;
-	}
-	break;
-
-	case 2:
-	default:
-		LIB86CPU_ABORT();
-	}
-
-	return 0;
-}
-
-void
-cpu_msr_read(cpu_ctx_t *cpu_ctx)
-{
-	uint64_t val;
-
-	switch (cpu_ctx->regs.ecx)
-	{
-	case IA32_APIC_BASE:
-		// hardcoded value for now
-		val = 0xFEE00000 | (1 << 11) | (1 << 8);
-		break;
-
-	case IA32_MTRR_PHYSBASE(0):
-	case IA32_MTRR_PHYSBASE(1):
-	case IA32_MTRR_PHYSBASE(2):
-	case IA32_MTRR_PHYSBASE(3):
-	case IA32_MTRR_PHYSBASE(4):
-	case IA32_MTRR_PHYSBASE(5):
-	case IA32_MTRR_PHYSBASE(6):
-	case IA32_MTRR_PHYSBASE(7):
-		val = cpu_ctx->cpu->mtrr.phys_var[(cpu_ctx->regs.ecx - MTRR_PHYSBASE_base) / 2].base;
-		break;
-
-	case IA32_MTRR_PHYSMASK(0):
-	case IA32_MTRR_PHYSMASK(1):
-	case IA32_MTRR_PHYSMASK(2):
-	case IA32_MTRR_PHYSMASK(3):
-	case IA32_MTRR_PHYSMASK(4):
-	case IA32_MTRR_PHYSMASK(5):
-	case IA32_MTRR_PHYSMASK(6):
-	case IA32_MTRR_PHYSMASK(7):
-		val = cpu_ctx->cpu->mtrr.phys_var[(cpu_ctx->regs.ecx - MTRR_PHYSMASK_base) / 2].mask;
-		break;
-
-	default:
-		LIB86CPU_ABORT_msg("Unhandled msr read to register at address 0x%X", cpu_ctx->regs.ecx);
-	}
-
-	cpu_ctx->regs.edx = (val >> 32);
-	cpu_ctx->regs.eax = val;
-}
-
 static void
 cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 {
@@ -2783,7 +2647,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 					case ZYDIS_REGISTER_CR3:
 					case ZYDIS_REGISTER_CR4: {
-						Function *crN_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_update_crN", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
+						Function *crN_fn = cast<Function>(cpu->mod->getOrInsertFunction("update_crN_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
 							getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)));
 						CallInst *ci = CallInst::Create(crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(GET_REG_idx(instr.operands[OPNUM_DST].reg.value) - CR_offset),
 							cpu->instr_eip, CONST32(bytes) }, "", cpu->bb);
@@ -4031,7 +3895,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				translate_next = 0;
 			}
 			else {
-				Function *msr_r_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_msr_read", getVoidType(), cpu->ptr_cpu_ctx->getType()));
+				Function *msr_r_fn = cast<Function>(cpu->mod->getOrInsertFunction("msr_read_helper", getVoidType(), cpu->ptr_cpu_ctx->getType()));
 				CallInst::Create(msr_r_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
 			}
 		}
