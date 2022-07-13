@@ -7,6 +7,50 @@
 #include "helpers.h"
 
 
+void
+stack_push_helper(cpu_t *cpu, const uint32_t val, uint32_t size_mode, uint32_t &addr, uint32_t eip)
+{
+	assert(size_mode != SIZE8);
+
+	switch ((size_mode << 1) | ((cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
+	{
+	case 0: { // sp, push 32
+		uint16_t sp = addr & 0xFFFF;
+		sp -= 4;
+		mem_write<uint32_t>(cpu, sp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
+		addr = sp;
+	}
+	break;
+
+	case 1: { // esp, push 32
+		uint32_t esp = addr;
+		esp -= 4;
+		mem_write<uint32_t>(cpu, esp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
+		addr = esp;
+	}
+	break;
+
+	case 2: { // sp, push 16
+		uint16_t sp = addr & 0xFFFF;
+		sp -= 2;
+		mem_write<uint16_t>(cpu, sp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
+		addr = sp;
+	}
+	break;
+
+	case 3: { // esp, push 16
+		uint16_t esp = addr;
+		esp -= 2;
+		mem_write<uint16_t>(cpu, esp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
+		addr = esp;
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
 uint32_t
 stack_pop_helper(cpu_t *cpu, uint32_t size_mode, uint32_t &addr, uint32_t eip)
 {
@@ -161,4 +205,25 @@ write_eflags_helper(cpu_t *cpu, uint32_t eflags, uint32_t mask)
 	uint32_t pdb = (4 ^ (eflags & 4)) << 6;
 	cpu->cpu_ctx.lazy_eflags.result = ((eflags & 0x40) ^ 0x40) << 2;
 	cpu->cpu_ctx.lazy_eflags.auxbits = (((((cf_new << 31) | ((eflags & 0x10) >> 1)) | of_new) | sfd) | pdb);
+}
+
+uint8_t
+read_stack_ptr_from_tss_helper(cpu_t *cpu, uint32_t dpl, uint32_t &esp, uint16_t &ss, uint32_t eip)
+{
+	uint32_t type = (cpu->cpu_ctx.regs.tr_hidden.flags & SEG_HIDDEN_TSS_TY) >> 11;
+	uint32_t idx = (2 << type) + dpl * (4 << type);
+	if ((idx + (4 << type) - 1) > cpu->cpu_ctx.regs.tr_hidden.limit) {
+		return raise_exp_helper(cpu, cpu->cpu_ctx.regs.tr & 0xFFFC, EXP_TS, eip);
+	}
+
+	if (type) {
+		esp = mem_read<uint32_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx, eip, 0);
+		ss = mem_read<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx + 4, eip, 0);
+	}
+	else {
+		esp = mem_read<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx, eip, 0);
+		ss = mem_read<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx + 2, eip, 0);
+	}
+
+	return 0;
 }

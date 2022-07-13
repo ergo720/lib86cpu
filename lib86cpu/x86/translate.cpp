@@ -979,6 +979,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				uint32_t call_eip = instr.operands[OPNUM_SINGLE].ptr.offset;
 				uint16_t new_sel = instr.operands[OPNUM_SINGLE].ptr.segment;
 				Value *cs, *eip;
+				// cs holds the cpl, so it can be assumed a constant
 				if (size_mode == SIZE16) {
 					cs = CONST16(cpu_ctx->regs.cs);
 					eip = CONST16(ret_eip);
@@ -989,7 +990,16 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					eip = CONST32(ret_eip);
 				}
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
-					lcall_pe_emit(cpu, std::vector<Value *> { CONST16(new_sel), CONST32(call_eip), cs, eip }, size_mode, ret_eip);
+					Function *lcall_helper = cast<Function>(cpu->mod->getOrInsertFunction("lcall_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
+						getIntegerType(16), getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)));
+					CallInst *ci = CallInst::Create(lcall_helper, { cpu->ptr_cpu_ctx, CONST16(new_sel), CONST32(call_eip), CONST8(size_mode), CONST32(ret_eip), cpu->instr_eip }, "", cpu->bb);
+					BasicBlock *bb0 = getBB();
+					BasicBlock *bb1 = getBB();
+					BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
+					cpu->bb = bb0;
+					CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
+					ReturnInst::Create(CTX(), ci2, cpu->bb);
+					cpu->bb = bb1;
 					link_indirect_emit(cpu);
 					cpu->tc->flags |= TC_FLG_INDIRECT;
 				}
@@ -1043,6 +1053,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 					Value *cs, *eip, *call_eip, *call_cs, *cs_addr, *offset_addr = GET_OP(OPNUM_SINGLE);
 					addr_t ret_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes;
+					// cs holds the cpl, so it can be assumed a constant
 					if (size_mode == SIZE16) {
 						Value *temp = LD_MEM(MEM_LD16_idx, offset_addr);
 						call_eip = ZEXT32(temp);
@@ -1058,7 +1069,16 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					}
 					call_cs = LD_MEM(MEM_LD16_idx, cs_addr);
 					if (cpu_ctx->hflags & HFLG_PE_MODE) {
-						lcall_pe_emit(cpu, std::vector<Value *> { call_cs, call_eip, cs, eip }, size_mode, ret_eip);
+						Function *lcall_helper = cast<Function>(cpu->mod->getOrInsertFunction("lcall_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
+							getIntegerType(16), getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)));
+						CallInst *ci = CallInst::Create(lcall_helper, { cpu->ptr_cpu_ctx, call_cs, call_eip, CONST8(size_mode), CONST32(ret_eip), cpu->instr_eip }, "", cpu->bb);
+						BasicBlock *bb0 = getBB();
+						BasicBlock *bb1 = getBB();
+						BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
+						cpu->bb = bb0;
+						CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
+						ReturnInst::Create(CTX(), ci2, cpu->bb);
+						cpu->bb = bb1;
 					}
 					else {
 						std::vector<Value *> vec;
