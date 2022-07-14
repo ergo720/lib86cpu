@@ -3118,8 +3118,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				GET_RM(OPNUM_SRC, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
 
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
-					std::vector<Value *> vec;
-
 					if (sel_idx == SS_idx) {
 						Function *mov_ss_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_ss_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
 							getIntegerType(16), getIntegerType(32)));
@@ -3790,38 +3788,73 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					}
 
 					if (cpu_ctx->hflags & HFLG_PE_MODE) {
-						std::vector<Value *> vec;
-
 						if (sel_idx == SS_idx) {
-							vec = check_ss_desc_priv_emit(cpu, sel);
-							set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
-							write_seg_reg_emit(cpu, sel_idx, sel, read_seg_desc_base_emit(cpu, vec[1]),
-								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1]));
+							Function *mov_ss_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_ss_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
+								getIntegerType(16), getIntegerType(32)));
+							CallInst *ci = CallInst::Create(mov_ss_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
+							BasicBlock *bb0 = getBB();
+							BasicBlock *bb1 = getBB();
+							BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
+							cpu->bb = bb0;
+							CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
+							ReturnInst::Create(CTX(), ci2, cpu->bb);
+							cpu->bb = bb1;
 							ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
 							ST_REG_val(vec_pop[1], vec_pop[2]);
 							if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
-								std::vector<BasicBlock *> vec_bb = getBBs(2);
-								BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(CONST32(cpu->cpu_ctx.hflags & HFLG_SS32), AND(LD(cpu->ptr_hflags), CONST32(HFLG_SS32))));
-								cpu->bb = vec_bb[0];
+								BasicBlock *bb2 = getBB();
+								BasicBlock *bb3 = getBB();
+								BR_COND(bb2, bb3, ICMP_EQ(CONST32(cpu->cpu_ctx.hflags & HFLG_SS32), AND(LD(cpu->ptr_hflags), CONST32(HFLG_SS32))));
+								cpu->bb = bb2;
 								link_dst_only_emit(cpu);
-								cpu->bb = vec_bb[1];
+								cpu->bb = bb3;
 								cpu->tc->flags |= TC_FLG_COND_DST_ONLY;
 							}
 							translate_next = 0;
 						}
 						else {
-							std::vector<BasicBlock *> vec_bb = getBBs(3);
-							BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
-							cpu->bb = vec_bb[0];
-							write_seg_reg_emit(cpu, sel_idx, sel, CONST32(0), CONST32(0), CONST32(0));
-							BR_UNCOND(vec_bb[2]);
-							cpu->bb = vec_bb[1];
-							vec = check_seg_desc_priv_emit(cpu, sel);
-							set_access_flg_seg_desc_emit(cpu, vec[1], vec[0]);
-							write_seg_reg_emit(cpu, sel_idx, sel, read_seg_desc_base_emit(cpu, vec[1]),
-								read_seg_desc_limit_emit(cpu, vec[1]), read_seg_desc_flags_emit(cpu, vec[1]));
-							BR_UNCOND(vec_bb[2]);
-							cpu->bb = vec_bb[2];
+							CallInst *ci;
+							switch (sel_idx)
+							{
+							case DS_idx: {
+								Function *mov_ss_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_ds_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
+									getIntegerType(16), getIntegerType(32)));
+								ci = CallInst::Create(mov_ss_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
+							}
+							break;
+
+							case ES_idx: {
+								Function *mov_ss_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_es_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
+									getIntegerType(16), getIntegerType(32)));
+								ci = CallInst::Create(mov_ss_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
+							}
+							break;
+
+							case FS_idx: {
+								Function *mov_ss_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_fs_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
+									getIntegerType(16), getIntegerType(32)));
+								ci = CallInst::Create(mov_ss_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
+							}
+							break;
+
+							case GS_idx: {
+								Function *mov_ss_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_gs_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
+									getIntegerType(16), getIntegerType(32)));
+								ci = CallInst::Create(mov_ss_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
+							}
+							break;
+
+							default:
+								LIB86CPU_ABORT();
+							}
+
+							BasicBlock *bb0 = getBB();
+							BasicBlock *bb1 = getBB();
+							BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
+							cpu->bb = bb0;
+							CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
+							ReturnInst::Create(CTX(), ci2, cpu->bb);
+							cpu->bb = bb1;
 							ST_REG_val(vec_pop[1], vec_pop[2]);
 						}
 					}
