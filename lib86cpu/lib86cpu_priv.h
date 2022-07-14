@@ -1,5 +1,5 @@
 /*
- * private implemnetaion of cpu_t
+ * private implementation of cpu_t
  *
  * ergo720                Copyright (c) 2020
  */

@@ -584,6 +584,40 @@ lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t siz
 	return 0;
 }
 
+template<unsigned reg>
+uint8_t mov_sel_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
+{
+	cpu_t *cpu = cpu_ctx->cpu;
+
+	if constexpr (reg == SS_idx) {
+		addr_t desc_addr;
+		uint64_t desc;
+		if (check_ss_desc_priv_helper(cpu, sel, nullptr, desc_addr, desc, eip)) {
+			return 1;
+		}
+
+		set_access_flg_seg_desc_helper(cpu, desc, desc_addr, eip);
+		write_seg_reg_helper<reg>(cpu, sel, read_seg_desc_base_helper(cpu, desc), read_seg_desc_limit_helper(cpu, desc), read_seg_desc_flags_helper(cpu, desc));
+	}
+	else {
+		if ((sel >> 2) == 0) {
+			write_seg_reg_helper<reg>(cpu, 0, 0, 0, 0);
+			return 0;
+		}
+
+		addr_t desc_addr;
+		uint64_t desc;
+		if (check_seg_desc_priv_helper(cpu, sel, desc_addr, desc, eip)) {
+			return 1;
+		}
+
+		set_access_flg_seg_desc_helper(cpu, desc, desc_addr, eip);
+		write_seg_reg_helper<reg>(cpu, sel /* & rpl?? */, read_seg_desc_base_helper(cpu, desc), read_seg_desc_limit_helper(cpu, desc), read_seg_desc_flags_helper(cpu, desc));
+	}
+
+	return 0;
+}
+
 template<bool is_verr>
 void verrw_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
 {
@@ -770,3 +804,9 @@ template uint8_t lret_pe_helper<false>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, ui
 
 template void verrw_helper<true>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
 template void verrw_helper<false>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+
+template uint8_t mov_sel_pe_helper<DS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template uint8_t mov_sel_pe_helper<ES_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template uint8_t mov_sel_pe_helper<SS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template uint8_t mov_sel_pe_helper<FS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template uint8_t mov_sel_pe_helper<GS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);

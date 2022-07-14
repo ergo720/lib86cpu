@@ -108,6 +108,11 @@ lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetM
 	define_absolute(mangle("lcall_pe_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&lcall_pe_helper), JITSymbolFlags::Absolute));
 	define_absolute(mangle("verr_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&verrw_helper<true>), JITSymbolFlags::Absolute));
 	define_absolute(mangle("verw_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&verrw_helper<false>), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mov_ds_pe_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mov_sel_pe_helper<DS_idx>), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mov_es_pe_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mov_sel_pe_helper<ES_idx>), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mov_ss_pe_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mov_sel_pe_helper<SS_idx>), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mov_fs_pe_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mov_sel_pe_helper<FS_idx>), JITSymbolFlags::Absolute));
+	define_absolute(mangle("mov_gs_pe_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mov_sel_pe_helper<GS_idx>), JITSymbolFlags::Absolute));
 
 #ifdef _WIN32
 	// workaround for llvm bug D65548

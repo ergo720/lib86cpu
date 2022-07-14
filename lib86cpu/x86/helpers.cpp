@@ -195,6 +195,41 @@ check_ss_desc_priv_helper(cpu_t *cpu, uint16_t sel, uint16_t *cs, addr_t &desc_a
 	return 0;
 }
 
+uint8_t
+check_seg_desc_priv_helper(cpu_t *cpu, uint16_t sel, addr_t &desc_addr, uint64_t &desc, uint32_t eip)
+{
+	if (read_seg_desc_helper(cpu, sel, desc_addr, desc, eip)) {
+		return 1;
+	}
+
+	// check for segment privilege violations
+	if ((desc & SEG_DESC_S) == 0) {
+		return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP, eip);
+	}
+
+	uint16_t d = (desc & SEG_DESC_DC) >> 43;
+	uint16_t r = (desc & SEG_DESC_R) >> 40;
+	if ((d | r) == 1) {
+		return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP, eip);
+	}
+
+	if ((d == 0) || ((desc & SEG_DESC_C) == 0)) {
+		uint16_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
+		uint16_t dpl = (desc & SEG_DESC_DPL) >> 45;
+		uint16_t rpl = sel & 3;
+		if ((rpl > dpl) && (cpl > dpl)) {
+			return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP, eip);
+		}
+	}
+
+	if ((desc & SEG_DESC_P) == 0) { // segment not present
+		return raise_exp_helper(cpu, sel & 0xFFFC, EXP_NP, eip);
+	}
+
+	return 0;
+}
+
+
 void
 write_eflags_helper(cpu_t *cpu, uint32_t eflags, uint32_t mask)
 {
