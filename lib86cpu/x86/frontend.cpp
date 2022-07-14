@@ -638,24 +638,6 @@ write_eflags(cpu_t *cpu, Value *eflags, Value *mask)
 	ST_FLG_AUX(OR(OR(OR(OR(SHL(cf_new, CONST32(31)), SHR(AND(eflags, CONST32(16)), CONST32(1))), of_new), sfd), pdb));
 }
 
-static void
-validate_seg_emit(cpu_t *cpu, const unsigned reg)
-{
-	BasicBlock *bb0 = getBB();
-	BasicBlock *bb1 = getBB();
-	Value *flags = LD_SEG_HIDDEN(reg, SEG_FLG_idx);
-	Value *c = AND(flags, CONST32(1 << 10));
-	Value *d = AND(flags, CONST32(1 << 11));
-	Value *s = AND(flags, CONST32(1 << 12));
-	Value *dpl = SHR(AND(flags, CONST32(3 << 13)), CONST32(13));
-	Value *cpl = AND(LD(cpu->ptr_hflags), CONST32(HFLG_CPL));
-	BR_COND(bb0, bb1, AND(ICMP_UGT(cpl, dpl), AND(ICMP_NE(s, CONST32(0)), OR(ICMP_EQ(d, CONST32(0)), ICMP_EQ(c, CONST32(0))))));
-	cpu->bb = bb0;
-	write_seg_reg_emit(cpu, reg, CONST16(0), CONST32(0), CONST32(0), CONST32(0));
-	BR_UNCOND(bb1);
-	cpu->bb = bb1;
-}
-
 void
 write_seg_reg_emit(cpu_t *cpu, const unsigned reg, Value *sel, Value *base, Value *limit, Value *flags)
 {
@@ -670,18 +652,6 @@ write_seg_reg_emit(cpu_t *cpu, const unsigned reg, Value *sel, Value *base, Valu
 	else if (reg == SS_idx) {
 		ST(cpu->ptr_hflags, OR(SHR(AND(flags, CONST32(SEG_HIDDEN_DB)), CONST32(19)), AND(LD(cpu->ptr_hflags), CONST32(~HFLG_SS32))));
 	}
-}
-
-void
-set_access_flg_seg_desc_emit(cpu_t *cpu, Value *desc, Value *desc_addr)
-{
-	BasicBlock *bb0 = getBB();
-	BasicBlock *bb1 = getBB();
-	BR_COND(bb0, bb1, ICMP_EQ(OR(SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(44)), SHR(AND(desc, CONST64(SEG_DESC_A)), CONST64(39))), CONST64(1)));
-	cpu->bb = bb0;
-	ST_MEM_PRIV(MEM_ST64_idx, desc_addr, OR(desc, CONST64(SEG_DESC_A)));
-	BR_UNCOND(bb1);
-	cpu->bb = bb1;
 }
 
 Value *
@@ -762,104 +732,6 @@ read_tss_desc_emit(cpu_t *cpu, Value *sel)
 	cpu->bb = bb1;
 	Value *desc = LD_MEM_PRIV(MEM_LD64_idx, desc_addr);
 	vec.push_back(desc);
-	return vec;
-}
-
-std::vector<Value *>
-read_stack_ptr_from_tss_emit(cpu_t *cpu, Value *cpl, BasicBlock *bb_exp)
-{
-	std::vector<Value *> vec;
-	BasicBlock *bb0 = getBB();
-	BasicBlock *bb1 = getBB();
-	BasicBlock *bb2 = getBB();
-	BasicBlock *bb3 = getBB();
-	Value *esp = ALLOC32();
-	Value *ss = ALLOC16();
-	Value *type = SHR(AND(LD_SEG_HIDDEN(TR_idx, SEG_FLG_idx), CONST32(SEG_HIDDEN_TSS_TY)), CONST32(11));
-	Value *idx = ADD(SHL(CONST32(2), type), MUL(ZEXT32(cpl), SHL(CONST32(4), type)));
-	BR_COND(bb_exp ? bb_exp : RAISE(AND(LD_SEG(TR_idx), CONST16(0xFFFC)), EXP_TS),
-		bb0, ICMP_UGT(SUB(ADD(idx, SHL(CONST32(4), type)), CONST32(1)), LD_SEG_HIDDEN(TR_idx, SEG_LIMIT_idx)));
-	cpu->bb = bb0;
-	BR_COND(bb1, bb2, ICMP_NE(type, CONST32(0)));
-	cpu->bb = bb1;
-	Value *temp1 = LD_MEM(MEM_LD32_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), idx));
-	ST(esp, temp1);
-	temp1 = LD_MEM(MEM_LD16_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), ADD(idx, CONST32(4))));
-	ST(ss, temp1);
-	BR_UNCOND(bb3);
-	cpu->bb = bb2;
-	Value *temp2 = LD_MEM(MEM_LD16_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), idx));
-	ST(esp, ZEXT32(temp2));
-	temp2 = LD_MEM(MEM_LD16_idx, ADD(LD_SEG_HIDDEN(TR_idx, SEG_BASE_idx), ADD(idx, CONST32(2))));
-	ST(ss, temp2);
-	BR_UNCOND(bb3);
-	cpu->bb = bb3;
-	vec.push_back(LD(esp));
-	vec.push_back(LD(ss));
-	return vec;
-}
-
-std::vector<Value *>
-check_ss_desc_priv_emit(cpu_t *cpu, Value *sel, Value *cs, Value *cpl, BasicBlock *bb_exp)
-{
-	BasicBlock *bb0 = getBB();
-	BasicBlock *bb1 = getBB();
-	BasicBlock *bb2 = getBB();
-	BR_COND(bb_exp ? bb_exp : RAISE(CONST16(0), EXP_GP),
-		bb0, ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0))); // sel == NULL
-	cpu->bb = bb0;
-	std::vector<Value *> vec = read_seg_desc_emit(cpu, sel, bb_exp);
-	Value *desc = vec[1];
-	Value *s = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(44))); // cannot be a system segment
-	Value *d = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_DC)), CONST64(42))); // cannot be a code segment
-	Value *w = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_W)), CONST64(39))); // cannot be a non-writable data segment
-	Value *dpl = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_DPL)), CONST64(42)));
-	Value *rpl = SHL(AND(sel, CONST16(3)), CONST16(5));
-	Value *val;
-	// check for segment privilege violations
-	if (cs == nullptr) {
-		Value *cpl2 = cpl ? cpl : CONST16(cpu->cpu_ctx.hflags & HFLG_CPL);
-		val = XOR(OR(OR(OR(OR(s, d), w), dpl), rpl), OR(OR(OR(OR(CONST16(1), CONST16(0)), CONST16(4)), SHL(cpl2, CONST16(3))), SHL(cpl2, CONST16(5))));
-	}
-	else {
-		Value *rpl_cs = AND(cs, CONST16(3));
-		val = XOR(OR(OR(OR(OR(s, d), w), dpl), rpl), OR(OR(OR(OR(CONST16(1), CONST16(0)), CONST16(4)), SHL(rpl_cs, CONST16(3))), SHL(rpl_cs, CONST16(5))));
-	}
-	BR_COND(bb_exp ? bb_exp : RAISE(AND(sel, CONST16(0xFFFC)), EXP_GP),
-		bb1, ICMP_NE(val, CONST16(0)));
-	cpu->bb = bb1;
-	Value *p = AND(desc, CONST64(SEG_DESC_P));
-	BR_COND(bb_exp ? bb_exp : RAISE(AND(sel, CONST16(0xFFFC)), EXP_SS),
-		bb2, ICMP_EQ(p, CONST64(0))); // segment not present
-	cpu->bb = bb2;
-	return vec;
-}
-
-std::vector<Value *>
-check_seg_desc_priv_emit(cpu_t *cpu, Value *sel)
-{
-	std::vector<BasicBlock *> vec_bb = getBBs(5);
-	std::vector<Value *> vec = read_seg_desc_emit(cpu, sel);
-	Value *desc = vec[1];
-	Value *s = AND(desc, CONST64(SEG_DESC_S));
-	BasicBlock *bb_exp = RAISE(AND(sel, CONST16(0xFFFC)), EXP_GP);
-	BR_COND(bb_exp, vec_bb[0], ICMP_EQ(s, CONST64(0))); // cannot be a system segment
-	cpu->bb = vec_bb[0];
-	Value *d = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_DC)), CONST64(43)));
-	Value *r = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_R)), CONST64(40)));
-	BR_COND(bb_exp, vec_bb[1], ICMP_EQ(OR(d, r), CONST16(1))); // cannot be a non-readable code segment
-	cpu->bb = vec_bb[1];
-	BR_COND(vec_bb[3], vec_bb[2], OR(ICMP_EQ(d, CONST16(0)), ICMP_EQ(AND(desc, CONST64(SEG_DESC_C)), CONST64(0))));
-	cpu->bb = vec_bb[3];
-	Value *cpl = CONST16(cpu->cpu_ctx.hflags & HFLG_CPL);
-	Value *dpl = TRUNC16(SHR(AND(desc, CONST64(SEG_DESC_DPL)), CONST64(45)));
-	Value *rpl = AND(sel, CONST16(3));
-	BR_COND(bb_exp, vec_bb[2], AND(ICMP_UGT(rpl, dpl), ICMP_UGT(cpl, dpl))); // segment privilege violation
-	cpu->bb = vec_bb[2];
-	Value *p = AND(desc, CONST64(SEG_DESC_P));
-	bb_exp = RAISE(AND(sel, CONST16(0xFFFC)), EXP_NP);
-	BR_COND(bb_exp, vec_bb[4], ICMP_EQ(p, CONST64(0))); // segment not present
-	cpu->bb = vec_bb[4];
 	return vec;
 }
 
