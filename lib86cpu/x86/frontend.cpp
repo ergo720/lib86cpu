@@ -21,7 +21,6 @@
 
 enum class fn_emit_t {
 	main_t,
-	exp_t,
 	int_t,
 };
 
@@ -205,6 +204,8 @@ get_ext_fn(cpu_t *cpu)
 	Function *abort_func = cast<Function>(cpu->mod->getOrInsertFunction("cpu_runtime_abort", getVoidType(), getPointerType(getIntegerType(8))));
 	abort_func->addAttribute(0, Attribute::AttrKind::NoReturn);
 	cpu->ptr_abort_fn = abort_func;
+
+	cpu->ptr_exp_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_raise_exception", cpu->bb->getParent()->getReturnType(), cpu_ctx_ty));
 }
 
 Value *
@@ -267,7 +268,7 @@ void
 check_int_emit(cpu_t *cpu)
 {
 	unsigned ptr_size = cpu->dl->getPointerSize();
-	Value *int_flg = ZEXTs(ptr_size * 8, LD_ATOMIC(GEP(cpu->ptr_cpu_ctx, 10), AtomicOrdering::Monotonic, 1));
+	Value *int_flg = ZEXTs(ptr_size * 8, LD_ATOMIC(GEP(cpu->ptr_cpu_ctx, 9), AtomicOrdering::Monotonic, 1));
 	Value *tc_jmp_int_ptr = INT2PTR(getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())),
 		ADD(CONSTs(ptr_size * 8, reinterpret_cast<uintptr_t>(&cpu->tc->jmp_offset[TC_JMP_INT_OFFSET])), MUL(int_flg, CONSTs(ptr_size * 8, ptr_size))));
 	CallInst::Create(LD(tc_jmp_int_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
@@ -442,8 +443,8 @@ gen_fn(cpu_t *cpu)
 		{ type_exp_data_t, getIntegerType(16) }, "struct.exp_info_t", false);
 
 	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");  // NOTE: opaque tc struct
-	FunctionType *type_iret_t, *type_exp_t, *type_entry_t;
-	type_iret_t = type_exp_t = type_entry_t = FunctionType::get(
+	FunctionType *type_iret_t, *type_entry_t;
+	type_iret_t = type_entry_t = FunctionType::get(
 		getPointerType(tc_struct_type),       // tc ret
 		getPointerType(cpu_ctx_struct_type),  // cpu_ctx
 		false);
@@ -457,7 +458,6 @@ gen_fn(cpu_t *cpu)
 		getArrayType(getIntegerType(16), TLB_MAX_SIZE),
 		getArrayType(getIntegerType(16), IOTLB_MAX_SIZE),
 		getPointerType(getIntegerType(8)),
-		getPointerType(type_exp_t),
 		type_exp_info_t,
 		getIntegerType(8)
 		}, false);
@@ -469,14 +469,6 @@ gen_fn(cpu_t *cpu)
 			type_entry_t,                        // func type
 			GlobalValue::ExternalLinkage,        // linkage
 			"main",                              // name
-			cpu->mod);
-		func->setCallingConv(CallingConv::C);
-	}
-	else if constexpr (fn_type == fn_emit_t::exp_t) {
-		func = Function::Create(
-			type_exp_t,                      // func type
-			GlobalValue::ExternalLinkage,    // linkage
-			"cpu_raise_exception",           // name
 			cpu->mod);
 		func->setCallingConv(CallingConv::C);
 	}
@@ -523,8 +515,6 @@ create_tc_prologue(cpu_t *cpu)
 	cpu->ptr_iotlb->setName("iotlb");
 	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 7));
 	cpu->ptr_ram->setName("ram");
-	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 8));
-	cpu->ptr_exp_fn->setName("exp_fn");
 }
 
 void
@@ -547,7 +537,7 @@ gen_int_fn(cpu_t *cpu)
 	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
 	cpu->tc = nullptr;
 
-	ST_ATOMIC(GEP(func->arg_begin(), 10), func->arg_begin() + 1, AtomicOrdering::Monotonic, 1);
+	ST_ATOMIC(GEP(func->arg_begin(), 9), func->arg_begin() + 1, AtomicOrdering::Monotonic, 1);
 	ReturnInst::Create(CTX(), cpu->bb);
 
 	if (cpu->cpu_flags & CPU_PRINT_IR) {
@@ -580,416 +570,6 @@ gen_int_fn(cpu_t *cpu)
 }
 
 void
-gen_exp_fn(cpu_t *cpu)
-{
-	// free the memory of the previously emitted exception function
-	cpu->jit->free_code_block(cpu->cpu_ctx.exp_fn);
-
-	cpu->ctx = new LLVMContext();
-	if (cpu->ctx == nullptr) {
-		LIB86CPU_ABORT();
-	}
-	cpu->mod = new Module(cpu->cpu_name, *cpu->ctx);
-	cpu->mod->setDataLayout(*cpu->dl);
-	if (cpu->mod == nullptr) {
-		LIB86CPU_ABORT();
-	}
-
-	Function *func = gen_fn<fn_emit_t::exp_t>(cpu);
-	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
-	cpu->tc = nullptr;
-	cpu->instr_eip = CONST32(0);
-	cpu->ptr_cpu_ctx = func->arg_begin();
-	cpu->ptr_cpu_ctx->setName("cpu_ctx");
-	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, 1);
-	cpu->ptr_regs->setName("regs");
-	cpu->ptr_eflags = GEP(cpu->ptr_cpu_ctx, 2);
-	cpu->ptr_eflags->setName("eflags");
-	cpu->ptr_hflags = GEP(cpu->ptr_cpu_ctx, 3);
-	cpu->ptr_hflags->setName("hflags");
-	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, 4);
-	cpu->ptr_tlb->setName("tlb");
-	cpu->ptr_tlb_region_idx = GEP(cpu->ptr_cpu_ctx, 5);
-	cpu->ptr_tlb_region_idx->setName("tlb_region_idx");
-	cpu->ptr_iotlb = GEP(cpu->ptr_cpu_ctx, 6);
-	cpu->ptr_iotlb->setName("iotlb");
-	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 7));
-	cpu->ptr_ram->setName("ram");
-	cpu->ptr_exp_fn = LD(GEP(cpu->ptr_cpu_ctx, 8));
-	cpu->ptr_exp_fn->setName("exp_fn");
-	Value *ptr_exp_info = GEP(cpu->ptr_cpu_ctx, 9);
-	ptr_exp_info->setName("exp_info");
-	get_ext_fn(cpu);
-
-	Function *dbl_exp_func = cast<Function>(cpu->mod->getOrInsertFunction("check_dbl_exp", getVoidType(), cpu->ptr_cpu_ctx->getType(), getIntegerType(16)));
-	Value *ptr_exp_data = GEP(ptr_exp_info, 0);
-	ptr_exp_data->setName("exp_data");
-	CallInst::Create(dbl_exp_func, ArrayRef<Value *> { cpu->ptr_cpu_ctx, LD(GEP(ptr_exp_data, 2)) }, "", cpu->bb);
-
-	Value *fault_addr = LD(GEP(ptr_exp_data, 0));
-	Value *code = ZEXT32(LD(GEP(ptr_exp_data, 1)));
-	Value *idx = ZEXT32(LD(GEP(ptr_exp_data, 2)));
-	Value *eip = LD(GEP(ptr_exp_data, 3));
-	ST(GEP(ptr_exp_data, 0), fault_addr);
-	ST(GEP(ptr_exp_data, 1), TRUNC16(code));
-	ST(GEP(ptr_exp_data, 2), TRUNC16(idx));
-	ST(GEP(ptr_exp_data, 3), eip);
-
-	Value *old_eflags = OR(OR(OR(OR(OR(OR(LD_R32(EFLAGS_idx),
-		SHR(LD_CF(), CONST32(31))),
-		SHL(XOR(ZEXT32(LD_PF()), CONST32(1)), CONST32(2))),
-		SHL(LD_AF(), CONST32(1))),
-		SHL(XOR(NOT_ZERO(32, LD_ZF()), CONST32(1)), CONST32(6))),
-		SHL(LD_SF(), CONST32(7))),
-		SHR(LD_OF(), CONST32(20))
-		);
-
-	if (cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
-		std::vector<BasicBlock *> vec_bb = getBBs(51);
-		Value *cpl = TRUNC16(AND(LD(cpu->ptr_hflags), CONST32(HFLG_CPL)));
-		BR_COND(vec_bb[0], vec_bb[1], ICMP_UGT(ADD(MUL(idx, CONST32(8)), CONST32(7)), LD_SEG_HIDDEN(IDTR_idx, SEG_LIMIT_idx)));
-		cpu->bb = vec_bb[1];
-		Value *desc = ALLOC64();
-		Value *temp = LD_MEM_PRIV(MEM_LD64_idx, ADD(LD_SEG_HIDDEN(IDTR_idx, SEG_BASE_idx), MUL(idx, CONST32(8))));
-		ST(desc, temp);
-		Value *type = ALLOC16();
-		ST(type, TRUNC16(AND(SHR(LD(desc), CONST64(40)), CONST64(0x1F))));
-		Value *new_eip = ALLOC32();
-		Value *eflags = ALLOC32();
-		SwitchInst *swi = SWITCH_new(5, LD(type), vec_bb[40]);
-		swi->SWITCH_add(16, 5, vec_bb[39]);  // we don't support task gates yet, so just abort
-		swi->SWITCH_add(16, 6, vec_bb[2]);  // interrupt gate, 16 bit
-		swi->SWITCH_add(16, 14, vec_bb[2]); // interrupt gate, 32 bit
-		swi->SWITCH_add(16, 7, vec_bb[3]);  // trap gate, 16 bit
-		swi->SWITCH_add(16, 15, vec_bb[3]); // trap gate, 32 bit
-		cpu->bb = vec_bb[2];
-		ST(eflags, AND(LD_R32(EFLAGS_idx), CONST32(~IF_MASK)));
-		ST(new_eip, TRUNC32(OR(SHR(AND(LD(desc), CONST64(0xFFFF000000000000)), CONST64(32)), AND(LD(desc), CONST64(0xFFFF)))));
-		BR_UNCOND(vec_bb[4]);
-		cpu->bb = vec_bb[3];
-		ST(eflags, LD_R32(EFLAGS_idx));
-		ST(new_eip, TRUNC32(OR(SHR(AND(LD(desc), CONST64(0xFFFF000000000000)), CONST64(32)), AND(LD(desc), CONST64(0xFFFF)))));
-		BR_UNCOND(vec_bb[4]);
-		cpu->bb = vec_bb[4];
-		BR_COND(vec_bb[41], vec_bb[5], ICMP_EQ(AND(LD(desc), CONST64(SEG_DESC_P)), CONST64(0)));
-		cpu->bb = vec_bb[5];
-		Value *sel = TRUNC16(SHR(AND(LD(desc), CONST64(0xFFFF0000)), CONST64(16)));
-		BR_COND(vec_bb[42], vec_bb[6], ICMP_EQ(AND(sel, CONST16(0xFFFC)), CONST16(0)));
-		cpu->bb = vec_bb[6];
-		std::vector<Value *> vec = read_seg_desc_emit(cpu, sel, vec_bb[43]);
-		Value *desc_addr = ALLOC32();
-		ST(desc_addr, vec[0]);
-		ST(desc, vec[1]);
-		Value *dpl = ALLOC16();
-		ST(dpl, TRUNC16(SHR(AND(LD(desc), CONST64(SEG_DESC_DPL)), CONST64(45))));
-		// NOTE: can't inject cpl as a constant here or we would have to regenerate this function every time the cpl changes, which we don't want
-		BR_COND(vec_bb[44], vec_bb[7], ICMP_UGT(LD(dpl), cpl));
-		cpu->bb = vec_bb[7];
-		BR_COND(vec_bb[45], vec_bb[8], ICMP_EQ(AND(LD(desc), CONST64(SEG_DESC_P)), CONST64(0)));
-		cpu->bb = vec_bb[8];
-		BR_COND(vec_bb[9], vec_bb[10], ICMP_NE(AND(LD(desc), CONST64(SEG_DESC_C)), CONST64(0)));
-		cpu->bb = vec_bb[9];
-		ST(dpl, cpl);
-		BR_UNCOND(vec_bb[10]);
-		cpu->bb = vec_bb[10];
-		set_access_flg_seg_desc_emit(cpu, LD(desc), LD(desc_addr));
-		Value *seg_base = read_seg_desc_base_emit(cpu, LD(desc));
-		Value *seg_limit = read_seg_desc_limit_emit(cpu, LD(desc));
-		Value *seg_flags = read_seg_desc_flags_emit(cpu, LD(desc));
-		Value *stack_switch = ALLOCs(1);
-		Value *stack_mask = ALLOC32();
-		Value *stack_base = ALLOC32();
-		Value *esp = ALLOC32();
-		Value *new_esp = ALLOC32();
-		Value *new_ss = ALLOC16();
-		BR_COND(vec_bb[11], vec_bb[12], ICMP_ULT(LD(dpl), cpl));
-		// more privileged
-		cpu->bb = vec_bb[11];
-		vec = read_stack_ptr_from_tss_emit(cpu, LD(dpl), vec_bb[46]);
-		ST(new_esp, vec[0]);
-		ST(new_ss, vec[1]);
-		BR_COND(vec_bb[47], vec_bb[13], ICMP_EQ(SHR(LD(new_ss), CONST16(2)), CONST16(0)));
-		cpu->bb = vec_bb[13];
-		vec = check_ss_desc_priv_emit(cpu, LD(new_ss), nullptr, LD(dpl), vec_bb[48]);
-		ST(desc_addr, vec[0]);
-		ST(desc, vec[1]);
-		set_access_flg_seg_desc_emit(cpu, LD(desc), LD(desc_addr));
-		ST(stack_switch, CONSTs(1, 1));
-		BR_COND(vec_bb[14], vec_bb[15], ICMP_NE(AND(LD(desc), CONST64(SEG_DESC_DB)), CONST64(0)));
-		cpu->bb = vec_bb[14];
-		ST(stack_mask, CONST32(0xFFFFFFFF));
-		BR_UNCOND(vec_bb[16]);
-		cpu->bb = vec_bb[15];
-		ST(stack_mask, CONST32(0xFFFF));
-		BR_UNCOND(vec_bb[16]);
-		cpu->bb = vec_bb[16];
-		ST(stack_base, read_seg_desc_base_emit(cpu, LD(desc)));
-		ST(esp, LD(new_esp));
-		BR_UNCOND(vec_bb[17]);
-		// same privilege
-		cpu->bb = vec_bb[12];
-		ST(stack_switch, CONSTs(1, 0));
-		BR_COND(vec_bb[18], vec_bb[19], ICMP_NE(AND(LD_SEG_HIDDEN(SS_idx, SEG_FLG_idx), CONST32(SEG_HIDDEN_DB)), CONST32(0)));
-		cpu->bb = vec_bb[18];
-		ST(stack_mask, CONST32(0xFFFFFFFF));
-		BR_UNCOND(vec_bb[20]);
-		cpu->bb = vec_bb[19];
-		ST(stack_mask, CONST32(0xFFFF));
-		BR_UNCOND(vec_bb[20]);
-		cpu->bb = vec_bb[20];
-		ST(stack_base, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx));
-		ST(esp, LD_R32(ESP_idx));
-		BR_UNCOND(vec_bb[17]);
-		cpu->bb = vec_bb[17];
-		Value *has_code = ALLOCs(1);
-		SwitchInst *swi2 = SWITCH_new(7, idx, vec_bb[21]);
-		swi2->SWITCH_add(32, EXP_DF, vec_bb[22]);
-		swi2->SWITCH_add(32, EXP_TS, vec_bb[22]);
-		swi2->SWITCH_add(32, EXP_NP, vec_bb[22]);
-		swi2->SWITCH_add(32, EXP_SS, vec_bb[22]);
-		swi2->SWITCH_add(32, EXP_GP, vec_bb[22]);
-		swi2->SWITCH_add(32, EXP_PF, vec_bb[22]);
-		swi2->SWITCH_add(32, EXP_AC, vec_bb[22]);
-		cpu->bb = vec_bb[21];
-		ST(has_code, CONSTs(1, 0));
-		BR_UNCOND(vec_bb[23]);
-		cpu->bb = vec_bb[22];
-		ST(has_code, CONSTs(1, 1));
-		BR_UNCOND(vec_bb[23]);
-		cpu->bb = vec_bb[23];
-		ST(type, SHR(LD(type), CONST16(3)));
-		BR_COND(vec_bb[24], vec_bb[25], LD(stack_switch));
-		cpu->bb = vec_bb[24];
-		BR_COND(vec_bb[26], vec_bb[27], ICMP_NE(LD(type), CONST16(0)));
-		// push 32, priv
-		cpu->bb = vec_bb[26];
-		ST(esp, SUB(LD(esp), CONST32(4)));
-		ST_MEM_PRIV(MEM_ST32_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), ZEXT32(LD_SEG(SS_idx)));
-		ST(esp, SUB(LD(esp), CONST32(4)));
-		ST_MEM_PRIV(MEM_ST32_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), LD_R32(ESP_idx));
-		ST(esp, SUB(LD(esp), CONST32(4)));
-		ST_MEM_PRIV(MEM_ST32_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), old_eflags);
-		ST(esp, SUB(LD(esp), CONST32(4)));
-		ST_MEM_PRIV(MEM_ST32_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), ZEXT32(LD_SEG(CS_idx)));
-		ST(esp, SUB(LD(esp), CONST32(4)));
-		ST_MEM_PRIV(MEM_ST32_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), eip);
-		BR_COND(vec_bb[28], vec_bb[29], LD(has_code));
-		cpu->bb = vec_bb[28];
-		ST(esp, SUB(LD(esp), CONST32(4)));
-		ST_MEM_PRIV(MEM_ST32_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), code);
-		BR_UNCOND(vec_bb[29]);
-		// push 16, priv
-		cpu->bb = vec_bb[27];
-		ST(esp, SUB(LD(esp), CONST32(2)));
-		ST_MEM_PRIV(MEM_ST16_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), LD_SEG(SS_idx));
-		ST(esp, SUB(LD(esp), CONST32(2)));
-		ST_MEM_PRIV(MEM_ST16_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), LD_R16(ESP_idx));
-		ST(esp, SUB(LD(esp), CONST32(2)));
-		ST_MEM_PRIV(MEM_ST16_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), TRUNC16(old_eflags));
-		ST(esp, SUB(LD(esp), CONST32(2)));
-		ST_MEM_PRIV(MEM_ST16_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), LD_SEG(CS_idx));
-		ST(esp, SUB(LD(esp), CONST32(2)));
-		ST_MEM_PRIV(MEM_ST16_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), TRUNC16(eip));
-		BR_COND(vec_bb[30], vec_bb[29], LD(has_code));
-		cpu->bb = vec_bb[30];
-		ST(esp, SUB(LD(esp), CONST32(2)));
-		ST_MEM_PRIV(MEM_ST16_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), TRUNC16(code));
-		BR_UNCOND(vec_bb[29]);
-		cpu->bb = vec_bb[25];
-		BR_COND(vec_bb[31], vec_bb[32], ICMP_NE(LD(type), CONST16(0)));
-		cpu->bb = vec_bb[31];
-		// push 32, not priv
-		ST(esp, SUB(LD(esp), CONST32(4)));
-		ST_MEM(MEM_ST32_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), old_eflags);
-		ST(esp, SUB(LD(esp), CONST32(4)));
-		ST_MEM(MEM_ST32_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), ZEXT32(LD_SEG(CS_idx)));
-		ST(esp, SUB(LD(esp), CONST32(4)));
-		ST_MEM(MEM_ST32_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), eip);
-		BR_COND(vec_bb[33], vec_bb[29], LD(has_code));
-		cpu->bb = vec_bb[33];
-		ST(esp, SUB(LD(esp), CONST32(4)));
-		ST_MEM(MEM_ST32_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), code);
-		BR_UNCOND(vec_bb[29]);
-		// push 16, not priv
-		cpu->bb = vec_bb[32];
-		ST(esp, SUB(LD(esp), CONST32(2)));
-		ST_MEM(MEM_ST16_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), TRUNC16(old_eflags));
-		ST(esp, SUB(LD(esp), CONST32(2)));
-		ST_MEM(MEM_ST16_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), LD_SEG(CS_idx));
-		ST(esp, SUB(LD(esp), CONST32(2)));
-		ST_MEM(MEM_ST16_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), TRUNC16(eip));
-		BR_COND(vec_bb[34], vec_bb[29], LD(has_code));
-		cpu->bb = vec_bb[34];
-		ST(esp, SUB(LD(esp), CONST32(2)));
-		ST_MEM(MEM_ST16_idx, ADD(LD(stack_base), AND(LD(esp), LD(stack_mask))), TRUNC16(code));
-		BR_UNCOND(vec_bb[29]);
-		cpu->bb = vec_bb[29];
-		BR_COND(vec_bb[35], vec_bb[36], LD(stack_switch));
-		cpu->bb = vec_bb[35];
-		Value *flags = read_seg_desc_flags_emit(cpu, LD(desc));
-		Value *limit = read_seg_desc_limit_emit(cpu, LD(desc));
-		ST_SEG(OR(AND(LD(new_ss), CONST16(~3)), LD(dpl)), SS_idx);
-		ST_SEG_HIDDEN(LD(stack_base), SS_idx, SEG_BASE_idx);
-		ST_SEG_HIDDEN(limit, SS_idx, SEG_LIMIT_idx);
-		ST_SEG_HIDDEN(flags, SS_idx, SEG_FLG_idx);
-		ST(cpu->ptr_hflags, OR(SHR(AND(flags, CONST32(SEG_HIDDEN_DB)), CONST32(19)), AND(LD(cpu->ptr_hflags), CONST32(~HFLG_SS32))));
-		BR_UNCOND(vec_bb[36]);
-		cpu->bb = vec_bb[36];
-		ST_R32(AND(LD(eflags), CONST32(~(VM_MASK | RF_MASK | NT_MASK | TF_MASK))), EFLAGS_idx);
-		ST_R32(OR(AND(LD_R32(ESP_idx), NOT(LD(stack_mask))), AND(LD(esp), LD(stack_mask))), ESP_idx);
-		ST_SEG(OR(AND(sel, CONST16(~3)), LD(dpl)), CS_idx);
-		ST_SEG_HIDDEN(seg_base, CS_idx, SEG_BASE_idx);
-		ST_SEG_HIDDEN(seg_limit, CS_idx, SEG_LIMIT_idx);
-		ST_SEG_HIDDEN(seg_flags, CS_idx, SEG_FLG_idx);
-		ST(cpu->ptr_hflags, OR(OR(SHR(AND(seg_flags, CONST32(SEG_HIDDEN_DB)), CONST32(20)), ZEXT32(LD(dpl))), AND(LD(cpu->ptr_hflags), CONST32(~(HFLG_CS32 | HFLG_CPL)))));
-		ST_R32(LD(new_eip), EIP_idx);
-		BR_COND(vec_bb[37], vec_bb[38], ICMP_EQ(idx, CONST32(EXP_PF)));
-		cpu->bb = vec_bb[37];
-		ST_R32(fault_addr, CR2_idx);
-		BR_UNCOND(vec_bb[38]);
-		cpu->bb = vec_bb[38];
-		// always clear HFLG_DBG_TRAP
-		ST(cpu->ptr_hflags, AND(LD(cpu->ptr_hflags), CONST32(~HFLG_DBG_TRAP)));
-		// if this a db exp, also clear gd of dr7
-		BR_COND(vec_bb[49], vec_bb[50], ICMP_EQ(idx, CONST32(EXP_DB)));
-		cpu->bb = vec_bb[49];
-		ST_R32(AND(LD_R32(DR7_idx), CONST32(~DR7_GD_MASK)), DR7_idx);
-		BR_UNCOND(vec_bb[50]);
-		cpu->bb = vec_bb[50];
-		ST(GEP(ptr_exp_info, 1), CONST16(EXP_INVALID));
-		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(CONSTp(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
-		cpu->bb = vec_bb[0];
-		ST(GEP(ptr_exp_data, 1), TRUNC16(idx));
-		ST(GEP(ptr_exp_data, 2), CONST16(EXP_GP));
-		CallInst *ci0 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
-		ci0->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
-		ReturnInst::Create(CTX(), ci0, cpu->bb);
-		cpu->bb = vec_bb[39];
-		ABORT("Task gate descriptors are not supported yet while delivering an exception");
-		UNREACH();
-		cpu->bb = vec_bb[40];
-		ST(GEP(ptr_exp_data, 1), TRUNC16(idx));
-		ST(GEP(ptr_exp_data, 2), CONST16(EXP_GP));
-		CallInst *ci1 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
-		ci1->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
-		ReturnInst::Create(CTX(), ci1, cpu->bb);
-		cpu->bb = vec_bb[41];
-		ST(GEP(ptr_exp_data, 1), TRUNC16(idx));
-		ST(GEP(ptr_exp_data, 2), CONST16(EXP_NP));
-		CallInst *ci2 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
-		ci2->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
-		ReturnInst::Create(CTX(), ci2, cpu->bb);
-		cpu->bb = vec_bb[42];
-		ST(GEP(ptr_exp_data, 1), CONST16(0));
-		ST(GEP(ptr_exp_data, 2), CONST16(EXP_GP));
-		CallInst *ci3 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
-		ci3->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
-		ReturnInst::Create(CTX(), ci3, cpu->bb);
-		cpu->bb = vec_bb[43];
-		ST(GEP(ptr_exp_data, 1), sel);
-		ST(GEP(ptr_exp_data, 2), CONST16(EXP_GP));
-		CallInst *ci4 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
-		ci4->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
-		ReturnInst::Create(CTX(), ci4, cpu->bb);
-		cpu->bb = vec_bb[44];
-		ST(GEP(ptr_exp_data, 1), sel);
-		ST(GEP(ptr_exp_data, 2), CONST16(EXP_GP));
-		CallInst *ci5 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
-		ci5->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
-		ReturnInst::Create(CTX(), ci5, cpu->bb);
-		cpu->bb = vec_bb[45];
-		ST(GEP(ptr_exp_data, 1), sel);
-		ST(GEP(ptr_exp_data, 2), CONST16(EXP_NP));
-		CallInst *ci6 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
-		ci6->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
-		ReturnInst::Create(CTX(), ci6, cpu->bb);
-		cpu->bb = vec_bb[46];
-		ST(GEP(ptr_exp_data, 1), AND(LD_SEG(TR_idx), CONST16(0xFFFC)));
-		ST(GEP(ptr_exp_data, 2), CONST16(EXP_TS));
-		CallInst *ci7 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
-		ci7->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
-		ReturnInst::Create(CTX(), ci7, cpu->bb);
-		cpu->bb = vec_bb[47];
-		ST(GEP(ptr_exp_data, 1), AND(LD(new_ss), CONST16(0xFFFC)));
-		ST(GEP(ptr_exp_data, 2), CONST16(EXP_TS));
-		CallInst *ci8 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
-		ci8->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
-		ReturnInst::Create(CTX(), ci8, cpu->bb);
-		cpu->bb = vec_bb[48];
-		ST(GEP(ptr_exp_data, 1), AND(LD(new_ss), CONST16(0xFFFC)));
-		ST(GEP(ptr_exp_data, 2), CONST16(EXP_TS));
-		CallInst *ci9 = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
-		ci9->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
-		ReturnInst::Create(CTX(), ci9, cpu->bb);
-	}
-	else {
-		std::vector<BasicBlock *> vec_bb = getBBs(4);
-		BR_COND(vec_bb[0], vec_bb[1], ICMP_UGT(ADD(MUL(idx, CONST32(4)), CONST32(3)), LD_SEG_HIDDEN(IDTR_idx, SEG_LIMIT_idx)));
-		cpu->bb = vec_bb[1];
-		Value *vec_entry = LD_MEM(MEM_LD32_idx, ADD(LD_SEG_HIDDEN(IDTR_idx, SEG_BASE_idx), MUL(idx, CONST32(4))));
-		Value *stack_mask = CONST32(0xFFFF);
-		Value *stack_base = LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx);
-		Value *esp = ALLOC32();
-		ST(esp, LD_R32(ESP_idx));
-		ST(esp, SUB(LD(esp), CONST32(2)));
-		ST_MEM(MEM_LD16_idx, ADD(stack_base, AND(LD(esp), stack_mask)), TRUNC16(old_eflags));
-		ST(esp, SUB(LD(esp), CONST32(2)));
-		ST_MEM(MEM_LD16_idx, ADD(stack_base, AND(LD(esp), stack_mask)), LD_SEG(CS_idx));
-		ST(esp, SUB(LD(esp), CONST32(2)));
-		ST_MEM(MEM_LD16_idx, ADD(stack_base, AND(LD(esp), stack_mask)), TRUNC16(eip));
-		ST_R32(AND(LD_R32(EFLAGS_idx), CONST32(~(AC_MASK | RF_MASK | IF_MASK | TF_MASK))), EFLAGS_idx);
-		ST_R32(OR(AND(LD_R32(ESP_idx), NOT(stack_mask)), AND(LD(esp), stack_mask)), ESP_idx);
-		ST_SEG(TRUNC16(SHR(vec_entry, CONST32(16))), CS_idx);
-		ST_SEG_HIDDEN(SHL(ZEXT32(LD_SEG(CS_idx)), CONST32(4)), CS_idx, SEG_BASE_idx);
-		ST_R32(AND(vec_entry, CONST32(0xFFFF)), EIP_idx);
-		// always clear HFLG_DBG_TRAP
-		ST(cpu->ptr_hflags, AND(LD(cpu->ptr_hflags), CONST32(~HFLG_DBG_TRAP)));
-		// if this a db exp, also clear gd of dr7
-		BR_COND(vec_bb[2], vec_bb[3], ICMP_EQ(idx, CONST32(EXP_DB)));
-		cpu->bb = vec_bb[2];
-		ST_R32(AND(LD_R32(DR7_idx), CONST32(~DR7_GD_MASK)), DR7_idx);
-		BR_UNCOND(vec_bb[3]);
-		cpu->bb = vec_bb[3];
-		ST(GEP(ptr_exp_info, 1), CONST16(EXP_INVALID));
-		ReturnInst::Create(CTX(), ConstantExpr::getIntToPtr(CONSTp(nullptr), cpu->bb->getParent()->getReturnType()), cpu->bb);
-		cpu->bb = vec_bb[0];
-		ST(GEP(ptr_exp_data, 1), TRUNC16(idx));
-		ST(GEP(ptr_exp_data, 2), CONST16(EXP_GP));
-		CallInst *ci = CallInst::Create(cpu->bb->getParent(), cpu->ptr_cpu_ctx, "", cpu->bb);
-		ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
-		ReturnInst::Create(CTX(), ci, cpu->bb);
-	}
-
-	if (cpu->cpu_flags & CPU_PRINT_IR) {
-		std::string str;
-		raw_string_ostream os(str);
-		os << *cpu->mod;
-		os.flush();
-		LOG(log_level::debug, str.c_str());
-	}
-
-	if (cpu->cpu_flags & CPU_CODEGEN_OPTIMIZE) {
-		optimize(cpu);
-		if (cpu->cpu_flags & CPU_PRINT_IR_OPTIMIZED) {
-			std::string str;
-			raw_string_ostream os(str);
-			os << *cpu->mod;
-			os.flush();
-			LOG(log_level::debug, str.c_str());
-		}
-	}
-
-	orc::ThreadSafeContext tsc(std::unique_ptr<LLVMContext>(cpu->ctx));
-	orc::ThreadSafeModule tsm(std::unique_ptr<Module>(cpu->mod), tsc);
-	cpu->jit->add_ir_module(std::move(tsm));
-	cpu->cpu_ctx.exp_fn = reinterpret_cast<raise_exp_t>(cpu->jit->lookup("cpu_raise_exception")->getAddress());
-	assert(cpu->cpu_ctx.exp_fn);
-	cpu->jit->remove_symbols("cpu_raise_exception");
-	cpu->tc = nullptr;
-	cpu->bb = nullptr;
-}
-
-void
 create_tc_epilogue(cpu_t *cpu)
 {
 	Value *tc_ptr1 = new IntToPtrInst(CONSTp(cpu->tc), cpu->bb->getParent()->getReturnType(), "", cpu->bb);
@@ -1011,12 +591,26 @@ create_tc_epilogue(cpu_t *cpu)
 void
 raise_exp_inline_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip)
 {
-	Value *ptr_exp_data = GEP(GEP(cpu->ptr_cpu_ctx, 9), 0);
+	Value *ptr_exp_data = GEP(GEP(cpu->ptr_cpu_ctx, 8), 0);
 	ST(GEP(ptr_exp_data, 0), fault_addr);
 	ST(GEP(ptr_exp_data, 1), code);
 	ST(GEP(ptr_exp_data, 2), idx);
 	ST(GEP(ptr_exp_data, 3), eip);
 	CallInst *ci = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
+	ci->setCallingConv(CallingConv::C);
+	ReturnInst::Create(CTX(), ci, cpu->bb);
+}
+
+void
+raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip)
+{
+	Value *ptr_exp_data = GEP(GEP(cpu->ptr_cpu_ctx, 8), 0);
+	ST(GEP(ptr_exp_data, 0), fault_addr);
+	ST(GEP(ptr_exp_data, 1), code);
+	ST(GEP(ptr_exp_data, 2), idx);
+	ST(GEP(ptr_exp_data, 3), eip);
+	Function *exp_isInt = cast<Function>(cpu->mod->getOrInsertFunction("cpu_raise_exception_isInt", cpu->bb->getParent()->getReturnType(), cpu->ptr_cpu_ctx->getType()));
+	CallInst *ci = CallInst::Create(exp_isInt, cpu->ptr_cpu_ctx, "", cpu->bb);
 	ci->setCallingConv(CallingConv::C);
 	ReturnInst::Create(CTX(), ci, cpu->bb);
 }

@@ -11,7 +11,6 @@
 
 std::vector<BasicBlock *> gen_bbs(cpu_t *cpu, const unsigned num);
 void gen_int_fn(cpu_t *cpu);
-void gen_exp_fn(cpu_t *cpu);
 void optimize(cpu_t *cpu);
 void get_ext_fn(cpu_t *cpu);
 void create_tc_prologue(cpu_t *cpu);
@@ -39,6 +38,7 @@ void link_dst_only_emit(cpu_t *cpu);
 Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
 Value *floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits);
 void raise_exp_inline_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
+void raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
 BasicBlock *raise_exception_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
 std::vector<Value *> check_ss_desc_priv_emit(cpu_t *cpu, Value *sel, Value *cs = nullptr, Value *cpl = nullptr, BasicBlock *bb_exp = nullptr);
 std::vector<Value *> check_seg_desc_priv_emit(cpu_t *cpu, Value *sel);
@@ -256,6 +256,8 @@ default: \
 #define RAISEin(addr, code, idx, eip) raise_exp_inline_emit(cpu, CONST32(addr), CONST16(code), CONST16(idx), CONST32(eip)); \
 cpu->bb = getBB()
 #define RAISEin0(idx) raise_exp_inline_emit(cpu, CONST32(0), CONST16(0), CONST16(idx), cpu->instr_eip); \
+cpu->bb = getBB()
+#define RAISEisInt(addr, code, idx, eip) raise_exp_inline_isInt_emit(cpu, CONST32(addr), CONST16(code), CONST16(idx), CONST32(eip)); \
 cpu->bb = getBB()
 #define SET_FLG_SUM(sum, a, b) set_flags_sum(cpu, sum, a , b, size_mode)
 #define SET_FLG_SUB(sub, a, b) set_flags_sub(cpu, sub, a , b, size_mode)

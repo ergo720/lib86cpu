@@ -15,9 +15,324 @@
 #include "jit.h"
 #include "main_wnd.h"
 #include "debugger.h"
+#include "helpers.h"
 
 #define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(disas_ctx->virt_pc - bytes, &instr).c_str())
 
+
+static void
+check_dbl_exp(cpu_ctx_t *cpu_ctx)
+{
+	uint16_t idx = cpu_ctx->exp_info.exp_data.idx;
+	bool old_contributory = cpu_ctx->exp_info.old_exp == 0 || (cpu_ctx->exp_info.old_exp >= 10 && cpu_ctx->exp_info.old_exp <= 13);
+	bool curr_contributory = idx == 0 || (idx >= 10 && idx <= 13);
+
+	LOG(log_level::info, "%s old: %u new %u", __func__, cpu_ctx->exp_info.old_exp, idx);
+
+	if (cpu_ctx->exp_info.old_exp == EXP_DF) {
+		throw lc86_exp_abort("The guest has triple faulted, cannot continue", lc86_status::success);
+	}
+
+	if ((old_contributory && curr_contributory) || (cpu_ctx->exp_info.old_exp == EXP_PF && (curr_contributory || (idx == EXP_PF)))) {
+		cpu_ctx->exp_info.exp_data.code = 0;
+		cpu_ctx->exp_info.exp_data.eip = 0;
+		idx = EXP_DF;
+	}
+
+	if (curr_contributory || (idx == EXP_PF) || (idx == EXP_DF)) {
+		cpu_ctx->exp_info.old_exp = idx;
+	}
+
+	cpu_ctx->exp_info.exp_data.idx = idx;
+}
+
+template<bool is_int>
+translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
+{
+	check_dbl_exp(cpu_ctx);
+
+	cpu_t *cpu = cpu_ctx->cpu;
+	uint32_t fault_addr = cpu_ctx->exp_info.exp_data.fault_addr;
+	uint16_t code = cpu_ctx->exp_info.exp_data.code;
+	uint16_t idx = cpu_ctx->exp_info.exp_data.idx;
+	uint32_t eip = cpu_ctx->exp_info.exp_data.eip;
+	uint32_t old_eflags = read_eflags(cpu);
+
+	if (cpu_ctx->hflags & HFLG_PE_MODE) {
+		// protected mode
+
+		if (idx * 8 + 7 > cpu_ctx->regs.idtr_hidden.limit) {
+			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2;
+			cpu_ctx->exp_info.exp_data.idx = EXP_GP;
+			return cpu_raise_exception(cpu_ctx);
+		}
+
+		uint64_t desc = mem_read<uint64_t>(cpu, cpu_ctx->regs.idtr_hidden.base + idx * 8, eip, 2);
+		uint16_t type = (desc >> 40) & 0x1F;
+		uint32_t new_eip, eflags;
+		switch (type)
+		{
+		case 5:  // task gate
+			// we don't support task gates yet, so just abort
+			LIB86CPU_ABORT_msg("Task gates are not supported yet while delivering an exception");
+
+		case 6:  // interrupt gate, 16 bit
+		case 14: // interrupt gate, 32 bit
+			eflags = cpu_ctx->regs.eflags & ~IF_MASK;
+			new_eip = ((desc & 0xFFFF000000000000) >> 32) | (desc & 0xFFFF);
+			break;
+
+		case 7:  // trap gate, 16 bit
+		case 15: // trap gate, 32 bit
+			eflags = cpu_ctx->regs.eflags;
+			new_eip = ((desc & 0xFFFF000000000000) >> 32) | (desc & 0xFFFF);
+			break;
+
+		default:
+			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2;
+			cpu_ctx->exp_info.exp_data.idx = EXP_GP;
+			return cpu_raise_exception(cpu_ctx);
+		}
+
+		uint32_t dpl = (desc & SEG_DESC_DPL) >> 45;
+		uint32_t cpl = cpu_ctx->hflags & HFLG_CPL;
+		if (is_int && (dpl < cpl)) {
+			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2;
+			cpu_ctx->exp_info.exp_data.idx = EXP_GP;
+			return cpu_raise_exception(cpu_ctx);
+		}
+
+		if ((desc & SEG_DESC_P) == 0) {
+			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2;
+			cpu_ctx->exp_info.exp_data.idx = EXP_NP;
+			return cpu_raise_exception(cpu_ctx);
+		}
+
+		uint16_t sel = (desc & 0xFFFF0000) >> 16;
+		if ((sel >> 2) == 0) {
+			cpu_ctx->exp_info.exp_data.code = 0;
+			cpu_ctx->exp_info.exp_data.idx = EXP_GP;
+			return cpu_raise_exception(cpu_ctx);
+		}
+
+		addr_t code_desc_addr;
+		uint64_t code_desc;
+		if (read_seg_desc_helper(cpu, sel, code_desc_addr, code_desc, eip)) {
+			return cpu_raise_exception(cpu_ctx);
+		}
+
+		dpl = (code_desc & SEG_DESC_DPL) >> 45;
+		if (dpl > cpl) {
+			cpu_ctx->exp_info.exp_data.code = sel & 0xFFFC;
+			cpu_ctx->exp_info.exp_data.idx = EXP_GP;
+			return cpu_raise_exception(cpu_ctx);
+		}
+
+		if ((code_desc & SEG_DESC_P) == 0) {
+			cpu_ctx->exp_info.exp_data.code = sel & 0xFFFC;
+			cpu_ctx->exp_info.exp_data.idx = EXP_NP;
+			return cpu_raise_exception(cpu_ctx);
+		}
+
+		if (code_desc & SEG_DESC_C) {
+			dpl = cpl;
+		}
+
+		set_access_flg_seg_desc_helper(cpu, code_desc, code_desc_addr, eip);
+
+		uint32_t seg_base = read_seg_desc_base_helper(cpu, code_desc);
+		uint32_t seg_limit = read_seg_desc_limit_helper(cpu, code_desc);
+		uint32_t seg_flags = read_seg_desc_flags_helper(cpu, code_desc);
+		uint32_t stack_switch, stack_mask, stack_base, esp;
+		uint32_t new_esp;
+		uint16_t new_ss;
+		addr_t ss_desc_addr;
+		uint64_t ss_desc;
+
+		if (dpl < cpl) {
+			// more privileged
+
+			if (read_stack_ptr_from_tss_helper(cpu, dpl, new_esp, new_ss, eip)) {
+				return cpu_raise_exception(cpu_ctx);
+			}
+
+			if ((new_ss >> 2) == 0) {
+				cpu_ctx->exp_info.exp_data.code = new_ss & 0xFFFC;
+				cpu_ctx->exp_info.exp_data.idx = EXP_TS;
+				return cpu_raise_exception(cpu_ctx);
+			}
+
+			if (read_seg_desc_helper(cpu, new_ss, ss_desc_addr, ss_desc, eip)) {
+				// code already written by read_seg_desc_helper
+				cpu_ctx->exp_info.exp_data.idx = EXP_TS;
+				return cpu_raise_exception(cpu_ctx);
+			}
+
+			uint32_t p = (ss_desc & SEG_DESC_P) >> 40;
+			uint32_t s = (ss_desc & SEG_DESC_S) >> 44;
+			uint32_t d = (ss_desc & SEG_DESC_DC) >> 42;
+			uint32_t w = (ss_desc & SEG_DESC_W) >> 39;
+			uint32_t ss_dpl = (ss_desc & SEG_DESC_DPL) >> 42;
+			uint32_t ss_rpl = (new_ss & 3) << 5;
+			if ((s | d | w | ss_dpl | ss_rpl | p) ^ ((0x85 | (dpl << 3)) | (dpl << 5))) {
+				cpu_ctx->exp_info.exp_data.code = new_ss & 0xFFFC;
+				cpu_ctx->exp_info.exp_data.idx = EXP_TS;
+				return cpu_raise_exception(cpu_ctx);
+			}
+
+			set_access_flg_seg_desc_helper(cpu, ss_desc, ss_desc_addr, eip);
+
+			stack_switch = 1;
+			stack_mask = ss_desc & SEG_DESC_DB ? 0xFFFFFFFF : 0xFFFF;
+			stack_base = read_seg_desc_base_helper(cpu, ss_desc);
+			esp = new_esp;
+		}
+		else { // same privilege
+			stack_switch = 0;
+			stack_mask = cpu_ctx->hflags & HFLG_SS32 ? 0xFFFFFFFF : 0xFFFF;
+			stack_base = cpu_ctx->regs.ss_hidden.base;
+			esp = cpu_ctx->regs.esp;
+		}
+
+		uint8_t has_code;
+		switch (idx)
+		{
+		case EXP_DF:
+		case EXP_TS:
+		case EXP_NP:
+		case EXP_SS:
+		case EXP_GP:
+		case EXP_PF:
+		case EXP_AC:
+			has_code = 1;
+			break;
+
+		default:
+			has_code = 0;
+		}
+
+		type >>= 3;
+		if (stack_switch) {
+			if (type) { // push 32, priv
+				esp -= 4;
+				mem_write<uint32_t>(cpu, stack_base + (esp & stack_mask), cpu_ctx->regs.ss, eip, 2);
+				esp -= 4;
+				mem_write<uint32_t>(cpu, stack_base + (esp & stack_mask), cpu_ctx->regs.esp, eip, 2);
+				esp -= 4;
+				mem_write<uint32_t>(cpu, stack_base + (esp & stack_mask), old_eflags, eip, 2);
+				esp -= 4;
+				mem_write<uint32_t>(cpu, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 2);
+				esp -= 4;
+				mem_write<uint32_t>(cpu, stack_base + (esp & stack_mask), eip, eip, 2);
+				if (has_code) {
+					esp -= 4;
+					mem_write<uint32_t>(cpu, stack_base + (esp & stack_mask), code, eip, 2);
+				}
+			}
+			else { // push 16, priv
+				esp -= 2;
+				mem_write<uint16_t>(cpu, stack_base + (esp & stack_mask), cpu_ctx->regs.ss, eip, 2);
+				esp -= 2;
+				mem_write<uint16_t>(cpu, stack_base + (esp & stack_mask), cpu_ctx->regs.esp, eip, 2);
+				esp -= 2;
+				mem_write<uint16_t>(cpu, stack_base + (esp & stack_mask), old_eflags, eip, 2);
+				esp -= 2;
+				mem_write<uint16_t>(cpu, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 2);
+				esp -= 2;
+				mem_write<uint16_t>(cpu, stack_base + (esp & stack_mask), eip, eip, 2);
+				if (has_code) {
+					esp -= 2;
+					mem_write<uint16_t>(cpu, stack_base + (esp & stack_mask), code, eip, 2);
+				}
+			}
+
+			uint32_t ss_flags = read_seg_desc_flags_helper(cpu, ss_desc);
+			cpu_ctx->regs.ss = (new_ss & ~3) | dpl;
+			cpu_ctx->regs.ss_hidden.base = stack_base;
+			cpu_ctx->regs.ss_hidden.limit = read_seg_desc_limit_helper(cpu, ss_desc);
+			cpu_ctx->regs.ss_hidden.flags = ss_flags;
+			cpu_ctx->hflags = ((ss_flags & SEG_HIDDEN_DB) >> 19) | (cpu_ctx->hflags & ~HFLG_SS32);
+		}
+		else {
+			if (type) { // push 32, not priv
+				esp -= 4;
+				mem_write<uint32_t>(cpu, stack_base + (esp & stack_mask), old_eflags, eip, 0);
+				esp -= 4;
+				mem_write<uint32_t>(cpu, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 0);
+				esp -= 4;
+				mem_write<uint32_t>(cpu, stack_base + (esp & stack_mask), eip, eip, 0);
+				if (has_code) {
+					esp -= 4;
+					mem_write<uint32_t>(cpu, stack_base + (esp & stack_mask), code, eip, 0);
+				}
+			}
+			else { // push 16, not priv
+				esp -= 2;
+				mem_write<uint16_t>(cpu, stack_base + (esp & stack_mask), old_eflags, eip, 0);
+				esp -= 2;
+				mem_write<uint16_t>(cpu, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 0);
+				esp -= 2;
+				mem_write<uint16_t>(cpu, stack_base + (esp & stack_mask), eip, eip, 0);
+				if (has_code) {
+					esp -= 2;
+					mem_write<uint16_t>(cpu, stack_base + (esp & stack_mask), code, eip, 0);
+				}
+			}
+		}
+
+		cpu_ctx->regs.eflags = (eflags & ~(VM_MASK | RF_MASK | NT_MASK | TF_MASK));
+		cpu_ctx->regs.esp = (cpu_ctx->regs.esp & ~stack_mask) | (esp & stack_mask);
+		cpu_ctx->regs.cs = (sel & ~3) | dpl;
+		cpu_ctx->regs.cs_hidden.base = seg_base;
+		cpu_ctx->regs.cs_hidden.limit = seg_limit;
+		cpu_ctx->regs.cs_hidden.flags = seg_flags;
+		cpu_ctx->hflags = (((seg_flags & SEG_HIDDEN_DB) >> 20) | dpl) | (cpu_ctx->hflags & ~(HFLG_CS32 | HFLG_CPL));
+		cpu_ctx->regs.eip = new_eip;
+		// always clear HFLG_DBG_TRAP
+		cpu_ctx->hflags &= ~HFLG_DBG_TRAP;
+		if (idx == EXP_PF) {
+			cpu_ctx->regs.cr2 = fault_addr;
+		}
+		if (idx == EXP_DB) {
+			cpu_ctx->regs.dr7 &= ~DR7_GD_MASK;
+		}
+		cpu_ctx->exp_info.old_exp = EXP_INVALID;
+	}
+	else {
+		// real mode
+
+		if (idx * 4 + 3 > cpu_ctx->regs.idtr_hidden.limit) {
+			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2;
+			cpu_ctx->exp_info.exp_data.idx = EXP_GP;
+			return cpu_raise_exception(cpu_ctx);
+		}
+
+		uint32_t vec_entry = mem_read<uint32_t>(cpu, cpu_ctx->regs.idtr_hidden.base + idx * 4, eip, 0);
+		uint32_t stack_mask = 0xFFFF;
+		uint32_t stack_base = cpu_ctx->regs.ss_hidden.base;
+		uint32_t esp = cpu_ctx->regs.esp;
+		esp -= 2;
+		mem_write<uint16_t>(cpu, stack_base + (esp & stack_mask), old_eflags, eip, 0);
+		esp -= 2;
+		mem_write<uint16_t>(cpu, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 0);
+		esp -= 2;
+		mem_write<uint16_t>(cpu, stack_base + (esp & stack_mask), eip, eip, 0);
+
+		cpu_ctx->regs.eflags &= ~(AC_MASK | RF_MASK | IF_MASK | TF_MASK);
+		cpu_ctx->regs.esp = (cpu_ctx->regs.esp & ~stack_mask) | (esp & stack_mask);
+		cpu_ctx->regs.cs = vec_entry >> 16;
+		cpu_ctx->regs.cs_hidden.base = cpu_ctx->regs.cs << 4;
+		cpu_ctx->regs.eip = vec_entry & 0xFFFF;
+		// always clear HFLG_DBG_TRAP
+		cpu_ctx->hflags &= ~HFLG_DBG_TRAP;
+		if (idx == EXP_DB) {
+			cpu_ctx->regs.dr7 &= ~DR7_GD_MASK;
+		}
+		cpu_ctx->exp_info.old_exp = EXP_INVALID;
+	}
+
+	return nullptr;
+}
 
 addr_t
 get_pc(cpu_ctx_t *cpu_ctx)
@@ -1927,7 +2242,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_INT3: {
 			// NOTE1: we don't support virtual 8086 mode, so we don't need to check for it
 			// NOTE2: we can't just use RAISEin0 because the eip should point to the instr following int3
-			RAISEin(0, 0, EXP_BP, (pc + bytes) - cpu_ctx->regs.cs_hidden.base);
+			RAISEisInt(0, 0, EXP_BP, (pc + bytes) - cpu_ctx->regs.cs_hidden.base);
 			translate_next = 0;
 		}
 		break;
@@ -5256,31 +5571,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	}
 }
 
-void
-check_dbl_exp(cpu_ctx_t *cpu_ctx, uint16_t idx)
-{
-	bool old_contributory = cpu_ctx->exp_info.old_exp == 0 || (cpu_ctx->exp_info.old_exp >= 10 && cpu_ctx->exp_info.old_exp <= 13);
-	bool curr_contributory = idx == 0 || (idx >= 10 && idx <= 13);
-
-	LOG(log_level::info, "%s old: %u new %u", __func__, cpu_ctx->exp_info.old_exp, idx);
-
-	if (cpu_ctx->exp_info.old_exp == EXP_DF) {
-		throw lc86_exp_abort("The guest has triple faulted, cannot continue", lc86_status::success);
-	}
-
-	if ((old_contributory && curr_contributory) || (cpu_ctx->exp_info.old_exp == EXP_PF && (curr_contributory || (idx == EXP_PF)))) {
-		cpu_ctx->exp_info.exp_data.code = 0;
-		cpu_ctx->exp_info.exp_data.eip = 0;
-		idx = EXP_DF;
-	}
-
-	if (curr_contributory || (idx == EXP_PF) || (idx == EXP_DF)) {
-		cpu_ctx->exp_info.old_exp = idx;
-	}
-
-	cpu_ctx->exp_info.exp_data.idx = idx;
-}
-
 static translated_code_t *
 cpu_dbg_int(cpu_ctx_t *cpu_ctx)
 {
@@ -5331,7 +5621,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			retry_exp:
 			try {
 				// the exception handler always returns nullptr
-				prev_tc = cpu->cpu_ctx.exp_fn(&cpu->cpu_ctx);
+				prev_tc = cpu_raise_exception(&cpu->cpu_ctx);
 			}
 			catch (host_exp_t type) {
 				assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
@@ -5521,7 +5811,7 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 			retry_exp:
 			try {
 				// the exception handler always returns nullptr
-				return cpu_ctx->exp_fn(cpu_ctx);
+				return cpu_raise_exception(cpu_ctx);
 			}
 			catch (host_exp_t type) {
 				assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
@@ -5582,7 +5872,6 @@ cpu_start(cpu_t *cpu)
 	}
 
 	try {
-		gen_exp_fn(cpu);
 		cpu_main_loop<false, false>(cpu, []() { return true; });
 	}
 	catch (lc86_exp_abort &exp) {
@@ -5606,3 +5895,6 @@ cpu_exec_trampoline(cpu_t *cpu, const uint32_t ret_eip)
 	cpu->cpu_ctx.hflags |= HFLG_TRAMP;
 	cpu_main_loop<true, false>(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
 }
+
+template translated_code_t *cpu_raise_exception<true>(cpu_ctx_t *cpu_ctx);
+template translated_code_t *cpu_raise_exception<false>(cpu_ctx_t *cpu_ctx);

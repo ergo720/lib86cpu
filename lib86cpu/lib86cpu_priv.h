@@ -105,7 +105,6 @@ struct exp_info_t {
 struct cpu_ctx_t;
 struct translated_code_t;
 using entry_t = translated_code_t * (*)(cpu_ctx_t *cpu_ctx);
-using raise_exp_t = entry_t;
 using raise_int_t = void (*)(cpu_ctx_t *cpu_ctx, uint8_t int_flg);
 using iret_t = entry_t; // could just return void
 
@@ -154,7 +153,6 @@ struct cpu_ctx_t {
 	uint16_t tlb_region_idx[TLB_MAX_SIZE];
 	uint16_t iotlb[IOTLB_MAX_SIZE];
 	uint8_t *ram;
-	raise_exp_t exp_fn;
 	exp_info_t exp_info;
 	uint8_t alignas(1) int_pending;
 };
@@ -212,10 +210,10 @@ struct cpu_t {
 	llvm::Value *ptr_tlb_region_idx;
 	llvm::Value *ptr_iotlb;
 	llvm::Value *ptr_ram;
-	llvm::Value *ptr_exp_fn;
 	llvm::Value *ptr_abort_fn;
 	llvm::Value *instr_eip;
 	llvm::BasicBlock *bb; // bb to which we are currently adding llvm instructions
 	llvm::Function *ptr_mem_ldfn[7];
 	llvm::Function *ptr_mem_stfn[7];
+	llvm::Function *ptr_exp_fn;
 };

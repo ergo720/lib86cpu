@@ -99,7 +99,8 @@ lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetM
 	define_absolute(mangle("msr_read_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&msr_read_helper), JITSymbolFlags::Absolute));
 	define_absolute(mangle("cpu_runtime_abort"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_runtime_abort), JITSymbolFlags::Absolute));
 	define_absolute(mangle("dbg_update_bp_hook"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&dbg_update_exp_hook), JITSymbolFlags::Absolute));
-	define_absolute(mangle("check_dbl_exp"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&check_dbl_exp), JITSymbolFlags::Absolute));
+	define_absolute(mangle("cpu_raise_exception_isInt"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_raise_exception<true>), JITSymbolFlags::Absolute));
+	define_absolute(mangle("cpu_raise_exception"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_raise_exception<false>), JITSymbolFlags::Absolute));
 	define_absolute(mangle("iret_pe_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&lret_pe_helper<true>), JITSymbolFlags::Absolute));
 	define_absolute(mangle("lret_pe_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&lret_pe_helper<false>), JITSymbolFlags::Absolute));
 	define_absolute(mangle("iret_real_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&iret_real_helper), JITSymbolFlags::Absolute));

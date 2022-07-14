@@ -673,7 +673,6 @@ update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip
 			// since tc_cache_clear has deleted the calling code block, we must return to the translator with an exception
 			cpu_ctx->regs.eip = (eip + bytes);
 			cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
-			gen_exp_fn(cpu_ctx->cpu);
 			throw host_exp_t::cpu_mode_changed;
 		}
 
@@ -714,7 +713,7 @@ update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip
 
 		cpu_ctx->regs.cr4 = new_cr;
 	}
-		  break;
+	break;
 
 	case 2:
 	default:
