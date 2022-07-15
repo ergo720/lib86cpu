@@ -14,3 +14,4 @@ uint8_t lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uin
 template<bool is_verr> void verrw_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
 template<unsigned reg> uint8_t mov_sel_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
 uint8_t ltr_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+uint8_t lldt_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);

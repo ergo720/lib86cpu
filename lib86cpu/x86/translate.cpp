@@ -2607,27 +2607,17 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			else {
 				Value *sel, *rm;
-				std::vector<BasicBlock *> vec_bb = getBBs(5);
 				GET_RM(OPNUM_SINGLE, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(SHR(sel, CONST16(2)), CONST16(0)));
-				cpu->bb = vec_bb[0];
-				write_seg_reg_emit(cpu, LDTR_idx, sel, CONST32(0), CONST32(0), CONST32(0));
-				BR_UNCOND(vec_bb[4]);
-				cpu->bb = vec_bb[1];
-				Value *desc = read_seg_desc_emit(cpu, sel)[1];
-				Value *s = SHR(AND(desc, CONST64(SEG_DESC_S)), CONST64(40));
-				Value *ty = SHR(AND(desc, CONST64(SEG_DESC_TY)), CONST64(40));
-				BasicBlock *bb_exp = RAISE(AND(sel, CONST16(0xFFFC)), EXP_GP);
-				BR_COND(bb_exp, vec_bb[2], ICMP_NE(XOR(OR(s, ty), CONST64(SEG_DESC_LDT)), CONST64(0))); // must be ldt type
-				cpu->bb = vec_bb[2];
-				Value *p = AND(desc, CONST64(SEG_DESC_P));
-				bb_exp = RAISE(AND(sel, CONST16(0xFFFC)), EXP_NP);
-				BR_COND(bb_exp, vec_bb[3], ICMP_EQ(p, CONST64(0))); // segment not present
-				cpu->bb = vec_bb[3];
-				write_seg_reg_emit(cpu, LDTR_idx, sel, read_seg_desc_base_emit(cpu, desc),
-					read_seg_desc_limit_emit(cpu, desc), read_seg_desc_flags_emit(cpu, desc));
-				BR_UNCOND(vec_bb[4]);
-				cpu->bb = vec_bb[4];
+				Function *ltr_helper = cast<Function>(cpu->mod->getOrInsertFunction("lldt_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
+					getIntegerType(16), getIntegerType(32)));
+				CallInst *ci = CallInst::Create(ltr_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
+				BasicBlock *bb0 = getBB();
+				BasicBlock *bb1 = getBB();
+				BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
+				cpu->bb = bb0;
+				CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
+				ReturnInst::Create(CTX(), ci2, cpu->bb);
+				cpu->bb = bb1;
 			}
 		}
 		break;
