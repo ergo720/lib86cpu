@@ -104,18 +104,31 @@ raise_exp_helper(cpu_t *cpu, uint16_t code, uint16_t idx, uint32_t eip)
 	return 1;
 }
 
-uint8_t
-read_seg_desc_helper(cpu_t *cpu, uint16_t sel, addr_t &desc_addr, uint64_t &desc, uint32_t eip)
+template<bool is_tss>
+uint8_t read_seg_desc_helper(cpu_t *cpu, uint16_t sel, addr_t &desc_addr, uint64_t &desc, uint32_t eip)
 {
 	uint32_t base, limit;
 	uint16_t idx = sel >> 3;
-	if (((sel & 4) >> 2) == 0) {
-		base = cpu->cpu_ctx.regs.gdtr_hidden.base;
-		limit = cpu->cpu_ctx.regs.gdtr_hidden.limit;
+	uint16_t ti = sel & 4;
+
+	if constexpr (is_tss) {
+		if (ti) {
+			return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP, eip); // must be in the gdt
+		}
+		else {
+			base = cpu->cpu_ctx.regs.gdtr_hidden.base;
+			limit = cpu->cpu_ctx.regs.gdtr_hidden.limit;
+		}
 	}
 	else {
-		base = cpu->cpu_ctx.regs.ldtr_hidden.base;
-		limit = cpu->cpu_ctx.regs.ldtr_hidden.limit;
+		if (ti) {
+			base = cpu->cpu_ctx.regs.ldtr_hidden.base;
+			limit = cpu->cpu_ctx.regs.ldtr_hidden.limit;
+		}
+		else {
+			base = cpu->cpu_ctx.regs.gdtr_hidden.base;
+			limit = cpu->cpu_ctx.regs.gdtr_hidden.limit;
+		}
 	}
 
 	desc_addr = base + idx * 8;
@@ -262,3 +275,6 @@ read_stack_ptr_from_tss_helper(cpu_t *cpu, uint32_t dpl, uint32_t &esp, uint16_t
 
 	return 0;
 }
+
+template uint8_t read_seg_desc_helper<true>(cpu_t *cpu, uint16_t sel, addr_t &desc_addr, uint64_t &desc, uint32_t eip);
+template uint8_t read_seg_desc_helper<false>(cpu_t *cpu, uint16_t sel, addr_t &desc_addr, uint64_t &desc, uint32_t eip);

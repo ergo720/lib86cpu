@@ -59,6 +59,13 @@ write_seg_reg_helper(cpu_t *cpu, uint16_t sel, uint32_t base, uint32_t limit, ui
 		cpu->cpu_ctx.regs.gs_hidden.flags = flags;
 		break;
 
+	case TR_idx:
+		cpu->cpu_ctx.regs.tr = sel;
+		cpu->cpu_ctx.regs.tr_hidden.base = base;
+		cpu->cpu_ctx.regs.tr_hidden.limit = limit;
+		cpu->cpu_ctx.regs.tr_hidden.flags = flags;
+		break;
+
 	default:
 		LIB86CPU_ABORT();
 	}
@@ -662,6 +669,37 @@ void verrw_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
 	uint32_t pdb = (cpu_ctx->lazy_eflags.result ^ (cpu_ctx->lazy_eflags.auxbits >> 8) & 0xFF) << 8;
 	cpu_ctx->lazy_eflags.result = 0;
 	cpu_ctx->lazy_eflags.auxbits = (cpu_ctx->lazy_eflags.auxbits & 0xFFFF00FE) | (sfd | pdb);
+}
+
+uint8_t
+ltr_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
+{
+	cpu_t *cpu = cpu_ctx->cpu;
+
+	if ((sel >> 2) == 0) { // sel == NULL
+		return raise_exp_helper(cpu, 0, EXP_GP, eip);
+	}
+
+	addr_t desc_addr;
+	uint64_t desc;
+	if (read_seg_desc_helper<true>(cpu, sel, desc_addr, desc, eip)) {
+		return 1;
+	}
+
+	uint8_t s = (desc & SEG_DESC_S) >> 40;
+	uint8_t ty = (desc & SEG_DESC_TY) >> 40;
+	if (!(((s | ty) == SEG_DESC_TSS16AV) || ((s | ty) == SEG_DESC_TSS32AV))) { // must be an available tss
+		return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP, eip);
+	}
+
+	if ((desc & SEG_DESC_P) == 0) { // tss not present
+		return raise_exp_helper(cpu, sel & 0xFFFC, EXP_NP, eip);
+	}
+
+	mem_write<uint64_t>(cpu, desc_addr, desc | SEG_DESC_BY, eip, 2);
+	write_seg_reg_helper<TR_idx>(cpu, sel, read_seg_desc_base_helper(cpu, desc), read_seg_desc_limit_helper(cpu, desc), read_seg_desc_flags_helper(cpu, desc));
+
+	return 0;
 }
 
 uint8_t
