@@ -443,7 +443,11 @@ get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, uint32_t is_code, disas_ctx
 size_t
 as_ram_dispatch_read(cpu_t *cpu, addr_t addr, size_t size, memory_region_t<addr_t> *region, uint8_t *buffer)
 {
+#if defined(_WIN64)
+	size_t bytes_to_read = std::min((region->end - addr) + 1ULL, size);
+#else
 	size_t bytes_to_read = std::min((region->end - addr) + 1, size);
+#endif
 
 	switch (region->type)
 	{

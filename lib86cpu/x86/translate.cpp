@@ -509,11 +509,22 @@ tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc)
 void
 tc_cache_clear(cpu_t *cpu)
 {
+	// Use this when you want to destroy all code sections but leave intact the data sections instead. E.g: on x86-64, you'll want to keep the .pdata sections
+	// when this is called from a function called from the JITed code, and the current function can potentially throw an exception
 	cpu->num_tc = 0;
 	cpu->tc_page_map.clear();
 	for (auto &bucket : cpu->code_cache) {
 		bucket.clear();
 	}
+}
+
+void
+tc_cache_purge(cpu_t *cpu)
+{
+	// This is like tc_cache_clear, but it also frees all the non-code sections. E.g: on x86-64, llvm also emits .pdata sections that hold the exception tables
+	// necessary to unwind the stack of the JITed functions
+	tc_cache_clear(cpu);
+	g_mapper.destroy_all_blocks();
 }
 
 static void
@@ -5886,7 +5897,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			if (disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR)) {
 				if (cpu->cpu_flags & CPU_FORCE_INSERT) {
 					if ((cpu->num_tc) == CODE_CACHE_MAX_SIZE) {
-						tc_cache_clear(cpu);
+						tc_cache_purge(cpu);
 						prev_tc = nullptr;
 					}
 					tc_cache_insert(cpu, pc, std::move(tc));
@@ -5900,7 +5911,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			}
 			else {
 				if ((cpu->num_tc) == CODE_CACHE_MAX_SIZE) {
-					tc_cache_clear(cpu);
+					tc_cache_purge(cpu);
 					prev_tc = nullptr;
 				}
 				tc_cache_insert(cpu, pc, std::move(tc));

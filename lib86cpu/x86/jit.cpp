@@ -19,19 +19,15 @@ lc86_jit::create(cpu_t *cpu)
 	InitializeNativeTargetAsmParser();
 	InitializeNativeTargetAsmPrinter();
 
-#if defined(_WIN32) && defined(_MSC_VER)
-	// using detectHost on win32 will select a default "i686-pc-windows-msvc" triple, which is wrong since this will use
-	// MM_WinCOFF mangling mode, while we want MM_WinCOFFX86 for 32 bit targets.
-	// Because of this, we construct the triple ourselves instead of using the default one.
-	// NOTE: I'm not sure if non-msvc compilers are affected as well.
+	// JITTargetMachineBuilder::detectHost is not reliable because of this comment in the LLVM sources: "getProcessTriple is bogus. It returns the host LLVM
+	// was compiled on, rather than a valid triple for the current process.", so we always construct the triple ourselves
 
+#if defined(_WIN64) && defined(_MSC_VER)
+	auto jtmb = orc::JITTargetMachineBuilder(Triple("x86_64-pc-windows-msvc-coff"));
+#elif defined(_WIN32) && defined(_MSC_VER)
 	auto jtmb = orc::JITTargetMachineBuilder(Triple("i686-pc-windows-msvc-coff"));
 #else
-	auto ret = orc::JITTargetMachineBuilder::detectHost();
-	if (!ret) {
-		LIB86CPU_ABORT();
-	}
-	auto jtmb = *ret;
+#error Unknow LLVM triple
 #endif
 
 	SubtargetFeatures features;
@@ -66,7 +62,7 @@ lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, JITTargetMachineBuilder
 	m_dl(std::move(dl)),
 	m_obj_linking_layer(
 		*this->m_es,
-		[this]() { return std::make_unique<SectionMemoryManager>(&g_mem_manager); }),
+		[this]() { return std::make_unique<mem_manager>(); }),
 	m_compile_layer(*this->m_es, m_obj_linking_layer, std::make_unique<ConcurrentIRCompiler>(std::move(jtmb))),
 	m_rt(m_sym_table.getDefaultResourceTracker())
 {
@@ -194,5 +190,5 @@ lc86_jit::free_code_block(void *addr)
 	// based on the llvm sources and observed behaviour, the ptr_code of the tc is exactly the same addr that was initially allocated
 	// by allocateMappedMemory, so this will work in practice. Also note that our custom pool allocator uses a fixed block size, and thus
 	// it implicitly knows the size of the allocation
-	g_mem_manager.free_block(sys::MemoryBlock(addr, 0));
+	g_mapper.free_block(sys::MemoryBlock(addr, 0));
 }

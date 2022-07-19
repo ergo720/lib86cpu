@@ -124,6 +124,10 @@ cpu_free(cpu_t *cpu)
 	LLVMShutdown();
 
 	delete cpu;
+
+	// NOTE: only call this after delete cpu;. This, because destroying the cpu destroys the jit, which in turn cause llvm to call ~SectionMemoryManager,
+	// That destructor internally calls releaseMappedMemory, which will then attempt to release the already deleted memory of the JITed code
+	g_mapper.destroy_all_blocks();
 }
 
 /*

@@ -5,7 +5,6 @@
  * the libcpu developers  Copyright (c) 2009-2010
  */
 
-#include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/IR/Instructions.h"
 #include "llvm/IR/Module.h"
@@ -201,7 +200,7 @@ get_ext_fn(cpu_t *cpu)
 			getIntegerType(16), getIntegerType(8 << (i - 4))).getCallee());
 	}
 
-	cpu->ptr_abort_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_runtime_abort", getVoidType(), getPointerType(getIntegerType(8))).getCallee());;
+	cpu->ptr_abort_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_runtime_abort", getVoidType(), getPointerType(getIntegerType(8))).getCallee());
 	cpu->ptr_abort_fn->addFnAttr(Attribute::AttrKind::NoReturn);
 
 	cpu->ptr_exp_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_raise_exception", cpu->bb->getParent()->getReturnType(), cpu_ctx_ty).getCallee());

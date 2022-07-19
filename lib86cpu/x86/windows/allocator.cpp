@@ -41,8 +41,8 @@ get_mem_flags(unsigned flags)
 	return PAGE_NOACCESS;
 }
 
-mem_manager::block_header_t *
-mem_manager::create_pool()
+mem_mapper::block_header_t *
+mem_mapper::create_pool()
 {
 	block_header_t *start = static_cast<block_header_t *>(VirtualAlloc(NULL, POOL_SIZE, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE));
 	if (start == NULL) {
@@ -61,7 +61,7 @@ mem_manager::create_pool()
 }
 
 void *
-mem_manager::alloc()
+mem_mapper::alloc()
 {
 	if (head == nullptr) {
 		head = create_pool();
@@ -76,18 +76,25 @@ mem_manager::alloc()
 }
 
 void
-mem_manager::free(void *ptr)
+mem_mapper::free(void *ptr)
 {
 	// this is necessary because llvm marks the code section memory as read-only after the code is written to it
 	DWORD dummy;
-	[[maybe_unused]] DWORD ret = VirtualProtect(ptr, BLOCK_SIZE, PAGE_READWRITE, &dummy);
+	DWORD ret = VirtualProtect(ptr, BLOCK_SIZE, PAGE_READWRITE, &dummy);
 	assert(ret);
 	static_cast<block_header_t *>(ptr)->next = head;
 	head = static_cast<block_header_t *>(ptr);
 }
 
-mem_manager::~mem_manager()
+void
+mem_mapper::destroy_all_blocks()
 {
+#if defined(_WIN64) && defined(_MSC_VER)
+	for (const auto &load_addr : g_mapper.eh_frames) {
+		RtlDeleteFunctionTable(reinterpret_cast<PRUNTIME_FUNCTION>(load_addr));
+	}
+#endif
+
 	for (auto &addr : blocks) {
 		VirtualFree(addr, 0, MEM_RELEASE);
 	}
@@ -95,10 +102,14 @@ mem_manager::~mem_manager()
 	for (auto &block : big_blocks) {
 		VirtualFree(block.first, 0, MEM_RELEASE);
 	}
+
+	big_blocks.clear();
+	blocks.clear();
+	head = nullptr;
 }
 
 sys::MemoryBlock
-mem_manager::allocateMappedMemory(SectionMemoryManager::AllocationPurpose purpose, size_t num_bytes,
+mem_mapper::allocateMappedMemory(SectionMemoryManager::AllocationPurpose purpose, size_t num_bytes,
 	const sys::MemoryBlock *const near_block, unsigned flags, std::error_code &ec)
 {
 	ec = std::error_code();
@@ -138,7 +149,7 @@ mem_manager::allocateMappedMemory(SectionMemoryManager::AllocationPurpose purpos
 }
 
 std::error_code
-mem_manager::protectMappedMemory(const sys::MemoryBlock &block, unsigned flags)
+mem_mapper::protectMappedMemory(const sys::MemoryBlock &block, unsigned flags)
 {
 	void *addr = block.base();
 	size_t size = block.allocatedSize();
@@ -160,7 +171,7 @@ mem_manager::protectMappedMemory(const sys::MemoryBlock &block, unsigned flags)
 }
 
 std::error_code
-mem_manager::releaseMappedMemory(sys::MemoryBlock &block)
+mem_mapper::releaseMappedMemory(sys::MemoryBlock &block)
 {
 	void *addr = block.base();
 	size_t size = block.allocatedSize();
@@ -191,8 +202,11 @@ mem_manager::releaseMappedMemory(sys::MemoryBlock &block)
 }
 
 void
-mem_manager::free_block(const sys::MemoryBlock &block)
+mem_mapper::free_block(const sys::MemoryBlock &block)
 {
+	// NOTE: we never uninstall the exception table when a code block is freed. This, because if we throw an exception from a helper called from the JIted
+	// code, the stack frame of the caller must still be walked, and thus it needs the table
+
 	void *addr = block.base();
 	assert(block.allocatedSize() == 0);
 
@@ -210,3 +224,35 @@ mem_manager::free_block(const sys::MemoryBlock &block)
 
 	free(addr);
 }
+
+#if defined(_WIN64) && defined(_MSC_VER)
+
+uint8_t *
+mem_manager::allocateCodeSection(uintptr_t Size, unsigned Alignment, unsigned SectionID, StringRef SectionName)
+{
+	uint8_t *allocated = llvm::SectionMemoryManager::allocateCodeSection(Size, Alignment, SectionID, SectionName);
+	if (SectionName == ".text") {
+		g_mapper.image_base = reinterpret_cast<uint64_t>(allocated);
+	}
+	return allocated;
+}
+
+void
+mem_manager::registerEHFrames(uint8_t *Addr, uint64_t LoadAddr, size_t Size)
+{
+	if (g_mapper.image_base && (LoadAddr > g_mapper.image_base)) {
+		RtlAddFunctionTable(reinterpret_cast<PRUNTIME_FUNCTION>(LoadAddr), Size / sizeof(RUNTIME_FUNCTION), g_mapper.image_base);
+		g_mapper.eh_frames.push_back(LoadAddr);
+	}
+}
+
+void
+mem_manager::deregisterEHFrames()
+{
+	for (const auto &load_addr : g_mapper.eh_frames) {
+		RtlDeleteFunctionTable(reinterpret_cast<PRUNTIME_FUNCTION>(load_addr));
+	}
+	g_mapper.eh_frames.clear();
+}
+
+#endif

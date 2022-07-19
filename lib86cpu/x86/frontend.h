@@ -62,7 +62,13 @@ CallInst *call_emit(cpu_t *cpu, FunctionType *fn_ty, Value *func, Args&&... args
 	else {
 		ci = CallInst::Create(fn_ty, func, std::forward<Args>(args)..., "", cpu->bb);
 	}
+#if defined(_WIN64) && defined(_MSC_VER)
+	ci->setCallingConv(CallingConv::Win64);
+#elif defined(_WIN32) && defined(_MSC_VER)
 	ci->setCallingConv(CallingConv::C);
+#else
+#error Unknow calling convention for CallInst
+#endif
 	ci->setTailCallKind(tail);
 	return ci;
 }
