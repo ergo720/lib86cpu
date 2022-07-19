@@ -210,10 +210,10 @@ struct cpu_t {
 	llvm::Value *ptr_tlb_region_idx;
 	llvm::Value *ptr_iotlb;
 	llvm::Value *ptr_ram;
-	llvm::Value *ptr_abort_fn;
 	llvm::Value *instr_eip;
 	llvm::BasicBlock *bb; // bb to which we are currently adding llvm instructions
 	llvm::Function *ptr_mem_ldfn[7];
 	llvm::Function *ptr_mem_stfn[7];
 	llvm::Function *ptr_exp_fn;
+	llvm::Function *ptr_abort_fn;
 };

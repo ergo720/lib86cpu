@@ -5,6 +5,7 @@
  * the libcpu developers  Copyright (c) 2009-2010
  */
 
+#include "llvm-c/Core.h"
 #include "jit.h"
 #include "internal.h"
 #include "memory.h"
@@ -120,7 +121,7 @@ cpu_free(cpu_t *cpu)
 		bucket.clear();
 	}
 
-	llvm_shutdown();
+	LLVMShutdown();
 
 	delete cpu;
 }

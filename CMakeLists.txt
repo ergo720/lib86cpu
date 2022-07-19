@@ -18,11 +18,11 @@ include(BuildConfigH.cmake)
 add_definitions(-DLIB86CPU_BUILD_CORE)
 include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu ${LIB86CPU_ROOT_DIR}/lib86cpu/x86 ${LIB86CPU_ROOT_DIR}/import/glfw/include/GLFW ${LIB86CPU_ROOT_DIR}/import/imgui
  ${LIB86CPU_ROOT_DIR}/import/imgui/backends ${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad ${LIB86CPU_ROOT_DIR}/lib86cpu/dbg)
-set(LLVM_LIBS LLVMX86Disassembler.lib LLVMX86AsmParser.lib LLVMX86CodeGen.lib LLVMGlobalISel.lib LLVMSelectionDAG.lib LLVMAsmPrinter.lib LLVMCodeGen.lib LLVMTarget.lib
-LLVMScalarOpts.lib LLVMInstCombine.lib LLVMAggressiveInstCombine.lib LLVMTransformUtils.lib LLVMBitWriter.lib LLVMAnalysis.lib LLVMProfileData.lib LLVMX86Desc.lib LLVMObject.lib
-LLVMMCParser.lib LLVMBitReader.lib LLVMCore.lib LLVMMCDisassembler.lib LLVMX86Info.lib LLVMX86AsmPrinter.lib LLVMMC.lib LLVMDebugInfoCodeView.lib LLVMDebugInfoMSF.lib
-LLVMBinaryFormat.lib LLVMX86Utils.lib LLVMSupport.lib LLVMDemangle.lib LLVMMCJIT.lib LLVMOrcJIT.lib LLVMExecutionEngine.lib LLVMRuntimeDyld.lib LLVMipo.lib LLVMObjCARCOpts.lib
-LLVMInstrumentation.lib LLVMVectorize.lib LLVMIRReader.lib LLVMLinker.lib LLVMAsmParser.lib)
+set(LLVM_LIBS LLVMLTO.lib LLVMExtensions.lib LLVMOrcJIT.lib LLVMPasses.lib LLVMObjCARCOpts.lib LLVMCoroutines.lib LLVMipo.lib LLVMVectorize.lib LLVMLinker.lib LLVMIRReader.lib LLVMAsmParser.lib LLVMFrontendOpenMP.lib
+LLVMJITLink.lib LLVMExecutionEngine.lib LLVMRuntimeDyld.lib LLVMOrcTargetProcess.lib LLVMOrcShared.lib LLVMX86TargetMCA.lib LLVMMCA.lib LLVMX86Disassembler.lib LLVMX86AsmParser.lib LLVMX86CodeGen.lib LLVMCFGuard.lib
+LLVMGlobalISel.lib LLVMX86Desc.lib LLVMX86Info.lib LLVMMCDisassembler.lib LLVMSelectionDAG.lib LLVMInstrumentation.lib LLVMAsmPrinter.lib LLVMDebugInfoMSF.lib LLVMCodeGen.lib LLVMTarget.lib LLVMScalarOpts.lib
+LLVMInstCombine.lib LLVMAggressiveInstCombine.lib LLVMTransformUtils.lib LLVMBitWriter.lib LLVMAnalysis.lib LLVMProfileData.lib LLVMDebugInfoDWARF.lib LLVMObject.lib LLVMTextAPI.lib LLVMMCParser.lib LLVMMC.lib
+LLVMDebugInfoCodeView.lib LLVMBitReader.lib LLVMCore.lib LLVMRemarks.lib LLVMBitstreamReader.lib LLVMBinaryFormat.lib LLVMSupport.lib LLVMDemangle.lib)
 if (MSVC)
 include_directories(${LLVM_DIR}/$(Configuration)/include)
 link_directories(${LLVM_DIR}/$(Configuration)/lib)

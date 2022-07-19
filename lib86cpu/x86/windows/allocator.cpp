@@ -116,7 +116,7 @@ mem_manager::allocateMappedMemory(SectionMemoryManager::AllocationPurpose purpos
 		size_t block_size = (num_bytes + 0xFFF) & ~0xFFF;
 		sys::MemoryBlock block(addr, block_size);
 		if (flags & sys::Memory::ProtectionFlags::MF_EXEC) {
-			sys::Memory::InvalidateInstructionCache(block.base(), block.size());
+			sys::Memory::InvalidateInstructionCache(block.base(), block.allocatedSize());
 		}
 
 		big_blocks.emplace(addr, block_size);
@@ -131,7 +131,7 @@ mem_manager::allocateMappedMemory(SectionMemoryManager::AllocationPurpose purpos
 
 	sys::MemoryBlock block(addr, BLOCK_SIZE);
 	if (flags & sys::Memory::ProtectionFlags::MF_EXEC) {
-		sys::Memory::InvalidateInstructionCache(block.base(), block.size());
+		sys::Memory::InvalidateInstructionCache(block.base(), block.allocatedSize());
 	}
 
 	return block;
@@ -141,7 +141,7 @@ std::error_code
 mem_manager::protectMappedMemory(const sys::MemoryBlock &block, unsigned flags)
 {
 	void *addr = block.base();
-	size_t size = block.size();
+	size_t size = block.allocatedSize();
 
 	if (addr == nullptr || size == 0) {
 		return std::error_code();
@@ -163,7 +163,7 @@ std::error_code
 mem_manager::releaseMappedMemory(sys::MemoryBlock &block)
 {
 	void *addr = block.base();
-	size_t size = block.size();
+	size_t size = block.allocatedSize();
 
 	if (addr == 0 || size == 0) {
 		return std::error_code();
@@ -194,7 +194,7 @@ void
 mem_manager::free_block(const sys::MemoryBlock &block)
 {
 	void *addr = block.base();
-	assert(block.size() == 0);
+	assert(block.allocatedSize() == 0);
 
 	if (addr == 0) {
 		return;

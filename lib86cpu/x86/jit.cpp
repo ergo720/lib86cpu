@@ -11,14 +11,6 @@
 #include "instructions.h"
 
 
-class tm_owning_simple_compiler : public SimpleCompiler {
-public:
-	tm_owning_simple_compiler(std::unique_ptr<TargetMachine> tm)
-		: SimpleCompiler(*tm), m_tm(std::move(tm)) {}
-private:
-	std::shared_ptr<TargetMachine> m_tm;
-};
-
 std::unique_ptr<lc86_jit>
 lc86_jit::create(cpu_t *cpu)
 {
@@ -48,7 +40,7 @@ lc86_jit::create(cpu_t *cpu)
 		for (auto &F : host_features) {
 			features.AddFeature(F.first(), F.second);
 		}
-	jtmb.setCPU(sys::getHostCPUName())
+	jtmb.setCPU(sys::getHostCPUName().str())
 		.addFeatures(features.getFeatures())
 		.setRelocationModel(None)
 		.setCodeModel(None);
@@ -60,26 +52,25 @@ lc86_jit::create(cpu_t *cpu)
 	if (cpu->dl == nullptr) {
 		LIB86CPU_ABORT();
 	}
-	auto tm = jtmb.createTargetMachine();
-	if (!tm) {
+	auto epc = SelfExecutorProcessControl::Create();
+	if (!epc) {
 		LIB86CPU_ABORT();
 	}
 
-	return std::unique_ptr<lc86_jit>(new lc86_jit(std::make_unique<ExecutionSession>(), std::move(*tm), std::move(*dl)));
+	return std::unique_ptr<lc86_jit>(new lc86_jit(std::make_unique<ExecutionSession>(std::move(*epc)), jtmb, std::move(*dl)));
 }
 
-lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetMachine> tm, DataLayout dl) :
+lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, JITTargetMachineBuilder jtmb, DataLayout dl) :
 	m_es(std::move(es)),
-	m_sym_table(this->m_es->getMainJITDylib()),
+	m_sym_table(this->m_es->createBareJITDylib("main")),
 	m_dl(std::move(dl)),
 	m_obj_linking_layer(
 		*this->m_es,
 		[this]() { return std::make_unique<SectionMemoryManager>(&g_mem_manager); }),
-	m_compile_layer(*this->m_es, m_obj_linking_layer, tm_owning_simple_compiler(std::move(tm))),
-	m_ctor_runner(m_sym_table),
-	m_dtor_runner(m_sym_table)
+	m_compile_layer(*this->m_es, m_obj_linking_layer, std::make_unique<ConcurrentIRCompiler>(std::move(jtmb))),
+	m_rt(m_sym_table.getDefaultResourceTracker())
 {
-	m_sym_table.setGenerator(*orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(m_dl));
+	m_sym_table.addGenerator(std::move(*orc::DynamicLibrarySearchGenerator::GetForCurrentProcess(m_dl.getGlobalPrefix())));
 	define_absolute(mangle("mem_read_helper8"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read_helper<uint8_t>), JITSymbolFlags::Absolute));
 	define_absolute(mangle("mem_read_helper16"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read_helper<uint16_t>), JITSymbolFlags::Absolute));
 	define_absolute(mangle("mem_read_helper32"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&mem_read_helper<uint32_t>), JITSymbolFlags::Absolute));
@@ -117,9 +108,16 @@ lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetM
 	define_absolute(mangle("lldt_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&lldt_helper), JITSymbolFlags::Absolute));
 
 #ifdef _WIN32
-	// workaround for llvm bug D65548
+	// workaround for llvm bug D65548 and https://github.com/llvm/llvm-project/issues/43682
 	m_obj_linking_layer.setOverrideObjectFlagsWithResponsibilityFlags(true);
+	m_obj_linking_layer.setAutoClaimResponsibilityForObjectSymbols(true);
 #endif
+}
+
+lc86_jit::~lc86_jit()
+{
+	[[maybe_unused]] auto err = m_es->endSession();
+	assert(!err);
 }
 
 void
@@ -127,11 +125,7 @@ lc86_jit::add_ir_module(ThreadSafeModule tsm)
 {
 	assert(tsm && "Can not add null module");
 
-	if (apply_data_layout(*tsm.getModule())) {
-		LIB86CPU_ABORT();
-	}
-
-	if (m_compile_layer.add(m_sym_table, std::move(tsm), m_es->allocateVModule())) {
+	if (m_compile_layer.add(m_rt, std::move(tsm))) {
 		LIB86CPU_ABORT();
 	}
 }
@@ -139,7 +133,7 @@ lc86_jit::add_ir_module(ThreadSafeModule tsm)
 Expected<JITEvaluatedSymbol>
 lc86_jit::lookup_mangled(StringRef name)
 {
-	return m_es->lookup(JITDylibSearchList({ {&m_sym_table, true} }), m_es->intern(name));
+	return m_es->lookup(&m_sym_table, m_es->intern(name));
 }
 
 std::string
@@ -152,22 +146,6 @@ lc86_jit::mangle(StringRef unmangled_name)
 	}
 
 	return mangled_name;
-}
-
-Error
-lc86_jit::apply_data_layout(Module &m)
-{
-	if (m.getDataLayout().isDefault()) {
-		m.setDataLayout(m_dl);
-	}
-
-	if (m.getDataLayout() != m_dl) {
-		return make_error<StringError>(
-			"Added modules have incompatible data layouts",
-			inconvertibleErrorCode());
-	}
-
-	return Error::success();
 }
 
 void

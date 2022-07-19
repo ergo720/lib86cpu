@@ -7,6 +7,7 @@
 #pragma once
 
 #include "llvm\Support\AtomicOrdering.h"
+#include "llvm/IR/Instructions.h"
 
 
 std::vector<BasicBlock *> gen_bbs(cpu_t *cpu, const unsigned num);
@@ -51,6 +52,20 @@ void hook_emit(cpu_t *cpu, hook *obj);
 void check_int_emit(cpu_t *cpu);
 bool check_rf_single_step_emit(cpu_t *cpu);
 
+template<CallInst::TailCallKind tail, typename... Args>
+CallInst *call_emit(cpu_t *cpu, FunctionType *fn_ty, Value *func, Args&&... args)
+{
+	CallInst *ci;
+	if constexpr (sizeof...(Args) > 1) {
+		ci = CallInst::Create(fn_ty, func, { std::forward<Args>(args)... }, "", cpu->bb);
+	}
+	else {
+		ci = CallInst::Create(fn_ty, func, std::forward<Args>(args)..., "", cpu->bb);
+	}
+	ci->setCallingConv(CallingConv::C);
+	ci->setTailCallKind(tail);
+	return ci;
+}
 
 #define CTX() (*cpu->ctx)
 #define getBB() BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0)
@@ -112,7 +127,7 @@ default: \
 #define ALLOC64() ALLOCs(64)
 
 #define ST(ptr, v) new StoreInst(v, ptr, cpu->bb)
-#define LD(ptr) new LoadInst(ptr, "", false, cpu->bb)
+#define LD(ptr) new LoadInst((ptr)->getType()->getNonOpaquePointerElementType(), ptr, "", false, cpu->bb)
 #define ST_ATOMIC(ptr, v, order, align) store_atomic_emit(cpu, ptr, v, order, align)
 #define LD_ATOMIC(ptr, order, align) load_atomic_emit(cpu, ptr, order, align)
 
@@ -142,6 +157,9 @@ default: \
 #define TRUNC8(v) TRUNCs(8, v)
 #define TRUNC16(v) TRUNCs(16, v)
 #define TRUNC32(v) TRUNCs(32, v)
+
+#define CALL(fn_ty, func, ...) call_emit<CallInst::TailCallKind::TCK_None>(cpu, fn_ty, func, __VA_ARGS__)
+#define CALL_tail(fn_ty, func, ...) call_emit<CallInst::TailCallKind::TCK_MustTail>(cpu, fn_ty, func, __VA_ARGS__)
 
 #define ADD(a, b) BinaryOperator::Create(Instruction::Add, a, b, "", cpu->bb)
 #define SUB(a, b) BinaryOperator::Create(Instruction::Sub, a, b, "", cpu->bb)
@@ -240,7 +258,7 @@ default: \
 #define LD_IO(port) io_read_emit(cpu, port, size_mode)
 #define ST_IO(port, val) io_write_emit(cpu, port, val, size_mode)
 
-#define LD_PARITY(idx) LD(GetElementPtrInst::CreateInBounds(GEP_PARITY(), { CONST32(0), idx }, "", cpu->bb))
+#define LD_PARITY(idx) LD(GEP(GEP_PARITY(), idx))
 #define RAISE(code, idx) raise_exception_emit(cpu, CONST32(0), code, CONST16(idx), cpu->instr_eip)
 #define RAISE0(idx) raise_exception_emit(cpu, CONST32(0), CONST16(0), CONST16(idx), cpu->instr_eip)
 #define RAISEin(addr, code, idx, eip) raise_exp_inline_emit(cpu, CONST32(addr), CONST16(code), CONST16(idx), CONST32(eip)); \
@@ -352,8 +370,4 @@ BR_COND(vec_bb[3], vec_bb[2], AND(ICMP_NE(ecx, zero), ICMP_EQ(LD_ZF(), CONST32(0
 #define LD_PF() LD_PARITY(AND(XOR(LD_FLG_RES(), SHR(LD_FLG_AUX(), CONST32(8))), CONST32(0xFF)))
 #define LD_AF() AND(LD_FLG_AUX(), CONST32(8))
 
-#define ABORT(str) \
-do { \
-    CallInst *ci = CallInst::Create(cpu->ptr_abort_fn, ConstantExpr::getIntToPtr(CONSTp(str), getPointerType(getIntegerType(8))), "", cpu->bb); \
-    ci->setCallingConv(CallingConv::C); \
-} while (0)
+#define ABORT(str) CALL(cpu->ptr_abort_fn->getFunctionType(), cpu->ptr_abort_fn, ConstantExpr::getIntToPtr(CONSTp(str), getPointerType(getIntegerType(8))))

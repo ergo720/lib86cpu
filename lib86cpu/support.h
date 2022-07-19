@@ -8,6 +8,7 @@
 
 #include "lib86cpu_priv.h"
 #include "llvm/support/Host.h"
+#include "llvm/Support/SwapByteOrder.h"
 
 
 #define CPU_FLAG_FP80           (1 << 2)

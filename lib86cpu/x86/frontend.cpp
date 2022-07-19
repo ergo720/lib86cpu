@@ -13,6 +13,7 @@
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/LinkAllPasses.h"
 #include "llvm/IR/Verifier.h"
+#include "llvm/IR/LegacyPassManager.h"
 #include "jit.h"
 #include "internal.h"
 #include "frontend.h"
@@ -169,7 +170,6 @@ optimize(cpu_t *cpu)
 
 	pm.add(createPromoteMemoryToRegisterPass());
 	pm.add(createInstructionCombiningPass());
-	pm.add(createConstantPropagationPass());
 	pm.add(createDeadStoreEliminationPass());
 	pm.add(createDeadCodeEliminationPass());
 	pm.add(createCFGSimplificationPass());
@@ -185,39 +185,38 @@ get_ext_fn(cpu_t *cpu)
 
 	for (uint8_t i = 0; i < 4; i++) {
 		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(8 << i), cpu_ctx_ty,
-			getIntegerType(32), getIntegerType(32), getIntegerType(8)));
+			getIntegerType(32), getIntegerType(32), getIntegerType(8)).getCallee());
 	}
 	for (uint8_t i = 4; i < 7; i++) {
 		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(8 << (i - 4)), cpu_ctx_ty,
-			getIntegerType(16)));
+			getIntegerType(16)).getCallee());
 	}
 
 	for (uint8_t i = 0; i < 4; i++) {
 		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), cpu_ctx_ty,
-			getIntegerType(32), getIntegerType(8 << i), getIntegerType(32), getIntegerType(8)));
+			getIntegerType(32), getIntegerType(8 << i), getIntegerType(32), getIntegerType(8)).getCallee());
 	}
 	for (uint8_t i = 4; i < 7; i++) {
 		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), cpu_ctx_ty,
-			getIntegerType(16), getIntegerType(8 << (i - 4))));
+			getIntegerType(16), getIntegerType(8 << (i - 4))).getCallee());
 	}
 
-	Function *abort_func = cast<Function>(cpu->mod->getOrInsertFunction("cpu_runtime_abort", getVoidType(), getPointerType(getIntegerType(8))));
-	abort_func->addAttribute(0, Attribute::AttrKind::NoReturn);
-	cpu->ptr_abort_fn = abort_func;
+	cpu->ptr_abort_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_runtime_abort", getVoidType(), getPointerType(getIntegerType(8))).getCallee());;
+	cpu->ptr_abort_fn->addFnAttr(Attribute::AttrKind::NoReturn);
 
-	cpu->ptr_exp_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_raise_exception", cpu->bb->getParent()->getReturnType(), cpu_ctx_ty));
+	cpu->ptr_exp_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_raise_exception", cpu->bb->getParent()->getReturnType(), cpu_ctx_ty).getCallee());
 }
 
 Value *
 gep_emit(cpu_t *cpu, Value *gep_start, const int gep_index)
 {
-	return GetElementPtrInst::CreateInBounds(gep_start, { CONST32(0), CONST32(gep_index) }, "", cpu->bb);
+	return GetElementPtrInst::CreateInBounds(gep_start->getType()->getPointerElementType(), gep_start, { CONST32(0), CONST32(gep_index) }, "", cpu->bb);
 }
 
 Value *
 gep_emit(cpu_t *cpu, Value *gep_start, Value *gep_index)
 {
-	return GetElementPtrInst::CreateInBounds(gep_start, { CONST32(0), gep_index }, "", cpu->bb);
+	return GetElementPtrInst::CreateInBounds(gep_start->getType()->getPointerElementType(), gep_start, { CONST32(0), gep_index }, "", cpu->bb);
 }
 
 Value *
@@ -251,7 +250,7 @@ store_atomic_emit(cpu_t *cpu, Value *ptr, Value *val, AtomicOrdering order, uint
 {
 	StoreInst *instr = ST(ptr, val);
 	instr->setOrdering(order);
-	instr->setAlignment(align);
+	instr->setAlignment(Align(align));
 	return instr;
 }
 
@@ -260,7 +259,7 @@ load_atomic_emit(cpu_t *cpu, Value *ptr, AtomicOrdering order, uint8_t align)
 {
 	LoadInst *instr = LD(ptr);
 	instr->setOrdering(order);
-	instr->setAlignment(align);
+	instr->setAlignment(Align(align));
 	return instr;
 }
 
@@ -268,10 +267,11 @@ void
 check_int_emit(cpu_t *cpu)
 {
 	unsigned ptr_size = cpu->dl->getPointerSize();
+	FunctionType *main_ty = cpu->bb->getParent()->getFunctionType();
 	Value *int_flg = ZEXTs(ptr_size * 8, LD_ATOMIC(GEP(cpu->ptr_cpu_ctx, 9), AtomicOrdering::Monotonic, 1));
-	Value *tc_jmp_int_ptr = INT2PTR(getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())),
+	Value *tc_jmp_int_ptr = INT2PTR(getPointerType(getPointerType(main_ty)),
 		ADD(CONSTs(ptr_size * 8, reinterpret_cast<uintptr_t>(&cpu->tc->jmp_offset[TC_JMP_INT_OFFSET])), MUL(int_flg, CONSTs(ptr_size * 8, ptr_size))));
-	CallInst::Create(LD(tc_jmp_int_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
+	CALL(main_ty, LD(tc_jmp_int_ptr), cpu->ptr_cpu_ctx);
 }
 
 bool
@@ -339,8 +339,9 @@ link_direct_emit(cpu_t *cpu, addr_t instr_pc, addr_t dst_pc, addr_t *next_pc, Va
 		return;
 	}
 
-	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[0]), getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())));
-	Value *tc_jmp1_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[1]), getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())));
+	FunctionType *main_ty = cpu->bb->getParent()->getFunctionType();
+	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[0]), getPointerType(getPointerType(main_ty)));
+	Value *tc_jmp1_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[1]), getPointerType(getPointerType(main_ty)));
 	Value *tc_flg_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->flags), getPointerType(getIntegerType(32)));
 
 	switch (n)
@@ -353,9 +354,7 @@ link_direct_emit(cpu_t *cpu, addr_t instr_pc, addr_t dst_pc, addr_t *next_pc, Va
 				BR_COND(bb0, bb1, ICMP_EQ(target_addr, CONST32(dst_pc)));
 				cpu->bb = bb0;
 				ST(tc_flg_ptr, AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)));
-				CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
-				ci->setCallingConv(CallingConv::C);
-				ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+				CallInst *ci = CALL_tail(main_ty, LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx);
 				ReturnInst::Create(CTX(), ci, cpu->bb);
 				cpu->bb = bb1;
 				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_RET << 4)));
@@ -366,18 +365,14 @@ link_direct_emit(cpu_t *cpu, addr_t instr_pc, addr_t dst_pc, addr_t *next_pc, Va
 				BR_COND(bb0, bb1, ICMP_EQ(target_addr, CONST32(*next_pc)));
 				cpu->bb = bb0;
 				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_NEXT_PC << 4)));
-				CallInst *ci = CallInst::Create(LD(tc_jmp1_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
-				ci->setCallingConv(CallingConv::C);
-				ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+				CallInst *ci = CALL_tail(main_ty, LD(tc_jmp1_ptr), cpu->ptr_cpu_ctx);
 				ReturnInst::Create(CTX(), ci, cpu->bb);
 				cpu->bb = bb1;
 				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_RET << 4)));
 			}
 		}
 		else { // uncond jmp dst_pc
-			CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
-			ci->setCallingConv(CallingConv::C);
-			ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+			CallInst *ci = CALL_tail(main_ty, LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx);
 			ReturnInst::Create(CTX(), ci, cpu->bb);
 			cpu->bb = getBB();
 			ABORT("Unreachable code in link_direct_emit reached with n = 1");
@@ -392,15 +387,11 @@ link_direct_emit(cpu_t *cpu, addr_t instr_pc, addr_t dst_pc, addr_t *next_pc, Va
 		BR_COND(bb0, bb1, ICMP_EQ(target_addr, CONST32(*next_pc)));
 		cpu->bb = bb0;
 		ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_NEXT_PC << 4)));
-		CallInst *ci1 = CallInst::Create(LD(tc_jmp1_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
-		ci1->setCallingConv(CallingConv::C);
-		ci1->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		CallInst *ci1 = CALL_tail(main_ty, LD(tc_jmp1_ptr), cpu->ptr_cpu_ctx);
 		ReturnInst::Create(CTX(), ci1, cpu->bb);
 		cpu->bb = bb1;
 		ST(tc_flg_ptr, AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)));
-		CallInst *ci2 = CallInst::Create(LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
-		ci2->setCallingConv(CallingConv::C);
-		ci2->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+		CallInst *ci2 = CALL_tail(main_ty, LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx);
 		ReturnInst::Create(CTX(), ci2, cpu->bb);
 		cpu->bb = bb2;
 		ABORT("Unreachable code in link_direct_emit reached with n = 2");
@@ -424,10 +415,9 @@ link_dst_only_emit(cpu_t *cpu)
 
 	cpu->tc->flags |= (1 & TC_FLG_NUM_JMP);
 
-	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[0]), getPointerType(getPointerType(cpu->bb->getParent()->getFunctionType())));
-	CallInst *ci = CallInst::Create(LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx, "", cpu->bb);
-	ci->setCallingConv(CallingConv::C);
-	ci->setTailCallKind(CallInst::TailCallKind::TCK_Tail);
+	FunctionType *main_ty = cpu->bb->getParent()->getFunctionType();
+	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[0]), getPointerType(getPointerType(main_ty)));
+	CallInst *ci = CALL_tail(main_ty, LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx);
 	ReturnInst::Create(CTX(), ci, cpu->bb);
 }
 
@@ -596,8 +586,7 @@ raise_exp_inline_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Va
 	ST(GEP(ptr_exp_data, 1), code);
 	ST(GEP(ptr_exp_data, 2), idx);
 	ST(GEP(ptr_exp_data, 3), eip);
-	CallInst *ci = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
-	ci->setCallingConv(CallingConv::C);
+	CallInst *ci = CALL(cpu->ptr_exp_fn->getFunctionType(), cpu->ptr_exp_fn, cpu->ptr_cpu_ctx);
 	ReturnInst::Create(CTX(), ci, cpu->bb);
 }
 
@@ -609,9 +598,8 @@ raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *i
 	ST(GEP(ptr_exp_data, 1), code);
 	ST(GEP(ptr_exp_data, 2), idx);
 	ST(GEP(ptr_exp_data, 3), eip);
-	Function *exp_isInt = cast<Function>(cpu->mod->getOrInsertFunction("cpu_raise_exception_isInt", cpu->bb->getParent()->getReturnType(), cpu->ptr_cpu_ctx->getType()));
-	CallInst *ci = CallInst::Create(exp_isInt, cpu->ptr_cpu_ctx, "", cpu->bb);
-	ci->setCallingConv(CallingConv::C);
+	Function *exp_isInt = cast<Function>(cpu->mod->getOrInsertFunction("cpu_raise_exception_isInt", cpu->bb->getParent()->getReturnType(), cpu->ptr_cpu_ctx->getType()).getCallee());
+	CallInst *ci = CALL(exp_isInt->getFunctionType(), exp_isInt, cpu->ptr_cpu_ctx);
 	ReturnInst::Create(CTX(), ci, cpu->bb);
 }
 
@@ -641,13 +629,13 @@ write_eflags(cpu_t *cpu, Value *eflags, Value *mask)
 Value *
 mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_priv)
 {
-	return CallInst::Create(cpu->ptr_mem_ldfn[idx], { cpu->ptr_cpu_ctx, addr, cpu->instr_eip, CONST8(is_priv) }, "", cpu->bb);
+	return CALL(cpu->ptr_mem_ldfn[idx]->getFunctionType(), cpu->ptr_mem_ldfn[idx], cpu->ptr_cpu_ctx, addr, cpu->instr_eip, CONST8(is_priv));
 }
 
 void
 mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const unsigned is_priv)
 {
-	CallInst::Create(cpu->ptr_mem_stfn[idx], { cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv) }, "", cpu->bb);
+	CALL(cpu->ptr_mem_stfn[idx]->getFunctionType(), cpu->ptr_mem_stfn[idx], cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv));
 }
 
 Value *
@@ -686,12 +674,12 @@ io_read_emit(cpu_t *cpu, Value *port, const unsigned size_mode)
 
 	Value *io_ptr = INT2PTR(getPointerType(getPointerType(type_io_t)), CONSTs(cpu->dl->getPointerSize() * 8, reinterpret_cast<uintptr_t>(&cpu->iotlb_regions_ptr)));
 	Value *io = GetElementPtrInst::CreateInBounds(type_io_t, LD(io_ptr), SHR(iotlb_entry, CONST16(IO_SHIFT)), "", cpu->bb);
-	ST(ret, TRUNCs(size * 8, CallInst::Create(LD(GEP(io, 1)), { ZEXT32(port), CONSTs(sizeof(size_t) * 8, size), LD(GEP(io, 3)) }, "", cpu->bb)));
+	ST(ret, TRUNCs(size * 8, CALL(type_io_read_t, LD(GEP(io, 1)), ZEXT32(port), CONSTs(sizeof(size_t) * 8, size), LD(GEP(io, 3)))));
 	BR_UNCOND(bb2);
 
 	// iotlb miss
 	cpu->bb = bb1;
-	ST(ret, CallInst::Create(cpu->ptr_mem_ldfn[fn_io_idx[size_mode]], { cpu->ptr_cpu_ctx, port }, "", cpu->bb));
+	ST(ret, CALL(cpu->ptr_mem_ldfn[fn_io_idx[size_mode]]->getFunctionType(), cpu->ptr_mem_ldfn[fn_io_idx[size_mode]], cpu->ptr_cpu_ctx, port));
 	BR_UNCOND(bb2);
 
 	cpu->bb = bb2;
@@ -733,12 +721,12 @@ io_write_emit(cpu_t *cpu, Value *port, Value *value, const unsigned size_mode)
 
 	Value *io_ptr = INT2PTR(getPointerType(getPointerType(type_io_t)), CONSTs(cpu->dl->getPointerSize() * 8, reinterpret_cast<uintptr_t>(&cpu->iotlb_regions_ptr)));
 	Value *io = GetElementPtrInst::CreateInBounds(type_io_t, LD(io_ptr), SHR(iotlb_entry, CONST16(IO_SHIFT)), "", cpu->bb);
-	CallInst::Create(LD(GEP(io, 2)), { ZEXT32(port), CONSTs(sizeof(size_t) * 8, size), ZEXT64(value), LD(GEP(io, 3)) }, "", cpu->bb);
+	CALL(type_io_write_t, LD(GEP(io, 2)), ZEXT32(port), CONSTs(sizeof(size_t) * 8, size), ZEXT64(value), LD(GEP(io, 3)));
 	BR_UNCOND(bb2);
 
 	// iotlb miss
 	cpu->bb = bb1;
-	CallInst::Create(cpu->ptr_mem_stfn[fn_io_idx[size_mode]], { cpu->ptr_cpu_ctx, port, value }, "", cpu->bb);
+	CALL(cpu->ptr_mem_stfn[fn_io_idx[size_mode]]->getFunctionType(), cpu->ptr_mem_stfn[fn_io_idx[size_mode]], cpu->ptr_cpu_ctx, port, value);
 	BR_UNCOND(bb2);
 
 	cpu->bb = bb2;
@@ -1212,7 +1200,7 @@ hook_emit(cpu_t *cpu, hook *obj)
 		GlobalValue::ExternalLinkage, obj->name, cpu->mod);
 	cpu->jit->define_absolute(cpu->jit->mangle(hook), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(obj->addr),
 		JITSymbolFlags::Absolute | JITSymbolFlags::Exported));
-	CallInst::Create(hook, args_val, "", cpu->bb);
+	CALL(hook->getFunctionType(), hook, args_val);
 
 	// NOTE: hooks don't execute any guest instr, so we don't clear rf here
 

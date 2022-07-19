@@ -24,6 +24,7 @@ using namespace orc;
 
 class lc86_jit {
 public:
+	~lc86_jit();
 	static std::unique_ptr<lc86_jit> create(cpu_t *cpu);
 	ExecutionSession &getExecutionSession() { return *m_es; }
 	JITDylib &get_main_jit_dylib() { return m_sym_table; }
@@ -31,8 +32,6 @@ public:
 
 	Expected<JITEvaluatedSymbol> lookup_mangled(StringRef name);
 	Expected<JITEvaluatedSymbol> lookup(StringRef unmangled_name) { return lookup_mangled(mangle(unmangled_name)); }
-	Error run_constructors() { return m_ctor_runner.run(); }
-	Error run_destructors() { return m_dtor_runner.run(); }
 	RTDyldObjectLinkingLayer &get_obj_linking_layer() { return m_obj_linking_layer; }
 	void remove_symbols(const std::vector<std::string> &names);
 	void remove_symbols(const std::string &names);
@@ -41,15 +40,14 @@ public:
 	void free_code_block(void *addr);
 
 private:
-	lc86_jit(std::unique_ptr<ExecutionSession> es, std::unique_ptr<TargetMachine> tm, DataLayout dl);
+	lc86_jit(std::unique_ptr<ExecutionSession> es, JITTargetMachineBuilder jtmb, DataLayout dl);
 	std::string mangle(StringRef unmangled_name);
-	Error apply_data_layout(Module &m);
 
 	std::unique_ptr<ExecutionSession> m_es;
 	JITDylib &m_sym_table;
 	DataLayout m_dl;
 	RTDyldObjectLinkingLayer m_obj_linking_layer;
 	IRCompileLayer m_compile_layer;
-	CtorDtorRunner m_ctor_runner, m_dtor_runner;
 	Mangler m_mangler;
+	ResourceTrackerSP m_rt;
 };

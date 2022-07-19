@@ -1170,7 +1170,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					Function *lcall_helper = cast<Function>(cpu->mod->getOrInsertFunction("lcall_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-						getIntegerType(16), getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)));
+						getIntegerType(16), getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)).getCallee());
 					CallInst *ci = CallInst::Create(lcall_helper, { cpu->ptr_cpu_ctx, CONST16(new_sel), CONST32(call_eip), CONST8(size_mode), CONST32(ret_eip), cpu->instr_eip }, "", cpu->bb);
 					BasicBlock *bb0 = getBB();
 					BasicBlock *bb1 = getBB();
@@ -1249,7 +1249,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					call_cs = LD_MEM(MEM_LD16_idx, cs_addr);
 					if (cpu_ctx->hflags & HFLG_PE_MODE) {
 						Function *lcall_helper = cast<Function>(cpu->mod->getOrInsertFunction("lcall_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-							getIntegerType(16), getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)));
+							getIntegerType(16), getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)).getCallee());
 						CallInst *ci = CallInst::Create(lcall_helper, { cpu->ptr_cpu_ctx, call_cs, call_eip, CONST8(size_mode), CONST32(ret_eip), cpu->instr_eip }, "", cpu->bb);
 						BasicBlock *bb0 = getBB();
 						BasicBlock *bb1 = getBB();
@@ -2257,7 +2257,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			if (cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
 				Function *iret_helper = cast<Function>(cpu->mod->getOrInsertFunction("iret_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-					getIntegerType(8), getIntegerType(32)));
+					getIntegerType(8), getIntegerType(32)).getCallee());
 				CallInst *ci = CallInst::Create(iret_helper, { cpu->ptr_cpu_ctx, CONST8(size_mode), cpu->instr_eip }, "", cpu->bb);
 				BasicBlock *bb0 = getBB();
 				BasicBlock *bb1 = getBB();
@@ -2269,7 +2269,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 			else {
 				Function *iret_helper = cast<Function>(cpu->mod->getOrInsertFunction("iret_real_helper", getVoidType(), cpu->ptr_cpu_ctx->getType(),
-					getIntegerType(8), getIntegerType(32)));
+					getIntegerType(8), getIntegerType(32)).getCallee());
 				CallInst::Create(iret_helper, { cpu->ptr_cpu_ctx, CONST8(size_mode), cpu->instr_eip }, "", cpu->bb);
 			}
 
@@ -2434,7 +2434,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				uint16_t new_sel = instr.operands[OPNUM_SINGLE].ptr.segment;
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					Function *ljmp_helper = cast<Function>(cpu->mod->getOrInsertFunction("ljmp_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-						getIntegerType(16), getIntegerType(8), getIntegerType(32), getIntegerType(32)));
+						getIntegerType(16), getIntegerType(8), getIntegerType(32), getIntegerType(32)).getCallee());
 					CallInst *ci = CallInst::Create(ljmp_helper, { cpu->ptr_cpu_ctx, CONST16(new_sel), CONST8(size_mode), CONST32(new_eip), cpu->instr_eip }, "", cpu->bb);
 					BasicBlock *bb0 = getBB();
 					BasicBlock *bb1 = getBB();
@@ -2592,7 +2592,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			if (cpu->cpu_flags & CPU_DBG_PRESENT) {
 				// hook the breakpoint exception handler so that the debugger can catch it
-				Function *fn = cast<Function>(cpu->mod->getOrInsertFunction("dbg_update_bp_hook", getVoidType(), cpu->ptr_cpu_ctx->getType()));
+				Function *fn = cast<Function>(cpu->mod->getOrInsertFunction("dbg_update_bp_hook", getVoidType(), cpu->ptr_cpu_ctx->getType()).getCallee());
 				CallInst::Create(fn, cpu->ptr_cpu_ctx, "", cpu->bb);
 			}
 		}
@@ -2609,7 +2609,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *sel, *rm;
 				GET_RM(OPNUM_SINGLE, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
 				Function *ltr_helper = cast<Function>(cpu->mod->getOrInsertFunction("lldt_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-					getIntegerType(16), getIntegerType(32)));
+					getIntegerType(16), getIntegerType(32)).getCallee());
 				CallInst *ci = CallInst::Create(ltr_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 				BasicBlock *bb0 = getBB();
 				BasicBlock *bb1 = getBB();
@@ -2825,7 +2825,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			if (cpu_ctx->hflags & HFLG_PE_MODE) {
 				if (sel_idx == SS_idx) {
 					Function *mov_ss_helper = cast<Function>(cpu->mod->getOrInsertFunction(mov_sel_pe_fn, getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-						getIntegerType(16), getIntegerType(32)));
+						getIntegerType(16), getIntegerType(32)).getCallee());
 					CallInst *ci = CallInst::Create(mov_ss_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 					BasicBlock *bb0 = getBB();
 					BasicBlock *bb1 = getBB();
@@ -2849,7 +2849,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				}
 				else {
 					Function *mov_sel_helper = cast<Function>(cpu->mod->getOrInsertFunction(mov_sel_pe_fn, getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-						getIntegerType(16), getIntegerType(32)));
+						getIntegerType(16), getIntegerType(32)).getCallee());
 					CallInst *ci = CallInst::Create(mov_sel_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 					BasicBlock *bb0 = getBB();
 					BasicBlock *bb1 = getBB();
@@ -2880,7 +2880,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *sel, *rm;
 				GET_RM(OPNUM_SINGLE, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
 				Function *ltr_helper = cast<Function>(cpu->mod->getOrInsertFunction("ltr_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-					getIntegerType(16), getIntegerType(32)));
+					getIntegerType(16), getIntegerType(32)).getCallee());
 				CallInst *ci = CallInst::Create(ltr_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 				BasicBlock *bb0 = getBB();
 				BasicBlock *bb1 = getBB();
@@ -2949,7 +2949,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					case ZYDIS_REGISTER_CR3:
 					case ZYDIS_REGISTER_CR4: {
 						Function *crN_fn = cast<Function>(cpu->mod->getOrInsertFunction("update_crN_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-							getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)));
+							getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)).getCallee());
 						CallInst *ci = CallInst::Create(crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(GET_REG_idx(instr.operands[OPNUM_DST].reg.value) - CR_offset),
 							cpu->instr_eip, CONST32(bytes) }, "", cpu->bb);
 						std::vector<BasicBlock *> vec_bb = getBBs(1);
@@ -3106,7 +3106,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					if (sel_idx == SS_idx) {
 						Function *mov_ss_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_ss_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-							getIntegerType(16), getIntegerType(32)));
+							getIntegerType(16), getIntegerType(32)).getCallee());
 						CallInst *ci = CallInst::Create(mov_ss_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 						BasicBlock *bb0 = getBB();
 						BasicBlock *bb1 = getBB();
@@ -3133,28 +3133,28 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 						{
 						case DS_idx: {
 							Function *mov_ds_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_ds_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-								getIntegerType(16), getIntegerType(32)));
+								getIntegerType(16), getIntegerType(32)).getCallee());
 							ci = CallInst::Create(mov_ds_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 						}
 						break;
 
 						case ES_idx: {
 							Function *mov_es_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_es_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-								getIntegerType(16), getIntegerType(32)));
+								getIntegerType(16), getIntegerType(32)).getCallee());
 							ci = CallInst::Create(mov_es_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 						}
 						break;
 
 						case FS_idx: {
 							Function *mov_fs_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_fs_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-								getIntegerType(16), getIntegerType(32)));
+								getIntegerType(16), getIntegerType(32)).getCallee());
 							ci = CallInst::Create(mov_fs_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 						}
 						break;
 
 						case GS_idx: {
 							Function *mov_gs_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_gs_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-								getIntegerType(16), getIntegerType(32)));
+								getIntegerType(16), getIntegerType(32)).getCallee());
 							ci = CallInst::Create(mov_gs_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 						}
 						break;
@@ -3776,7 +3776,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 					if (cpu_ctx->hflags & HFLG_PE_MODE) {
 						if (sel_idx == SS_idx) {
 							Function *mov_ss_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_ss_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-								getIntegerType(16), getIntegerType(32)));
+								getIntegerType(16), getIntegerType(32)).getCallee());
 							CallInst *ci = CallInst::Create(mov_ss_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 							BasicBlock *bb0 = getBB();
 							BasicBlock *bb1 = getBB();
@@ -3804,28 +3804,28 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 							{
 							case DS_idx: {
 								Function *mov_ds_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_ds_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-									getIntegerType(16), getIntegerType(32)));
+									getIntegerType(16), getIntegerType(32)).getCallee());
 								ci = CallInst::Create(mov_ds_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 							}
 							break;
 
 							case ES_idx: {
 								Function *mov_es_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_es_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-									getIntegerType(16), getIntegerType(32)));
+									getIntegerType(16), getIntegerType(32)).getCallee());
 								ci = CallInst::Create(mov_es_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 							}
 							break;
 
 							case FS_idx: {
 								Function *mov_fs_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_fs_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-									getIntegerType(16), getIntegerType(32)));
+									getIntegerType(16), getIntegerType(32)).getCallee());
 								ci = CallInst::Create(mov_fs_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 							}
 							break;
 
 							case GS_idx: {
 								Function *mov_gs_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_gs_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-									getIntegerType(16), getIntegerType(32)));
+									getIntegerType(16), getIntegerType(32)).getCallee());
 								ci = CallInst::Create(mov_gs_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 							}
 							break;
@@ -4266,7 +4266,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				translate_next = 0;
 			}
 			else {
-				Function *msr_r_fn = cast<Function>(cpu->mod->getOrInsertFunction("msr_read_helper", getVoidType(), cpu->ptr_cpu_ctx->getType()));
+				Function *msr_r_fn = cast<Function>(cpu->mod->getOrInsertFunction("msr_read_helper", getVoidType(), cpu->ptr_cpu_ctx->getType()).getCallee());
 				CallInst::Create(msr_r_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
 			}
 		}
@@ -4283,7 +4283,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				cpu->bb = vec_bb[1];
 			}
 
-			Function *rdtsc_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_rdtsc_handler", getVoidType(), cpu->ptr_cpu_ctx->getType()));
+			Function *rdtsc_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_rdtsc_handler", getVoidType(), cpu->ptr_cpu_ctx->getType()).getCallee());
 			CallInst::Create(rdtsc_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
 		}
 		break;
@@ -4321,7 +4321,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case 0xCB: {
 				if (cpu_ctx->hflags & HFLG_PE_MODE) {
 					Function *lret_helper = cast<Function>(cpu->mod->getOrInsertFunction("lret_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-						getIntegerType(8), getIntegerType(32)));
+						getIntegerType(8), getIntegerType(32)).getCallee());
 					CallInst *ci = CallInst::Create(lret_helper, { cpu->ptr_cpu_ctx, CONST8(size_mode), cpu->instr_eip }, "", cpu->bb);
 					BasicBlock *bb0 = getBB();
 					BasicBlock *bb1 = getBB();
@@ -4978,45 +4978,128 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			std::vector<BasicBlock *> vec_bb = getBBs(2);
 			BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
 			cpu->bb = vec_bb[1];
-			Value *val, *rm, *temp, *cf, *of, *of_mask, *cf_mask;
+			Value *val, *rm, *cf, *of, *of_mask, *cf_mask;
 			switch (size_mode)
 			{
 			case SIZE8: {
 				std::vector<BasicBlock *> vec_bb2 = getBBs(2);
+				rm = GET_OP(OPNUM_DST);
 				BR_COND(vec_bb2[0], vec_bb2[1], ICMP_ULE(count, CONST32(8)));
 				cpu->bb = vec_bb2[0];
 				cf_mask = SHL(CONST32(1), SUB(CONST32(8), count));
 				of_mask = CONST32(1 << 7);
-				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = SHL(AND(val, cf_mask), ADD(count, CONST32(23))); val = SHL(val, count);
-				of = SHL(AND(val, of_mask), CONST32(23)); val = TRUNC8(val); ST_REG_val(val, rm); SET_FLG(val, OR(cf, of)); BR_UNCOND(vec_bb[0]);
-				cpu->bb = vec_bb2[1]; ST_REG_val(CONST8(0), rm); SET_FLG(CONST8(0), CONST32(0)); BR_UNCOND(vec_bb[0]);,
-				temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = SHL(AND(val, cf_mask), ADD(count, CONST32(23)));
-				val = SHL(val, count); of = SHL(AND(val, of_mask), CONST32(23)); val = TRUNC8(val); ST_MEM(fn_idx[size_mode], rm, val); SET_FLG(val, OR(cf, of));
-				BR_UNCOND(vec_bb[0]); cpu->bb = vec_bb2[1]; ST_MEM(fn_idx[size_mode], rm, CONST8(0)); SET_FLG(CONST8(0), CONST32(0)); BR_UNCOND(vec_bb[0]););
+				switch (instr.operands[OPNUM_DST].type)
+				{
+				case ZYDIS_OPERAND_TYPE_REGISTER:
+					val = ZEXT32(LD_REG_val(rm));
+					cf = SHL(AND(val, cf_mask), ADD(count, CONST32(23)));
+					val = SHL(val, count);
+					of = SHL(AND(val, of_mask), CONST32(23));
+					val = TRUNC8(val);
+					ST_REG_val(val, rm);
+					SET_FLG(val, OR(cf, of));
+					BR_UNCOND(vec_bb[0]);
+					cpu->bb = vec_bb2[1];
+					ST_REG_val(CONST8(0), rm);
+					SET_FLG(CONST8(0), CONST32(0));
+					BR_UNCOND(vec_bb[0]);
+					break;
+
+				case ZYDIS_OPERAND_TYPE_MEMORY: {
+					Value *temp = LD_MEM(fn_idx[size_mode], rm);
+					val = ZEXT32(temp);
+					cf = SHL(AND(val, cf_mask), ADD(count, CONST32(23)));
+					val = SHL(val, count);
+					of = SHL(AND(val, of_mask), CONST32(23));
+					val = TRUNC8(val);
+					ST_MEM(fn_idx[size_mode], rm, val);
+					SET_FLG(val, OR(cf, of));
+					BR_UNCOND(vec_bb[0]);
+					cpu->bb = vec_bb2[1];
+					ST_MEM(fn_idx[size_mode], rm, CONST8(0));
+					SET_FLG(CONST8(0), CONST32(0));
+					BR_UNCOND(vec_bb[0]);
+				}
+				break;
+
+				default:
+					LIB86CPU_ABORT_msg("Invalid operand type used in GET_RM macro!");
+				}
 			}
 			break;
 
 			case SIZE16: {
 				std::vector<BasicBlock *> vec_bb2 = getBBs(2);
+				rm = GET_OP(OPNUM_DST);
 				BR_COND(vec_bb2[0], vec_bb2[1], ICMP_ULE(count, CONST32(16)));
 				cpu->bb = vec_bb2[0];
 				cf_mask = SHL(CONST32(1), SUB(CONST32(16), count));
 				of_mask = CONST32(1 << 15);
-				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = SHL(AND(val, cf_mask), ADD(count, CONST32(15))); val = SHL(val, count);
-				of = SHL(AND(val, of_mask), CONST32(15)); val = TRUNC16(val); ST_REG_val(val, rm); SET_FLG(val, OR(cf, of)); BR_UNCOND(vec_bb[0]);
-				cpu->bb = vec_bb2[1]; ST_REG_val(CONST16(0), rm); SET_FLG(CONST16(0), CONST32(0)); BR_UNCOND(vec_bb[0]);,
-				temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = SHL(AND(val, cf_mask), ADD(count, CONST32(15)));
-				val = SHL(val, count); of = SHL(AND(val, of_mask), CONST32(15)); val = TRUNC16(val); ST_MEM(fn_idx[size_mode], rm, val); SET_FLG(val, OR(cf, of));
-				BR_UNCOND(vec_bb[0]); cpu->bb = vec_bb2[1]; ST_MEM(fn_idx[size_mode], rm, CONST16(0)); SET_FLG(CONST16(0), CONST32(0)); BR_UNCOND(vec_bb[0]););
+				switch (instr.operands[OPNUM_DST].type)
+				{
+				case ZYDIS_OPERAND_TYPE_REGISTER:
+					val = ZEXT32(LD_REG_val(rm));
+					cf = SHL(AND(val, cf_mask), ADD(count, CONST32(15)));
+					val = SHL(val, count);
+					of = SHL(AND(val, of_mask), CONST32(15));
+					val = TRUNC16(val);
+					ST_REG_val(val, rm);
+					SET_FLG(val, OR(cf, of));
+					BR_UNCOND(vec_bb[0]);
+					cpu->bb = vec_bb2[1];
+					ST_REG_val(CONST16(0), rm);
+					SET_FLG(CONST16(0), CONST32(0));
+					BR_UNCOND(vec_bb[0]);
+					break;
+
+				case ZYDIS_OPERAND_TYPE_MEMORY: {
+					Value *temp = LD_MEM(fn_idx[size_mode], rm);
+					val = ZEXT32(temp);
+					cf = SHL(AND(val, cf_mask), ADD(count, CONST32(15)));
+					val = SHL(val, count);
+					of = SHL(AND(val, of_mask), CONST32(15));
+					val = TRUNC16(val); ST_MEM(fn_idx[size_mode], rm, val);
+					SET_FLG(val, OR(cf, of));
+					BR_UNCOND(vec_bb[0]);
+					cpu->bb = vec_bb2[1];
+					ST_MEM(fn_idx[size_mode], rm, CONST16(0));
+					SET_FLG(CONST16(0), CONST32(0));
+					BR_UNCOND(vec_bb[0]);
+				}
+				break;
+
+				default:
+					LIB86CPU_ABORT_msg("Invalid operand type used in GET_RM macro!");
+				}
 			}
 			break;
 
 			case SIZE32:
 				cf_mask = SHL(CONST32(1), SUB(CONST32(32), count));
 				of_mask = CONST32(1 << 31);
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm); cf = SHL(AND(val, cf_mask), SUB(count, CONST32(1))); val = SHL(val, count); of = SHR(AND(val, of_mask), CONST32(1));
-				ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm); cf = SHL(AND(val, cf_mask), SUB(count, CONST32(1))); val = SHL(val, count);
-				of = SHR(AND(val, of_mask), CONST32(1)); ST_MEM(fn_idx[size_mode], rm, val););
+				rm = GET_OP(OPNUM_DST);
+				switch (instr.operands[OPNUM_DST].type)
+				{
+				case ZYDIS_OPERAND_TYPE_REGISTER:
+					val = LD_REG_val(rm);
+					cf = SHL(AND(val, cf_mask), SUB(count, CONST32(1)));
+					val = SHL(val, count);
+					of = SHR(AND(val, of_mask), CONST32(1));
+					ST_REG_val(val, rm);
+					break;
+
+				case ZYDIS_OPERAND_TYPE_MEMORY: {
+					val = LD_MEM(fn_idx[size_mode], rm);
+					cf = SHL(AND(val, cf_mask), SUB(count, CONST32(1)));
+					val = SHL(val, count);
+					of = SHR(AND(val, of_mask), CONST32(1));
+					ST_MEM(fn_idx[size_mode], rm, val);
+				}
+				break;
+
+				default:
+					LIB86CPU_ABORT_msg("Invalid operand type used in GET_RM macro!");
+				}
 				SET_FLG(val, OR(cf, of));
 				BR_UNCOND(vec_bb[0]);
 				break;
@@ -5484,12 +5567,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			GET_RM(OPNUM_SINGLE, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
 			if (instr.mnemonic == ZYDIS_MNEMONIC_VERR) {
 				Function *verr_helper = cast<Function>(cpu->mod->getOrInsertFunction("verr_helper", getVoidType(), cpu->ptr_cpu_ctx->getType(),
-					getIntegerType(16), getIntegerType(32)));
+					getIntegerType(16), getIntegerType(32)).getCallee());
 				CallInst::Create(verr_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 			}
 			else {
 				Function *verw_helper = cast<Function>(cpu->mod->getOrInsertFunction("verw_helper", getVoidType(), cpu->ptr_cpu_ctx->getType(),
-					getIntegerType(16), getIntegerType(32)));
+					getIntegerType(16), getIntegerType(32)).getCallee());
 				CallInst::Create(verw_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
 			}
 		}
