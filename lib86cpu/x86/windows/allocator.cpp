@@ -80,7 +80,7 @@ mem_mapper::free(void *ptr)
 {
 	// this is necessary because llvm marks the code section memory as read-only after the code is written to it
 	DWORD dummy;
-	DWORD ret = VirtualProtect(ptr, BLOCK_SIZE, PAGE_READWRITE, &dummy);
+	[[maybe_unused]] DWORD ret = VirtualProtect(ptr, BLOCK_SIZE, PAGE_READWRITE, &dummy);
 	assert(ret);
 	static_cast<block_header_t *>(ptr)->next = head;
 	head = static_cast<block_header_t *>(ptr);
