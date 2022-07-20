@@ -223,7 +223,7 @@ T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t flags)
 	if (!(flags & 1)) {
 		// NOTE: is_phys can only be set if TLB_WATCH is not set
 		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_RW, eip);
-		if ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK)) {
+		if ((sizeof(T) != 1) && ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
 			T value = 0;
 			uint8_t i = 0;
 			addr_t phys_addr_s = get_read_addr(cpu, addr, flags & 2, eip);
@@ -259,7 +259,7 @@ void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t flags)
 {
 	// NOTE: is_phys is never set because tc_invalidate needs a virtual address
 	cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_W, eip);
-	if ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK)) {
+	if ((sizeof(T) != 1) && ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
 		uint8_t is_code1, is_code2;
 		uint8_t i = 0;
 		int8_t j = sizeof(T) - 1;
