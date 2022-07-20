@@ -167,9 +167,7 @@ optimize(cpu_t *cpu)
 {
 	legacy::FunctionPassManager pm = legacy::FunctionPassManager(cpu->mod);
 
-	pm.add(createPromoteMemoryToRegisterPass());
 	pm.add(createInstructionCombiningPass());
-	pm.add(createDeadStoreEliminationPass());
 	pm.add(createDeadCodeEliminationPass());
 	pm.add(createCFGSimplificationPass());
 	pm.run(*cpu->bb->getParent());

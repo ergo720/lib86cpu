@@ -40,6 +40,12 @@ lc86_jit::create(cpu_t *cpu)
 		.addFeatures(features.getFeatures())
 		.setRelocationModel(None)
 		.setCodeModel(None);
+
+	// We use the fast instruction selector to reduce compile time at the cost of producing poorer code
+	auto opt = jtmb.getOptions();
+	opt.EnableFastISel = true;
+	jtmb.setOptions(opt);
+
 	auto dl = jtmb.getDefaultDataLayoutForTarget();
 	if (!dl) {
 		LIB86CPU_ABORT();
