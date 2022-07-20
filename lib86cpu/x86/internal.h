@@ -22,7 +22,7 @@ void tc_cache_purge(cpu_t *cpu);
 uint8_t update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes);
 void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);
 void msr_read_helper(cpu_ctx_t *cpu_ctx);
-inline addr_t get_pc(cpu_ctx_t *cpu_ctx);
+addr_t get_pc(cpu_ctx_t *cpu_ctx);
 template<bool is_int = false> translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx);
 
 // cpu hidden flags (assumed to be constant during exec of a tc, together with a flag subset of eflags)
