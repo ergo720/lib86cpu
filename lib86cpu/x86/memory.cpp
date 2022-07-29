@@ -319,7 +319,7 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, 
 		uint8_t err_code = 0;
 		uint8_t cpu_lv = cpl_to_page_priv[cpu->cpu_ctx.hflags & HFLG_CPL];
 		addr_t pde_addr = (cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK) | (addr >> PAGE_SHIFT_LARGE) * 4;
-		uint32_t pde = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, as_memory_search_addr<uint8_t>(cpu, cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK), pde_addr));
+		uint32_t pde = as_memory_dispatch_read<uint32_t>(cpu, pde_addr, as_memory_search_addr<uint8_t>(cpu, pde_addr));
 
 		if (!(pde & PTE_PRESENT)) {
 			mmu_raise_page_fault<raise_host_exp>(cpu, addr, eip, disas_ctx, err_code, is_write, cpu_lv);
@@ -335,7 +335,7 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, 
 					if (is_write) {
 						pde |= PTE_DIRTY;
 					}
-					ram_write<uint32_t>(cpu, get_ram_host_ptr(cpu, as_memory_search_addr<uint8_t>(cpu, cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK), pde_addr), pde);
+					as_memory_dispatch_write<uint32_t>(cpu, pde_addr, pde, as_memory_search_addr<uint8_t>(cpu, pde_addr));
 				}
 				addr_t phys_addr = (pde & PTE_ADDR_4M) | (addr & PAGE_MASK_LARGE);
 				tlb_fill(cpu, addr, phys_addr,
@@ -349,7 +349,7 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, 
 		}
 
 		addr_t pte_addr = (pde & PTE_ADDR_4K) | ((addr >> PAGE_SHIFT) & 0x3FF) * 4;
-		uint32_t pte = ram_read<uint32_t>(cpu, get_ram_host_ptr(cpu, as_memory_search_addr<uint8_t>(cpu, cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK), pte_addr));
+		uint32_t pte = as_memory_dispatch_read<uint32_t>(cpu, pte_addr, as_memory_search_addr<uint8_t>(cpu, pte_addr));
 
 		if (!(pte & PTE_PRESENT)) {
 			mmu_raise_page_fault<raise_host_exp>(cpu, addr, eip, disas_ctx, err_code, is_write, cpu_lv);
@@ -362,14 +362,14 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, 
 				// NOTE: pdes that map page tables do not use the dirty bit. Also note that we must check this here because, if a pde is valid but the pte is not,
 				// a page fault will occur and the accessed bit should not be set
 				pde |= PTE_ACCESSED;
-				ram_write<uint32_t>(cpu, get_ram_host_ptr(cpu, as_memory_search_addr<uint8_t>(cpu, cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK), pde_addr), pde);
+				as_memory_dispatch_write<uint32_t>(cpu, pde_addr, pde, as_memory_search_addr<uint8_t>(cpu, pde_addr));
 			}
 			if (!(pte & PTE_ACCESSED) || is_write) {
 				pte |= PTE_ACCESSED;
 				if (is_write) {
 					pte |= PTE_DIRTY;
 				}
-				ram_write<uint32_t>(cpu, get_ram_host_ptr(cpu, as_memory_search_addr<uint8_t>(cpu, cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK), pte_addr), pte);
+				as_memory_dispatch_write<uint32_t>(cpu, pte_addr, pte, as_memory_search_addr<uint8_t>(cpu, pte_addr));
 			}
 			addr_t phys_addr = (pte & PTE_ADDR_4K) | (addr & PAGE_MASK);
 			tlb_fill(cpu, addr, phys_addr,

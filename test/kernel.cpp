@@ -12,6 +12,7 @@
 #define CONTIGUOUS_MEMORY_BASE 0x80000000
 
 #define DBG_STR_PORT 0x200
+#define SYS_TYPE_PORT 0x204
 
 // Windows PE format definitions
 #define IMAGE_DOS_SIGNATURE 0x5A4D
@@ -117,22 +118,42 @@ typedef struct _IMAGE_SECTION_HEADER {
 } IMAGE_SECTION_HEADER, *PIMAGE_SECTION_HEADER;
 
 
-static void
-dbg_write_handler(addr_t addr, size_t size, const uint64_t value, void* opaque)
+static uint64_t
+host_read_handler(addr_t addr, size_t size, void *opaque)
 {
+	if (size != 4) {
+		std::printf("%s: unexpected i/o read at port %d with size %d\n", __func__, addr, static_cast<uint32_t>(size));
+		return std::numeric_limits<uint64_t>::max();
+	}
+
 	switch (addr)
 	{
-	case DBG_STR_PORT: {
-		if (size == 4) {
-			// NOTE: get_host_ptr will only work if the string is allocated with a contiguous allocation in physical memory, to avoid
-			// issues with allocations spanning pages; cxbxrkrnl should guarantee this
-			std::printf("Received a new debug string from kernel:\n%s", get_host_ptr(static_cast<cpu_t *>(opaque), static_cast<addr_t>(value)));
-		}
-		else {
-			std::printf("%s: unexpected i/o write at port %d with size %d\n", __func__, addr, size);
-		}
+	case SYS_TYPE_PORT:
+		// For now, we always want an xbox system. 0: xbox, 1: chihiro, 2: devkit
+		return 0ULL;
+
+	default:
+		std::printf("%s: unexpected i/o read at port %d\n", __func__, addr);
 	}
-	break;
+
+	return std::numeric_limits<uint64_t>::max();
+}
+
+static void
+host_write_handler(addr_t addr, size_t size, const uint64_t value, void* opaque)
+{
+	if (size != 4) {
+		std::printf("%s: unexpected i/o write at port %d with size %d\n", __func__, addr, static_cast<uint32_t>(size));
+		return;
+	}
+
+	switch (addr)
+	{
+	case DBG_STR_PORT:
+		// NOTE: get_host_ptr will only work if the string is allocated with a contiguous allocation in physical memory, to avoid
+		// issues with allocations spanning pages; cxbxrkrnl should guarantee this
+		std::printf("Received a new debug string from kernel:\n%s", get_host_ptr(static_cast<cpu_t *>(opaque), static_cast<addr_t>(value)));
+		break;
 
 	default:
 		std::printf("%s: unexpected i/o write at port %d\n", __func__, addr);
@@ -209,8 +230,8 @@ gen_cxbxrkrnl_test(const std::string &executable)
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_io(cpu, DBG_STR_PORT, 4, true, nullptr, dbg_write_handler, cpu, 1))) {
-		std::printf("Failed to initialize debug port!\n");
+	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_io(cpu, DBG_STR_PORT, 8, true, host_read_handler, host_write_handler, cpu, 1))) {
+		std::printf("Failed to initialize host communication i/o ports!\n");
 		return false;
 	}
 
