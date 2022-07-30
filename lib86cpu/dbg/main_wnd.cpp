@@ -19,7 +19,6 @@
 
 
 static GLFWwindow *main_wnd = nullptr;
-static cpu_t *g_cpu = nullptr;
 static std::atomic_flag has_terminated;
 static std::atomic_flag exit_requested;
 

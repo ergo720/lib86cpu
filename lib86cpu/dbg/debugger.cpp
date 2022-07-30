@@ -377,29 +377,13 @@ dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num)
 	return ret;
 }
 
-uint8_t
-dbg_ram_read(const uint8_t *data, size_t off)
+void
+dbg_ram_read(cpu_t *cpu, uint8_t *buff)
 {
-	// we return a NULL byte so that the memory editor displays them grayed out if we can't read the byte
-	// NOTE1: we don't need to change the cpl and wp of cr0 because we only perform privileged read accesses
-	// NOTE2: off is the offset from the address that is displayed in the memory editor
-
-	cpu_t *cpu = reinterpret_cast<cpu_t *>(const_cast<uint8_t *>(data));
-	addr_t addr = static_cast<addr_t>(off) + mem_pc;
-	uint8_t byte;
-
-	try {
-		addr_t phys_addr = get_read_addr(cpu, addr, 2, addr - cpu->cpu_ctx.regs.cs_hidden.base);
-		size_t size_read = as_ram_dispatch_read(cpu, phys_addr, 1, as_memory_search_addr<uint8_t>(cpu, phys_addr), &byte);
-		if (size_read) {
-			return byte;
-		}
+	size_t actual_size;
+	if (!LIB86CPU_CHECK_SUCCESS(mem_read_block(cpu, mem_pc, PAGE_SIZE, buff, &actual_size))) {
+		std::memset(&buff[actual_size], 0, PAGE_SIZE - actual_size);
 	}
-	catch (host_exp_t type) {
-		// just fallthrough
-	}
-
-	return 0;
 }
 
 void
@@ -407,26 +391,27 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 {
 	// NOTE: off is the offset from the address that is displayed in the memory editor
 
-	cpu_t *cpu = reinterpret_cast<cpu_t *>(data);
 	addr_t addr = static_cast<addr_t>(off) + mem_pc;
 
 	// clear wp of cr0, so that we can write to read-only pages
-	uint32_t old_wp = cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK;
-	cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK;
+	uint32_t old_wp = g_cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK;
+	g_cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK;
 
 	try {
 		uint8_t is_code;
-		addr_t phys_addr = get_write_addr(cpu, addr, 2, addr - cpu->cpu_ctx.regs.cs_hidden.base, &is_code);
-		memory_region_t<addr_t> *region = as_memory_search_addr<uint8_t>(cpu, phys_addr);
+		addr_t phys_addr = get_write_addr(g_cpu, addr, 2, addr - g_cpu->cpu_ctx.regs.cs_hidden.base, &is_code);
+		memory_region_t<addr_t> *region = as_memory_search_addr<uint8_t>(g_cpu, phys_addr);
 
 		retry:
 		switch (region->type)
 		{
 		case mem_type::ram:
-			ram_write<uint8_t>(cpu, get_ram_host_ptr(cpu, region, phys_addr), val);
+			ram_write<uint8_t>(g_cpu, get_ram_host_ptr(g_cpu, region, phys_addr), val);
 			if (is_code) {
-				tc_invalidate(&cpu->cpu_ctx, addr, 1, cpu->cpu_ctx.regs.eip);
+				tc_invalidate(&g_cpu->cpu_ctx, addr, 1, g_cpu->cpu_ctx.regs.eip);
 			}
+			// also update the read mem buffer used by dbg_ram_read
+			data[off] = val;
 			break;
 
 		case mem_type::rom:
@@ -445,11 +430,11 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 	catch (host_exp_t type) {
 		// just fallthrough
 		if (type == host_exp_t::halt_tc) {
-			cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
+			g_cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
 		}
 	}
 
-	(cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK) |= old_wp;
+	(g_cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK) |= old_wp;
 }
 
 static void
@@ -466,6 +451,7 @@ dbg_single_step_handler(cpu_ctx_t *cpu_ctx)
 
 		// wait until the debugger continues execution
 		break_pc = mem_pc = pc;
+		mem_editor_update = true;
 		guest_running.clear();
 		guest_running.notify_one();
 		guest_running.wait(false);
@@ -509,6 +495,7 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 
 		// wait until the debugger continues execution
 		break_pc = mem_pc = pc;
+		mem_editor_update = true;
 		guest_running.clear();
 		guest_running.notify_one();
 		guest_running.wait(false);

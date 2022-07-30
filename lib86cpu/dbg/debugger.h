@@ -21,9 +21,11 @@ void dbg_update_exp_hook(cpu_ctx_t *cpu_ctx);
 void dbg_add_exp_hook(cpu_ctx_t *cpu_ctx);
 std::vector<std::pair<addr_t, std::string>> dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num);
 void dbg_exp_handler(cpu_ctx_t *cpu_ctx);
-uint8_t dbg_ram_read(const uint8_t *data, size_t off);
+void dbg_ram_read(cpu_t *cpu, uint8_t *buff);
 void dbg_ram_write(uint8_t *data, size_t off, uint8_t val);
 
+inline cpu_t *g_cpu;
+inline bool mem_editor_update = true;
 inline std::atomic_flag guest_running;
 inline uint32_t break_pc;
 inline uint32_t mem_pc;

@@ -171,15 +171,20 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 		ImGui::ColorEdit3("Background color", bk_col);
 		ImGui::BeginChild("Memory view");
 		if (!guest_running.test()) {
+			static uint8_t mem_buff[PAGE_SIZE];
 			static MemoryEditor mem_editor;
-			mem_editor.ReadFn = &dbg_ram_read;
 			mem_editor.WriteFn = &dbg_ram_write;
 			if (enter_pressed) {
 				// NOTE: it can't fail because ImGui::InputText only accepts hex digits and mem_pc is large enough to store every possible 32 bit address
 				[[maybe_unused]] auto ret = std::from_chars(buff, buff + sizeof(buff), mem_pc, 16);
 				assert(ret.ec == std::errc());
+				mem_editor_update = true;
 			}
-			mem_editor.DrawContents(cpu, PAGE_SIZE, mem_pc);
+			if (mem_editor_update) {
+				dbg_ram_read(cpu, mem_buff);
+				mem_editor_update = false;
+			}
+			mem_editor.DrawContents(mem_buff, PAGE_SIZE, mem_pc);
 		}
 		else {
 			const char *text = "Not available while debuggee is running";
