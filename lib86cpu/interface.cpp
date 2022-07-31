@@ -87,7 +87,14 @@ cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee)
 	io_region->write_handler = default_pmio_write_handler;
 	cpu->io_space_tree->insert(io_region->start, io_region->end, std::move(io_region));
 
-	cpu->jit = std::move(lc86_jit::create(cpu));
+	try {
+		cpu->jit = std::move(lc86_jit::create(cpu));
+	}
+	catch (lc86_exp_abort &exp) {
+		cpu_free(cpu);
+		last_error = exp.what();
+		return exp.get_code();
+	}
 
 	// check if FP80 is supported by this architecture
 	std::string data_layout = cpu->dl->getStringRepresentation();
