@@ -34,24 +34,27 @@ public:
 	void free_block(const sys::MemoryBlock &block);
 	void destroy_all_blocks();
 	~mem_mapper() override {}
-	mem_mapper() : head(nullptr) {}
 
 private:
+	std::vector<void *> blocks;
+
+#if defined(_WIN64) && defined(_MSC_VER)
+	// NOTE: these variables should really belong to mem_manager, but llvm destroys the SectionMemoryManager object after the emission of every code block,
+	// which means we would lose them, so we instead keep them here
+
+	uintptr_t image_base = 0;
+	std::vector<uintptr_t> eh_frames;
+	uintptr_t curr_pxdata_addr = 0;
+#else
 	struct block_header_t {
 		block_header_t *next;
 	};
-	block_header_t *head;
+	block_header_t *head = nullptr;
 	std::map<void *, size_t> big_blocks;
-	std::vector<void *> blocks;
+
 	block_header_t *create_pool();
 	void *alloc();
 	void free(void *ptr);
-
-	// NOTE: these variables should really belong to mem_manager, but llvm destroys the SectionMemoryManager object after the emission of every code block,
-	// which means we would lose them, so we instead keep them here
-#if defined(_WIN64) && defined(_MSC_VER)
-	uint64_t image_base = 0;
-	std::vector<uint64_t> eh_frames;
 #endif
 };
 
@@ -61,6 +64,7 @@ class mem_manager final : public SectionMemoryManager {
 public:
 #if defined(_WIN64) && defined(_MSC_VER)
 	uint8_t *allocateCodeSection(uintptr_t Size, unsigned Alignment, unsigned SectionID, StringRef SectionName) override;
+	uint8_t *allocateDataSection(uintptr_t Size, unsigned Alignment, unsigned SectionID, StringRef SectionName, bool isReadOnly) override;
 	void registerEHFrames(uint8_t *Addr, uint64_t LoadAddr, size_t Size) override;
 	void deregisterEHFrames() override;
 #endif
