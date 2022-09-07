@@ -216,4 +216,5 @@ struct cpu_t {
 	llvm::Function *ptr_mem_stfn[7];
 	llvm::Function *ptr_exp_fn;
 	llvm::Function *ptr_abort_fn;
+	llvm::StructType *cpu_ctx_type;
 };

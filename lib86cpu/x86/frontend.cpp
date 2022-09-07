@@ -144,12 +144,6 @@ get_struct_reg(cpu_t *cpu)
 	return StructType::create(CTX(), type_struct_reg_t_fields, "struct.regs_t", false);
 }
 
-StructType *
-get_struct_eflags(cpu_t *cpu)
-{
-	return StructType::create(CTX(), { getIntegerType(32), getIntegerType(32), getArrayType(getIntegerType(8), 256) }, "struct.eflags_t", false);
-}
-
 std::vector<BasicBlock *>
 gen_bbs(cpu_t *cpu, const unsigned num)
 {
@@ -198,22 +192,44 @@ get_ext_fn(cpu_t *cpu)
 			getIntegerType(16), getIntegerType(8 << (i - 4))).getCallee());
 	}
 
-	cpu->ptr_abort_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_runtime_abort", getVoidType(), getPointerType(getIntegerType(8))).getCallee());
+	cpu->ptr_abort_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_runtime_abort", getVoidType(), getPointerType()).getCallee());
 	cpu->ptr_abort_fn->addFnAttr(Attribute::AttrKind::NoReturn);
 
 	cpu->ptr_exp_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_raise_exception", cpu->bb->getParent()->getReturnType(), cpu_ctx_ty).getCallee());
 }
 
 Value *
-gep_emit(cpu_t *cpu, Value *gep_start, const int gep_index)
+gep_emit(cpu_t *cpu, Type *pointee_ty, Value *gep_start, const int gep_index)
 {
-	return GetElementPtrInst::CreateInBounds(gep_start->getType()->getPointerElementType(), gep_start, { CONST32(0), CONST32(gep_index) }, "", cpu->bb);
+	return GetElementPtrInst::CreateInBounds(pointee_ty, gep_start, { CONST32(0), CONST32(gep_index) }, "", cpu->bb);
 }
 
 Value *
-gep_emit(cpu_t *cpu, Value *gep_start, Value *gep_index)
+gep_emit(cpu_t *cpu, Type *pointee_ty, Value *gep_start, Value *gep_index)
 {
-	return GetElementPtrInst::CreateInBounds(gep_start->getType()->getPointerElementType(), gep_start, { CONST32(0), gep_index }, "", cpu->bb);
+	return GetElementPtrInst::CreateInBounds(pointee_ty, gep_start, { CONST32(0), gep_index }, "", cpu->bb);
+}
+
+Value *
+gep_seg_emit(cpu_t *cpu, const int gep_index)
+{
+	GetElementPtrInst *gep = GetElementPtrInst::CreateInBounds(getRegType(), cpu->ptr_regs, { CONST32(0), CONST32(gep_index) }, "", cpu->bb);
+	return GetElementPtrInst::CreateInBounds(gep->getResultElementType(), gep, { CONST32(0), CONST32(SEG_SEL_idx) }, "", cpu->bb);
+}
+
+Value *
+gep_seg_hidden_emit(cpu_t *cpu, const int seg_index, const int gep_index)
+{
+	GetElementPtrInst *gep1 = GetElementPtrInst::CreateInBounds(getRegType(), cpu->ptr_regs, { CONST32(0), CONST32(seg_index) }, "", cpu->bb);
+	GetElementPtrInst *gep2 = GetElementPtrInst::CreateInBounds(gep1->getResultElementType(), gep1, { CONST32(0), CONST32(SEG_HIDDEN_idx) }, "", cpu->bb);
+	return GetElementPtrInst::CreateInBounds(gep2->getResultElementType(), gep2, { CONST32(0), CONST32(gep_index) }, "", cpu->bb);
+}
+
+Value *
+gep_f80_emit(cpu_t *cpu, const int gep_index, const int f80_index)
+{
+	GetElementPtrInst *gep = GetElementPtrInst::CreateInBounds(getRegType(), cpu->ptr_regs, { CONST32(0), CONST32(f80_index) }, "", cpu->bb);
+	return GetElementPtrInst::CreateInBounds(gep->getResultElementType(), gep, { CONST32(0), CONST32(gep_index) }, "", cpu->bb);
 }
 
 Value *
@@ -239,7 +255,7 @@ floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits)
 	ST(ret, q);
 	BR_UNCOND(vec_bb[2]);
 	cpu->bb = vec_bb[2];
-	return LD(ret);
+	return LD(ret, getIntegerType(q_bits));
 }
 
 Value *
@@ -252,9 +268,9 @@ store_atomic_emit(cpu_t *cpu, Value *ptr, Value *val, AtomicOrdering order, uint
 }
 
 Value *
-load_atomic_emit(cpu_t *cpu, Value *ptr, AtomicOrdering order, uint8_t align)
+load_atomic_emit(cpu_t *cpu, Value *ptr, Type *ptr_ty, AtomicOrdering order, uint8_t align)
 {
-	LoadInst *instr = LD(ptr);
+	LoadInst *instr = LD(ptr, ptr_ty);
 	instr->setOrdering(order);
 	instr->setAlignment(Align(align));
 	return instr;
@@ -265,10 +281,10 @@ check_int_emit(cpu_t *cpu)
 {
 	unsigned ptr_size = cpu->dl->getPointerSize();
 	FunctionType *main_ty = cpu->bb->getParent()->getFunctionType();
-	Value *int_flg = ZEXTs(ptr_size * 8, LD_ATOMIC(GEP(cpu->ptr_cpu_ctx, 9), AtomicOrdering::Monotonic, 1));
-	Value *tc_jmp_int_ptr = INT2PTR(getPointerType(getPointerType(main_ty)),
+	Value *int_flg = ZEXTs(ptr_size * 8, LD_ATOMIC(GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 9), getIntegerType(8), AtomicOrdering::Monotonic, 1));
+	Value *tc_jmp_int_ptr = INT2PTR(getPointerType(),
 		ADD(CONSTs(ptr_size * 8, reinterpret_cast<uintptr_t>(&cpu->tc->jmp_offset[TC_JMP_INT_OFFSET])), MUL(int_flg, CONSTs(ptr_size * 8, ptr_size))));
-	CALL(main_ty, LD(tc_jmp_int_ptr), cpu->ptr_cpu_ctx);
+	CALL(main_ty, LD(tc_jmp_int_ptr, getPointerType()), cpu->ptr_cpu_ctx);
 }
 
 bool
@@ -283,12 +299,12 @@ check_rf_single_step_emit(cpu_t *cpu)
 		if (cpu->cpu_ctx.regs.eflags & RF_MASK) {
 			// clear rf if it is set. This happens in the one-instr tc that contains the instr that originally caused the instr breakpoint. This must be done at runtime
 			// because otherwise tc_cache_insert will register rf as clear, when it was set at the beginning of this tc
-			ST(GEP_EFLAGS(), AND(LD(GEP_EFLAGS()), CONST32(~RF_MASK)));
+			ST(GEP_EFLAGS(), AND(LD(GEP_EFLAGS(), getIntegerType(32)), CONST32(~RF_MASK)));
 		}
 
 		if ((cpu->cpu_ctx.regs.eflags & TF_MASK) | (cpu->cpu_flags & CPU_SINGLE_STEP)) {
 			// NOTE: if this instr also has a watchpoint, the other DB exp won't be generated
-			ST_R32(OR(LD_R32(DR6_idx), CONST32(DR6_BS_MASK)), DR6_idx);
+			ST_REG_idx(OR(LD_R32(DR6_idx), CONST32(DR6_BS_MASK)), DR6_idx);
 			raise_exp_inline_emit(cpu, CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx));
 			cpu->bb = getBB();
 			return true;
@@ -337,9 +353,9 @@ link_direct_emit(cpu_t *cpu, addr_t instr_pc, addr_t dst_pc, addr_t *next_pc, Va
 	}
 
 	FunctionType *main_ty = cpu->bb->getParent()->getFunctionType();
-	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[0]), getPointerType(getPointerType(main_ty)));
-	Value *tc_jmp1_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[1]), getPointerType(getPointerType(main_ty)));
-	Value *tc_flg_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->flags), getPointerType(getIntegerType(32)));
+	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[0]), getPointerType());
+	Value *tc_jmp1_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[1]), getPointerType());
+	Value *tc_flg_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->flags), getPointerType());
 
 	switch (n)
 	{
@@ -350,26 +366,26 @@ link_direct_emit(cpu_t *cpu, addr_t instr_pc, addr_t dst_pc, addr_t *next_pc, Va
 				BasicBlock *bb1 = getBB();
 				BR_COND(bb0, bb1, ICMP_EQ(target_addr, CONST32(dst_pc)));
 				cpu->bb = bb0;
-				ST(tc_flg_ptr, AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)));
-				CallInst *ci = CALL_tail(main_ty, LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx);
+				ST(tc_flg_ptr, AND(LD(tc_flg_ptr, getIntegerType(32)), CONST32(~TC_FLG_JMP_TAKEN)));
+				CallInst *ci = CALL_tail(main_ty, LD(tc_jmp0_ptr, getPointerType()), cpu->ptr_cpu_ctx);
 				ReturnInst::Create(CTX(), ci, cpu->bb);
 				cpu->bb = bb1;
-				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_RET << 4)));
+				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr, getIntegerType(32)), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_RET << 4)));
 			}
 			else {
 				BasicBlock *bb0 = getBB();
 				BasicBlock *bb1 = getBB();
 				BR_COND(bb0, bb1, ICMP_EQ(target_addr, CONST32(*next_pc)));
 				cpu->bb = bb0;
-				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_NEXT_PC << 4)));
-				CallInst *ci = CALL_tail(main_ty, LD(tc_jmp1_ptr), cpu->ptr_cpu_ctx);
+				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr, getIntegerType(32)), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_NEXT_PC << 4)));
+				CallInst *ci = CALL_tail(main_ty, LD(tc_jmp1_ptr, getPointerType()), cpu->ptr_cpu_ctx);
 				ReturnInst::Create(CTX(), ci, cpu->bb);
 				cpu->bb = bb1;
-				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_RET << 4)));
+				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr, getIntegerType(32)), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_RET << 4)));
 			}
 		}
 		else { // uncond jmp dst_pc
-			CallInst *ci = CALL_tail(main_ty, LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx);
+			CallInst *ci = CALL_tail(main_ty, LD(tc_jmp0_ptr, getPointerType()), cpu->ptr_cpu_ctx);
 			ReturnInst::Create(CTX(), ci, cpu->bb);
 			cpu->bb = getBB();
 			ABORT("Unreachable code in link_direct_emit reached with n = 1");
@@ -383,12 +399,12 @@ link_direct_emit(cpu_t *cpu, addr_t instr_pc, addr_t dst_pc, addr_t *next_pc, Va
 		BasicBlock *bb2 = getBB();
 		BR_COND(bb0, bb1, ICMP_EQ(target_addr, CONST32(*next_pc)));
 		cpu->bb = bb0;
-		ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_NEXT_PC << 4)));
-		CallInst *ci1 = CALL_tail(main_ty, LD(tc_jmp1_ptr), cpu->ptr_cpu_ctx);
+		ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr, getIntegerType(32)), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_NEXT_PC << 4)));
+		CallInst *ci1 = CALL_tail(main_ty, LD(tc_jmp1_ptr, getPointerType()), cpu->ptr_cpu_ctx);
 		ReturnInst::Create(CTX(), ci1, cpu->bb);
 		cpu->bb = bb1;
-		ST(tc_flg_ptr, AND(LD(tc_flg_ptr), CONST32(~TC_FLG_JMP_TAKEN)));
-		CallInst *ci2 = CALL_tail(main_ty, LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx);
+		ST(tc_flg_ptr, AND(LD(tc_flg_ptr, getIntegerType(32)), CONST32(~TC_FLG_JMP_TAKEN)));
+		CallInst *ci2 = CALL_tail(main_ty, LD(tc_jmp0_ptr, getPointerType()), cpu->ptr_cpu_ctx);
 		ReturnInst::Create(CTX(), ci2, cpu->bb);
 		cpu->bb = bb2;
 		ABORT("Unreachable code in link_direct_emit reached with n = 2");
@@ -413,8 +429,8 @@ link_dst_only_emit(cpu_t *cpu)
 	cpu->tc->flags |= (1 & TC_FLG_NUM_JMP);
 
 	FunctionType *main_ty = cpu->bb->getParent()->getFunctionType();
-	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[0]), getPointerType(getPointerType(main_ty)));
-	CallInst *ci = CALL_tail(main_ty, LD(tc_jmp0_ptr), cpu->ptr_cpu_ctx);
+	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[0]), getPointerType());
+	CallInst *ci = CALL_tail(main_ty, LD(tc_jmp0_ptr, getPointerType()), cpu->ptr_cpu_ctx);
 	ReturnInst::Create(CTX(), ci, cpu->bb);
 }
 
@@ -422,36 +438,33 @@ template<fn_emit_t fn_type>
 static Function *
 gen_fn(cpu_t *cpu)
 {
-	StructType *cpu_ctx_struct_type = StructType::create(CTX(), "struct.cpu_ctx_t");
+	cpu->cpu_ctx_type = StructType::create(CTX(), "struct.cpu_ctx_t");
 	StructType *type_exp_data_t = StructType::create(CTX(),
 		{ getIntegerType(32), getIntegerType(16), getIntegerType(16), getIntegerType(32) }, "struct.exp_data_t", false);
 
 	StructType *type_exp_info_t = StructType::create(CTX(),
 		{ type_exp_data_t, getIntegerType(16) }, "struct.exp_info_t", false);
 
-	StructType *tc_struct_type = StructType::create(CTX(), "struct.tc_t");  // NOTE: opaque tc struct
-	FunctionType *type_iret_t, *type_entry_t;
-	type_iret_t = type_entry_t = FunctionType::get(
-		getPointerType(tc_struct_type),       // tc ret
-		getPointerType(cpu_ctx_struct_type),  // cpu_ctx
-		false);
-
-	cpu_ctx_struct_type->setBody({
-		getPointerType(StructType::create(CTX(), "struct.cpu_t")),  // NOTE: opaque cpu struct
+	cpu->cpu_ctx_type->setBody({
+		getPointerType(),       // cpu struct
 		get_struct_reg(cpu),
-		get_struct_eflags(cpu),
+		StructType::create(CTX(), { getIntegerType(32), getIntegerType(32), getArrayType(getIntegerType(8), 256) }, "struct.eflags_t", false),
 		getIntegerType(32),
 		getArrayType(getIntegerType(32), TLB_MAX_SIZE),
 		getArrayType(getIntegerType(16), TLB_MAX_SIZE),
 		getArrayType(getIntegerType(16), IOTLB_MAX_SIZE),
-		getPointerType(getIntegerType(8)),
+		getPointerType(),
 		type_exp_info_t,
 		getIntegerType(8)
 		}, false);
-	PointerType *type_pcpu_ctx_t = getPointerType(cpu_ctx_struct_type);
 
 	Function *func = nullptr;
 	if constexpr (constexpr bool type_match = fn_type == fn_emit_t::main_t) {
+		FunctionType *type_entry_t = FunctionType::get(
+			getPointerType(),       // tc ret
+			getPointerType(),       // cpu_ctx
+			false);
+
 		func = Function::Create(
 			type_entry_t,                        // func type
 			GlobalValue::ExternalLinkage,        // linkage
@@ -461,8 +474,8 @@ gen_fn(cpu_t *cpu)
 	}
 	else if constexpr (fn_type == fn_emit_t::int_t) {
 		FunctionType *type_int_t = FunctionType::get(
-			getVoidType(),                                               // void ret
-			{ getPointerType(cpu_ctx_struct_type), getIntegerType(8) },  // cpu_ctx, int flag
+			getVoidType(),                               // void ret
+			{ getPointerType(), getIntegerType(8) },     // cpu_ctx, int flag
 			false);
 
 		func = Function::Create(
@@ -488,19 +501,19 @@ create_tc_prologue(cpu_t *cpu)
 	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
 	cpu->ptr_cpu_ctx = cpu->bb->getParent()->arg_begin();
 	cpu->ptr_cpu_ctx->setName("cpu_ctx");
-	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, 1);
+	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 1);
 	cpu->ptr_regs->setName("regs");
-	cpu->ptr_eflags = GEP(cpu->ptr_cpu_ctx, 2);
+	cpu->ptr_eflags = GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 2);
 	cpu->ptr_eflags->setName("eflags");
-	cpu->ptr_hflags = GEP(cpu->ptr_cpu_ctx, 3);
+	cpu->ptr_hflags = GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 3);
 	cpu->ptr_hflags->setName("hflags");
-	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, 4);
+	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 4);
 	cpu->ptr_tlb->setName("tlb");
-	cpu->ptr_tlb_region_idx = GEP(cpu->ptr_cpu_ctx, 5);
+	cpu->ptr_tlb_region_idx = GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 5);
 	cpu->ptr_tlb_region_idx->setName("tlb_region_idx");
-	cpu->ptr_iotlb = GEP(cpu->ptr_cpu_ctx, 6);
+	cpu->ptr_iotlb = GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 6);
 	cpu->ptr_iotlb->setName("iotlb");
-	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, 7));
+	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 7), getPointerType());
 	cpu->ptr_ram->setName("ram");
 }
 
@@ -524,7 +537,7 @@ gen_int_fn(cpu_t *cpu)
 	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
 	cpu->tc = nullptr;
 
-	ST_ATOMIC(GEP(func->arg_begin(), 9), func->arg_begin() + 1, AtomicOrdering::Monotonic, 1);
+	ST_ATOMIC(GEP(func->arg_begin(), cpu->cpu_ctx_type, 9), func->arg_begin() + 1, AtomicOrdering::Monotonic, 1);
 	ReturnInst::Create(CTX(), cpu->bb);
 
 	if (cpu->cpu_flags & CPU_PRINT_IR) {
@@ -578,11 +591,13 @@ create_tc_epilogue(cpu_t *cpu)
 void
 raise_exp_inline_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip)
 {
-	Value *ptr_exp_data = GEP(GEP(cpu->ptr_cpu_ctx, 8), 0);
-	ST(GEP(ptr_exp_data, 0), fault_addr);
-	ST(GEP(ptr_exp_data, 1), code);
-	ST(GEP(ptr_exp_data, 2), idx);
-	ST(GEP(ptr_exp_data, 3), eip);
+	GetElementPtrInst *gep1 = GetElementPtrInst::CreateInBounds(cpu->cpu_ctx_type, cpu->ptr_cpu_ctx, { CONST32(0), CONST32(8) }, "", cpu->bb);
+	GetElementPtrInst *gep2 = GetElementPtrInst::CreateInBounds(gep1->getResultElementType(), gep1, { CONST32(0), CONST32(0) }, "", cpu->bb);
+	Value *ptr_exp_data = gep2;
+	ST(GEP(ptr_exp_data, gep2->getResultElementType(), 0), fault_addr);
+	ST(GEP(ptr_exp_data, gep2->getResultElementType(), 1), code);
+	ST(GEP(ptr_exp_data, gep2->getResultElementType(), 2), idx);
+	ST(GEP(ptr_exp_data, gep2->getResultElementType(), 3), eip);
 	CallInst *ci = CALL(cpu->ptr_exp_fn->getFunctionType(), cpu->ptr_exp_fn, cpu->ptr_cpu_ctx);
 	ReturnInst::Create(CTX(), ci, cpu->bb);
 }
@@ -590,11 +605,13 @@ raise_exp_inline_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Va
 void
 raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip)
 {
-	Value *ptr_exp_data = GEP(GEP(cpu->ptr_cpu_ctx, 8), 0);
-	ST(GEP(ptr_exp_data, 0), fault_addr);
-	ST(GEP(ptr_exp_data, 1), code);
-	ST(GEP(ptr_exp_data, 2), idx);
-	ST(GEP(ptr_exp_data, 3), eip);
+	GetElementPtrInst *gep1 = GetElementPtrInst::CreateInBounds(cpu->cpu_ctx_type, cpu->ptr_cpu_ctx, { CONST32(0), CONST32(8) }, "", cpu->bb);
+	GetElementPtrInst *gep2 = GetElementPtrInst::CreateInBounds(gep1->getResultElementType(), gep1, { CONST32(0), CONST32(0) }, "", cpu->bb);
+	Value *ptr_exp_data = gep2;
+	ST(GEP(ptr_exp_data, gep2->getResultElementType(), 0), fault_addr);
+	ST(GEP(ptr_exp_data, gep2->getResultElementType(), 1), code);
+	ST(GEP(ptr_exp_data, gep2->getResultElementType(), 2), idx);
+	ST(GEP(ptr_exp_data, gep2->getResultElementType(), 3), eip);
 	Function *exp_isInt = cast<Function>(cpu->mod->getOrInsertFunction("cpu_raise_exception_isInt", cpu->bb->getParent()->getReturnType(), cpu->ptr_cpu_ctx->getType()).getCallee());
 	CallInst *ci = CALL(exp_isInt->getFunctionType(), exp_isInt, cpu->ptr_cpu_ctx);
 	ReturnInst::Create(CTX(), ci, cpu->bb);
@@ -614,7 +631,7 @@ raise_exception_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Val
 void
 write_eflags(cpu_t *cpu, Value *eflags, Value *mask)
 {
-	ST_R32(OR(OR(AND(LD_R32(EFLAGS_idx), NOT(mask)), AND(eflags, mask)), CONST32(2)), EFLAGS_idx);
+	ST_REG_idx(OR(OR(AND(LD_R32(EFLAGS_idx), NOT(mask)), AND(eflags, mask)), CONST32(2)), EFLAGS_idx);
 	Value *cf_new = AND(eflags, CONST32(1));
 	Value *of_new = SHL(XOR(SHR(AND(eflags, CONST32(0x800)), CONST32(11)), cf_new), CONST32(30));
 	Value *sfd = SHR(AND(eflags, CONST32(128)), CONST32(7));
@@ -648,7 +665,7 @@ io_read_emit(cpu_t *cpu, Value *port, const unsigned size_mode)
 	Value *ret = ALLOCs(size * 8);
 	Value *iotlb_idx1 = SHR(port, CONST16(IO_SHIFT));
 	Value *iotlb_idx2 = SHR(SUB(ADD(port, CONST16(size)), CONST16(1)), CONST16(IO_SHIFT));
-	Value *iotlb_entry = LD(GEP(cpu->ptr_iotlb, iotlb_idx1));
+	Value *iotlb_entry = LD(GEP(cpu->ptr_iotlb, cpu->cpu_ctx_type->getTypeAtIndex(6), iotlb_idx1), getIntegerType(16));
 
 	// interrogate the iotlb
 	// this checks if the last byte of the read is in the same io entry as the first (port + size - 1)
@@ -659,19 +676,21 @@ io_read_emit(cpu_t *cpu, Value *port, const unsigned size_mode)
 	// iotlb hit
 	cpu->bb = bb0;
 	FunctionType *type_io_read_t = FunctionType::get(
-		getIntegerType(64),                                                                             // ret
-		{ getIntegerType(32), getIntegerType(sizeof(size_t) * 8), getPointerType(getIntegerType(8)) },  // port, size, opaque
+		getIntegerType(64),                                                            // ret
+		{ getIntegerType(32), getIntegerType(sizeof(size_t) * 8), getPointerType() },  // port, size, opaque
 		false);
 	StructType *type_io_t = StructType::create(CTX(), {
-		getPointerType(getIntegerType(8)),  // NOTE: opaque io region struct
-		getPointerType(type_io_read_t),
-		getPointerType(getIntegerType(8)),  // NOTE: opaque io write func
-		getPointerType(getIntegerType(8))   // NOTE: opaque io value
+		getPointerType(),  // NOTE: opaque io region struct
+		getPointerType(),
+		getPointerType(),  // NOTE: opaque io write func
+		getPointerType()   // NOTE: opaque io value
 		}, "", false);
 
-	Value *io_ptr = INT2PTR(getPointerType(getPointerType(type_io_t)), CONSTs(cpu->dl->getPointerSize() * 8, reinterpret_cast<uintptr_t>(&cpu->iotlb_regions_ptr)));
-	Value *io = GetElementPtrInst::CreateInBounds(type_io_t, LD(io_ptr), SHR(iotlb_entry, CONST16(IO_SHIFT)), "", cpu->bb);
-	ST(ret, TRUNCs(size * 8, CALL(type_io_read_t, LD(GEP(io, 1)), ZEXT32(port), CONSTs(sizeof(size_t) * 8, size), LD(GEP(io, 3)))));
+	Value *io_ptr = INT2PTR(getPointerType(), CONSTs(cpu->dl->getPointerSize() * 8, reinterpret_cast<uintptr_t>(&cpu->iotlb_regions_ptr)));
+	GetElementPtrInst *gep = GetElementPtrInst::CreateInBounds(type_io_t, LD(io_ptr, getPointerType()), SHR(iotlb_entry, CONST16(IO_SHIFT)), "", cpu->bb);
+	Value *io = gep;
+	ST(ret, TRUNCs(size * 8, CALL(type_io_read_t, LD(GEP(io, gep->getResultElementType(), 1), getPointerType()), ZEXT32(port),
+		CONSTs(sizeof(size_t) * 8, size), LD(GEP(io, gep->getResultElementType(), 3), getPointerType()))));
 	BR_UNCOND(bb2);
 
 	// iotlb miss
@@ -680,7 +699,7 @@ io_read_emit(cpu_t *cpu, Value *port, const unsigned size_mode)
 	BR_UNCOND(bb2);
 
 	cpu->bb = bb2;
-	return LD(ret);
+	return LD(ret, getIntegerType(size * 8));
 }
 
 void
@@ -695,7 +714,7 @@ io_write_emit(cpu_t *cpu, Value *port, Value *value, const unsigned size_mode)
 	BasicBlock *bb2 = getBB();
 	Value *iotlb_idx1 = SHR(port, CONST16(IO_SHIFT));
 	Value *iotlb_idx2 = SHR(SUB(ADD(port, CONST16(size)), CONST16(1)), CONST16(IO_SHIFT));
-	Value *iotlb_entry = LD(GEP(cpu->ptr_iotlb, iotlb_idx1));
+	Value *iotlb_entry = LD(GEP(cpu->ptr_iotlb, cpu->cpu_ctx_type->getTypeAtIndex(6), iotlb_idx1), getIntegerType(16));
 
 	// interrogate the iotlb
 	// this checks if the last byte of the write is in the same io entry as the first (port + size - 1)
@@ -706,19 +725,21 @@ io_write_emit(cpu_t *cpu, Value *port, Value *value, const unsigned size_mode)
 	// iotlb hit
 	cpu->bb = bb0;
 	FunctionType *type_io_write_t = FunctionType::get(
-		getVoidType(),                                                                                                      // void ret
-		{ getIntegerType(32), getIntegerType(sizeof(size_t) * 8), getIntegerType(64), getPointerType(getIntegerType(8)) },  // port, size, val, opaque
+		getVoidType(),                                                                                     // void ret
+		{ getIntegerType(32), getIntegerType(sizeof(size_t) * 8), getIntegerType(64), getPointerType() },  // port, size, val, opaque
 		false);
 	StructType *type_io_t = StructType::create(CTX(), {
-		getPointerType(getIntegerType(8)),  // NOTE: opaque io region struct
-		getPointerType(getIntegerType(8)),  // NOTE: opaque io read func
-		getPointerType(type_io_write_t),
-		getPointerType(getIntegerType(8))   // NOTE: opaque io value
+		getPointerType(),  // NOTE: opaque io region struct
+		getPointerType(),  // NOTE: opaque io read func
+		getPointerType(),
+		getPointerType()   // NOTE: opaque io value
 		}, "", false);
 
-	Value *io_ptr = INT2PTR(getPointerType(getPointerType(type_io_t)), CONSTs(cpu->dl->getPointerSize() * 8, reinterpret_cast<uintptr_t>(&cpu->iotlb_regions_ptr)));
-	Value *io = GetElementPtrInst::CreateInBounds(type_io_t, LD(io_ptr), SHR(iotlb_entry, CONST16(IO_SHIFT)), "", cpu->bb);
-	CALL(type_io_write_t, LD(GEP(io, 2)), ZEXT32(port), CONSTs(sizeof(size_t) * 8, size), ZEXT64(value), LD(GEP(io, 3)));
+	Value *io_ptr = INT2PTR(getPointerType(), CONSTs(cpu->dl->getPointerSize() * 8, reinterpret_cast<uintptr_t>(&cpu->iotlb_regions_ptr)));
+	GetElementPtrInst *gep = GetElementPtrInst::CreateInBounds(type_io_t, LD(io_ptr, getPointerType()), SHR(iotlb_entry, CONST16(IO_SHIFT)), "", cpu->bb);
+	Value *io = gep;
+	CALL(type_io_write_t, LD(GEP(io, gep->getResultElementType(), 2), getPointerType()), ZEXT32(port),
+		CONSTs(sizeof(size_t) * 8, size), ZEXT64(value), LD(GEP(io, gep->getResultElementType(), 3), getPointerType()));
 	BR_UNCOND(bb2);
 
 	// iotlb miss
@@ -750,8 +771,8 @@ check_io_priv_emit(cpu_t *cpu, Value *port, uint8_t size_mode)
 		Value *temp, *value = ALLOC32();
 		temp = LD_MEM(MEM_LD16_idx, ADD(base, io_port_offset));
 		ST(value, ZEXT32(temp));
-		ST(value, SHR(LD(value), AND(port, CONST32(7))));
-		BR_COND(bb_exp, bb2, ICMP_NE(AND(LD(value), CONST32((1 << op_size_to_mem_size[size_mode]) - 1)), CONST32(0)));
+		ST(value, SHR(LD(value, getIntegerType(32)), AND(port, CONST32(7))));
+		BR_COND(bb_exp, bb2, ICMP_NE(AND(LD(value, getIntegerType(32)), CONST32((1 << op_size_to_mem_size[size_mode]) - 1)), CONST32(0)));
 		cpu->bb = bb2;
 	}
 }
@@ -770,7 +791,7 @@ stack_push_emit(cpu_t *cpu, const std::vector<Value *> &vec, uint32_t size_mode)
 			sp = SUB(sp, CONST16(4));
 			ST_MEM(MEM_ST32_idx, ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), val);
 		}
-		ST_R16(sp, ESP_idx);
+		ST_REG_idx(sp, ESP_idx);
 	}
 	break;
 
@@ -780,7 +801,7 @@ stack_push_emit(cpu_t *cpu, const std::vector<Value *> &vec, uint32_t size_mode)
 			esp = SUB(esp, CONST32(4));
 			ST_MEM(MEM_ST32_idx, ADD(esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), val);
 		}
-		ST_R32(esp, ESP_idx);
+		ST_REG_idx(esp, ESP_idx);
 	}
 	break;
 
@@ -790,7 +811,7 @@ stack_push_emit(cpu_t *cpu, const std::vector<Value *> &vec, uint32_t size_mode)
 			sp = SUB(sp, CONST16(2));
 			ST_MEM(MEM_ST16_idx, ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), val);
 		}
-		ST_R16(sp, ESP_idx);
+		ST_REG_idx(sp, ESP_idx);
 	}
 	break;
 
@@ -800,7 +821,7 @@ stack_push_emit(cpu_t *cpu, const std::vector<Value *> &vec, uint32_t size_mode)
 			esp = SUB(esp, CONST32(2));
 			ST_MEM(MEM_ST16_idx, ADD(esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), val);
 		}
-		ST_R32(esp, ESP_idx);
+		ST_REG_idx(esp, ESP_idx);
 	}
 	break;
 
@@ -824,7 +845,7 @@ stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigne
 			sp = ADD(sp, CONST16(4));
 		}
 		vec.push_back(sp);
-		vec.push_back(GEP_R16(ESP_idx));
+		vec.push_back(GEP_REG_idx(ESP_idx));
 	}
 	break;
 
@@ -835,7 +856,7 @@ stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigne
 			esp = ADD(esp, CONST32(4));
 		}
 		vec.push_back(esp);
-		vec.push_back(GEP_R32(ESP_idx));
+		vec.push_back(GEP_REG_idx(ESP_idx));
 	}
 	break;
 
@@ -846,7 +867,7 @@ stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigne
 			sp = ADD(sp, CONST16(2));
 		}
 		vec.push_back(sp);
-		vec.push_back(GEP_R16(ESP_idx));
+		vec.push_back(GEP_REG_idx(ESP_idx));
 	}
 	break;
 
@@ -857,7 +878,7 @@ stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigne
 			esp = ADD(esp, CONST32(2));
 		}
 		vec.push_back(esp);
-		vec.push_back(GEP_R32(ESP_idx));
+		vec.push_back(GEP_REG_idx(ESP_idx));
 	}
 	break;
 
@@ -896,10 +917,10 @@ get_immediate_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx, uint8_
 }
 
 Value *
-get_register_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx)
+get_register_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx, Type *&reg_ty)
 {
 	assert(instr->operands[idx].type == ZYDIS_OPERAND_TYPE_REGISTER);
-	return get_operand(cpu, instr, idx);
+	return get_operand(cpu, instr, idx, reg_ty);
 }
 
 void
@@ -965,8 +986,8 @@ update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag, bool is_write)
 	if (is_write) {
 		ST_MM_HIGH(CONST16(0xFFFF), idx);
 	}
-	ST_R16(tag, TAG_idx);
-	ST_R16(AND(LD_R16(ST_idx), CONST16(~ST_TOP_MASK)), ST_idx);
+	ST_REG_idx(tag, TAG_idx);
+	ST_REG_idx(AND(LD_R16(ST_idx), CONST16(~ST_TOP_MASK)), ST_idx);
 }
 
 int
@@ -1002,9 +1023,10 @@ get_seg_prfx_idx(ZydisDecodedInstruction *instr)
 }
 
 Value *
-get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum)
+get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum, Type *&reg_ty)
 {
 	ZydisDecodedOperand *operand = &instr->operands[opnum];
+	reg_ty = nullptr;
 
 	switch (operand->type)
 	{
@@ -1113,14 +1135,17 @@ get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum)
 				LIB86CPU_ABORT_msg("Unhandled reg operand encoding %d in %s", operand->encoding, __func__);
 			}
 
-			return (reg8 < 4) ? GEP_R8L(idx) : GEP_R8H(idx);
+			reg_ty = getIntegerType(8);
+			return (reg8 < 4) ? GEP_REG_idx(idx) : GEP_R8H(idx);
 		}
 
 		case 16:
-			return GEP_R16(idx);
+			reg_ty = getIntegerType(16);
+			return GEP_REG_idx(idx);
 
 		case 32:
-			return GEP_R32(idx);
+			reg_ty = getIntegerType(32);
+			return GEP_REG_idx(idx);
 
 		default:
 			LIB86CPU_ABORT();
@@ -1184,7 +1209,7 @@ hook_emit(cpu_t *cpu, hook *obj)
 			break;
 
 		case arg_types::ptr:
-			args_t.push_back(getPointerType(getIntegerType(8)));
+			args_t.push_back(getPointerType());
 			args_val.push_back(INT2PTR(args_t[i], CONSTs(cpu->dl->getPointerSize() * 8, obj->args_val[i])));
 			break;
 
