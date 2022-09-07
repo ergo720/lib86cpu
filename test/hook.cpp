@@ -173,15 +173,13 @@ test_double_ptr()
 	// push 0x0
 	// call 0x96
 
-	int **a;
-	int *b;
-	uint32_t ret_eip;
+	uint32_t a, b, ret_eip;
 	uint8_t args[12];
 	mem_read_block(cpu, regs->esp, sizeof(args), args);
 	std::memcpy(&ret_eip, &args[0], 4);
 	std::memcpy(&a, &args[4], 4);
 	std::memcpy(&b, &args[8], 4);
-	std::printf("test_double_ptr called with args: 0x%p, 0x%p\n", a, b);
+	std::printf("test_double_ptr called with args: %u, %u\n", a, b);
 
 	trampoline_call(cpu, ret_eip);
 }
