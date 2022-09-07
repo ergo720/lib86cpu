@@ -102,6 +102,7 @@ add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS -D_SCL_SECU
 add_definitions(-wd4146)
 add_definitions(-wd4800)
 add_definitions(-wd4355)
+add_definitions(-wd4624)
 else ()
 message(FATAL_ERROR "Only Windows builds are supported for now")
 endif()
