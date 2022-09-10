@@ -98,7 +98,7 @@ get_reg_idx(ZydisRegister reg)
 Value *
 get_r8h_pointer(cpu_t *cpu, Value *gep_start)
 {
-	return GetElementPtrInst::CreateInBounds(getIntegerType(8) , gep_start, CONST8(1), "", cpu->bb);
+	return GetElementPtrInst::CreateInBounds(getIntegerType(8), gep_start, CONST8(1), "", cpu->bb);
 }
 
 StructType *
@@ -457,6 +457,9 @@ gen_fn(cpu_t *cpu)
 		type_exp_info_t,
 		getIntegerType(8)
 		}, false);
+
+	cpu->reg_ty = cpu->cpu_ctx_type->getTypeAtIndex(1);
+	cpu->eflags_ty = cpu->cpu_ctx_type->getTypeAtIndex(2);
 
 	Function *func = nullptr;
 	if constexpr (constexpr bool type_match = fn_type == fn_emit_t::main_t) {
@@ -917,10 +920,10 @@ get_immediate_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx, uint8_
 }
 
 Value *
-get_register_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx, Type *&reg_ty)
+get_register_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx)
 {
 	assert(instr->operands[idx].type == ZYDIS_OPERAND_TYPE_REGISTER);
-	return get_operand(cpu, instr, idx, reg_ty);
+	return get_operand(cpu, instr, idx);
 }
 
 void
@@ -1023,10 +1026,9 @@ get_seg_prfx_idx(ZydisDecodedInstruction *instr)
 }
 
 Value *
-get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum, Type *&reg_ty)
+get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum)
 {
 	ZydisDecodedOperand *operand = &instr->operands[opnum];
-	reg_ty = nullptr;
 
 	switch (operand->type)
 	{
@@ -1135,16 +1137,23 @@ get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum, Ty
 				LIB86CPU_ABORT_msg("Unhandled reg operand encoding %d in %s", operand->encoding, __func__);
 			}
 
-			reg_ty = getIntegerType(8);
-			return (reg8 < 4) ? GEP_REG_idx(idx) : GEP_R8H(idx);
+			if (reg8 < 4) {
+				auto reg_ptr = GetElementPtrInst::CreateInBounds(getRegType(), cpu->ptr_regs, { CONST32(0), CONST32(idx) }, "", cpu->bb);
+				reg_ptr->setResultElementType(getIntegerType(8));
+				return reg_ptr;
+			}
+			else {
+				return GEP_R8H(idx);
+			}
 		}
 
-		case 16:
-			reg_ty = getIntegerType(16);
-			return GEP_REG_idx(idx);
+		case 16: {
+			auto reg_ptr = GetElementPtrInst::CreateInBounds(getRegType(), cpu->ptr_regs, { CONST32(0), CONST32(idx) }, "", cpu->bb);
+			reg_ptr->setResultElementType(getIntegerType(16));
+			return reg_ptr;
+		}
 
 		case 32:
-			reg_ty = getIntegerType(32);
 			return GEP_REG_idx(idx);
 
 		default:

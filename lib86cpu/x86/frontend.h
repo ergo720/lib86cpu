@@ -25,7 +25,7 @@ Value *gep_f80_emit(cpu_t *cpu, const int gep_index, const int f80_index);
 Value *store_atomic_emit(cpu_t *cpu, Value *ptr, Value *val, AtomicOrdering order, uint8_t align);
 Value *load_atomic_emit(cpu_t *cpu, Value *ptr, Type *ptr_ty, AtomicOrdering order, uint8_t align);
 Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
-Value *get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum, Type *&reg_ty);
+Value *get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum);
 int get_reg_idx(ZydisRegister reg);
 int get_seg_prfx_idx(ZydisDecodedInstruction *instr);
 Value *mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_priv);
@@ -44,7 +44,7 @@ void raise_exp_inline_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *id
 void raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
 BasicBlock *raise_exception_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
 Value *get_immediate_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx, uint8_t size_mode);
-Value *get_register_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx, Type *&reg_ty);
+Value *get_register_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx);
 void set_flags_sum(cpu_t *cpu, Value *sum, Value *a, Value *b, uint8_t size_mode);
 void set_flags_sub(cpu_t *cpu, Value *sub, Value *a, Value *b, uint8_t size_mode);
 void set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode);
@@ -83,8 +83,8 @@ CallInst *call_emit(cpu_t *cpu, FunctionType *fn_ty, Value *func, Args&&... args
 #define getIntegerPointerType() (cpu->dl->getIntPtrType(CTX()))
 #define getVoidType() (Type::getVoidTy(CTX()))
 #define getArrayType(x, n) (ArrayType::get(x, n))
-#define getRegType() (cpu->cpu_ctx_type->getTypeAtIndex(1))
-#define getEflagsType() (cpu->cpu_ctx_type->getTypeAtIndex(2))
+#define getRegType() (cpu->reg_ty)
+#define getEflagsType() (cpu->eflags_ty)
 
 #define MEM_LD8_idx  0
 #define MEM_LD16_idx 1
@@ -104,8 +104,8 @@ CallInst *call_emit(cpu_t *cpu, FunctionType *fn_ty, Value *func, Args&&... args
 #define GET_REG_idx(reg) get_reg_idx(reg)
 #define GET_IMM() get_immediate_op(cpu, &instr, OPNUM_SRC, size_mode)
 #define GET_IMM8() get_immediate_op(cpu, &instr, OPNUM_SRC, SIZE8)
-#define GET_REG(idx) get_register_op(cpu, &instr, idx, reg_ty)
-#define GET_OP(op) get_operand(cpu, &instr, op, reg_ty)
+#define GET_REG(idx) get_register_op(cpu, &instr, idx)
+#define GET_OP(op) get_operand(cpu, &instr, op)
 #define GET_RM(idx, r, m) 	rm = GET_OP(idx); \
 switch (instr.operands[idx].type) \
 { \
@@ -158,7 +158,6 @@ default: \
 #define SEXT64(v) SEXTs(64, v)
 
 #define IBITCASTp(s, v) new BitCastInst(v, getPointerType(), "", cpu->bb)
-#define IBITCASTs(s, v) new BitCastInst(v, s, "", cpu->bb)
 
 #define TRUNCs(s,v) new TruncInst(v, getIntegerType(s), "", cpu->bb)
 #define TRUNC8(v) TRUNCs(8, v)
@@ -246,7 +245,7 @@ default: \
 #define LD_R16(idx) LD(GEP_REG_idx(idx), getIntegerType(16))
 #define LD_R8L(idx) LD(GEP_REG_idx(idx), getIntegerType(8))
 #define LD_R8H(idx) LD(GEP_R8H(idx), getIntegerType(8))
-#define LD_REG_val(reg) LD(reg, reg_ty)
+#define LD_REG_val(reg) LD(reg, cast<GetElementPtrInst>(reg)->getResultElementType())
 #define LD_SEG(seg) LD(GEP_SEL(seg), getIntegerType(16))
 #define LD_SEG_HIDDEN(seg, idx) LD(gep_seg_hidden_emit(cpu, seg, idx), getIntegerType(32))
 #define LD_MM32(idx) LD(gep_f80_emit(cpu, idx, F80_LOW_idx), getIntegerType(32))

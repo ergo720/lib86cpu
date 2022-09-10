@@ -29,6 +29,7 @@ namespace llvm {
 	class BasicBlock;
 	class Function;
 	class Module;
+	class Type;
 	class PointerType;
 	class StructType;
 	class Value;
@@ -217,4 +218,6 @@ struct cpu_t {
 	llvm::Function *ptr_exp_fn;
 	llvm::Function *ptr_abort_fn;
 	llvm::StructType *cpu_ctx_type;
+	llvm::Type *reg_ty;
+	llvm::Type *eflags_ty;
 };
