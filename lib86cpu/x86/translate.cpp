@@ -441,23 +441,23 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t siz
 					it++;
 				}
 
+				// we can't delete the tc in tc_page_map right now because it would invalidate its iterator, which is still needed below
+				tc_to_delete.push_back(it_set);
+
 				if constexpr (remove_hook) {
-					it_map->second.erase(it_set);
 					break;
-				}
-				else {
-					// we can't delete the tc in tc_page_map right now because it would invalidate its iterator, which is still needed below
-					tc_to_delete.push_back(it_set);
 				}
 			}
 			it_set++;
 		}
 
-		if constexpr (!remove_hook) {
-			// delete the found tc's from the tc_page_map
-			for (auto &it : tc_to_delete) {
-				it_map->second.erase(it);
+		// delete the found tc's from tc_page_map and ibtc
+		for (auto &it : tc_to_delete) {
+			auto it_ibtc = cpu_ctx->cpu->ibtc.find((*it)->virt_pc);
+			if (it_ibtc != cpu_ctx->cpu->ibtc.end()) {
+				cpu_ctx->cpu->ibtc.erase(it_ibtc);
 			}
+			it_map->second.erase(it);
 		}
 
 		// if the tc_page_map for addr is now empty, also clear TLB_CODE and its key in the map
@@ -513,6 +513,7 @@ tc_cache_clear(cpu_t *cpu)
 	// when this is called from a function called from the JITed code, and the current function can potentially throw an exception
 	cpu->num_tc = 0;
 	cpu->tc_page_map.clear();
+	cpu->ibtc.clear();
 	for (auto &bucket : cpu->code_cache) {
 		bucket.clear();
 	}
@@ -541,17 +542,17 @@ tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc)
 	case 2:
 		switch ((prev_tc->flags & TC_FLG_JMP_TAKEN) >> 4)
 		{
-		case TC_FLG_DST_PC:
+		case TC_JMP_DST_PC:
 			prev_tc->jmp_offset[0] = ptr_tc->ptr_code;
 			ptr_tc->linked_tc.push_front(prev_tc);
 			break;
 
-		case TC_FLG_NEXT_PC:
+		case TC_JMP_NEXT_PC:
 			prev_tc->jmp_offset[1] = ptr_tc->ptr_code;
 			ptr_tc->linked_tc.push_front(prev_tc);
 			break;
 
-		case TC_FLG_RET:
+		case TC_JMP_RET:
 			if (num_jmp == 1) {
 				break;
 			}
@@ -2284,8 +2285,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				CallInst::Create(iret_helper, { cpu->ptr_cpu_ctx, CONST8(size_mode), cpu->instr_eip }, "", cpu->bb);
 			}
 
-			link_indirect_emit(cpu);
-			cpu->tc->flags |= TC_FLG_INDIRECT;
+			link_ret_emit(cpu);
+			cpu->tc->flags |= TC_FLG_RET;
 			translate_next = 0;
 		}
 		break;
@@ -4367,8 +4368,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				BAD;
 			}
 
-			link_indirect_emit(cpu);
-			cpu->tc->flags |= TC_FLG_INDIRECT;
+			link_ret_emit(cpu);
+			cpu->tc->flags |= TC_FLG_RET;
 			translate_next = 0;
 		}
 		break;
@@ -5885,6 +5886,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			cpu->jit->add_ir_module(std::move(tsm));
 
 			tc->pc = pc;
+			tc->virt_pc = virt_pc;
 			tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
 			tc->cpu_flags = (cpu->cpu_ctx.hflags & HFLG_CONST) | (cpu->cpu_ctx.regs.eflags & EFLAGS_CONST);
 			tc->ptr_code = reinterpret_cast<entry_t>(cpu->jit->lookup("main")->getAddress());
@@ -5938,7 +5940,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			switch (prev_tc->flags & TC_FLG_LINK_MASK)
 			{
 			case 0:
-			case TC_FLG_INDIRECT:
+			case TC_FLG_RET:
 				break;
 
 			case TC_FLG_DST_ONLY:
@@ -5948,6 +5950,10 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 
 			case TC_FLG_DIRECT:
 				tc_link_direct(prev_tc, ptr_tc);
+				break;
+
+			case TC_FLG_INDIRECT:
+				cpu->ibtc.insert_or_assign(virt_pc, ptr_tc);
 				break;
 
 			default:

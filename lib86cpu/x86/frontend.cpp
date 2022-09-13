@@ -317,7 +317,24 @@ check_rf_single_step_emit(cpu_t *cpu)
 void
 link_indirect_emit(cpu_t *cpu)
 {
-	// XXX: incomplete, actually perform some tc linking here
+	if (check_rf_single_step_emit(cpu)) {
+		return;
+	}
+
+	// make sure we check for interrupts before jumping to the next tc
+	check_int_emit(cpu);
+
+	auto func = cpu->mod->getOrInsertFunction("link_indirect_handler", getPointerType(), getPointerType(), getPointerType());
+	CallInst *ci1 = CALL(func.getFunctionType(), func.getCallee(), cpu->ptr_cpu_ctx, ConstantExpr::getIntToPtr(CONSTp(cpu->tc), getPointerType()));
+	CallInst *ci2 = CALL_tail(cpu->bb->getParent()->getFunctionType(), ci1, cpu->ptr_cpu_ctx);
+	ReturnInst::Create(CTX(), ci2, cpu->bb);
+	cpu->bb = getBB();
+}
+
+void
+link_ret_emit(cpu_t *cpu)
+{
+	// XXX: actually emit some linking code here
 
 	if (check_rf_single_step_emit(cpu)) {
 		return;
@@ -370,18 +387,18 @@ link_direct_emit(cpu_t *cpu, addr_t instr_pc, addr_t dst_pc, addr_t *next_pc, Va
 				CallInst *ci = CALL_tail(main_ty, LD(tc_jmp0_ptr, getPointerType()), cpu->ptr_cpu_ctx);
 				ReturnInst::Create(CTX(), ci, cpu->bb);
 				cpu->bb = bb1;
-				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr, getIntegerType(32)), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_RET << 4)));
+				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr, getIntegerType(32)), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_JMP_RET << 4)));
 			}
 			else {
 				BasicBlock *bb0 = getBB();
 				BasicBlock *bb1 = getBB();
 				BR_COND(bb0, bb1, ICMP_EQ(target_addr, CONST32(*next_pc)));
 				cpu->bb = bb0;
-				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr, getIntegerType(32)), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_NEXT_PC << 4)));
+				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr, getIntegerType(32)), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_JMP_NEXT_PC << 4)));
 				CallInst *ci = CALL_tail(main_ty, LD(tc_jmp1_ptr, getPointerType()), cpu->ptr_cpu_ctx);
 				ReturnInst::Create(CTX(), ci, cpu->bb);
 				cpu->bb = bb1;
-				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr, getIntegerType(32)), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_RET << 4)));
+				ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr, getIntegerType(32)), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_JMP_RET << 4)));
 			}
 		}
 		else { // uncond jmp dst_pc
@@ -399,7 +416,7 @@ link_direct_emit(cpu_t *cpu, addr_t instr_pc, addr_t dst_pc, addr_t *next_pc, Va
 		BasicBlock *bb2 = getBB();
 		BR_COND(bb0, bb1, ICMP_EQ(target_addr, CONST32(*next_pc)));
 		cpu->bb = bb0;
-		ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr, getIntegerType(32)), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_FLG_NEXT_PC << 4)));
+		ST(tc_flg_ptr, OR(AND(LD(tc_flg_ptr, getIntegerType(32)), CONST32(~TC_FLG_JMP_TAKEN)), CONST32(TC_JMP_NEXT_PC << 4)));
 		CallInst *ci1 = CALL_tail(main_ty, LD(tc_jmp1_ptr, getPointerType()), cpu->ptr_cpu_ctx);
 		ReturnInst::Create(CTX(), ci1, cpu->bb);
 		cpu->bb = bb1;
@@ -432,6 +449,22 @@ link_dst_only_emit(cpu_t *cpu)
 	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[0]), getPointerType());
 	CallInst *ci = CALL_tail(main_ty, LD(tc_jmp0_ptr, getPointerType()), cpu->ptr_cpu_ctx);
 	ReturnInst::Create(CTX(), ci, cpu->bb);
+}
+
+entry_t
+link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
+{
+	const auto it = cpu_ctx->cpu->ibtc.find(get_pc(cpu_ctx));
+
+	if (it != cpu_ctx->cpu->ibtc.end()) {
+		if (it->second->cs_base == cpu_ctx->regs.cs_hidden.base &&
+			it->second->cpu_flags == ((cpu_ctx->hflags & HFLG_CONST) | (cpu_ctx->regs.eflags & EFLAGS_CONST)) &&
+			((it->second->virt_pc & ~PAGE_MASK) == (tc->virt_pc & ~PAGE_MASK))) {
+			return it->second->ptr_code;
+		}
+	}
+
+	return tc->jmp_offset[2];
 }
 
 template<fn_emit_t fn_type>

@@ -9,6 +9,7 @@
 #include "memory.h"
 #include "debugger.h"
 #include "instructions.h"
+#include "frontend.h"
 
 
 std::unique_ptr<lc86_jit>
@@ -87,6 +88,7 @@ lc86_jit::lc86_jit(std::unique_ptr<ExecutionSession> es, JITTargetMachineBuilder
 	define_absolute(mangle("io_write8"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_write8), JITSymbolFlags::Absolute));
 	define_absolute(mangle("io_write16"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_write16), JITSymbolFlags::Absolute));
 	define_absolute(mangle("io_write32"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&io_write32), JITSymbolFlags::Absolute));
+	define_absolute(mangle("link_indirect_handler"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&link_indirect_handler), JITSymbolFlags::Absolute));
 	define_absolute(mangle("update_crN_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&update_crN_helper), JITSymbolFlags::Absolute));
 	define_absolute(mangle("cpu_rdtsc_handler"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&cpu_rdtsc_handler), JITSymbolFlags::Absolute));
 	define_absolute(mangle("msr_read_helper"), JITEvaluatedSymbol(reinterpret_cast<uintptr_t>(&msr_read_helper), JITSymbolFlags::Absolute));

@@ -38,6 +38,8 @@ std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsign
 void link_direct_emit(cpu_t *cpu, addr_t instr_pc, addr_t dst_pc, addr_t *next_pc, Value *target_addr);
 void link_indirect_emit(cpu_t *cpu);
 void link_dst_only_emit(cpu_t *cpu);
+void link_ret_emit(cpu_t *cpu);
+entry_t link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc);
 Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
 Value *floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits);
 void raise_exp_inline_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
