@@ -1190,8 +1190,7 @@ get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum)
 
 			if (reg8 < 4) {
 				auto reg_ptr = GetElementPtrInst::CreateInBounds(getRegType(), cpu->ptr_regs, { CONST32(0), CONST32(idx) }, "", cpu->bb);
-				reg_ptr->setResultElementType(getIntegerType(8));
-				return reg_ptr;
+				return GetElementPtrInst::CreateInBounds(getIntegerType(8), reg_ptr, CONST32(0), "", cpu->bb);
 			}
 			else {
 				return GEP_R8H(idx);
@@ -1200,8 +1199,7 @@ get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum)
 
 		case 16: {
 			auto reg_ptr = GetElementPtrInst::CreateInBounds(getRegType(), cpu->ptr_regs, { CONST32(0), CONST32(idx) }, "", cpu->bb);
-			reg_ptr->setResultElementType(getIntegerType(16));
-			return reg_ptr;
+			return GetElementPtrInst::CreateInBounds(getIntegerType(16), reg_ptr, CONST32(0), "", cpu->bb);
 		}
 
 		case 32:
