@@ -506,7 +506,13 @@ gen_fn(cpu_t *cpu)
 			GlobalValue::ExternalLinkage,        // linkage
 			"main",                              // name
 			cpu->mod);
+#if defined(_WIN64) && defined(_MSC_VER)
+		func->setCallingConv(CallingConv::Win64);
+#elif defined(_WIN32) && defined(_MSC_VER)
 		func->setCallingConv(CallingConv::C);
+#else
+#error Unknow calling convention for gen_fn
+#endif
 	}
 	else if constexpr (fn_type == fn_emit_t::int_t) {
 		FunctionType *type_int_t = FunctionType::get(
@@ -519,7 +525,13 @@ gen_fn(cpu_t *cpu)
 			GlobalValue::ExternalLinkage,    // linkage
 			"cpu_raise_interrupt",           // name
 			cpu->mod);
+#if defined(_WIN64) && defined(_MSC_VER)
+		func->setCallingConv(CallingConv::Win64);
+#elif defined(_WIN32) && defined(_MSC_VER)
 		func->setCallingConv(CallingConv::C);
+#else
+#error Unknow calling convention for gen_fn
+#endif
 	}
 	else {
 		static_assert(type_match, "Unknown function type to emit!");
@@ -617,7 +629,13 @@ create_tc_epilogue(cpu_t *cpu)
 		GlobalValue::ExternalLinkage,             // linkage
 		"exit",                                   // name
 		cpu->mod);
+#if defined(_WIN64) && defined(_MSC_VER)
+	exit->setCallingConv(CallingConv::Win64);
+#elif defined(_WIN32) && defined(_MSC_VER)
 	exit->setCallingConv(CallingConv::C);
+#else
+#error Unknow calling convention for create_tc_epilogue
+#endif
 
 	BasicBlock *bb = BasicBlock::Create(CTX(), "", exit, 0);
 	Value *tc_ptr2 = new IntToPtrInst(CONSTp(cpu->tc), exit->getReturnType(), "", bb);
