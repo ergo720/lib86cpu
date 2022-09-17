@@ -334,14 +334,9 @@ link_indirect_emit(cpu_t *cpu)
 void
 link_ret_emit(cpu_t *cpu)
 {
-	// XXX: actually emit some linking code here
+	// NOTE: perhaps find a way to use a return stack buffer to link to the next tc
 
-	if (check_rf_single_step_emit(cpu)) {
-		return;
-	}
-
-	// make sure we check for interrupts before jumping to the next tc
-	check_int_emit(cpu);
+	link_indirect_emit(cpu);
 }
 
 void

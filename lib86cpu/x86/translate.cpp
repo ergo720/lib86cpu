@@ -5940,7 +5940,6 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			switch (prev_tc->flags & TC_FLG_LINK_MASK)
 			{
 			case 0:
-			case TC_FLG_RET:
 				break;
 
 			case TC_FLG_DST_ONLY:
@@ -5952,6 +5951,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 				tc_link_direct(prev_tc, ptr_tc);
 				break;
 
+			case TC_FLG_RET:
 			case TC_FLG_INDIRECT:
 				cpu->ibtc.insert_or_assign(virt_pc, ptr_tc);
 				break;
