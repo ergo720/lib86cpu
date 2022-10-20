@@ -14,3 +14,7 @@
 	path = import/imgui
 	url = https://github.com/ocornut/imgui
 	shallow = true
+[submodule "import/asmjit"]
+	path = import/asmjit
+	url = https://github.com/asmjit/asmjit
+	shallow = true

@@ -754,7 +754,6 @@ update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip
 		cpu_ctx->hflags = (((new_cr & CR0_EM_MASK) << 3) | (cpu_ctx->hflags & ~HFLG_CR0_EM));
 
 		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
-			tc_cache_clear(cpu_ctx->cpu);
 			tlb_flush(cpu_ctx->cpu, TLB_zero);
 			if (new_cr & CR0_PE_MASK) {
 				// real -> protected
@@ -780,7 +779,6 @@ update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip
 				LOG(log_level::info, "Removed all breakpoints because cpu mode changed");
 			}
 
-			// since tc_cache_clear has deleted the calling code block, we must return to the translator with an exception
 			cpu_ctx->regs.eip = (eip + bytes);
 			cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
 			throw host_exp_t::cpu_mode_changed;

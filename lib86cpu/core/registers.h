@@ -6,21 +6,19 @@
 
 #pragma once
 
-#define DEFINE_REG32(_reg)			\
+#define DEFINE_REG32(_reg) \
 		uint32_t		_reg
 
-#define DEFINE_REG16(_reg)			\
+#define DEFINE_REG16(_reg) \
 		uint16_t		_reg
 
-#define DEFINE_SEG_REG(_reg)			\
-	struct {				\
-		uint16_t		_reg;	\
+#define DEFINE_SEG_REG(_reg) \
+		uint16_t		_reg; \
 		struct { \
 			uint32_t base; \
 			uint32_t limit; \
 			uint32_t flags; \
-		} _reg ## _hidden; \
-	}
+		} _reg ## _hidden;
 
 #define DEFINE_FP80(_reg) \
 	PACKED(struct { \

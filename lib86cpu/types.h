@@ -11,4 +11,4 @@
 typedef uint32_t addr_t;
 typedef uint16_t port_t;
 
-#include "x86/registers.h"
+#include "core/registers.h"

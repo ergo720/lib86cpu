@@ -25,15 +25,12 @@
 
 
 namespace llvm {
-	class LLVMContext;
 	class BasicBlock;
 	class Function;
-	class Module;
 	class Type;
 	class PointerType;
 	class StructType;
 	class Value;
-	class DataLayout;
 	class GlobalVariable;
 }
 
@@ -112,7 +109,6 @@ using iret_t = entry_t; // could just return void
 // jmp_offset functions: 0,1 -> used for direct linking (either points to exit or &next_tc), 2 -> exit, 3 -> dbg int, 4 -> hw int
 struct translated_code_t {
 	std::forward_list<translated_code_t *> linked_tc;
-	cpu_t *cpu;
 	addr_t cs_base;
 	addr_t pc;
 	addr_t virt_pc;
@@ -121,8 +117,7 @@ struct translated_code_t {
 	entry_t jmp_offset[5];
 	uint32_t flags;
 	uint32_t size;
-	explicit translated_code_t(cpu_t *cpu) noexcept;
-	~translated_code_t();
+	explicit translated_code_t() noexcept;
 };
 
 struct disas_ctx_t {
@@ -156,7 +151,7 @@ struct cpu_ctx_t {
 	uint16_t iotlb[IOTLB_MAX_SIZE];
 	uint8_t *ram;
 	exp_info_t exp_info;
-	uint8_t alignas(1) int_pending;
+	uint8_t int_pending;
 };
 
 class lc86_jit;
@@ -202,9 +197,6 @@ struct cpu_t {
 
 	// llvm specific variables
 	std::unique_ptr<lc86_jit> jit;
-	llvm::DataLayout *dl;
-	llvm::LLVMContext *ctx;
-	llvm::Module *mod;
 	llvm::Value *ptr_cpu_ctx;
 	llvm::Value *ptr_regs;
 	llvm::Value *ptr_eflags;
@@ -213,7 +205,7 @@ struct cpu_t {
 	llvm::Value *ptr_tlb_region_idx;
 	llvm::Value *ptr_iotlb;
 	llvm::Value *ptr_ram;
-	llvm::Value *instr_eip;
+	uint32_t instr_eip;
 	llvm::BasicBlock *bb; // bb to which we are currently adding llvm instructions
 	llvm::Function *ptr_mem_ldfn[7];
 	llvm::Function *ptr_mem_stfn[7];

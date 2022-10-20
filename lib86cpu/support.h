@@ -7,11 +7,8 @@
 #pragma once
 
 #include "lib86cpu_priv.h"
-#include "llvm/support/Host.h"
-#include "llvm/Support/SwapByteOrder.h"
 
 
-#define CPU_FLAG_FP80           (1 << 2)
 #define CPU_DISAS_ONE           (1 << 7)
 #define CPU_ALLOW_CODE_WRITE    (1 << 8)
 #define CPU_FORCE_INSERT        (1 << 9)
@@ -63,4 +60,5 @@ void cpu_exec_trampoline(cpu_t *cpu, const uint32_t ret_eip);
 
 inline logfn_t logfn = &discard_log;
 inline std::string last_error = "";
-inline constexpr bool is_big_endian = llvm::sys::IsBigEndianHost;
+
+#include "endianness.h"

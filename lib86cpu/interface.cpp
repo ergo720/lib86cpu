@@ -5,11 +5,12 @@
  * the libcpu developers  Copyright (c) 2009-2010
  */
 
-#include "llvm-c/Core.h"
-#include "jit.h"
 #include "internal.h"
 #include "memory.h"
 #include "clock.h"
+#ifdef LIB86CPU_X64_EMITTER
+#include "x64/jit.h"
+#endif
 #include <fstream>
 
 
@@ -88,19 +89,12 @@ cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee)
 	cpu->io_space_tree->insert(io_region->start, io_region->end, std::move(io_region));
 
 	try {
-		cpu->jit = std::move(lc86_jit::create(cpu));
+		cpu->jit = std::make_unique<lc86_jit>(cpu);
 	}
 	catch (lc86_exp_abort &exp) {
 		cpu_free(cpu);
 		last_error = exp.what();
 		return exp.get_code();
-	}
-
-	// check if FP80 is supported by this architecture
-	std::string data_layout = cpu->dl->getStringRepresentation();
-	if (data_layout.find("f80") != std::string::npos) {
-		LOG(log_level::info, "FP80 supported.");
-		cpu->cpu_flags |= CPU_FLAG_FP80;
 	}
 
 	LOG(log_level::info, "Created new cpu \"%s\"", cpu->cpu_name);
@@ -117,9 +111,6 @@ cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee)
 void
 cpu_free(cpu_t *cpu)
 {
-	if (cpu->dl) {
-		delete cpu->dl;
-	}
 	if (cpu->cpu_ctx.ram) {
 		delete[] cpu->cpu_ctx.ram;
 	}
@@ -128,13 +119,7 @@ cpu_free(cpu_t *cpu)
 		bucket.clear();
 	}
 
-	LLVMShutdown();
-
 	delete cpu;
-
-	// NOTE: only call this after delete cpu;. This, because destroying the cpu destroys the jit, which in turn cause llvm to call ~SectionMemoryManager,
-	// That destructor internally calls releaseMappedMemory, which will then attempt to release the already deleted memory of the JITed code
-	g_mapper.destroy_all_blocks();
 }
 
 /*
@@ -181,15 +166,11 @@ cpu_sync_state(cpu_t *cpu)
 lc86_status
 cpu_set_flags(cpu_t *cpu, uint32_t flags)
 {
-	if (flags & ~(CPU_INTEL_SYNTAX | CPU_CODEGEN_OPTIMIZE | CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED | CPU_DBG_PRESENT)) {
+	if (flags & ~(CPU_INTEL_SYNTAX | CPU_DBG_PRESENT)) {
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 
-	if ((flags & CPU_PRINT_IR_OPTIMIZED) && ((flags & CPU_CODEGEN_OPTIMIZE) == 0)) {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
-
-	cpu->cpu_flags &= ~(CPU_INTEL_SYNTAX | CPU_CODEGEN_OPTIMIZE | CPU_PRINT_IR | CPU_PRINT_IR_OPTIMIZED | CPU_DBG_PRESENT);
+	cpu->cpu_flags &= ~(CPU_INTEL_SYNTAX | CPU_DBG_PRESENT);
 	cpu->cpu_flags |= flags;
 	// XXX: eventually, the user should be able to set the instruction formatting
 	set_instr_format(cpu);

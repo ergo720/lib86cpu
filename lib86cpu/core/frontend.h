@@ -6,24 +6,18 @@
 
 #pragma once
 
-#include "llvm\Support\AtomicOrdering.h"
-#include "llvm/IR/Instructions.h"
-
 
 std::vector<BasicBlock *> gen_bbs(cpu_t *cpu, const unsigned num);
-void gen_int_fn(cpu_t *cpu);
 void optimize(cpu_t *cpu);
-void get_ext_fn(cpu_t *cpu);
-void create_tc_prologue(cpu_t *cpu);
 void create_tc_epilogue(cpu_t *cpu);
 StructType *get_struct_reg(cpu_t *cpu);
-Value *gep_emit(cpu_t *cpu, Type *ptr_ty, Value *gep_start, const int gep_index);
-Value *gep_emit(cpu_t *cpu, Type *ptr_ty, Value *gep_start, Value *gep_index);
+//Value *gep_emit(cpu_t *cpu, Type *ptr_ty, Value *gep_start, const int gep_index);
+//Value *gep_emit(cpu_t *cpu, Type *ptr_ty, Value *gep_start, Value *gep_index);
 Value *gep_seg_emit(cpu_t *cpu, const int gep_index);
 Value *gep_seg_hidden_emit(cpu_t *cpu, const int seg_index, const int gep_index);
 Value *gep_f80_emit(cpu_t *cpu, const int gep_index, const int f80_index);
-Value *store_atomic_emit(cpu_t *cpu, Value *ptr, Value *val, AtomicOrdering order, uint8_t align);
-Value *load_atomic_emit(cpu_t *cpu, Value *ptr, Type *ptr_ty, AtomicOrdering order, uint8_t align);
+//Value *store_atomic_emit(cpu_t *cpu, Value *ptr, Value *val, AtomicOrdering order, uint8_t align);
+//Value *load_atomic_emit(cpu_t *cpu, Value *ptr, Type *ptr_ty, AtomicOrdering order, uint8_t align);
 Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
 Value *get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum);
 int get_reg_idx(ZydisRegister reg);
@@ -42,7 +36,6 @@ void link_ret_emit(cpu_t *cpu);
 entry_t link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc);
 Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
 Value *floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits);
-void raise_exp_inline_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
 void raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
 BasicBlock *raise_exception_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
 Value *get_immediate_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx, uint8_t size_mode);
@@ -56,6 +49,7 @@ void hook_emit(cpu_t *cpu, hook *obj);
 void check_int_emit(cpu_t *cpu);
 bool check_rf_single_step_emit(cpu_t *cpu);
 
+#if 0
 template<CallInst::TailCallKind tail, typename... Args>
 CallInst *call_emit(cpu_t *cpu, FunctionType *fn_ty, Value *func, Args&&... args)
 {
@@ -76,6 +70,7 @@ CallInst *call_emit(cpu_t *cpu, FunctionType *fn_ty, Value *func, Args&&... args
 	ci->setTailCallKind(tail);
 	return ci;
 }
+#endif
 
 #define CTX() (*cpu->ctx)
 #define getBB() BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0)
@@ -265,10 +260,6 @@ default: \
 #define LD_PARITY(idx) LD(GEP(GEP_PARITY(), getArrayType(getIntegerType(8), 256), idx), getIntegerType(8))
 #define RAISE(code, idx) raise_exception_emit(cpu, CONST32(0), code, CONST16(idx), cpu->instr_eip)
 #define RAISE0(idx) raise_exception_emit(cpu, CONST32(0), CONST16(0), CONST16(idx), cpu->instr_eip)
-#define RAISEin(addr, code, idx, eip) raise_exp_inline_emit(cpu, CONST32(addr), CONST16(code), CONST16(idx), CONST32(eip)); \
-cpu->bb = getBB()
-#define RAISEin0(idx) raise_exp_inline_emit(cpu, CONST32(0), CONST16(0), CONST16(idx), cpu->instr_eip); \
-cpu->bb = getBB()
 #define RAISEisInt(addr, code, idx, eip) raise_exp_inline_isInt_emit(cpu, CONST32(addr), CONST16(code), CONST16(idx), CONST32(eip)); \
 cpu->bb = getBB()
 #define SET_FLG_SUM(sum, a, b) set_flags_sum(cpu, sum, a , b, size_mode)

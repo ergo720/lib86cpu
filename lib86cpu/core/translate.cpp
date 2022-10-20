@@ -4,18 +4,16 @@
  * ergo720                Copyright (c) 2019
  */
 
-#include "llvm/IR/LLVMContext.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/Intrinsics.h"
-#include "llvm/IR/Verifier.h"
 #include "internal.h"
 #include "frontend.h"
 #include "memory.h"
-#include "jit.h"
 #include "main_wnd.h"
 #include "debugger.h"
 #include "helpers.h"
+
+#ifdef LIB86CPU_X64_EMITTER
+#include "x64/jit.h"
+#endif
 
 #define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(disas_ctx->virt_pc - bytes, &instr).c_str())
 
@@ -340,17 +338,11 @@ get_pc(cpu_ctx_t *cpu_ctx)
 	return cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
 }
 
-translated_code_t::translated_code_t(cpu_t *cpu) noexcept
+translated_code_t::translated_code_t() noexcept
 {
-	this->cpu = cpu;
-	this->size = 0;
-	this->flags = 0;
-	this->ptr_code = nullptr;
-}
-
-translated_code_t::~translated_code_t()
-{
-	this->cpu->jit->free_code_block(this->ptr_code);
+	size = 0;
+	flags = 0;
+	ptr_code = nullptr;
 }
 
 static inline uint32_t
@@ -509,7 +501,7 @@ tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc)
 void
 tc_cache_clear(cpu_t *cpu)
 {
-	// Use this when you want to destroy all code sections but leave intact the data sections instead. E.g: on x86-64, you'll want to keep the .pdata sections
+	// Use this when you want to destroy all tc's but without affecting the actual code allocated. E.g: on x86-64, you'll want to keep the .pdata sections
 	// when this is called from a function called from the JITed code, and the current function can potentially throw an exception
 	cpu->num_tc = 0;
 	cpu->tc_page_map.clear();
@@ -522,10 +514,10 @@ tc_cache_clear(cpu_t *cpu)
 void
 tc_cache_purge(cpu_t *cpu)
 {
-	// This is like tc_cache_clear, but it also frees all the non-code sections. E.g: on x86-64, llvm also emits .pdata sections that hold the exception tables
+	// This is like tc_cache_clear, but it also frees all code allocated. E.g: on x86-64, the jit also emits .pdata sections that hold the exception tables
 	// necessary to unwind the stack of the JITed functions
 	tc_cache_clear(cpu);
-	g_mapper.destroy_all_blocks();
+	cpu->jit->destroy_all_code();
 }
 
 static void
@@ -605,7 +597,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	init_instr_decoder(disas_ctx, &decoder);
 
 	do {
-		cpu->instr_eip = CONST32(pc - cpu_ctx->regs.cs_hidden.base);
+		cpu->instr_eip = pc - cpu_ctx->regs.cs_hidden.base;
 
 		try {
 			status = decode_instr(cpu, disas_ctx, &decoder, &instr);
@@ -692,6 +684,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 
 		switch (instr.mnemonic) {
+#if 0
 		case ZYDIS_MNEMONIC_AAA: {
 			std::vector<BasicBlock *> vec_bb = getBBs(3);
 			BR_COND(vec_bb[0], vec_bb[1], OR(ICMP_UGT(AND(LD_R8L(EAX_idx), CONST8(0xF)), CONST8(9)), ICMP_NE(LD_AF(), CONST32(0))));
@@ -5713,7 +5706,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				LIB86CPU_ABORT();
 			}
 			break;
-
+#endif
 		default:
 			LIB86CPU_ABORT();
 		}
@@ -5725,13 +5718,13 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 	// update the eip if we stopped decoding without a terminating instr
 	if ((translate_next == 1) && (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR) != 0) {
-		ST_REG_idx(CONST32(pc - cpu_ctx->regs.cs_hidden.base), EIP_idx);
+		//ST_REG_idx(CONST32(pc - cpu_ctx->regs.cs_hidden.base), EIP_idx);
 	}
 
 	// TC_FLG_INDIRECT, TC_FLG_DIRECT and TC_FLG_DST_ONLY already check for rf/single step, so we only need to check them here with
 	// TC_FLG_COND_DST_ONLY and if no linking code was emitted
 	if ((cpu->tc->flags & TC_FLG_COND_DST_ONLY) || ((cpu->tc->flags & TC_FLG_LINK_MASK) == 0)) {
-		check_rf_single_step_emit(cpu);
+		//check_rf_single_step_emit(cpu);
 	}
 }
 
@@ -5806,22 +5799,11 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 		if (ptr_tc == nullptr) {
 
 			// code block for this pc not present, we need to translate new code
-			std::unique_ptr<translated_code_t> tc(new translated_code_t(cpu));
-			cpu->ctx = new LLVMContext();
-			if (cpu->ctx == nullptr) {
-				LIB86CPU_ABORT();
-			}
-			cpu->mod = new Module(cpu->cpu_name, *cpu->ctx);
-			cpu->mod->setDataLayout(*cpu->dl);
-			if (cpu->mod == nullptr) {
-				LIB86CPU_ABORT();
-			}
+			std::unique_ptr<translated_code_t> tc(new translated_code_t);
+			cpu->jit->start_new_session();
 
 			cpu->tc = tc.get();
-			create_tc_prologue(cpu);
-
-			// add to the module the external host functions that will be called by the translated guest code
-			get_ext_fn(cpu);
+			cpu->jit->gen_prologue_main();
 
 			// prepare the disas ctx
 			disas_ctx_t disas_ctx{};
@@ -5845,8 +5827,8 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 				}
 
 				if (take_hook) {
-					cpu->instr_eip = CONST32(disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
-					hook_emit(cpu, it->second.get());
+					cpu->instr_eip = disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base;
+					//hook_emit(cpu, it->second.get());
 				}
 				else {
 					// start guest code translation
@@ -5856,58 +5838,22 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			else {
 				// don't take hooks if we are executing a trapped instr. Otherwise, if the trapped instr is also hooked, we will take the hook instead of executing it
 				cpu_translate(cpu, &disas_ctx);
-				raise_exp_inline_emit(cpu, CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx));
-				cpu->bb = getBB();
+				//raise_exp_inline_emit(cpu, CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx));
 			}
 
-			create_tc_epilogue(cpu);
+			//create_tc_epilogue(cpu);
 
-			if (cpu->cpu_flags & CPU_PRINT_IR) {
-				std::string str;
-				raw_string_ostream os(str);
-				os << *cpu->mod;
-				os.flush();
-				LOG(log_level::debug, str.c_str());
-			}
-
-			if (cpu->cpu_flags & CPU_CODEGEN_OPTIMIZE) {
-				optimize(cpu);
-				if (cpu->cpu_flags & CPU_PRINT_IR_OPTIMIZED) {
-					std::string str;
-					raw_string_ostream os(str);
-					os << *cpu->mod;
-					os.flush();
-					LOG(log_level::debug, str.c_str());
-				}
-			}
-
-			orc::ThreadSafeContext tsc(std::unique_ptr<LLVMContext>(cpu->ctx));
-			orc::ThreadSafeModule tsm(std::unique_ptr<Module>(cpu->mod), tsc);
-			cpu->jit->add_ir_module(std::move(tsm));
-
-			tc->pc = pc;
-			tc->virt_pc = virt_pc;
-			tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
-			tc->cpu_flags = (cpu->cpu_ctx.hflags & HFLG_CONST) | (cpu->cpu_ctx.regs.eflags & EFLAGS_CONST);
-			tc->ptr_code = reinterpret_cast<entry_t>(cpu->jit->lookup("main")->getAddress());
-			assert(tc->ptr_code);
-			tc->jmp_offset[0] = reinterpret_cast<entry_t>(cpu->jit->lookup("exit")->getAddress());
-			tc->jmp_offset[1] = tc->jmp_offset[2] = tc->jmp_offset[0];
-			assert(tc->jmp_offset[0]);
-			tc->jmp_offset[3] = &cpu_dbg_int;
-			tc->jmp_offset[4] = &cpu_do_int;
-
-			// now remove the function symbol names so that we can reuse them for other modules
-			cpu->jit->remove_symbols(std::vector<std::string> { "main", "exit" });
-
-			// llvm will delete the context and the module by itself, so we just null both the pointers now to prevent accidental usage
-			cpu->ctx = nullptr;
-			cpu->mod = nullptr;
+			cpu->tc->pc = pc;
+			cpu->tc->virt_pc = virt_pc;
+			cpu->tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
+			cpu->tc->cpu_flags = (cpu->cpu_ctx.hflags & HFLG_CONST) | (cpu->cpu_ctx.regs.eflags & EFLAGS_CONST);
+			cpu->jit->gen_code_block(cpu->tc);
+			cpu->tc->jmp_offset[3] = &cpu_dbg_int;
+			cpu->tc->jmp_offset[4] = &cpu_do_int;
 
 			// we are done with code generation for this block, so we null the tc and bb pointers to prevent accidental usage
 			ptr_tc = cpu->tc;
 			cpu->tc = nullptr;
-			cpu->bb = nullptr;
 
 			if (disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR)) {
 				if (cpu->cpu_flags & CPU_FORCE_INSERT) {
@@ -6007,6 +5953,9 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 		[[fallthrough]];
 
 		case host_exp_t::cpu_mode_changed:
+			tc_cache_purge(cpu_ctx->cpu);
+			[[fallthrough]];
+
 		case host_exp_t::halt_tc:
 			return nullptr;
 
@@ -6019,15 +5968,6 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 lc86_status
 cpu_start(cpu_t *cpu)
 {
-	// guard against the case gen_int_fn raises an exception before the debugger is even initialized
-	try {
-		gen_int_fn(cpu);
-	}
-	catch (lc86_exp_abort &exp) {
-		last_error = exp.what();
-		return exp.get_code();
-	}
-
 	if (cpu->cpu_flags & CPU_DBG_PRESENT) {
 		std::promise<bool> promise;
 		std::future<bool> fut = promise.get_future();

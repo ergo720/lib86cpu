@@ -529,7 +529,7 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv
 			// it's ram, access it directly
 			T ret = *reinterpret_cast<T *>(&cpu_ctx->ram[phys_addr]);
 			if constexpr (is_big_endian) {
-				sys::swapByteOrder<T>(ret);
+				swap_byte_order<T>(ret);
 			}
 			return ret;
 		}
@@ -539,7 +539,7 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv
 			cached_rom_region *rom = &cpu_ctx->cpu->rom_regions[cpu_ctx->tlb_region_idx[tlb_idx1]];
 			T ret = *reinterpret_cast<T *>(&rom->buffer[phys_addr]);
 			if constexpr (is_big_endian) {
-				sys::swapByteOrder<T>(ret);
+				swap_byte_order<T>(ret);
 			}
 			return ret;
 		}
@@ -582,7 +582,7 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint
 		case TLB_RAM:
 			// it's ram, access it directly
 			if constexpr (is_big_endian) {
-				sys::swapByteOrder<T>(val);
+				swap_byte_order<T>(val);
 			}
 			*reinterpret_cast<T *>(&cpu_ctx->ram[phys_addr]) = val;
 			return;

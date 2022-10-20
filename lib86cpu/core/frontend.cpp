@@ -5,20 +5,15 @@
  * the libcpu developers  Copyright (c) 2009-2010
  */
 
-#include "llvm/IR/Constants.h"
-#include "llvm/IR/Instructions.h"
-#include "llvm/IR/Module.h"
-#include "llvm/IR/DataLayout.h"
-#include "llvm/IR/Intrinsics.h"
-#include "llvm/LinkAllPasses.h"
-#include "llvm/IR/Verifier.h"
-#include "llvm/IR/LegacyPassManager.h"
-#include "jit.h"
 #include "internal.h"
 #include "frontend.h"
 #include "memory.h"
 
+#ifdef LIB86CPU_X64_EMITTER
+#include "x64/jit.h"
+#endif
 
+#if 0
 enum class fn_emit_t {
 	main_t,
 	int_t,
@@ -165,37 +160,6 @@ optimize(cpu_t *cpu)
 	pm.add(createDeadCodeEliminationPass());
 	pm.add(createCFGSimplificationPass());
 	pm.run(*cpu->bb->getParent());
-}
-
-void
-get_ext_fn(cpu_t *cpu)
-{
-	static const char *func_name_ld[] = { "mem_read_helper8", "mem_read_helper16", "mem_read_helper32", "mem_read_helper64", "io_read8", "io_read16", "io_read32" };
-	static const char *func_name_st[] = { "mem_write_helper8", "mem_write_helper16", "mem_write_helper32", "mem_write_helper64", "io_write8", "io_write16", "io_write32" };
-	Type *cpu_ctx_ty = cpu->bb->getParent()->arg_begin()->getType();
-
-	for (uint8_t i = 0; i < 4; i++) {
-		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(8 << i), cpu_ctx_ty,
-			getIntegerType(32), getIntegerType(32), getIntegerType(8)).getCallee());
-	}
-	for (uint8_t i = 4; i < 7; i++) {
-		cpu->ptr_mem_ldfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_ld[i], getIntegerType(8 << (i - 4)), cpu_ctx_ty,
-			getIntegerType(16)).getCallee());
-	}
-
-	for (uint8_t i = 0; i < 4; i++) {
-		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), cpu_ctx_ty,
-			getIntegerType(32), getIntegerType(8 << i), getIntegerType(32), getIntegerType(8)).getCallee());
-	}
-	for (uint8_t i = 4; i < 7; i++) {
-		cpu->ptr_mem_stfn[i] = cast<Function>(cpu->mod->getOrInsertFunction(func_name_st[i], getVoidType(), cpu_ctx_ty,
-			getIntegerType(16), getIntegerType(8 << (i - 4))).getCallee());
-	}
-
-	cpu->ptr_abort_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_runtime_abort", getVoidType(), getPointerType()).getCallee());
-	cpu->ptr_abort_fn->addFnAttr(Attribute::AttrKind::NoReturn);
-
-	cpu->ptr_exp_fn = cast<Function>(cpu->mod->getOrInsertFunction("cpu_raise_exception", cpu->bb->getParent()->getReturnType(), cpu_ctx_ty).getCallee());
 }
 
 Value *
@@ -462,156 +426,6 @@ link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 	return tc->jmp_offset[2];
 }
 
-template<fn_emit_t fn_type>
-static Function *
-gen_fn(cpu_t *cpu)
-{
-	cpu->cpu_ctx_type = StructType::create(CTX(), "struct.cpu_ctx_t");
-	StructType *type_exp_data_t = StructType::create(CTX(),
-		{ getIntegerType(32), getIntegerType(16), getIntegerType(16), getIntegerType(32) }, "struct.exp_data_t", false);
-
-	StructType *type_exp_info_t = StructType::create(CTX(),
-		{ type_exp_data_t, getIntegerType(16) }, "struct.exp_info_t", false);
-
-	cpu->cpu_ctx_type->setBody({
-		getPointerType(),       // cpu struct
-		get_struct_reg(cpu),
-		StructType::create(CTX(), { getIntegerType(32), getIntegerType(32), getArrayType(getIntegerType(8), 256) }, "struct.eflags_t", false),
-		getIntegerType(32),
-		getArrayType(getIntegerType(32), TLB_MAX_SIZE),
-		getArrayType(getIntegerType(16), TLB_MAX_SIZE),
-		getArrayType(getIntegerType(16), IOTLB_MAX_SIZE),
-		getPointerType(),
-		type_exp_info_t,
-		getIntegerType(8)
-		}, false);
-
-	cpu->reg_ty = cpu->cpu_ctx_type->getTypeAtIndex(1);
-	cpu->eflags_ty = cpu->cpu_ctx_type->getTypeAtIndex(2);
-
-	Function *func = nullptr;
-	if constexpr (constexpr bool type_match = fn_type == fn_emit_t::main_t) {
-		FunctionType *type_entry_t = FunctionType::get(
-			getPointerType(),       // tc ret
-			getPointerType(),       // cpu_ctx
-			false);
-
-		func = Function::Create(
-			type_entry_t,                        // func type
-			GlobalValue::ExternalLinkage,        // linkage
-			"main",                              // name
-			cpu->mod);
-#if defined(_WIN64) && defined(_MSC_VER)
-		func->setCallingConv(CallingConv::Win64);
-#elif defined(_WIN32) && defined(_MSC_VER)
-		func->setCallingConv(CallingConv::C);
-#else
-#error Unknow calling convention for gen_fn
-#endif
-	}
-	else if constexpr (fn_type == fn_emit_t::int_t) {
-		FunctionType *type_int_t = FunctionType::get(
-			getVoidType(),                               // void ret
-			{ getPointerType(), getIntegerType(8) },     // cpu_ctx, int flag
-			false);
-
-		func = Function::Create(
-			type_int_t,                      // func type
-			GlobalValue::ExternalLinkage,    // linkage
-			"cpu_raise_interrupt",           // name
-			cpu->mod);
-#if defined(_WIN64) && defined(_MSC_VER)
-		func->setCallingConv(CallingConv::Win64);
-#elif defined(_WIN32) && defined(_MSC_VER)
-		func->setCallingConv(CallingConv::C);
-#else
-#error Unknow calling convention for gen_fn
-#endif
-	}
-	else {
-		static_assert(type_match, "Unknown function type to emit!");
-	}
-
-	return func;
-}
-
-void
-create_tc_prologue(cpu_t *cpu)
-{
-	// create the translation function, it will hold all the translated code
-	Function *func = gen_fn<fn_emit_t::main_t>(cpu);
-
-	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
-	cpu->ptr_cpu_ctx = cpu->bb->getParent()->arg_begin();
-	cpu->ptr_cpu_ctx->setName("cpu_ctx");
-	cpu->ptr_regs = GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 1);
-	cpu->ptr_regs->setName("regs");
-	cpu->ptr_eflags = GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 2);
-	cpu->ptr_eflags->setName("eflags");
-	cpu->ptr_hflags = GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 3);
-	cpu->ptr_hflags->setName("hflags");
-	cpu->ptr_tlb = GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 4);
-	cpu->ptr_tlb->setName("tlb");
-	cpu->ptr_tlb_region_idx = GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 5);
-	cpu->ptr_tlb_region_idx->setName("tlb_region_idx");
-	cpu->ptr_iotlb = GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 6);
-	cpu->ptr_iotlb->setName("iotlb");
-	cpu->ptr_ram = LD(GEP(cpu->ptr_cpu_ctx, cpu->cpu_ctx_type, 7), getPointerType());
-	cpu->ptr_ram->setName("ram");
-}
-
-void
-gen_int_fn(cpu_t *cpu)
-{
-	// the interrupt function should never be generated more than once per emulation session
-
-	cpu->ctx = new LLVMContext();
-	if (cpu->ctx == nullptr) {
-		LIB86CPU_ABORT();
-	}
-	cpu->mod = new Module(cpu->cpu_name, *cpu->ctx);
-	cpu->mod->setDataLayout(*cpu->dl);
-	if (cpu->mod == nullptr) {
-		LIB86CPU_ABORT();
-	}
-
-	Function *func = gen_fn<fn_emit_t::int_t>(cpu);
-
-	cpu->bb = BasicBlock::Create(CTX(), "", func, 0);
-	cpu->tc = nullptr;
-
-	ST_ATOMIC(GEP(func->arg_begin(), cpu->cpu_ctx_type, 9), func->arg_begin() + 1, AtomicOrdering::Monotonic, 1);
-	ReturnInst::Create(CTX(), cpu->bb);
-
-	if (cpu->cpu_flags & CPU_PRINT_IR) {
-		std::string str;
-		raw_string_ostream os(str);
-		os << *cpu->mod;
-		os.flush();
-		LOG(log_level::debug, str.c_str());
-	}
-
-	if (cpu->cpu_flags & CPU_CODEGEN_OPTIMIZE) {
-		optimize(cpu);
-		if (cpu->cpu_flags & CPU_PRINT_IR_OPTIMIZED) {
-			std::string str;
-			raw_string_ostream os(str);
-			os << *cpu->mod;
-			os.flush();
-			LOG(log_level::debug, str.c_str());
-		}
-	}
-
-	orc::ThreadSafeContext tsc(std::unique_ptr<LLVMContext>(cpu->ctx));
-	orc::ThreadSafeModule tsm(std::unique_ptr<Module>(cpu->mod), tsc);
-	cpu->jit->add_ir_module(std::move(tsm));
-	cpu->int_fn = reinterpret_cast<raise_int_t>(cpu->jit->lookup("cpu_raise_interrupt")->getAddress());
-	assert(cpu->int_fn);
-	cpu->jit->remove_symbols("cpu_raise_interrupt");
-	cpu->tc = nullptr;
-	cpu->bb = nullptr;
-}
-
 void
 create_tc_epilogue(cpu_t *cpu)
 {
@@ -635,20 +449,6 @@ create_tc_epilogue(cpu_t *cpu)
 	BasicBlock *bb = BasicBlock::Create(CTX(), "", exit, 0);
 	Value *tc_ptr2 = new IntToPtrInst(CONSTp(cpu->tc), exit->getReturnType(), "", bb);
 	ReturnInst::Create(CTX(), tc_ptr2, bb);
-}
-
-void
-raise_exp_inline_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip)
-{
-	GetElementPtrInst *gep1 = GetElementPtrInst::CreateInBounds(cpu->cpu_ctx_type, cpu->ptr_cpu_ctx, { CONST32(0), CONST32(8) }, "", cpu->bb);
-	GetElementPtrInst *gep2 = GetElementPtrInst::CreateInBounds(gep1->getResultElementType(), gep1, { CONST32(0), CONST32(0) }, "", cpu->bb);
-	Value *ptr_exp_data = gep2;
-	ST(GEP(ptr_exp_data, gep2->getResultElementType(), 0), fault_addr);
-	ST(GEP(ptr_exp_data, gep2->getResultElementType(), 1), code);
-	ST(GEP(ptr_exp_data, gep2->getResultElementType(), 2), idx);
-	ST(GEP(ptr_exp_data, gep2->getResultElementType(), 3), eip);
-	CallInst *ci = CALL(cpu->ptr_exp_fn->getFunctionType(), cpu->ptr_exp_fn, cpu->ptr_cpu_ctx);
-	ReturnInst::Create(CTX(), ci, cpu->bb);
 }
 
 void
@@ -1281,3 +1081,4 @@ hook_emit(cpu_t *cpu, hook *obj)
 
 	check_int_emit(cpu);
 }
+#endif

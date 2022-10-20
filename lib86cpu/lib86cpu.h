@@ -58,9 +58,6 @@ struct hook {
 #define LIB86CPU_CHECK_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::success)
 
 #define CPU_INTEL_SYNTAX        (1 << 1)
-#define CPU_CODEGEN_OPTIMIZE    (1 << 3)
-#define CPU_PRINT_IR            (1 << 4)
-#define CPU_PRINT_IR_OPTIMIZED  (1 << 5)
 #define CPU_DBG_PRESENT         (1 << 11)
 
 // mmio/pmio access handlers

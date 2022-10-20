@@ -6,7 +6,6 @@
 
 #pragma once
 
-#include "llvm/support/SwapByteOrder.h"
 #include "lib86cpu_priv.h"
 #include "internal.h"
 
@@ -199,7 +198,7 @@ T ram_read(cpu_t *cpu, void *ram_ptr)
 	T value;
 	memcpy(&value, ram_ptr, sizeof(T));
 	if constexpr (is_big_endian) {
-		sys::swapByteOrder<T>(value);
+		swap_byte_order<T>(value);
 	}
 	return value;
 }
@@ -208,7 +207,7 @@ template<typename T>
 void ram_write(cpu_t *cpu, void *ram_ptr, T value)
 {
 	if constexpr (is_big_endian) {
-		sys::swapByteOrder<T>(value);
+		swap_byte_order<T>(value);
 	}
 	memcpy(ram_ptr, &value, sizeof(T));
 }
@@ -240,7 +239,7 @@ T mem_read(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t flags)
 				}
 			}
 			if constexpr (is_big_endian) {
-				sys::swapByteOrder<T>(value);
+				swap_byte_order<T>(value);
 			}
 			return value;
 		}
@@ -274,7 +273,7 @@ void mem_write(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t flags)
 			tc_invalidate(&cpu->cpu_ctx, addr + sizeof(T) - 1, sizeof(T) - bytes_in_page, eip);
 		}
 		if constexpr (is_big_endian) {
-			sys::swapByteOrder<T>(value);
+			swap_byte_order<T>(value);
 		}
 		while (i < sizeof(T)) {
 			memory_region_t<addr_t> *region = as_memory_search_addr<T>(cpu, phys_addr);

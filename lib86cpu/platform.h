@@ -36,3 +36,13 @@
 #else
 #  error Do not know how to specify alignment on this platform
 #endif
+
+#ifndef LIB86CPU_X64_EMITTER
+#if defined(_M_X64) || defined(__x86_64__)
+#  define LIB86CPU_X64_EMITTER
+#endif
+#endif
+
+#ifndef LIB86CPU_X64_EMITTER
+#error No emitter was specified
+#endif
