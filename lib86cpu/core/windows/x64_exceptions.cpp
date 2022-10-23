@@ -1,5 +1,5 @@
 /*
- * x86-64 emitter
+ * x86-64 exception support
  *
  * ergo720                Copyright (c) 2022
  */
@@ -39,14 +39,14 @@
 void
 lc86_jit::create_unwind_info()
 {
-	// The prolog of main() always uses push rdi and sub rsp, 0x20 + sizeof(stack args) + sizeof(local vars),
+	// The prolog of main() always uses push rdi and sub rsp, 0x20 + sizeof(stack args),
 	// so we can simplify the generation of the unwind table
 
 	uint16_t unwind_codes[4] = { 0 };
 	uint8_t num_unwind_codes;
 
 	// Create UNWIND_CODE entries for sub rsp, imm32
-	size_t tot_stack_allocated = (m_stack_args_size + m_local_vars_size + 0x20 + 15) & ~15;
+	size_t tot_stack_allocated = (m_stack_args_size + 0x20 + 15) & ~15;
 	if (tot_stack_allocated <= 128) {
 		unwind_codes[0] = 8 | (UWOP_ALLOC_SMALL << 8) | ((tot_stack_allocated / 8 - 1) << 12);
 		num_unwind_codes = 1;

@@ -7,20 +7,13 @@
 #pragma once
 
 
-std::vector<BasicBlock *> gen_bbs(cpu_t *cpu, const unsigned num);
-void optimize(cpu_t *cpu);
-void create_tc_epilogue(cpu_t *cpu);
 StructType *get_struct_reg(cpu_t *cpu);
 //Value *gep_emit(cpu_t *cpu, Type *ptr_ty, Value *gep_start, const int gep_index);
 //Value *gep_emit(cpu_t *cpu, Type *ptr_ty, Value *gep_start, Value *gep_index);
 Value *gep_seg_emit(cpu_t *cpu, const int gep_index);
 Value *gep_seg_hidden_emit(cpu_t *cpu, const int seg_index, const int gep_index);
 Value *gep_f80_emit(cpu_t *cpu, const int gep_index, const int f80_index);
-//Value *store_atomic_emit(cpu_t *cpu, Value *ptr, Value *val, AtomicOrdering order, uint8_t align);
-//Value *load_atomic_emit(cpu_t *cpu, Value *ptr, Type *ptr_ty, AtomicOrdering order, uint8_t align);
 Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
-Value *get_operand(cpu_t *cpu, ZydisDecodedInstruction *instr, const unsigned opnum);
-int get_reg_idx(ZydisRegister reg);
 int get_seg_prfx_idx(ZydisDecodedInstruction *instr);
 Value *mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_priv);
 void mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const unsigned is_priv);
@@ -29,11 +22,8 @@ void io_write_emit(cpu_t *cpu, Value *port, Value *value, const unsigned size_mo
 void check_io_priv_emit(cpu_t *cpu, Value *port, uint8_t size_mode);
 void stack_push_emit(cpu_t *cpu, const std::vector<Value *> &vec, uint32_t size_mode);
 std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at = 0);
-void link_direct_emit(cpu_t *cpu, addr_t instr_pc, addr_t dst_pc, addr_t *next_pc, Value *target_addr);
-void link_indirect_emit(cpu_t *cpu);
 void link_dst_only_emit(cpu_t *cpu);
 void link_ret_emit(cpu_t *cpu);
-entry_t link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc);
 Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
 Value *floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits);
 void raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
@@ -46,31 +36,7 @@ void set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode);
 void update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag, bool is_write);
 void write_eflags(cpu_t *cpu, Value *eflags, Value *mask);
 void hook_emit(cpu_t *cpu, hook *obj);
-void check_int_emit(cpu_t *cpu);
-bool check_rf_single_step_emit(cpu_t *cpu);
 
-#if 0
-template<CallInst::TailCallKind tail, typename... Args>
-CallInst *call_emit(cpu_t *cpu, FunctionType *fn_ty, Value *func, Args&&... args)
-{
-	CallInst *ci;
-	if constexpr (sizeof...(Args) > 1) {
-		ci = CallInst::Create(fn_ty, func, { std::forward<Args>(args)... }, "", cpu->bb);
-	}
-	else {
-		ci = CallInst::Create(fn_ty, func, std::forward<Args>(args)..., "", cpu->bb);
-	}
-#if defined(_WIN64) && defined(_MSC_VER)
-	ci->setCallingConv(CallingConv::Win64);
-#elif defined(_WIN32) && defined(_MSC_VER)
-	ci->setCallingConv(CallingConv::C);
-#else
-#error Unknow calling convention for CallInst
-#endif
-	ci->setTailCallKind(tail);
-	return ci;
-}
-#endif
 
 #define CTX() (*cpu->ctx)
 #define getBB() BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0)
@@ -98,25 +64,9 @@ CallInst *call_emit(cpu_t *cpu, FunctionType *fn_ty, Value *func, Args&&... args
 #define IO_ST16_idx  5
 #define IO_ST32_idx  6
 
-#define GET_REG_idx(reg) get_reg_idx(reg)
 #define GET_IMM() get_immediate_op(cpu, &instr, OPNUM_SRC, size_mode)
 #define GET_IMM8() get_immediate_op(cpu, &instr, OPNUM_SRC, SIZE8)
 #define GET_REG(idx) get_register_op(cpu, &instr, idx)
-#define GET_OP(op) get_operand(cpu, &instr, op)
-#define GET_RM(idx, r, m) 	rm = GET_OP(idx); \
-switch (instr.operands[idx].type) \
-{ \
-case ZYDIS_OPERAND_TYPE_REGISTER: \
-	r \
-	break; \
-\
-case ZYDIS_OPERAND_TYPE_MEMORY: \
-	m \
-	break; \
-\
-default: \
-	LIB86CPU_ABORT_msg("Invalid operand type used in GET_RM macro!"); \
-}
 
 #define CONSTp(v) ConstantInt::get(getIntegerPointerType(), reinterpret_cast<uintptr_t>(v))
 #define CONSTs(s, v) ConstantInt::get(getIntegerType(s), v)
@@ -244,10 +194,8 @@ default: \
 #define LD_R8H(idx) LD(GEP_R8H(idx), getIntegerType(8))
 #define LD_REG_val(reg) LD(reg, cast<GetElementPtrInst>(reg)->getResultElementType())
 #define LD_SEG(seg) LD(GEP_SEL(seg), getIntegerType(16))
-#define LD_SEG_HIDDEN(seg, idx) LD(gep_seg_hidden_emit(cpu, seg, idx), getIntegerType(32))
 #define LD_MM32(idx) LD(gep_f80_emit(cpu, idx, F80_LOW_idx), getIntegerType(32))
 
-#define LD_MEM(idx, addr) mem_read_emit(cpu, addr, idx, 0)
 #define ST_MEM(idx, addr, val) mem_write_emit(cpu, addr, val, idx, 0)
 #define LD_MEM_PRIV(idx, addr) mem_read_emit(cpu, addr, idx, 2)
 #define ST_MEM_PRIV(idx, addr, val) mem_write_emit(cpu, addr, val, idx, 2)

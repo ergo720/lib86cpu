@@ -91,8 +91,8 @@ set(HEADERS
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/internal.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/memory.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/registers.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/common.h"
- 
+
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/emitter_common.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/jit.h"
 
   ${PLATFORM_HEADERS}
@@ -114,6 +114,7 @@ set(SOURCES
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/memory.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/translate.cpp"
  
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/emitter_common.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/jit.cpp"
  
   ${PLATFORM_SRC}

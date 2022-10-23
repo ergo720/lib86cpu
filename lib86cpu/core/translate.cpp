@@ -15,7 +15,7 @@
 #include "x64/jit.h"
 #endif
 
-#define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(disas_ctx->virt_pc - bytes, &instr).c_str())
+#define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(disas_ctx->virt_pc - cpu->instr_bytes, &instr).c_str())
 
 
 static void
@@ -578,17 +578,27 @@ tc_link_dst_only(translated_code_t *prev_tc, translated_code_t *ptr_tc)
 	}
 }
 
+entry_t
+link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
+{
+	const auto it = cpu_ctx->cpu->ibtc.find(get_pc(cpu_ctx));
+
+	if (it != cpu_ctx->cpu->ibtc.end()) {
+		if (it->second->cs_base == cpu_ctx->regs.cs_hidden.base &&
+			it->second->cpu_flags == ((cpu_ctx->hflags & HFLG_CONST) | (cpu_ctx->regs.eflags & EFLAGS_CONST)) &&
+			((it->second->virt_pc & ~PAGE_MASK) == (tc->virt_pc & ~PAGE_MASK))) {
+			return it->second->ptr_code;
+		}
+	}
+
+	return tc->jmp_offset[2];
+}
+
 static void
 cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 {
-	uint8_t translate_next = 1;
-	uint8_t size_mode;
-	uint8_t addr_mode;
-	cpu_ctx_t *cpu_ctx = &cpu->cpu_ctx;
-	size_t bytes;
-	addr_t pc = disas_ctx->virt_pc;
-	// we can use the same indexes for both loads and stores because they have the same order in cpu->ptr_mem_xxfn
-	static const uint8_t fn_idx[3] = { MEM_LD32_idx, MEM_LD16_idx, MEM_LD8_idx };
+	cpu->translate_next = 1;
+	cpu->virt_pc = disas_ctx->virt_pc;
 
 	ZydisDecodedInstruction instr;
 	ZydisDecoder decoder;
@@ -597,7 +607,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	init_instr_decoder(disas_ctx, &decoder);
 
 	do {
-		cpu->instr_eip = pc - cpu_ctx->regs.cs_hidden.base;
+		cpu->instr_eip = cpu->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base;
 
 		try {
 			status = decode_instr(cpu, disas_ctx, &decoder, &instr);
@@ -613,14 +623,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		if (ZYAN_SUCCESS(status)) {
 			// successfully decoded
 
-			bytes = instr.length;
-			disas_ctx->flags |= ((disas_ctx->virt_pc & ~PAGE_MASK) != ((disas_ctx->virt_pc + bytes - 1) & ~PAGE_MASK)) << 2;
-			disas_ctx->pc += bytes;
-			disas_ctx->virt_pc += bytes;
+			cpu->instr_bytes = instr.length;
+			disas_ctx->flags |= ((disas_ctx->virt_pc & ~PAGE_MASK) != ((disas_ctx->virt_pc + cpu->instr_bytes - 1) & ~PAGE_MASK)) << 2;
+			disas_ctx->pc += cpu->instr_bytes;
+			disas_ctx->virt_pc += cpu->instr_bytes;
 
 			// att syntax uses percentage symbols to designate the operands, which will cause an error/crash if we (or the client)
 			// attempts to interpret them as conversion specifiers, so we pass the formatted instruction as an argument
-			LOG(log_level::debug, "0x%08X  %s", disas_ctx->virt_pc - bytes, instr_logfn(disas_ctx->virt_pc - bytes, &instr).c_str());
+			LOG(log_level::debug, "0x%08X  %s", disas_ctx->virt_pc - cpu->instr_bytes, instr_logfn(disas_ctx->virt_pc - cpu->instr_bytes, &instr).c_str());
 		}
 		else {
 			// NOTE: if rf is set, then it means we are translating the instr that caused a breakpoint. However, the exp handler always clears rf on itw own,
@@ -670,20 +680,220 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 
 		if ((disas_ctx->flags & DISAS_FLG_CS32) ^ ((instr.attributes & ZYDIS_ATTRIB_HAS_OPERANDSIZE) >> 34)) {
-			size_mode = SIZE32;
+			cpu->size_mode = SIZE32;
 		}
 		else {
-			size_mode = SIZE16;
+			cpu->size_mode = SIZE16;
 		}
 
 		if ((disas_ctx->flags & DISAS_FLG_CS32) ^ ((instr.attributes & ZYDIS_ATTRIB_HAS_ADDRESSSIZE) >> 35)) {
-			addr_mode = ADDR32;
+			cpu->addr_mode = ADDR32;
 		}
 		else {
-			addr_mode = ADDR16;
+			cpu->addr_mode = ADDR16;
 		}
 
-		switch (instr.mnemonic) {
+		switch (instr.mnemonic)
+		{
+		case ZYDIS_MNEMONIC_AAA: BAD;
+		case ZYDIS_MNEMONIC_AAD: BAD;
+		case ZYDIS_MNEMONIC_AAM: BAD;
+		case ZYDIS_MNEMONIC_AAS: BAD;
+		case ZYDIS_MNEMONIC_ADC: BAD;
+		case ZYDIS_MNEMONIC_ADD: BAD;
+		case ZYDIS_MNEMONIC_AND: BAD;
+		case ZYDIS_MNEMONIC_ARPL: BAD;
+		case ZYDIS_MNEMONIC_BOUND: BAD;
+		case ZYDIS_MNEMONIC_BSF: BAD;
+		case ZYDIS_MNEMONIC_BSR: BAD;
+		case ZYDIS_MNEMONIC_BSWAP: BAD;
+		case ZYDIS_MNEMONIC_BT:BAD;
+		case ZYDIS_MNEMONIC_BTC:BAD;
+		case ZYDIS_MNEMONIC_BTR:BAD;
+		case ZYDIS_MNEMONIC_BTS: BAD;
+		case ZYDIS_MNEMONIC_CALL: BAD;
+		case ZYDIS_MNEMONIC_CBW: BAD;
+		case ZYDIS_MNEMONIC_CDQ: BAD;
+		case ZYDIS_MNEMONIC_CLC: BAD;
+		case ZYDIS_MNEMONIC_CLD: BAD;
+		case ZYDIS_MNEMONIC_CLI: BAD;
+		case ZYDIS_MNEMONIC_CLTS:        BAD;
+		case ZYDIS_MNEMONIC_CMC:         BAD;
+		case ZYDIS_MNEMONIC_CMOVB:	 BAD;
+		case ZYDIS_MNEMONIC_CMOVBE:	 BAD;
+		case ZYDIS_MNEMONIC_CMOVL:	 BAD;
+		case ZYDIS_MNEMONIC_CMOVLE:	 BAD;
+		case ZYDIS_MNEMONIC_CMOVNB:	 BAD;
+		case ZYDIS_MNEMONIC_CMOVNBE: BAD;
+		case ZYDIS_MNEMONIC_CMOVNL:	 BAD;
+		case ZYDIS_MNEMONIC_CMOVNLE: BAD;
+		case ZYDIS_MNEMONIC_CMOVNO:	 BAD;
+		case ZYDIS_MNEMONIC_CMOVNP:	 BAD;
+		case ZYDIS_MNEMONIC_CMOVNS:	 BAD;
+		case ZYDIS_MNEMONIC_CMOVNZ:	 BAD;
+		case ZYDIS_MNEMONIC_CMOVO:	 BAD;
+		case ZYDIS_MNEMONIC_CMOVP:	 BAD;
+		case ZYDIS_MNEMONIC_CMOVS:	 BAD;
+		case ZYDIS_MNEMONIC_CMOVZ: BAD;
+		case ZYDIS_MNEMONIC_CMP: BAD;
+		case ZYDIS_MNEMONIC_CMPSB: BAD;
+		case ZYDIS_MNEMONIC_CMPSW: BAD;
+		case ZYDIS_MNEMONIC_CMPSD: BAD;
+		case ZYDIS_MNEMONIC_CMPXCHG8B:   BAD;
+		case ZYDIS_MNEMONIC_CMPXCHG:     BAD;
+		case ZYDIS_MNEMONIC_CPUID:       BAD;
+		case ZYDIS_MNEMONIC_CWD: BAD;
+		case ZYDIS_MNEMONIC_CWDE: BAD;
+		case ZYDIS_MNEMONIC_DAA: BAD;
+		case ZYDIS_MNEMONIC_DAS: BAD;
+		case ZYDIS_MNEMONIC_DEC: BAD;
+		case ZYDIS_MNEMONIC_DIV: BAD;
+		case ZYDIS_MNEMONIC_ENTER: BAD;
+		case ZYDIS_MNEMONIC_HLT: BAD;
+		case ZYDIS_MNEMONIC_IDIV: BAD;
+		case ZYDIS_MNEMONIC_IMUL: BAD;
+		case ZYDIS_MNEMONIC_IN: BAD;
+		case ZYDIS_MNEMONIC_INC: BAD;
+		case ZYDIS_MNEMONIC_INSB:BAD;
+		case ZYDIS_MNEMONIC_INSD:BAD;
+		case ZYDIS_MNEMONIC_INSW: BAD;
+		case ZYDIS_MNEMONIC_INT3: BAD;
+		case ZYDIS_MNEMONIC_INT:         BAD;
+		case ZYDIS_MNEMONIC_INTO:        BAD;
+		case ZYDIS_MNEMONIC_INVD:        BAD;
+		case ZYDIS_MNEMONIC_INVLPG:      BAD;
+		case ZYDIS_MNEMONIC_IRET:BAD;
+		case ZYDIS_MNEMONIC_IRETD: BAD;
+		case ZYDIS_MNEMONIC_JCXZ:BAD;
+		case ZYDIS_MNEMONIC_JECXZ:BAD;
+		case ZYDIS_MNEMONIC_JO:	  BAD;
+		case ZYDIS_MNEMONIC_JNO:  BAD;
+		case ZYDIS_MNEMONIC_JB:	  BAD;
+		case ZYDIS_MNEMONIC_JNB:  BAD;
+		case ZYDIS_MNEMONIC_JZ:	  BAD;
+		case ZYDIS_MNEMONIC_JNZ:  BAD;
+		case ZYDIS_MNEMONIC_JBE:  BAD;
+		case ZYDIS_MNEMONIC_JNBE: BAD;
+		case ZYDIS_MNEMONIC_JS:	  BAD;
+		case ZYDIS_MNEMONIC_JNS:  BAD;
+		case ZYDIS_MNEMONIC_JP:	  BAD;
+		case ZYDIS_MNEMONIC_JNP:  BAD;
+		case ZYDIS_MNEMONIC_JL:	  BAD;
+		case ZYDIS_MNEMONIC_JNL:  BAD;
+		case ZYDIS_MNEMONIC_JLE:  BAD;
+		case ZYDIS_MNEMONIC_JNLE: BAD;
+		case ZYDIS_MNEMONIC_JMP: {
+			cpu->jit->jmp(&instr);
+		}
+		break;
+
+		case ZYDIS_MNEMONIC_LAHF: BAD;
+		case ZYDIS_MNEMONIC_LAR:         BAD;
+		case ZYDIS_MNEMONIC_LEA: BAD;
+		case ZYDIS_MNEMONIC_LEAVE: BAD;
+		case ZYDIS_MNEMONIC_LGDT: BAD;
+		case ZYDIS_MNEMONIC_LIDT: BAD;
+		case ZYDIS_MNEMONIC_LLDT: BAD;
+		case ZYDIS_MNEMONIC_LMSW:        BAD;
+		case ZYDIS_MNEMONIC_LODSB:BAD;
+		case ZYDIS_MNEMONIC_LODSD:BAD;
+		case ZYDIS_MNEMONIC_LODSW: BAD;
+		case ZYDIS_MNEMONIC_LOOP:BAD;
+		case ZYDIS_MNEMONIC_LOOPE:BAD;
+		case ZYDIS_MNEMONIC_LOOPNE: BAD;
+		case ZYDIS_MNEMONIC_LSL:         BAD;
+		case ZYDIS_MNEMONIC_LDS:BAD;
+		case ZYDIS_MNEMONIC_LES:BAD;
+		case ZYDIS_MNEMONIC_LFS:BAD;
+		case ZYDIS_MNEMONIC_LGS:BAD;
+		case ZYDIS_MNEMONIC_LSS: BAD;
+		case ZYDIS_MNEMONIC_LTR: BAD;
+		case ZYDIS_MNEMONIC_MOV:BAD;
+		case ZYDIS_MNEMONIC_MOVD: BAD;
+		case ZYDIS_MNEMONIC_MOVSB:BAD;
+		case ZYDIS_MNEMONIC_MOVSD:BAD;
+		case ZYDIS_MNEMONIC_MOVSW: BAD;
+		case ZYDIS_MNEMONIC_MOVSX: BAD;
+		case ZYDIS_MNEMONIC_MOVZX: BAD;
+		case ZYDIS_MNEMONIC_MUL: BAD;
+		case ZYDIS_MNEMONIC_NEG: BAD;
+		case ZYDIS_MNEMONIC_NOP:BAD;
+		case ZYDIS_MNEMONIC_NOT: BAD;
+		case ZYDIS_MNEMONIC_OR: BAD;
+		case ZYDIS_MNEMONIC_OUT:BAD;
+		case ZYDIS_MNEMONIC_OUTSB:BAD;
+		case ZYDIS_MNEMONIC_OUTSD:BAD;
+		case ZYDIS_MNEMONIC_OUTSW:BAD;
+		case ZYDIS_MNEMONIC_POP: BAD;
+		case ZYDIS_MNEMONIC_POPA:BAD;
+		case ZYDIS_MNEMONIC_POPAD: BAD;
+		case ZYDIS_MNEMONIC_POPF:BAD;
+		case ZYDIS_MNEMONIC_POPFD: BAD;
+		case ZYDIS_MNEMONIC_PUSH: BAD;
+		case ZYDIS_MNEMONIC_PUSHA:BAD;
+		case ZYDIS_MNEMONIC_PUSHAD: BAD;
+		case ZYDIS_MNEMONIC_PUSHF:BAD;
+		case ZYDIS_MNEMONIC_PUSHFD: BAD;
+		case ZYDIS_MNEMONIC_RCL: BAD;
+		case ZYDIS_MNEMONIC_RCR: BAD;
+		case ZYDIS_MNEMONIC_RDMSR: BAD;
+		case ZYDIS_MNEMONIC_RDPMC:       BAD;
+		case ZYDIS_MNEMONIC_RDTSC: BAD;
+		case ZYDIS_MNEMONIC_RET: BAD;
+		case ZYDIS_MNEMONIC_ROL: BAD;
+		case ZYDIS_MNEMONIC_ROR: BAD;
+		case ZYDIS_MNEMONIC_RSM:         BAD;
+		case ZYDIS_MNEMONIC_SAHF: BAD;
+		case ZYDIS_MNEMONIC_SAR: BAD;
+		case ZYDIS_MNEMONIC_SBB: BAD;
+		case ZYDIS_MNEMONIC_SCASB:BAD;
+		case ZYDIS_MNEMONIC_SCASD:BAD;
+		case ZYDIS_MNEMONIC_SCASW: BAD;
+		case ZYDIS_MNEMONIC_SETB:BAD;
+		case ZYDIS_MNEMONIC_SETBE:BAD;
+		case ZYDIS_MNEMONIC_SETL:BAD;
+		case ZYDIS_MNEMONIC_SETLE:BAD;
+		case ZYDIS_MNEMONIC_SETNB:BAD;
+		case ZYDIS_MNEMONIC_SETNBE:BAD;
+		case ZYDIS_MNEMONIC_SETNL:BAD;
+		case ZYDIS_MNEMONIC_SETNLE:BAD;
+		case ZYDIS_MNEMONIC_SETNO:BAD;
+		case ZYDIS_MNEMONIC_SETNP:BAD;
+		case ZYDIS_MNEMONIC_SETNS:BAD;
+		case ZYDIS_MNEMONIC_SETNZ:BAD;
+		case ZYDIS_MNEMONIC_SETO:BAD;
+		case ZYDIS_MNEMONIC_SETP:BAD;
+		case ZYDIS_MNEMONIC_SETS:BAD;
+		case ZYDIS_MNEMONIC_SETZ: BAD;
+		case ZYDIS_MNEMONIC_SGDT:        BAD;
+		case ZYDIS_MNEMONIC_SHL: BAD;
+		case ZYDIS_MNEMONIC_SHLD: BAD;
+		case ZYDIS_MNEMONIC_SHR: BAD;
+		case ZYDIS_MNEMONIC_SHRD: BAD;
+		case ZYDIS_MNEMONIC_SIDT:        BAD;
+		case ZYDIS_MNEMONIC_SLDT:        BAD;
+		case ZYDIS_MNEMONIC_SMSW:        BAD;
+		case ZYDIS_MNEMONIC_STC: BAD;
+		case ZYDIS_MNEMONIC_STD: BAD;
+		case ZYDIS_MNEMONIC_STI: BAD;
+		case ZYDIS_MNEMONIC_STOSB:BAD;
+		case ZYDIS_MNEMONIC_STOSD:BAD;
+		case ZYDIS_MNEMONIC_STOSW: BAD;
+		case ZYDIS_MNEMONIC_STR:         BAD;
+		case ZYDIS_MNEMONIC_SUB: BAD;
+		case ZYDIS_MNEMONIC_SYSENTER:    BAD;
+		case ZYDIS_MNEMONIC_SYSEXIT:     BAD;
+		case ZYDIS_MNEMONIC_TEST: BAD;
+		case ZYDIS_MNEMONIC_UD1:         BAD;
+		case ZYDIS_MNEMONIC_UD2:         BAD;
+		case ZYDIS_MNEMONIC_VERR:BAD;
+		case ZYDIS_MNEMONIC_VERW: BAD;
+		case ZYDIS_MNEMONIC_WBINVD:      BAD;
+		case ZYDIS_MNEMONIC_WRMSR:       BAD;
+		case ZYDIS_MNEMONIC_XADD:        BAD;
+		case ZYDIS_MNEMONIC_XCHG: BAD;
+		case ZYDIS_MNEMONIC_XLAT:        BAD;
+		case ZYDIS_MNEMONIC_XOR:BAD;
 #if 0
 		case ZYDIS_MNEMONIC_AAA: {
 			std::vector<BasicBlock *> vec_bb = getBBs(3);
@@ -2415,81 +2625,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			addr_t next_pc2 = pc + bytes;
 			link_direct_emit(cpu, pc, cpu_ctx->regs.cs_hidden.base + jump_eip, &next_pc2, LD(dst_pc, getIntegerType(32)));
 			cpu->tc->flags |= TC_FLG_DIRECT;
-			translate_next = 0;
-		}
-		break;
-
-		case ZYDIS_MNEMONIC_JMP: {
-			switch (instr.opcode)
-			{
-			case 0xE9:
-			case 0xEB: {
-				addr_t new_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes + instr.operands[OPNUM_SINGLE].imm.value.s;
-				if (size_mode == SIZE16) {
-					new_eip &= 0x0000FFFF;
-				}
-				ST_REG_idx(CONST32(new_eip), EIP_idx);
-				link_direct_emit(cpu, pc, cpu_ctx->regs.cs_hidden.base + new_eip, nullptr, CONST32(cpu_ctx->regs.cs_hidden.base + new_eip));
-				cpu->tc->flags |= TC_FLG_DIRECT;
-			}
-			break;
-
-			case 0xEA: {
-				addr_t new_eip = instr.operands[OPNUM_SINGLE].ptr.offset;
-				uint16_t new_sel = instr.operands[OPNUM_SINGLE].ptr.segment;
-				if (cpu_ctx->hflags & HFLG_PE_MODE) {
-					Function *ljmp_helper = cast<Function>(cpu->mod->getOrInsertFunction("ljmp_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-						getIntegerType(16), getIntegerType(8), getIntegerType(32), getIntegerType(32)).getCallee());
-					CallInst *ci = CallInst::Create(ljmp_helper, { cpu->ptr_cpu_ctx, CONST16(new_sel), CONST8(size_mode), CONST32(new_eip), cpu->instr_eip }, "", cpu->bb);
-					BasicBlock *bb0 = getBB();
-					BasicBlock *bb1 = getBB();
-					BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
-					cpu->bb = bb0;
-					CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
-					ReturnInst::Create(CTX(), ci2, cpu->bb);
-					cpu->bb = bb1;
-					link_indirect_emit(cpu);
-					cpu->tc->flags |= TC_FLG_INDIRECT;
-				}
-				else {
-					new_eip = size_mode == SIZE16 ? new_eip & 0xFFFF : new_eip;
-					ST_SEG(CONST16(new_sel), CS_idx);
-					ST_REG_idx(CONST32(new_eip), EIP_idx);
-					ST_SEG_HIDDEN(CONST32(static_cast<uint32_t>(new_sel) << 4), CS_idx, SEG_BASE_idx);
-					link_direct_emit(cpu, pc, (static_cast<uint32_t>(new_sel) << 4) + new_eip, nullptr, CONST32((static_cast<uint32_t>(new_sel) << 4) + new_eip));
-					cpu->tc->flags |= TC_FLG_DIRECT;
-				}
-			}
-			break;
-
-			case 0xFF: {
-				if (instr.raw.modrm.reg == 4) {
-					Value *rm, *offset, *new_eip;
-					GET_RM(OPNUM_SINGLE, offset = LD_REG_val(rm); , offset = LD_MEM(fn_idx[size_mode], rm););
-					if (size_mode == SIZE16) {
-						new_eip = ZEXT32(offset);
-						ST_REG_idx(new_eip, EIP_idx);
-					}
-					else {
-						new_eip = offset;
-						ST_REG_idx(new_eip, EIP_idx);
-					}
-					link_indirect_emit(cpu);
-					cpu->tc->flags |= TC_FLG_INDIRECT;
-				}
-				else if (instr.raw.modrm.reg == 5) {
-					BAD;
-				}
-				else {
-					LIB86CPU_ABORT();
-				}
-			}
-			break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-
 			translate_next = 0;
 		}
 		break;
@@ -5711,21 +5846,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			LIB86CPU_ABORT();
 		}
 
-		pc += bytes;
-		cpu->tc->size += bytes;
+		cpu->virt_pc += cpu->instr_bytes;
+		cpu->tc->size += cpu->instr_bytes;
 
-	} while ((translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR))) == 1);
-
-	// update the eip if we stopped decoding without a terminating instr
-	if ((translate_next == 1) && (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR) != 0) {
-		//ST_REG_idx(CONST32(pc - cpu_ctx->regs.cs_hidden.base), EIP_idx);
-	}
-
-	// TC_FLG_INDIRECT, TC_FLG_DIRECT and TC_FLG_DST_ONLY already check for rf/single step, so we only need to check them here with
-	// TC_FLG_COND_DST_ONLY and if no linking code was emitted
-	if ((cpu->tc->flags & TC_FLG_COND_DST_ONLY) || ((cpu->tc->flags & TC_FLG_LINK_MASK) == 0)) {
-		//check_rf_single_step_emit(cpu);
-	}
+	} while ((cpu->translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR))) == 1);
 }
 
 static translated_code_t *
@@ -5800,10 +5924,9 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 
 			// code block for this pc not present, we need to translate new code
 			std::unique_ptr<translated_code_t> tc(new translated_code_t);
-			cpu->jit->start_new_session();
 
 			cpu->tc = tc.get();
-			cpu->jit->gen_prologue_main();
+			cpu->jit->gen_tc_prologue();
 
 			// prepare the disas ctx
 			disas_ctx_t disas_ctx{};
@@ -5841,7 +5964,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 				//raise_exp_inline_emit(cpu, CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx));
 			}
 
-			//create_tc_epilogue(cpu);
+			cpu->jit->gen_tc_epilogue();
 
 			cpu->tc->pc = pc;
 			cpu->tc->virt_pc = virt_pc;
@@ -5949,8 +6072,8 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 			// run the main loop only once, since we only execute the trapped instr
 			int i = 0;
 			cpu_main_loop<false, true>(cpu_ctx->cpu, [&i]() { return i++ == 0; });
+			return nullptr;
 		}
-		[[fallthrough]];
 
 		case host_exp_t::cpu_mode_changed:
 			tc_cache_purge(cpu_ctx->cpu);

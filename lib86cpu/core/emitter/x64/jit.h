@@ -9,26 +9,34 @@
 #include <asmjit/asmjit.h>
 #include "lib86cpu_priv.h"
 #include "allocator.h"
-#include "../common.h"
+#include "../emitter_common.h"
 
 #ifdef LIB86CPU_X64_EMITTER
-
-#define RAISEin(addr, code, idx, eip) cpu->jit->raise_exp_inline_emit(addr, code, idx, eip)
-#define RAISEin0(idx) cpu->jit->raise_exp_inline_emit(0, 0, idx, cpu->instr_eip)
 
 
 using namespace asmjit;
 
 
+// val: value of immediate or offset of referenced register, bits: size in bits of val
+struct op_info {
+	size_t val;
+	int bits;
+	op_info() : val(0), bits(0) {}
+	op_info(size_t val_, int bits_) : val(val_), bits(bits_) {}
+};
+
 class lc86_jit : public Target {
 public:
 	lc86_jit(cpu_t *cpu);
-	void start_new_session();
 	void gen_code_block(translated_code_t *tc);
-	void gen_prologue_main();
-	void raise_exp_inline_emit(uint32_t fault_addr, uint16_t code, uint16_t idx, uint32_t eip);
+	void gen_tc_prologue() { start_new_session(); gen_prologue_main(); }
+	void gen_tc_epilogue();
+	template<typename T1, typename T2, typename T3, typename T4>
+	void raise_exp_inline_emit(T1 fault_addr, T2 code, T3 idx, T4 eip);
 	void free_code_block(void *addr) { m_mem.release_sys_mem(addr); }
 	void destroy_all_code() { m_mem.destroy_all_blocks(); }
+
+	void jmp(ZydisDecodedInstruction *instr);
 
 #if defined(_WIN64)
 	uint8_t *gen_exception_info(uint8_t *code_ptr, size_t code_size);
@@ -40,15 +48,26 @@ private:
 #endif
 
 private:
+	void start_new_session();
+	void gen_prologue_main();
+	void gen_epilogue_main();
+	void gen_tail_call(x86::Gp addr);
 	void gen_int_fn();
+	void check_int_emit();
+	bool check_rf_single_step_emit();
+	template<typename T>
+	void link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_addr);
+	void link_indirect_emit();
+	op_info get_operand(ZydisDecodedInstruction *instr, const unsigned opnum);
+	void load_reg(op_info info);
+	void load_mem(uint8_t is_priv);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;
 	x86::Assembler m_a;
 	size_t m_prolog_patch_offset;
 	size_t m_stack_args_size;
-	size_t m_local_vars_size;
-	bool m_update_guest_eip;
+	bool m_needs_epilogue;
 	mem_manager m_mem;
 };
 

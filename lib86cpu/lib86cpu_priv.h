@@ -205,7 +205,12 @@ struct cpu_t {
 	llvm::Value *ptr_tlb_region_idx;
 	llvm::Value *ptr_iotlb;
 	llvm::Value *ptr_ram;
-	uint32_t instr_eip;
+	addr_t instr_eip;
+	addr_t virt_pc;
+	size_t instr_bytes;
+	uint8_t size_mode;
+	uint8_t addr_mode;
+	uint8_t translate_next;
 	llvm::BasicBlock *bb; // bb to which we are currently adding llvm instructions
 	llvm::Function *ptr_mem_ldfn[7];
 	llvm::Function *ptr_mem_stfn[7];
