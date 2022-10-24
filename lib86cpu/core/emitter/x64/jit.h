@@ -20,9 +20,9 @@ using namespace asmjit;
 // val: value of immediate or offset of referenced register, bits: size in bits of val
 struct op_info {
 	size_t val;
-	int bits;
-	op_info() : val(0), bits(0) {}
-	op_info(size_t val_, int bits_) : val(val_), bits(bits_) {}
+	size_t bits;
+	op_info() : val(0U), bits(0U) {}
+	op_info(size_t val_, size_t bits_) : val(val_), bits(bits_) {}
 };
 
 class lc86_jit : public Target {
@@ -31,12 +31,13 @@ public:
 	void gen_code_block(translated_code_t *tc);
 	void gen_tc_prologue() { start_new_session(); gen_prologue_main(); }
 	void gen_tc_epilogue();
-	template<typename T1, typename T2, typename T3, typename T4>
-	void raise_exp_inline_emit(T1 fault_addr, T2 code, T3 idx, T4 eip);
+	void raise_exp_inline_emit(uint32_t fault_addr, uint16_t code, uint16_t idx, uint32_t eip);
 	void free_code_block(void *addr) { m_mem.release_sys_mem(addr); }
 	void destroy_all_code() { m_mem.destroy_all_blocks(); }
 
+	void cli(ZydisDecodedInstruction *instr);
 	void jmp(ZydisDecodedInstruction *instr);
+	void mov(ZydisDecodedInstruction *instr);
 
 #if defined(_WIN64)
 	uint8_t *gen_exception_info(uint8_t *code_ptr, size_t code_size);
@@ -57,10 +58,21 @@ private:
 	bool check_rf_single_step_emit();
 	template<typename T>
 	void link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_addr);
+	void link_dst_only_emit();
 	void link_indirect_emit();
+	template<bool terminates, typename T1, typename T2, typename T3, typename T4>
+	void raise_exp_inline_emit(T1 fault_addr, T2 code, T3 idx, T4 eip);
+	template<bool terminates>
+	void raise_exp_inline_emit();
 	op_info get_operand(ZydisDecodedInstruction *instr, const unsigned opnum);
-	void load_reg(op_info info);
-	void load_mem(uint8_t is_priv);
+	op_info get_register_op(ZydisDecodedInstruction *instr, const unsigned opnum);
+	uint32_t get_immediate_op(ZydisDecodedInstruction *instr, uint8_t size_mode, const unsigned opnum);
+	op_info load_reg(op_info info);
+	void store_reg(size_t size, size_t offset);
+	void store_reg(size_t size, size_t offset, uint32_t val);
+	op_info load_mem(uint8_t size_mode, uint8_t is_priv);
+	void store_mem(uint8_t size_mode, uint8_t is_priv);
+	void store_mem(uint8_t size_mode, uint32_t val, uint8_t is_priv);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;

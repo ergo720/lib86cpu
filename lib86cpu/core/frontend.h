@@ -8,8 +8,6 @@
 
 
 StructType *get_struct_reg(cpu_t *cpu);
-//Value *gep_emit(cpu_t *cpu, Type *ptr_ty, Value *gep_start, const int gep_index);
-//Value *gep_emit(cpu_t *cpu, Type *ptr_ty, Value *gep_start, Value *gep_index);
 Value *gep_seg_emit(cpu_t *cpu, const int gep_index);
 Value *gep_seg_hidden_emit(cpu_t *cpu, const int seg_index, const int gep_index);
 Value *gep_f80_emit(cpu_t *cpu, const int gep_index, const int f80_index);
@@ -22,14 +20,11 @@ void io_write_emit(cpu_t *cpu, Value *port, Value *value, const unsigned size_mo
 void check_io_priv_emit(cpu_t *cpu, Value *port, uint8_t size_mode);
 void stack_push_emit(cpu_t *cpu, const std::vector<Value *> &vec, uint32_t size_mode);
 std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at = 0);
-void link_dst_only_emit(cpu_t *cpu);
 void link_ret_emit(cpu_t *cpu);
 Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
 Value *floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits);
 void raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
-BasicBlock *raise_exception_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
 Value *get_immediate_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx, uint8_t size_mode);
-Value *get_register_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx);
 void set_flags_sum(cpu_t *cpu, Value *sum, Value *a, Value *b, uint8_t size_mode);
 void set_flags_sub(cpu_t *cpu, Value *sub, Value *a, Value *b, uint8_t size_mode);
 void set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode);
@@ -63,10 +58,6 @@ void hook_emit(cpu_t *cpu, hook *obj);
 #define IO_ST8_idx   4
 #define IO_ST16_idx  5
 #define IO_ST32_idx  6
-
-#define GET_IMM() get_immediate_op(cpu, &instr, OPNUM_SRC, size_mode)
-#define GET_IMM8() get_immediate_op(cpu, &instr, OPNUM_SRC, SIZE8)
-#define GET_REG(idx) get_register_op(cpu, &instr, idx)
 
 #define CONSTp(v) ConstantInt::get(getIntegerPointerType(), reinterpret_cast<uintptr_t>(v))
 #define CONSTs(s, v) ConstantInt::get(getIntegerType(s), v)
@@ -183,7 +174,6 @@ void hook_emit(cpu_t *cpu, hook *obj);
 
 #define ST_REG_idx(val, idx) ST(GEP_REG_idx(idx), val)
 #define ST_R8H(val, idx) ST(GEP_R8H(idx), val)
-#define ST_REG_val(val, reg) ST(reg, val)
 #define ST_SEG(val, seg) ST(GEP_SEL(seg), val)
 #define ST_SEG_HIDDEN(val, seg, idx) ST(gep_seg_hidden_emit(cpu, seg, idx), val)
 #define ST_MM64(val, idx) ST(gep_f80_emit(cpu, idx, F80_LOW_idx), val)
@@ -193,7 +183,6 @@ void hook_emit(cpu_t *cpu, hook *obj);
 #define LD_R8L(idx) LD(GEP_REG_idx(idx), getIntegerType(8))
 #define LD_R8H(idx) LD(GEP_R8H(idx), getIntegerType(8))
 #define LD_REG_val(reg) LD(reg, cast<GetElementPtrInst>(reg)->getResultElementType())
-#define LD_SEG(seg) LD(GEP_SEL(seg), getIntegerType(16))
 #define LD_MM32(idx) LD(gep_f80_emit(cpu, idx, F80_LOW_idx), getIntegerType(32))
 
 #define ST_MEM(idx, addr, val) mem_write_emit(cpu, addr, val, idx, 0)
@@ -207,7 +196,6 @@ void hook_emit(cpu_t *cpu, hook *obj);
 
 #define LD_PARITY(idx) LD(GEP(GEP_PARITY(), getArrayType(getIntegerType(8), 256), idx), getIntegerType(8))
 #define RAISE(code, idx) raise_exception_emit(cpu, CONST32(0), code, CONST16(idx), cpu->instr_eip)
-#define RAISE0(idx) raise_exception_emit(cpu, CONST32(0), CONST16(0), CONST16(idx), cpu->instr_eip)
 #define RAISEisInt(addr, code, idx, eip) raise_exp_inline_isInt_emit(cpu, CONST32(addr), CONST16(code), CONST16(idx), CONST32(eip)); \
 cpu->bb = getBB()
 #define SET_FLG_SUM(sum, a, b) set_flags_sum(cpu, sum, a , b, size_mode)
@@ -312,5 +300,3 @@ BR_COND(vec_bb[3], vec_bb[2], AND(ICMP_NE(ecx, zero), ICMP_EQ(LD_ZF(), CONST32(0
 #define LD_SF() XOR(SHR(LD_FLG_RES(), CONST32(31)), AND(LD_FLG_AUX(), CONST32(1)))
 #define LD_PF() LD_PARITY(AND(XOR(LD_FLG_RES(), SHR(LD_FLG_AUX(), CONST32(8))), CONST32(0xFF)))
 #define LD_AF() AND(LD_FLG_AUX(), CONST32(8))
-
-#define ABORT(str) CALL(cpu->ptr_abort_fn->getFunctionType(), cpu->ptr_abort_fn, ConstantExpr::getIntToPtr(CONSTp(str), getPointerType()))

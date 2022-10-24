@@ -615,7 +615,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		catch (host_exp_t type) {
 			// this happens on instr breakpoints (not int3)
 			assert(type == host_exp_t::de_exp);
-			RAISEin0(EXP_DB);
+			cpu->jit->raise_exp_inline_emit(0, 0, EXP_DB, cpu->instr_eip);
 			disas_ctx->flags |= DISAS_FLG_DBG_FAULT;
 			return;
 		}
@@ -642,7 +642,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case ZYDIS_STATUS_DECODING_ERROR:
 				// illegal and/or undefined instruction, or lock prefix used on an instruction which does not accept it or used as source operand,
 				// or the instruction encodes a register that cannot be used (e.g. mov cs, edx)
-				RAISEin0(EXP_UD);
+				cpu->jit->raise_exp_inline_emit(0, 0, EXP_UD, cpu->instr_eip);
 				return;
 
 			case ZYDIS_STATUS_NO_MORE_DATA:
@@ -651,7 +651,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				if (disas_ctx->exp_data.idx == EXP_PF) {
 					// buffer size reduced because of page fault on second page
 					disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
-					RAISEin(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx, disas_ctx->exp_data.eip);
+					cpu->jit->raise_exp_inline_emit(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx, disas_ctx->exp_data.eip);
 					return;
 				}
 				else {
@@ -665,10 +665,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				volatile addr_t addr = get_code_addr(cpu, disas_ctx->virt_pc + X86_MAX_INSTR_LENGTH, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, TLB_CODE, disas_ctx);
 				if (disas_ctx->exp_data.idx == EXP_PF) {
 					disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
-					RAISEin(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx, disas_ctx->exp_data.eip);
+					cpu->jit->raise_exp_inline_emit(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx, disas_ctx->exp_data.eip);
 				}
 				else {
-					RAISEin(0, 0, EXP_GP, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
+					cpu->jit->raise_exp_inline_emit(0, 0, EXP_GP, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
 				}
 				return;
 			}
@@ -716,7 +716,11 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_CDQ: BAD;
 		case ZYDIS_MNEMONIC_CLC: BAD;
 		case ZYDIS_MNEMONIC_CLD: BAD;
-		case ZYDIS_MNEMONIC_CLI: BAD;
+		case ZYDIS_MNEMONIC_CLI: {
+			cpu->jit->cli(&instr);
+		}
+		break;
+
 		case ZYDIS_MNEMONIC_CLTS:        BAD;
 		case ZYDIS_MNEMONIC_CMC:         BAD;
 		case ZYDIS_MNEMONIC_CMOVB:	 BAD;
@@ -808,8 +812,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_LGS:BAD;
 		case ZYDIS_MNEMONIC_LSS: BAD;
 		case ZYDIS_MNEMONIC_LTR: BAD;
-		case ZYDIS_MNEMONIC_MOV:BAD;
-		case ZYDIS_MNEMONIC_MOVD: BAD;
+		case ZYDIS_MNEMONIC_MOV: {
+			cpu->jit->mov(&instr);
+		}
+		break;
+
+		case ZYDIS_MNEMONIC_MOVD:BAD;
 		case ZYDIS_MNEMONIC_MOVSB:BAD;
 		case ZYDIS_MNEMONIC_MOVSD:BAD;
 		case ZYDIS_MNEMONIC_MOVSW: BAD;
@@ -1524,29 +1532,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			Value *eflags = LD_R32(EFLAGS_idx);
 			eflags = AND(eflags, CONST32(~DF_MASK));
 			ST_REG_idx(eflags, EFLAGS_idx);
-		}
-		break;
-
-		case ZYDIS_MNEMONIC_CLI: {
-			assert(instr.opcode == 0xFA);
-
-			Value *eflags = LD_R32(EFLAGS_idx);
-			if (cpu_ctx->hflags & HFLG_PE_MODE) {
-
-				// we don't support virtual 8086 mode, so we don't need to check for it
-				if (((cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12) >= (cpu->cpu_ctx.hflags & HFLG_CPL)) {
-					eflags = AND(eflags, CONST32(~IF_MASK));
-					ST_REG_idx(eflags, EFLAGS_idx);
-				}
-				else {
-					RAISEin0(EXP_GP);
-					translate_next = 0;
-				}
-			}
-			else {
-				eflags = AND(eflags, CONST32(~IF_MASK));
-				ST_REG_idx(eflags, EFLAGS_idx);
-			}
 		}
 		break;
 
@@ -3032,350 +3017,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 		}
 		break;
-
-		case ZYDIS_MNEMONIC_MOV:
-			switch (instr.opcode)
-			{
-			case 0x20: {
-				if (cpu_ctx->hflags & HFLG_CPL) {
-					RAISEin0(EXP_GP);
-					translate_next = 0;
-				}
-				else {
-					ST_REG_idx(LD_REG_val(GET_REG(OPNUM_SRC)), GET_REG_idx(instr.operands[OPNUM_DST].reg.value));
-				}
-			}
-			break;
-
-			case 0x21: {
-				std::vector<BasicBlock *> vec_bb = getBBs(2);
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(LD_R32(DR7_idx), CONST32(DR7_GD_MASK)), CONST32(0)));
-				cpu->bb = vec_bb[0];
-				ST_REG_idx(OR(LD_R32(DR6_idx), CONST32(DR6_BD_MASK)), DR6_idx); // can't just use RAISE0 because we need to set bd in dr6
-				RAISEin0(EXP_DB);
-				UNREACH();
-				cpu->bb = vec_bb[1];
-				if (cpu_ctx->hflags & HFLG_CPL) {
-					RAISEin0(EXP_GP);
-					translate_next = 0;
-				}
-				else {
-					int dr_offset = 0;
-					if (((instr.operands[OPNUM_SRC].reg.value == ZYDIS_REGISTER_DR4) || (instr.operands[OPNUM_SRC].reg.value == ZYDIS_REGISTER_DR5))) {
-						BasicBlock *bb = getBB();
-						BR_COND(RAISE0(EXP_UD), bb, ICMP_NE(AND(LD_R32(CR4_idx), CONST32(CR4_DE_MASK)), CONST32(0)));
-						cpu->bb = bb;
-						dr_offset = 2; // turns dr4/5 to dr6/7
-					}
-					ST_REG_idx(LD_R32(GET_REG_idx(instr.operands[OPNUM_SRC].reg.value) + dr_offset),
-						GET_REG_idx(instr.operands[OPNUM_DST].reg.value));
-				}
-			}
-			break;
-
-			case 0x22: {
-				if (cpu_ctx->hflags & HFLG_CPL) {
-					RAISEin0(EXP_GP);
-					translate_next = 0;
-				}
-				else {
-					Value *val = LD_REG_val(GET_REG(OPNUM_SRC));
-					switch (instr.operands[OPNUM_DST].reg.value)
-					{
-					case ZYDIS_REGISTER_CR0:
-						translate_next = 0;
-						[[fallthrough]];
-
-					case ZYDIS_REGISTER_CR3:
-					case ZYDIS_REGISTER_CR4: {
-						Function *crN_fn = cast<Function>(cpu->mod->getOrInsertFunction("update_crN_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-							getIntegerType(32), getIntegerType(8), getIntegerType(32), getIntegerType(32)).getCallee());
-						CallInst *ci = CallInst::Create(crN_fn, std::vector<Value *>{ cpu->ptr_cpu_ctx, val, CONST8(GET_REG_idx(instr.operands[OPNUM_DST].reg.value) - CR_offset),
-							cpu->instr_eip, CONST32(bytes) }, "", cpu->bb);
-						std::vector<BasicBlock *> vec_bb = getBBs(1);
-						BR_COND(RAISE(CONST16(0), EXP_GP), vec_bb[0], ICMP_NE(ci, CONST8(0)));
-						cpu->bb = vec_bb[0];
-					}
-					break;
-
-					case ZYDIS_REGISTER_CR2:
-						ST_REG_idx(val, CR2_idx);
-						break;
-
-					default:
-						LIB86CPU_ABORT();
-					}
-				}
-			}
-			break;
-
-			case 0x23: {
-				std::vector<BasicBlock *> vec_bb = getBBs(2);
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(LD_R32(DR7_idx), CONST32(DR7_GD_MASK)), CONST32(0)));
-				cpu->bb = vec_bb[0];
-				ST_REG_idx(OR(LD_R32(DR6_idx), CONST32(DR6_BD_MASK)), DR6_idx); // can't just use RAISE0 because we need to set bd in dr6
-				RAISEin0(EXP_DB);
-				UNREACH();
-				cpu->bb = vec_bb[1];
-				if (cpu_ctx->hflags & HFLG_CPL) {
-					RAISEin0(EXP_GP);
-					translate_next = 0;
-				}
-				else {
-					int dr_offset = 0, dr_idx = GET_REG_idx(instr.operands[OPNUM_DST].reg.value);
-					Value *reg = ALLOC32();
-					ST(reg, LD_R32(GET_REG_idx(instr.operands[OPNUM_SRC].reg.value)));
-					switch (dr_idx)
-					{
-					case DR0_idx:
-					case DR1_idx:
-					case DR2_idx:
-					case DR3_idx: {
-						// we cannot just look for the single watchpoint we are updating because it's possible that other watchpoints exist in the same page
-						for (int idx = 0; idx < 4; ++idx) {
-							std::vector<BasicBlock *> vec_bb = getBBs(2);
-							Value *tlb_old_idx = GEP(cpu->ptr_tlb, getArrayType(getIntegerType(32), TLB_MAX_SIZE), SHR(LD_R32(idx), CONST32(PAGE_SHIFT)));
-							Value *tlb_new_idx = GEP(cpu->ptr_tlb, getArrayType(getIntegerType(32), TLB_MAX_SIZE), SHR(LD(reg, getIntegerType(32)), CONST32(PAGE_SHIFT)));
-							ST(tlb_old_idx, AND(LD(tlb_old_idx, getIntegerType(32)), CONST32(~TLB_WATCH))); // remove existing watchpoint
-							BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(SHR(LD_R32(DR7_idx), CONST32(idx * 2)), CONST32(3)), CONST32(0)));
-							cpu->bb = vec_bb[0];
-							ST(tlb_new_idx, OR(LD(tlb_new_idx, getIntegerType(32)), CONST32(TLB_WATCH))); // install new watchpoint if enabled
-							BR_UNCOND(vec_bb[1]);
-							cpu->bb = vec_bb[1];
-						}
-					}
-					break;
-
-					case DR4_idx: {
-						BasicBlock *bb = getBB();
-						BR_COND(RAISE0(EXP_UD), bb, ICMP_NE(AND(LD_R32(CR4_idx), CONST32(CR4_DE_MASK)), CONST32(0)));
-						cpu->bb = bb;
-						dr_offset = 2; // turns dr4 to dr6
-					}
-					[[fallthrough]];
-
-					case DR6_idx:
-						ST(reg, OR(LD(reg, getIntegerType(32)), CONST32(DR6_RES_MASK)));
-						break;
-
-					case DR5_idx: {
-						BasicBlock *bb = getBB();
-						BR_COND(RAISE0(EXP_UD), bb, ICMP_NE(AND(LD_R32(CR4_idx), CONST32(CR4_DE_MASK)), CONST32(0)));
-						cpu->bb = bb;
-						dr_offset = 2; // turns dr5 to dr7
-					}
-					[[fallthrough]];
-
-					case DR7_idx: {
-						ST(reg, OR(LD(reg, getIntegerType(32)), CONST32(DR7_RES_MASK)));
-						for (int idx = 0; idx < 4; ++idx) {
-							std::vector<BasicBlock *> vec_bb = getBBs(5);
-							Value *curr_watch_addr = LD_R32(DR_offset + idx);
-							Value *tlb_idx = GEP(cpu->ptr_tlb, getArrayType(getIntegerType(32), TLB_MAX_SIZE), SHR(curr_watch_addr, CONST32(PAGE_SHIFT)));
-							// we don't support task switches, so local and global enable flags are the same for now
-							BR_COND(vec_bb[0], vec_bb[1], ICMP_NE(AND(SHR(LD(reg, getIntegerType(32)), CONST32(idx * 2)), CONST32(3)), CONST32(0)));
-							cpu->bb = vec_bb[0];
-							BR_COND(vec_bb[2], vec_bb[3], ICMP_EQ(OR(AND(SHR(LD(reg, getIntegerType(32)), CONST32(DR7_TYPE_SHIFT + idx * 4)), CONST32(3)),
-								AND(LD_R32(CR4_idx), CONST32(CR4_DE_MASK))), CONST32(DR7_TYPE_IO_RW | CR4_DE_MASK)));
-							cpu->bb = vec_bb[2];
-							// we don't support io watchpoints yet so for now we just abort
-							ABORT("Io watchpoints are not supported");
-							UNREACH();
-							cpu->bb = vec_bb[3];
-							ST(tlb_idx, OR(LD(tlb_idx, getIntegerType(32)), CONST32(TLB_WATCH))); // install watchpoint
-							BR_UNCOND(vec_bb[4]);
-							cpu->bb = vec_bb[1];
-							ST(tlb_idx, AND(LD(tlb_idx, getIntegerType(32)), CONST32(~TLB_WATCH))); // remove watchpoint
-							BR_UNCOND(vec_bb[4]);
-							cpu->bb = vec_bb[4];
-						}
-					}
-					break;
-
-					default:
-						LIB86CPU_ABORT();
-					}
-
-					ST_REG_idx(LD(reg, getIntegerType(32)), dr_idx + dr_offset);
-					ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
-					// instr breakpoint are checked at compile time, so we cannot jump to the next tc if we are writing to anything but dr6
-					if ((((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) && ((dr_idx + dr_offset) == DR6_idx)) {
-						link_dst_only_emit(cpu);
-						cpu->bb = getBB();
-						cpu->tc->flags |= TC_FLG_DST_ONLY;
-					}
-					translate_next = 0;
-				}
-			}
-			break;
-
-			case 0x88:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x89: {
-				Value *reg, *rm;
-				reg = LD_REG_val(GET_REG(OPNUM_SRC));
-				GET_RM(OPNUM_DST, ST_REG_val(reg, rm);, ST_MEM(fn_idx[size_mode], rm, reg););
-			}
-			break;
-
-			case 0x8A:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x8B: {
-				Value *reg, *rm, *temp;
-				reg = GET_REG(OPNUM_DST);
-				GET_RM(OPNUM_SRC, ST_REG_val(LD_REG_val(rm), reg);, temp = LD_MEM(fn_idx[size_mode], rm); ST_REG_val(temp, reg););
-			}
-			break;
-
-			case 0x8C: {
-				Value *val, *rm;
-				val = LD_SEG(GET_REG_idx(instr.operands[OPNUM_SRC].reg.value));
-				GET_RM(OPNUM_DST, ST_REG_val(ZEXT32(val), rm);, ST_MEM(MEM_LD16_idx, rm, val););
-			}
-			break;
-
-			case 0x8E: {
-				Value *sel, *rm;
-				const unsigned sel_idx = GET_REG_idx(instr.operands[OPNUM_DST].reg.value);
-				GET_RM(OPNUM_SRC, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
-
-				if (cpu_ctx->hflags & HFLG_PE_MODE) {
-					if (sel_idx == SS_idx) {
-						Function *mov_ss_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_ss_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-							getIntegerType(16), getIntegerType(32)).getCallee());
-						CallInst *ci = CallInst::Create(mov_ss_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
-						BasicBlock *bb0 = getBB();
-						BasicBlock *bb1 = getBB();
-						BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
-						cpu->bb = bb0;
-						CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
-						ReturnInst::Create(CTX(), ci2, cpu->bb);
-						cpu->bb = bb1;
-						ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
-						if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
-							BasicBlock *bb2 = getBB();
-							BasicBlock *bb3 = getBB();
-							BR_COND(bb2, bb3, ICMP_EQ(CONST32(cpu->cpu_ctx.hflags & HFLG_SS32), AND(LD(cpu->ptr_hflags, getIntegerType(32)), CONST32(HFLG_SS32))));
-							cpu->bb = bb2;
-							link_dst_only_emit(cpu);
-							cpu->bb = bb3;
-							cpu->tc->flags |= TC_FLG_COND_DST_ONLY;
-						}
-						translate_next = 0;
-					}
-					else {
-						CallInst *ci;
-						switch (sel_idx)
-						{
-						case DS_idx: {
-							Function *mov_ds_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_ds_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-								getIntegerType(16), getIntegerType(32)).getCallee());
-							ci = CallInst::Create(mov_ds_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
-						}
-						break;
-
-						case ES_idx: {
-							Function *mov_es_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_es_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-								getIntegerType(16), getIntegerType(32)).getCallee());
-							ci = CallInst::Create(mov_es_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
-						}
-						break;
-
-						case FS_idx: {
-							Function *mov_fs_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_fs_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-								getIntegerType(16), getIntegerType(32)).getCallee());
-							ci = CallInst::Create(mov_fs_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
-						}
-						break;
-
-						case GS_idx: {
-							Function *mov_gs_helper = cast<Function>(cpu->mod->getOrInsertFunction("mov_gs_pe_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-								getIntegerType(16), getIntegerType(32)).getCallee());
-							ci = CallInst::Create(mov_gs_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
-						}
-						break;
-
-						default:
-							LIB86CPU_ABORT();
-						}
-
-						BasicBlock *bb0 = getBB();
-						BasicBlock *bb1 = getBB();
-						BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
-						cpu->bb = bb0;
-						CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
-						ReturnInst::Create(CTX(), ci2, cpu->bb);
-						cpu->bb = bb1;
-					}
-				}
-				else {
-					ST_SEG(sel, GET_REG_idx(instr.operands[OPNUM_DST].reg.value));
-					ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), GET_REG_idx(instr.operands[OPNUM_DST].reg.value), SEG_BASE_idx);
-				}
-			}
-			break;
-
-			case 0xA0:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0xA1: {
-				Value *temp = LD_MEM(fn_idx[size_mode], GET_OP(OPNUM_SRC));
-				ST_REG_val(temp, GET_OP(OPNUM_DST));
-			}
-			break;
-
-			case 0xA2:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0xA3: {
-				ST_MEM(fn_idx[size_mode], GET_OP(OPNUM_DST), LD_REG_val(GET_OP(OPNUM_SRC)));
-			}
-			break;
-
-			case 0xB0:
-			case 0xB1:
-			case 0xB2:
-			case 0xB3:
-			case 0xB4:
-			case 0xB5:
-			case 0xB6:
-			case 0xB7: {
-				ST_REG_val(GET_IMM8(), GET_OP(OPNUM_DST));
-			}
-			break;
-
-			case 0xB8:
-			case 0xB9:
-			case 0xBA:
-			case 0xBB:
-			case 0xBC:
-			case 0xBD:
-			case 0xBE:
-			case 0xBF: {
-				ST_REG_val(GET_IMM(), GET_OP(OPNUM_DST));
-			}
-			break;
-
-			case 0xC6:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0xC7: {
-				Value *rm;
-				GET_RM(OPNUM_DST, ST_REG_val(GET_IMM(), rm);, ST_MEM(fn_idx[size_mode], rm, GET_IMM()););
-			}
-			break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-			break;
 
 		case ZYDIS_MNEMONIC_MOVD: {
 			if (cpu_ctx->hflags & HFLG_CR0_EM) {

@@ -19,7 +19,6 @@ extern template void tc_invalidate<true>(cpu_ctx_t *cpu_ctx, addr_t addr, [[mayb
 extern template void tc_invalidate<false>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
 void tc_cache_clear(cpu_t *cpu);
 void tc_cache_purge(cpu_t *cpu);
-uint8_t update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes);
 void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);
 void msr_read_helper(cpu_ctx_t *cpu_ctx);
 addr_t get_pc(cpu_ctx_t *cpu_ctx);

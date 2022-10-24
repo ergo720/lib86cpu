@@ -11,8 +11,24 @@
 
 #ifdef LIB86CPU_X64_EMITTER
 
+#define DR45_TO_DR67 2
+
 // The emitted code assumes that host pointers are 8 bytes
 static_assert(sizeof(uint8_t *) == 8, "Pointers must be 8 bytes");
+// This is used to turn dr4/5 to dr6/7
+static_assert(ZYDIS_REGISTER_DR4 + DR45_TO_DR67 == ZYDIS_REGISTER_DR6);
+static_assert(ZYDIS_REGISTER_DR5 + DR45_TO_DR67 == ZYDIS_REGISTER_DR7);
+// ZydisRegister is passed to update_crN_helper
+static_assert(sizeof(ZydisRegister) == 4);
+// This is assumed in mov dr/reg, reg/dr
+static_assert(ZYDIS_REGISTER_DR0 - ZYDIS_REGISTER_DR0 == 0);
+static_assert(ZYDIS_REGISTER_DR1 - ZYDIS_REGISTER_DR0 == 1);
+static_assert(ZYDIS_REGISTER_DR2 - ZYDIS_REGISTER_DR0 == 2);
+static_assert(ZYDIS_REGISTER_DR3 - ZYDIS_REGISTER_DR0 == 3);
+static_assert(ZYDIS_REGISTER_DR4 - ZYDIS_REGISTER_DR0 == 4);
+static_assert(ZYDIS_REGISTER_DR5 - ZYDIS_REGISTER_DR0 == 5);
+static_assert(ZYDIS_REGISTER_DR6 - ZYDIS_REGISTER_DR0 == 6);
+static_assert(ZYDIS_REGISTER_DR7 - ZYDIS_REGISTER_DR0 == 7);
 
 #define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(m_cpu->virt_pc, instr).c_str())
 
@@ -110,8 +126,10 @@ static_assert(sizeof(uint8_t *) == 8, "Pointers must be 8 bytes");
 #define OR(dst, src) m_a.or_(dst, src)
 #define XOR(dst, src) m_a.xor_(dst, src)
 #define SHL(dst, src) m_a.shl(dst, src)
+#define SHR(dst, src) m_a.shr(dst, src)
 #define ADD(dst, src) m_a.add(dst, src)
 #define SUB(dst, src) m_a.sub(dst, src)
+#define CMP(dst, src) m_a.cmp(dst, src)
 #define CALL(addr) m_a.call(addr)
 #define RET() m_a.ret()
 
@@ -119,15 +137,39 @@ static_assert(sizeof(uint8_t *) == 8, "Pointers must be 8 bytes");
 #define POP(dst) m_a.pop(dst)
 
 #define BR_UNCOND(dst) m_a.jmp(dst)
-#define BR_NE(label, l, r) Label label ## _taken = m_a.newLabel(); m_a.cmp(l, r); m_a.jne(label ## _taken)
+#define BR_EQ(label) Label label ## _taken = m_a.newLabel(); m_a.je(label ## _taken)
+#define BR_NE(label) Label label ## _taken = m_a.newLabel(); m_a.jne(label ## _taken)
 
 #define LD_R16(dst, reg_offset) MOV(dst, MEMD16(RCX, reg_offset))
 #define LD_R32(dst, reg_offset) MOV(dst, MEMD32(RCX, reg_offset))
 #define LD_REG_val(info) load_reg(info)
+#define LD_SEG(dst, seg_offset) MOV(dst, MEMD16(RCX, seg_offset))
 #define LD_SEG_BASE(dst, seg_offset) MOV(dst, MEMD32(RCX, seg_offset + seg_base_offset))
+#define ST_R16(reg_offset, src) MOV(MEMD16(RCX, reg_offset), src)
+#define ST_R32(reg_offset, src) MOV(MEMD32(RCX, reg_offset), src)
+#define ST_REG_val(size, offset) store_reg(size, offset)
+#define ST_REG_imm(size, offset, imm) store_reg(size, offset, imm)
+#define ST_SEG(seg_offset, val) MOV(MEMD16(RCX, seg_offset), val)
+#define ST_SEG_BASE(seg_offset, val) MOV(MEMD32(RCX, seg_offset + seg_base_offset), val)
 
-#define LD_MEM() load_mem(0)
+#define LD_MEM() load_mem(m_cpu->size_mode, 0)
+#define LD_MEMs(size) load_mem(size, 0)
+#define ST_MEM_reg() store_mem(m_cpu->size_mode, 0)
+#define ST_MEM_imm(val) store_mem(m_cpu->size_mode, val, 0)
+#define ST_MEMs_reg(size) store_mem(size, 0)
+#define ST_MEMs_imm(size, val) store_mem(size, val, 0)
 
+#define GET_IMM() get_immediate_op(instr, m_cpu->size_mode, OPNUM_SRC)
+#define GET_IMM8() get_immediate_op(instr, SIZE8, OPNUM_SRC)
+
+#define RAISE_t() raise_exp_inline_emit<true>()
+#define RAISE_f() raise_exp_inline_emit<false>()
+#define RAISEin_t(addr, code, idx, eip) raise_exp_inline_emit<true>(addr, code, idx, eip)
+#define RAISEin_f(addr, code, idx, eip) raise_exp_inline_emit<false>(addr, code, idx, eip)
+#define RAISEin0_t(idx) raise_exp_inline_emit<true>(0, 0, idx, m_cpu->instr_eip)
+#define RAISEin0_f(idx) raise_exp_inline_emit<false>(0, 0, idx, m_cpu->instr_eip)
+
+#define GET_REG(op) get_register_op(instr, op)
 #define GET_OP(op) get_operand(instr, op)
 #define GET_RM(idx, r, m) 	op_info rm = GET_OP(idx); \
 switch (instr->operands[idx].type) \
@@ -258,7 +300,7 @@ lc86_jit::gen_int_fn()
 
 	start_new_session();
 
-	MOV(MEMD8(RCX, CPU_CTX_INT()), DL);
+	MOV(MEMD8(RCX, CPU_CTX_INT), DL);
 	RET();
 
 	if (auto err = m_code.flatten()) {
@@ -354,7 +396,7 @@ lc86_jit::gen_tc_epilogue()
 	// update the eip if we stopped decoding without a terminating instr
 	if (m_cpu->translate_next == 1) {
 		assert((DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR) != 0);
-		MOV(MEMD32(RCX, CPU_CTX_EIP()), m_cpu->virt_pc - m_cpu->cpu_ctx.regs.cs_hidden.base);
+		MOV(MEMD32(RCX, CPU_CTX_EIP), m_cpu->virt_pc - m_cpu->cpu_ctx.regs.cs_hidden.base);
 	}
 
 	// TC_FLG_INDIRECT, TC_FLG_DIRECT and TC_FLG_DST_ONLY already check for rf/single step, so we only need to check them here with
@@ -368,24 +410,46 @@ lc86_jit::gen_tc_epilogue()
 	}
 }
 
-template<typename T1, typename T2, typename T3, typename T4>
+template<bool terminates, typename T1, typename T2, typename T3, typename T4>
 void lc86_jit::raise_exp_inline_emit(T1 fault_addr, T2 code, T3 idx, T4 eip)
 {
-	m_needs_epilogue = false;
+	if constexpr (terminates) {
+		m_needs_epilogue = false;
+		m_cpu->translate_next = 0;
+	}
 
-	MOV(MEMD32(RCX, CPU_EXP_ADDR()), fault_addr);
-	MOV(MEMD16(RCX, CPU_EXP_CODE()), code);
-	MOV(MEMD16(RCX, CPU_EXP_IDX()), idx);
-	MOV(MEMD32(RCX, CPU_EXP_EIP()), eip);
-	MOV(RAX, &cpu_raise_exception<false>);
+	MOV(MEMD32(RCX, CPU_EXP_ADDR), fault_addr);
+	MOV(MEMD16(RCX, CPU_EXP_CODE), code);
+	MOV(MEMD16(RCX, CPU_EXP_IDX), idx);
+	MOV(MEMD32(RCX, CPU_EXP_EIP), eip);
+	MOV(RAX, &cpu_raise_exception<>);
+	CALL(RAX);
+	gen_epilogue_main();
+}
+
+template<bool terminates>
+void lc86_jit::raise_exp_inline_emit()
+{
+	if constexpr (terminates) {
+		m_needs_epilogue = false;
+		m_cpu->translate_next = 0;
+	}
+
+	MOV(RAX, &cpu_raise_exception<>);
 	CALL(RAX);
 	gen_epilogue_main();
 }
 
 void
+lc86_jit::raise_exp_inline_emit(uint32_t fault_addr, uint16_t code, uint16_t idx, uint32_t eip)
+{
+	raise_exp_inline_emit<true>(fault_addr, code, idx, eip);
+}
+
+void
 lc86_jit::check_int_emit()
 {
-	MOV(DL, MEMD8(RCX, CPU_CTX_INT()));
+	MOV(DL, MEMD8(RCX, CPU_CTX_INT));
 	MOVZX(EAX, DL);
 	MOV(RDI, &m_cpu->tc->jmp_offset[TC_JMP_INT_OFFSET]);
 	LEA(RDX, MEMS64(RDI, RAX, 3));
@@ -405,18 +469,18 @@ lc86_jit::check_rf_single_step_emit()
 		if (m_cpu->cpu_ctx.regs.eflags & RF_MASK) {
 			// clear rf if it is set. This happens in the one-instr tc that contains the instr that originally caused the instr breakpoint. This must be done at runtime
 			// because otherwise tc_cache_insert will register rf as clear, when it was set at the beginning of this tc
-			MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS()));
+			MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS));
 			AND(EDX, ~RF_MASK);
-			MOV(MEMD32(RCX, CPU_CTX_EFLAGS()), EDX);
+			MOV(MEMD32(RCX, CPU_CTX_EFLAGS), EDX);
 		}
 
 		if ((m_cpu->cpu_ctx.regs.eflags & TF_MASK) | (m_cpu->cpu_flags & CPU_SINGLE_STEP)) {
 			// NOTE: if this instr also has a watchpoint, the other DB exp won't be generated
-			MOV(EDX, MEMD32(RCX, CPU_CTX_DR6()));
+			MOV(EDX, MEMD32(RCX, CPU_CTX_DR6));
 			OR(EDX, DR6_BS_MASK);
-			MOV(MEMD32(RCX, CPU_CTX_DR6()), EDX);
-			MOV(EDX, MEMD32(RCX, CPU_CTX_EIP()));
-			raise_exp_inline_emit(0, 0, EXP_DB, EDX);
+			MOV(MEMD32(RCX, CPU_CTX_DR6), EDX);
+			MOV(EDX, MEMD32(RCX, CPU_CTX_EIP));
+			RAISEin_f(0, 0, EXP_DB, EDX);
 			return true;
 		}
 	}
@@ -478,7 +542,8 @@ void lc86_jit::link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_pc)
 					}
 				}
 				else {
-					BR_NE(ret, target_pc, dst_pc);
+					CMP(target_pc, dst_pc);
+					BR_NE(ret);
 					MOV(MEM32(RDX), EAX);
 					MOV(RDX, &m_cpu->tc->jmp_offset[0]);
 					MOV(RAX, MEM64(RDX));
@@ -509,7 +574,8 @@ void lc86_jit::link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_pc)
 					}
 				}
 				else {
-					BR_NE(ret, target_pc, *next_pc);
+					CMP(target_pc, *next_pc);
+					BR_NE(ret);
 					OR(EAX, TC_JMP_NEXT_PC << 4);
 					MOV(MEM32(RDX), EAX);
 					MOV(RDX, &m_cpu->tc->jmp_offset[1]);
@@ -551,7 +617,8 @@ void lc86_jit::link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_pc)
 			}
 		}
 		else {
-			BR_NE(ret, target_pc, *next_pc);
+			CMP(target_pc, *next_pc);
+			BR_NE(ret);
 			OR(EAX, TC_JMP_NEXT_PC << 4);
 			MOV(MEM32(RDX), EAX);
 			MOV(RDX, &m_cpu->tc->jmp_offset[1]);
@@ -569,6 +636,25 @@ void lc86_jit::link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_pc)
 	default:
 		LIB86CPU_ABORT();
 	}
+}
+
+void
+lc86_jit::link_dst_only_emit()
+{
+	m_needs_epilogue = false;
+
+	if (check_rf_single_step_emit()) {
+		return;
+	}
+
+	// make sure we check for interrupts before jumping to the next tc
+	check_int_emit();
+
+	m_cpu->tc->flags |= (1 & TC_FLG_NUM_JMP);
+
+	MOV(RDX, &m_cpu->tc->jmp_offset[0]);
+	MOV(RAX, MEM64(RDX));
+	gen_tail_call(RAX);
 }
 
 void
@@ -601,22 +687,21 @@ lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opnum)
 		switch (operand->encoding)
 		{
 		case ZYDIS_OPERAND_ENCODING_DISP16_32_64:
-			LD_SEG_BASE(EDX, GET_REG_idx(operand->mem.segment));
+			LD_SEG_BASE(EDX, REG_off(operand->mem.segment));
 			ADD(EDX, operand->mem.disp.value);
 			return {};
 
 		case ZYDIS_OPERAND_ENCODING_MODRM_RM: {
-			Value *base, *temp, *disp;
 			if (instr->address_width == 32) {
 				if (operand->mem.base != ZYDIS_REGISTER_NONE) {
-					LD_R32(EAX, GET_REG_idx(operand->mem.base));
+					LD_R32(EAX, REG_off(operand->mem.base));
 				}
 				else {
 					XOR(EAX, EAX);
 				}
 
 				if (operand->mem.scale != 0) {
-					LD_R32(EDI, GET_REG_idx(operand->mem.index));
+					LD_R32(EDI, REG_off(operand->mem.index));
 					LEA(EAX, MEMS32(EAX, EDI, operand->mem.scale));
 				}
 
@@ -628,25 +713,25 @@ lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opnum)
 						MOV(EDX, operand->mem.disp.value);
 					}
 
-					LD_SEG_BASE(EDI, GET_REG_idx(operand->mem.segment));
+					LD_SEG_BASE(EDI, REG_off(operand->mem.segment));
 					LEA(EDX, MEMS32(EDX, EAX, 0));
 					ADD(EDX, EDI);
 					return {};
 				}
 
-				LD_SEG_BASE(EDX, GET_REG_idx(operand->mem.segment));
+				LD_SEG_BASE(EDX, REG_off(operand->mem.segment));
 				ADD(EDX, EAX);
 				return {};
 			}
 			else {
 				XOR(EAX, EAX);
 				if (operand->mem.base != ZYDIS_REGISTER_NONE) {
-					LD_R16(AX, GET_REG_idx(operand->mem.base));
+					LD_R16(AX, REG_off(operand->mem.base));
 				}
 
 				if (operand->mem.scale != 0) {
 					XOR(EDI, EDI);
-					LD_R16(DI, GET_REG_idx(operand->mem.index));
+					LD_R16(DI, REG_off(operand->mem.index));
 					LEA(AX, MEMS16(EAX, EDI, operand->mem.scale));
 				}
 
@@ -658,13 +743,13 @@ lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opnum)
 						MOV(EDX, operand->mem.disp.value);
 					}
 
-					LD_SEG_BASE(EDI, GET_REG_idx(operand->mem.segment));
+					LD_SEG_BASE(EDI, REG_off(operand->mem.segment));
 					LEA(EDX, MEMS32(EDX, EAX, 0));
 					ADD(EDX, EDI);
 					return {};
 				}
 
-				LD_SEG_BASE(EDX, GET_REG_idx(operand->mem.segment));
+				LD_SEG_BASE(EDX, REG_off(operand->mem.segment));
 				ADD(EDX, EAX);
 				return {};
 			}
@@ -678,7 +763,7 @@ lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opnum)
 	break;
 
 	case ZYDIS_OPERAND_TYPE_REGISTER: { // op_info with reg offset and bit size
-		size_t offset = GET_REG_idx(operand->reg.value);
+		size_t offset = REG_off(operand->reg.value);
 		switch (operand->size)
 		{
 		case 8:
@@ -728,6 +813,231 @@ lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opnum)
 	}
 }
 
+op_info
+lc86_jit::get_register_op(ZydisDecodedInstruction *instr, const unsigned opnum)
+{
+	assert(instr->operands[opnum].type == ZYDIS_OPERAND_TYPE_REGISTER);
+	return get_operand(instr, opnum);
+}
+
+uint32_t
+lc86_jit::get_immediate_op(ZydisDecodedInstruction *instr, uint8_t size_mode, const unsigned opnum)
+{
+	assert(instr->operands[opnum].type == ZYDIS_OPERAND_TYPE_IMMEDIATE);
+
+	switch (m_cpu->size_mode)
+	{
+	case SIZE8:
+		return instr->operands[opnum].imm.value.u;
+
+	case SIZE16:
+		return instr->operands[opnum].imm.value.u;
+
+	case SIZE32:
+		return instr->operands[opnum].imm.value.u;
+
+	default:
+		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s", size_mode, __func__);
+	}
+}
+
+op_info
+lc86_jit::load_reg(op_info info)
+{
+	// Returns the reg in eax
+
+	switch (info.bits)
+	{
+	case 8:
+		MOV(AL, MEMD8(RCX, info.val));
+		break;
+
+	case 16:
+		MOV(AX, MEMD16(RCX, info.val));
+		break;
+
+	case 32:
+		MOV(EAX, MEMD32(RCX, info.val));
+		break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+
+	return info;
+}
+
+void
+lc86_jit::store_reg(size_t size, size_t offset)
+{
+	// register val should be placed in EAX/AX/AL by load_reg or something else
+
+	switch (size)
+	{
+	case 8:
+		MOV(MEMD8(RCX, offset), AL);
+		break;
+
+	case 16:
+		MOV(MEMD16(RCX, offset), AX);
+		break;
+
+	case 32:
+		MOV(MEMD32(RCX, offset), EAX);
+		break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+void
+lc86_jit::store_reg(size_t size, size_t offset, uint32_t val)
+{
+	// immediate should be passed as argument
+
+	switch (size)
+	{
+	case 8:
+		MOV(MEMD8(RCX, offset), val);
+		break;
+
+	case 16:
+		MOV(MEMD16(RCX, offset), val);
+		break;
+
+	case 32:
+		MOV(MEMD32(RCX, offset), val);
+		break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+op_info
+lc86_jit::load_mem(uint8_t size_mode, uint8_t is_priv)
+{
+	// RCX: cpu_ctx, EDX: addr, R8: instr_eip, R9B: is_priv
+
+	MOV(R9B, is_priv);
+	MOV(R8, m_cpu->instr_eip);
+
+	switch (size_mode)
+	{
+	case SIZE32:
+		MOV(RAX, &mem_read_helper<uint32_t>);
+		break;
+
+	case SIZE16:
+		MOV(RAX, &mem_read_helper<uint16_t>);
+		break;
+
+	case SIZE8:
+		MOV(RAX, &mem_read_helper<uint8_t>);
+		break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+
+	CALL(RAX);
+
+	return op_info{ 0, m_cpu->size_mode };
+}
+
+void
+lc86_jit::store_mem(uint8_t size_mode, uint8_t is_priv)
+{
+	// RCX: cpu_ctx, EDX: addr, R8B/R8W/R8D: val, R9D: instr_eip, stack: is_priv
+	// register val, should have been placed in EAX/AX/AL by load_reg or something else
+
+	m_stack_args_size = std::max(m_stack_args_size, 16ULL);
+	MOV(MEMD32(RSP, 0x20), is_priv);
+	MOV(R9D, m_cpu->instr_eip);
+
+	switch (size_mode)
+	{
+	case SIZE32:
+		MOV(R8D, EAX);
+		MOV(RAX, &mem_write_helper<uint32_t>);
+		break;
+
+	case SIZE16:
+		MOV(R8W, AX);
+		MOV(RAX, &mem_write_helper<uint16_t>);
+		break;
+
+	case SIZE8:
+		MOV(R8B, AL);
+		MOV(RAX, &mem_write_helper<uint8_t>);
+		break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+
+	CALL(RAX);
+}
+
+void
+lc86_jit::store_mem(uint8_t size_mode, uint32_t val, uint8_t is_priv)
+{
+	// RCX: cpu_ctx, EDX: addr, R8B/R8W/R8D: val, R9D: instr_eip, stack: is_priv
+	// immediate val, should be passed as argument
+
+	m_stack_args_size = std::max(m_stack_args_size, 16ULL);
+	MOV(MEMD32(RSP, 0x20), is_priv);
+	MOV(R9D, m_cpu->instr_eip);
+
+	switch (size_mode)
+	{
+	case SIZE32:
+		MOV(R8D, val);
+		MOV(RAX, &mem_write_helper<uint32_t>);
+		break;
+
+	case SIZE16:
+		MOV(R8W, val);
+		MOV(RAX, &mem_write_helper<uint16_t>);
+		break;
+
+	case SIZE8:
+		MOV(R8B, val);
+		MOV(RAX, &mem_write_helper<uint8_t>);
+		break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+
+	CALL(RAX);
+}
+
+void
+lc86_jit::cli(ZydisDecodedInstruction *instr)
+{
+	assert(instr->opcode == 0xFA);
+
+	if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
+
+		// we don't support virtual 8086 mode, so we don't need to check for it
+		if (((m_cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12) >= (m_cpu->cpu_ctx.hflags & HFLG_CPL)) {
+			LD_R32(EDX, CPU_CTX_EFLAGS);
+			AND(EDX, ~IF_MASK);
+			ST_R32(CPU_CTX_EFLAGS, EDX);
+		}
+		else {
+			RAISEin0_t(EXP_GP);
+		}
+	}
+	else {
+		LD_R32(EDX, CPU_CTX_EFLAGS);
+		AND(EDX, ~IF_MASK);
+		ST_R32(CPU_CTX_EFLAGS, EDX);
+	}
+}
+
 void
 lc86_jit::jmp(ZydisDecodedInstruction *instr)
 {
@@ -739,7 +1049,7 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 		if (m_cpu->size_mode == SIZE16) {
 			new_eip &= 0x0000FFFF;
 		}
-		MOV(MEMD32(RCX, CPU_CTX_EIP()), new_eip);
+		ST_R32(CPU_CTX_EIP, new_eip);
 		link_direct_emit(m_cpu->cpu_ctx.regs.cs_hidden.base + new_eip, nullptr, m_cpu->cpu_ctx.regs.cs_hidden.base + new_eip);
 		m_cpu->tc->flags |= TC_FLG_DIRECT;
 	}
@@ -756,19 +1066,18 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 			MOV(EDX, new_sel);
 			MOV(RAX, &ljmp_pe_helper);
 			CALL(RAX);
-			BR_NE(exp, RAX, 0);
+			CMP(AL, 0);
+			BR_NE(exp);
 			link_indirect_emit();
 			m_a.bind(exp_taken);
-			MOV(RAX, &cpu_raise_exception<false>);
-			CALL(RAX);
-			gen_epilogue_main();
+			RAISE_f();
 			m_cpu->tc->flags |= TC_FLG_INDIRECT;
 		}
 		else {
 			new_eip = m_cpu->size_mode == SIZE16 ? new_eip & 0xFFFF : new_eip;
-			MOV(MEMD16(RCX, CPU_CTX_CS()), new_sel);
-			MOV(MEMD32(RCX, CPU_CTX_EIP()), new_eip);
-			MOV(MEMD32(RCX, CPU_CTX_CS_BASE()), static_cast<uint32_t>(new_sel) << 4);
+			ST_R16(CPU_CTX_CS, new_sel);
+			ST_R32(CPU_CTX_EIP, new_eip);
+			ST_R32(CPU_CTX_CS_BASE, static_cast<uint32_t>(new_sel) << 4);
 			link_direct_emit((static_cast<uint32_t>(new_sel) << 4) + new_eip, nullptr, (static_cast<uint32_t>(new_sel) << 4) + new_eip);
 			m_cpu->tc->flags |= TC_FLG_DIRECT;
 		}
@@ -780,11 +1089,8 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 			GET_RM(OPNUM_SINGLE, LD_REG_val(rm);, LD_MEM(););
 			if (m_cpu->size_mode == SIZE16) {
 				MOVZX(EAX, AX);
-				MOV(MEMD32(RCX, CPU_CTX_EIP()), EAX);
 			}
-			else {
-				MOV(MEMD32(RCX, CPU_CTX_EIP()), EAX);
-			}
+			ST_R32(CPU_CTX_EIP, EAX);
 			link_indirect_emit();
 			m_cpu->tc->flags |= TC_FLG_INDIRECT;
 		}
@@ -805,57 +1111,392 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::load_reg(op_info info)
+lc86_jit::mov(ZydisDecodedInstruction *instr)
 {
-	switch (info.bits)
+	switch (instr->opcode)
 	{
-	case 8:
-		MOV(AL, MEMD8(RCX, info.val));
-		break;
+	case 0x20: {
+		if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
+			RAISEin0_t(EXP_GP);
+		}
+		else {
+			ST_REG_val(LD_REG_val(GET_REG(OPNUM_SRC)).bits, REG_off(instr->operands[OPNUM_DST].reg.value));
+		}
+	}
+	break;
 
-	case 16:
-		MOV(AX, MEMD16(RCX, info.val));
-		break;
+	case 0x21: {
+		LD_R32(EAX, CPU_CTX_DR7);
+		AND(EAX, DR7_GD_MASK);
+		BR_EQ(ok1);
+		LD_R32(EDX, CPU_CTX_DR6);
+		OR(EDX, DR6_BD_MASK);
+		ST_R32(CPU_CTX_DR6, EDX);
+		RAISEin0_f(EXP_DB);
+		m_a.bind(ok1_taken);
+		if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
+			RAISEin0_t(EXP_GP);
+		}
+		else {
+			int dr = instr->operands[OPNUM_SRC].reg.value;
+			if (((dr == ZYDIS_REGISTER_DR4) || (dr == ZYDIS_REGISTER_DR5))) {
+				LD_R32(EDX, CPU_CTX_CR4);
+				AND(EDX, CR4_DE_MASK);
+				BR_EQ(ok2);
+				RAISEin0_f(EXP_UD);
+				m_a.bind(ok2_taken);
+				dr += DR45_TO_DR67; // turns dr4/5 to dr6/7
+			}
+			LD_R32(EAX, REG_off(static_cast<ZydisRegister>(dr)));
+			ST_R32(REG_off(instr->operands[OPNUM_DST].reg.value), EAX);
+		}
+	}
+	break;
 
-	case 32:
-		MOV(EAX, MEMD32(RCX, info.val));
-		break;
+	case 0x22: {
+		if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
+			RAISEin0_t(EXP_GP);
+		}
+		else {
+			LD_R32(EDX, REG_off(instr->operands[OPNUM_SRC].reg.value));
+			int cr_idx = REG_idx(instr->operands[OPNUM_DST].reg.value);
+			switch (cr_idx)
+			{
+			case ZYDIS_REGISTER_CR0:
+				m_cpu->translate_next = 0;
+				[[fallthrough]];
+
+			case ZYDIS_REGISTER_CR3:
+			case ZYDIS_REGISTER_CR4: {
+				m_stack_args_size = std::max(m_stack_args_size, 16ULL);
+				MOV(MEMD32(RSP, 0x20), m_cpu->instr_bytes);
+				MOV(R9D, m_cpu->instr_eip);
+				MOV(R8D, cr_idx - CR_offset);
+				MOV(RAX, &update_crN_helper);
+				CALL(RAX);
+				CMP(AL, 0);
+				BR_EQ(ok);
+				RAISEin0_f(EXP_GP);
+				m_a.bind(ok_taken);
+			}
+			break;
+
+			case ZYDIS_REGISTER_CR2:
+				ST_R32(CPU_CTX_CR2, EDX);
+				break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+		}
+	}
+	break;
+
+	case 0x23: {
+		LD_R32(EAX, CPU_CTX_DR7);
+		AND(EAX, DR7_GD_MASK);
+		BR_EQ(ok1);
+		LD_R32(EDX, CPU_CTX_DR6);
+		OR(EDX, DR6_BD_MASK);
+		ST_R32(CPU_CTX_DR6, EDX);
+		RAISEin0_f(EXP_DB);
+		m_a.bind(ok1_taken);
+		if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
+			RAISEin0_t(EXP_GP);
+		}
+		else {
+			auto dr_pair = REG_pair(instr->operands[OPNUM_DST].reg.value);
+			int dr_idx = dr_pair.first;
+			size_t dr_offset = dr_pair.second;
+			LD_R32(R8D, REG_off(instr->operands[OPNUM_SRC].reg.value));
+			switch (dr_idx)
+			{
+			case DR0_idx:
+			case DR1_idx:
+			case DR2_idx:
+			case DR3_idx: {
+				// flush the old tlb entry, so mem accesses there will call the mem helpers and check for possible watchpoints on the same page
+				// as the old one from the other dr regs, then set the new watchpoint if enabled
+				LD_R32(EAX, CPU_CTX_DR7);
+				LD_R32(EDX, CPU_CTX_CR4);
+				MOV(R9D, EAX);
+				SHR(EAX, DR7_TYPE_SHIFT + (dr_idx - DR_offset) * 4);
+				AND(EAX, 3);
+				AND(EDX, CR4_DE_MASK);
+				OR(EAX, EDX);
+				CMP(EAX, DR7_TYPE_IO_RW | CR4_DE_MASK); // check if it is a mem or io watchpoint
+				BR_EQ(io);
+				LEA(RDI, MEMD64(RCX, CPU_CTX_TLB));
+				LD_R32(EAX, dr_offset);
+				SHR(EAX, PAGE_SHIFT);
+				MOV(EDX, MEMS32(RDI, RAX, 2));
+				AND(EDX, (TLB_CODE | TLB_GLOBAL | TLB_DIRTY | TLB_WATCH));
+				MOV(MEMS32(RDI, RAX, 2), EDX); // flush old tlb entry
+				SHR(R9D, (dr_idx - DR_offset) * 2);
+				AND(R9D, 3);
+				BR_EQ(disabled); // check if new watchpoint is enabled
+				MOV(EAX, R8D);
+				SHR(EAX, PAGE_SHIFT);
+				MOV(EDX, MEMS32(RDI, RAX, 2));
+				OR(EDX, TLB_WATCH);
+				MOV(MEMS32(RDI, RAX, 2), EDX); // set new enabled watchpoint
+				BR_UNCOND(disabled_taken);
+				m_a.bind(io_taken);
+				LEA(RDI, MEMD64(RCX, CPU_CTX_IOTLB));
+				LD_R32(EAX, dr_offset);
+				SHR(EAX, IO_SHIFT);
+				MOV(DX, MEMS16(RDI, RAX, 1));
+				AND(DX, IOTLB_WATCH);
+				MOV(MEMS16(RDI, RAX, 1), DX); // flush old iotlb entry
+				SHR(R9D, (dr_idx - DR_offset) * 2);
+				AND(R9D, 3);
+				m_a.je(disabled_taken); // check if new io watchpoint is enabled
+				MOV(EAX, R8D);
+				SHR(EAX, IO_SHIFT);
+				MOV(DX, MEMS16(RDI, RAX, 1));
+				OR(DX, IOTLB_WATCH);
+				MOV(MEMS16(RDI, RAX, 1), DX); // set new enabled io watchpoint
+				m_a.bind(disabled_taken);
+			}
+			break;
+
+			case DR4_idx: {
+				LD_R32(EDX, CPU_CTX_CR4);
+				AND(EDX, CR4_DE_MASK);
+				BR_EQ(ok);
+				RAISEin0_f(EXP_UD);
+				m_a.bind(ok_taken);
+				dr_offset = REG_off(ZYDIS_REGISTER_DR6); // turns dr4 to dr6
+			}
+			[[fallthrough]];
+
+			case DR6_idx:
+				OR(R8D, DR6_RES_MASK);
+				break;
+
+			case DR5_idx: {
+				LD_R32(EDX, CPU_CTX_CR4);
+				AND(EDX, CR4_DE_MASK);
+				BR_EQ(ok);
+				RAISEin0_f(EXP_UD);
+				m_a.bind(ok_taken);
+				dr_offset = REG_off(ZYDIS_REGISTER_DR7); // turns dr5 to dr7
+			}
+			[[fallthrough]];
+
+			case DR7_idx: {
+				static const char *abort_msg = "Io watchpoints are not supported";
+				OR(R8D, DR7_RES_MASK);
+				LD_R32(R9D, CPU_CTX_CR4);
+				AND(R9D, CR4_DE_MASK);
+				for (int idx = 0; idx < 4; ++idx) {
+					MOV(EAX, R8D);
+					SHR(EAX, DR7_TYPE_SHIFT + idx * 4);
+					AND(EAX, 3);
+					OR(EAX, R9D);
+					CMP(EAX, DR7_TYPE_IO_RW | CR4_DE_MASK); // check if it is a mem or io watchpoint
+					BR_EQ(io);
+					LEA(RDI, MEMD64(RCX, CPU_CTX_TLB));
+					MOV(EDX, R8D);
+					SHR(EDX, idx * 2);
+					AND(EDX, 3);
+					BR_EQ(disabled); // check if watchpoint is enabled
+					LD_R32(EAX, REG_off(static_cast<ZydisRegister>(ZYDIS_REGISTER_DR0 + idx)));
+					SHR(EAX, PAGE_SHIFT);
+					MOV(EDX, MEMS32(RDI, RAX, 2));
+					OR(EDX, TLB_WATCH);
+					MOV(MEMS32(RDI, RAX, 2), EDX); // set enabled watchpoint
+					Label exit = m_a.newLabel();
+					BR_UNCOND(exit);
+					m_a.bind(disabled_taken);
+					LD_R32(EAX, REG_off(static_cast<ZydisRegister>(ZYDIS_REGISTER_DR0 + idx)));
+					SHR(EAX, PAGE_SHIFT);
+					MOV(EDX, MEMS32(RDI, RAX, 2));
+					AND(EDX, ~TLB_WATCH);
+					MOV(MEMS32(RDI, RAX, 2), EDX); // remove disabled watchpoint
+					BR_UNCOND(exit);
+					m_a.bind(io_taken);
+					// we don't support io watchpoints yet so for now we just abort
+					MOV(RCX, abort_msg);
+					MOV(RAX, &cpu_runtime_abort); // won't return
+					CALL(RAX);
+					m_a.bind(exit);
+				}
+			}
+			break;
+
+			default:
+				LIB86CPU_ABORT();
+			}
+
+			ST_R32(dr_offset, R8D);
+			ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
+			// instr breakpoint are checked at compile time, so we cannot jump to the next tc if we are writing to anything but dr6
+			if ((((m_cpu->virt_pc + m_cpu->instr_bytes) & ~PAGE_MASK) == (m_cpu->virt_pc & ~PAGE_MASK)) && (dr_idx == DR6_idx)) {
+				link_dst_only_emit();
+				m_cpu->tc->flags |= TC_FLG_DST_ONLY;
+			}
+			m_cpu->translate_next = 0;
+		}
+	}
+	break;
+
+	case 0x88:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0x89: {
+		auto src = LD_REG_val(GET_REG(OPNUM_SRC));
+		GET_RM(OPNUM_DST, ST_REG_val(src.bits, rm.val);, ST_MEM_reg(););
+	}
+	break;
+
+	case 0x8A:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0x8B: {
+		auto dst = GET_REG(OPNUM_DST);
+		GET_RM(OPNUM_SRC, ST_REG_val(LD_REG_val(rm).bits, dst.val);, ST_REG_val(LD_MEM().bits, dst.val););
+	}
+	break;
+
+	case 0x8C: {
+		LD_SEG(AX, REG_off(instr->operands[OPNUM_SRC].reg.value));
+		GET_RM(OPNUM_DST, MOVZX(EAX, AX); ST_REG_val(32, rm.val);, ST_MEMs_reg(SIZE16););
+	}
+	break;
+
+	case 0x8E: {
+		GET_RM(OPNUM_SRC, LD_REG_val(rm);, LD_MEM(););
+		if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
+			if (instr->operands[OPNUM_DST].reg.value == ZYDIS_REGISTER_SS) {
+				MOV(R8D, m_cpu->instr_eip);
+				MOV(DX, AX);
+				MOV(RAX, &mov_sel_pe_helper<SS_idx>);
+				CALL(RAX);
+				CMP(AL, 0);
+				BR_EQ(ok);
+				RAISE_f();
+				m_a.bind(ok_taken);
+				ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
+#if 0
+				if (((m_cpu->virt_pc + m_cpu->instr_bytes) & ~PAGE_MASK) == (m_cpu->virt_pc & ~PAGE_MASK)) {
+
+					BasicBlock *bb2 = getBB();
+					BasicBlock *bb3 = getBB();
+					BR_COND(bb2, bb3, ICMP_EQ(CONST32(cpu->cpu_ctx.hflags & HFLG_SS32), AND(LD(cpu->ptr_hflags, getIntegerType(32)), CONST32(HFLG_SS32))));
+					cpu->bb = bb2;
+					link_dst_only_emit();
+					cpu->bb = bb3;
+					m_cpu->tc->flags |= TC_FLG_COND_DST_ONLY;
+				}
+#endif
+				m_cpu->translate_next = 0;
+			}
+			else {
+				MOV(R8D, m_cpu->instr_eip);
+				MOV(DX, AX);
+
+				switch (REG_idx(instr->operands[OPNUM_DST].reg.value))
+				{
+				case DS_idx:
+					MOV(RAX, &mov_sel_pe_helper<DS_idx>);
+					break;
+
+				case ES_idx:
+					MOV(RAX, &mov_sel_pe_helper<ES_idx>);
+					break;
+
+				case FS_idx:
+					MOV(RAX, &mov_sel_pe_helper<FS_idx>);
+					break;
+
+				case GS_idx:
+					MOV(RAX, &mov_sel_pe_helper<GS_idx>);
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+
+				CALL(RAX);
+				CMP(AL, 0);
+				BR_EQ(ok);
+				RAISE_f();
+				m_a.bind(ok_taken);
+			}
+		}
+		else {
+			const size_t seg_offset = REG_off(instr->operands[OPNUM_DST].reg.value);
+			ST_SEG(seg_offset, AX);
+			MOVZX(EAX, AX);
+			SHL(EAX, 4);
+			ST_SEG_BASE(seg_offset, EAX);
+		}
+	}
+	break;
+
+	case 0xA0:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0xA1: {
+		GET_OP(OPNUM_SRC);
+		auto src = LD_MEM();
+		ST_REG_val(src.bits, GET_OP(OPNUM_DST).val);
+	}
+	break;
+
+	case 0xA2:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0xA3: {
+		GET_OP(OPNUM_DST);
+		LD_REG_val(GET_OP(OPNUM_SRC));
+		ST_MEM_reg();
+	}
+	break;
+
+	case 0xB0:
+	case 0xB1:
+	case 0xB2:
+	case 0xB3:
+	case 0xB4:
+	case 0xB5:
+	case 0xB6:
+	case 0xB7: {
+		auto dst = GET_OP(OPNUM_DST);
+		ST_REG_imm(dst.bits, dst.val, GET_IMM8());
+	}
+	break;
+
+	case 0xB8:
+	case 0xB9:
+	case 0xBA:
+	case 0xBB:
+	case 0xBC:
+	case 0xBD:
+	case 0xBE:
+	case 0xBF: {
+		auto dst = GET_OP(OPNUM_DST);
+		ST_REG_imm(dst.bits, dst.val, GET_IMM());
+	}
+	break;
+
+	case 0xC6:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0xC7: {
+		GET_RM(OPNUM_DST, ST_REG_imm(rm.bits, rm.val, GET_IMM());, ST_MEM_imm(GET_IMM()););
+	}
+	break;
 
 	default:
 		LIB86CPU_ABORT();
 	}
 }
-
-void
-lc86_jit::load_mem(uint8_t is_priv)
-{
-	// RCX: cpu_ctx, EDX: addr, R8: instr_eip, R9B: is_priv
-
-	MOV(R9B, is_priv);
-	MOV(R8, m_cpu->instr_eip);
-
-	switch (m_cpu->size_mode)
-	{
-	case SIZE32:
-		MOV(RAX, &mem_read_helper<uint8_t>);
-		break;
-
-	case SIZE16:
-		MOV(RAX, &mem_read_helper<uint16_t>);
-		break;
-
-	case SIZE8:
-		MOV(RAX, &mem_read_helper<uint32_t>);
-		break;
-
-	default:
-		LIB86CPU_ABORT();
-	}
-
-	CALL(RAX);
-}
-
-template void lc86_jit::raise_exp_inline_emit(uint32_t fault_addr, uint16_t code, uint16_t idx, uint32_t eip);
-template void lc86_jit::raise_exp_inline_emit(int fault_addr, int code, int idx, unsigned eip);
 
 #endif

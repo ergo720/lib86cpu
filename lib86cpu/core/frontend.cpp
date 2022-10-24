@@ -156,24 +156,6 @@ link_ret_emit(cpu_t *cpu)
 }
 
 void
-link_dst_only_emit(cpu_t *cpu)
-{
-	if (check_rf_single_step_emit(cpu)) {
-		return;
-	}
-
-	// make sure we check for interrupts before jumping to the next tc
-	check_int_emit(cpu);
-
-	cpu->tc->flags |= (1 & TC_FLG_NUM_JMP);
-
-	FunctionType *main_ty = cpu->bb->getParent()->getFunctionType();
-	Value *tc_jmp0_ptr = ConstantExpr::getIntToPtr(CONSTp(&cpu->tc->jmp_offset[0]), getPointerType());
-	CallInst *ci = CALL_tail(main_ty, LD(tc_jmp0_ptr, getPointerType()), cpu->ptr_cpu_ctx);
-	ReturnInst::Create(CTX(), ci, cpu->bb);
-}
-
-void
 raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip)
 {
 	GetElementPtrInst *gep1 = GetElementPtrInst::CreateInBounds(cpu->cpu_ctx_type, cpu->ptr_cpu_ctx, { CONST32(0), CONST32(8) }, "", cpu->bb);
@@ -186,17 +168,6 @@ raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *i
 	Function *exp_isInt = cast<Function>(cpu->mod->getOrInsertFunction("cpu_raise_exception_isInt", cpu->bb->getParent()->getReturnType(), cpu->ptr_cpu_ctx->getType()).getCallee());
 	CallInst *ci = CALL(exp_isInt->getFunctionType(), exp_isInt, cpu->ptr_cpu_ctx);
 	ReturnInst::Create(CTX(), ci, cpu->bb);
-}
-
-BasicBlock *
-raise_exception_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip)
-{
-	BasicBlock *bb_exp = BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0);
-	BasicBlock *bb = cpu->bb;
-	cpu->bb = bb_exp;
-	raise_exp_inline_emit(cpu, fault_addr, code, idx, eip);
-	cpu->bb = bb;
-	return bb_exp;
 }
 
 void
@@ -458,40 +429,6 @@ stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigne
 	}
 
 	return vec;
-}
-
-Value *
-get_immediate_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx, uint8_t size_mode)
-{
-	assert(instr->operands[idx].type == ZYDIS_OPERAND_TYPE_IMMEDIATE);
-	Value *value;
-
-	switch (size_mode)
-	{
-	case SIZE8:
-		value = CONST8(instr->operands[idx].imm.value.u);
-		break;
-
-	case SIZE16:
-		value = CONST16(instr->operands[idx].imm.value.u);
-		break;
-
-	case SIZE32:
-		value = CONST32(instr->operands[idx].imm.value.u);
-		break;
-
-	default:
-		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s", size_mode, __func__);
-	}
-
-	return value;
-}
-
-Value *
-get_register_op(cpu_t *cpu, ZydisDecodedInstruction *instr, uint8_t idx)
-{
-	assert(instr->operands[idx].type == ZYDIS_OPERAND_TYPE_REGISTER);
-	return get_operand(cpu, instr, idx);
 }
 
 void
