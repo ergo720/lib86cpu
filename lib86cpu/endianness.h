@@ -6,7 +6,8 @@
 
 #pragma once
 
-#include <asmjit/asmjit.h>
+#include <stdexcept>
+#include <bit>
 
 
 inline uint8_t
@@ -81,7 +82,15 @@ void swap_byte_order(T &val)
 consteval bool
 is_big_endian_()
 {
-    return ASMJIT_ARCH_BE ? true : false;
+    if constexpr (std::endian::native == std::endian::big) {
+        return true;
+    }
+    else if constexpr (std::endian::native == std::endian::little) {
+        return false;
+    }
+    else {
+        throw std::logic_error("Mixed endian systems are not supported");
+    }
 }
 
 inline constexpr bool is_big_endian = is_big_endian_();
