@@ -103,6 +103,10 @@ entry_t link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc);
 size_t get_reg_offset(ZydisRegister reg);
 int get_reg_idx(ZydisRegister reg);
 const std::pair<int, size_t> get_reg_pair(ZydisRegister reg);
+size_t get_jit_stack_required();
+size_t get_jit_reg_args_size();
+size_t get_jit_stack_args_size();
+size_t get_jit_local_vars_size();
 
 
 inline constexpr size_t seg_base_offset = offsetof(cpu_ctx_t, regs.es_hidden.base) - offsetof(cpu_ctx_t, regs.es);

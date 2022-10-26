@@ -42,39 +42,37 @@ mmio_flush_cached(cpu_t *cpu, memory_region_t<addr_t> *mmio)
 void
 iotlb_fill(cpu_t *cpu, port_t port, memory_region_t<port_t> *io)
 {
-	auto it = std::find_if(cpu->iotlb_regions.begin(), cpu->iotlb_regions.end(), [io](const cached_io_region &region) {
+	auto it = std::find_if(cpu->io_regions.begin(), cpu->io_regions.end(), [io](const cached_io_region &region) {
 		return io == region.io;
 		});
 
-	if (it == cpu->iotlb_regions.end()) {
+	if (it == cpu->io_regions.end()) {
 		// note that emplace_back can invalidate all iterators/pointers, but not the element indices, so we don't need to flush the iotlb
-		cpu->iotlb_regions.emplace_back(io, io->read_handler, io->write_handler, io->opaque);
-		cpu->iotlb_regions_ptr = &cpu->iotlb_regions[0];
-		it = std::prev(cpu->iotlb_regions.end(), 1);
+		cpu->io_regions.emplace_back(io, io->read_handler, io->write_handler, io->opaque);
+		it = std::prev(cpu->io_regions.end(), 1);
 	}
 
 	unsigned iotlb_idx = port >> IO_SHIFT;
-	cpu->cpu_ctx.iotlb[iotlb_idx] = ((cpu->cpu_ctx.iotlb[iotlb_idx] & IOTLB_WATCH) | (IOTLB_VALID | (std::distance(cpu->iotlb_regions.begin(), it) << IO_SHIFT)));
+	cpu->cpu_ctx.iotlb[iotlb_idx] = ((cpu->cpu_ctx.iotlb[iotlb_idx] & IOTLB_WATCH) | (IOTLB_VALID | (std::distance(cpu->io_regions.begin(), it) << IO_SHIFT)));
 }
 
 void
 iotlb_flush(cpu_t *cpu, memory_region_t<port_t> *io)
 {
-	auto it = std::find_if(cpu->iotlb_regions.begin(), cpu->iotlb_regions.end(), [io](const cached_io_region &region) {
+	auto it = std::find_if(cpu->io_regions.begin(), cpu->io_regions.end(), [io](const cached_io_region &region) {
 		return io == region.io;
 		});
 
-	if (it != cpu->iotlb_regions.end()) {
+	if (it != cpu->io_regions.end()) {
 		// erasing an element invalidates all iterators/pointers to that element and after it, and element indices are changed as well, so we need
 		// to flush all entries of the affected regions
-		std::for_each(it, cpu->iotlb_regions.end(), [cpu](const cached_io_region &region) {
+		std::for_each(it, cpu->io_regions.end(), [cpu](const cached_io_region &region) {
 			for (port_t port = region.io->start; port <= region.io->end; port += IO_SIZE) {
 				unsigned iotlb_idx = port >> IO_SHIFT;
 				cpu->cpu_ctx.iotlb[iotlb_idx] = (cpu->cpu_ctx.iotlb[iotlb_idx] & IOTLB_WATCH);
 			}
 			});
-		cpu->iotlb_regions.erase(it);
-		cpu->iotlb_regions_ptr = &cpu->iotlb_regions[0];
+		cpu->io_regions.erase(it);
 	}
 }
 
@@ -508,7 +506,7 @@ ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer)
 	}
 }
 
-// memory read helper invoked by the llvm generated code
+// memory read helper invoked by the jitted code
 template<typename T>
 T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv)
 {
@@ -610,40 +608,47 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint
 	mem_write<T>(cpu_ctx->cpu, addr, val, eip, is_priv);
 }
 
-uint8_t
-io_read8(cpu_ctx_t *cpu_ctx, port_t port)
+// io read helper invoked by the jitted code
+template<typename T>
+T io_read_helper(cpu_ctx_t *cpu_ctx, port_t port)
 {
-	return io_read<uint8_t>(cpu_ctx->cpu, port);
+	uint32_t iotlb_idx1 = port >> IO_SHIFT;
+	uint32_t iotlb_idx2 = (port + sizeof(T) - 1) >> IO_SHIFT;
+	uint32_t iotlb_entry = cpu_ctx->iotlb[iotlb_idx1];
+
+	// interrogate the iotlb
+	// this checks if the last byte of the read is in the same io entry as the first (port + size - 1)
+	// reads that cross io entries or that reside in an entry where a watchpoint is installed always result in iotlb misses
+	if ((((iotlb_entry & (IOTLB_VALID | IOTLB_WATCH)) | (iotlb_idx1 << IO_SHIFT)) ^ ((iotlb_idx2 << IO_SHIFT) | IOTLB_VALID)) == 0) {
+		// iotlb hit
+		cached_io_region *io = &cpu_ctx->cpu->io_regions[cpu_ctx->iotlb[iotlb_idx1] >> IO_SHIFT];
+		return io->read_handler(port, sizeof(T), io->opaque);
+	}
+
+	// iotlb miss
+	return io_read<T>(cpu_ctx->cpu, port);
 }
 
-uint16_t
-io_read16(cpu_ctx_t *cpu_ctx, port_t port)
+// io write helper invoked by the jitted code
+template<typename T>
+void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, T val)
 {
-	return io_read<uint16_t>(cpu_ctx->cpu, port);
-}
+	uint32_t iotlb_idx1 = port >> IO_SHIFT;
+	uint32_t iotlb_idx2 = (port + sizeof(T) - 1) >> IO_SHIFT;
+	uint32_t iotlb_entry = cpu_ctx->iotlb[iotlb_idx1];
 
-uint32_t
-io_read32(cpu_ctx_t *cpu_ctx, port_t port)
-{
-	return io_read<uint32_t>(cpu_ctx->cpu, port);
-}
+	// interrogate the iotlb
+	// this checks if the last byte of the read is in the same io entry as the first (port + size - 1)
+	// writes that cross io entries or that reside in an entry where a watchpoint is installed always result in iotlb misses
+	if ((((iotlb_entry & (IOTLB_VALID | IOTLB_WATCH)) | (iotlb_idx1 << IO_SHIFT)) ^ ((iotlb_idx2 << IO_SHIFT) | IOTLB_VALID)) == 0) {
+		// iotlb hit
+		cached_io_region *io = &cpu_ctx->cpu->io_regions[cpu_ctx->iotlb[iotlb_idx1] >> IO_SHIFT];
+		io->write_handler(port, sizeof(T), val, io->opaque);
+		return;
+	}
 
-void
-io_write8(cpu_ctx_t *cpu_ctx, port_t port, uint8_t value)
-{
-	io_write<uint8_t>(cpu_ctx->cpu, port, value);
-}
-
-void
-io_write16(cpu_ctx_t *cpu_ctx, port_t port, uint16_t value)
-{
-	io_write<uint16_t>(cpu_ctx->cpu, port, value);
-}
-
-void
-io_write32(cpu_ctx_t *cpu_ctx, port_t port, uint32_t value)
-{
-	io_write<uint32_t>(cpu_ctx->cpu, port, value);
+	// iotlb miss
+	io_write<T>(cpu_ctx->cpu, port, val);
 }
 
 template uint8_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
@@ -654,3 +659,10 @@ template void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t val, uin
 template void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t val, uint32_t eip, uint8_t is_priv);
 template void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t val, uint32_t eip, uint8_t is_priv);
 template void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t val, uint32_t eip, uint8_t is_priv);
+
+template uint8_t io_read_helper(cpu_ctx_t *cpu_ctx, port_t port);
+template uint16_t io_read_helper(cpu_ctx_t *cpu_ctx, port_t port);
+template uint32_t io_read_helper(cpu_ctx_t *cpu_ctx, port_t port);
+template void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, uint8_t val);
+template void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, uint16_t val);
+template void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, uint32_t val);

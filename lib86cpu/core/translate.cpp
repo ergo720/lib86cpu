@@ -716,10 +716,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_CDQ: BAD;
 		case ZYDIS_MNEMONIC_CLC: BAD;
 		case ZYDIS_MNEMONIC_CLD: BAD;
-		case ZYDIS_MNEMONIC_CLI: {
+		case ZYDIS_MNEMONIC_CLI:
 			cpu->jit->cli(&instr);
-		}
-		break;
+			break;
 
 		case ZYDIS_MNEMONIC_CLTS:        BAD;
 		case ZYDIS_MNEMONIC_CMC:         BAD;
@@ -786,10 +785,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_JNL:  BAD;
 		case ZYDIS_MNEMONIC_JLE:  BAD;
 		case ZYDIS_MNEMONIC_JNLE: BAD;
-		case ZYDIS_MNEMONIC_JMP: {
+		case ZYDIS_MNEMONIC_JMP:
 			cpu->jit->jmp(&instr);
-		}
-		break;
+			break;
 
 		case ZYDIS_MNEMONIC_LAHF: BAD;
 		case ZYDIS_MNEMONIC_LAR:         BAD;
@@ -812,10 +810,9 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_LGS:BAD;
 		case ZYDIS_MNEMONIC_LSS: BAD;
 		case ZYDIS_MNEMONIC_LTR: BAD;
-		case ZYDIS_MNEMONIC_MOV: {
+		case ZYDIS_MNEMONIC_MOV:
 			cpu->jit->mov(&instr);
-		}
-		break;
+			break;
 
 		case ZYDIS_MNEMONIC_MOVD:BAD;
 		case ZYDIS_MNEMONIC_MOVSB:BAD;
@@ -828,7 +825,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_NOP:BAD;
 		case ZYDIS_MNEMONIC_NOT: BAD;
 		case ZYDIS_MNEMONIC_OR: BAD;
-		case ZYDIS_MNEMONIC_OUT:BAD;
+		case ZYDIS_MNEMONIC_OUT:
+			cpu->jit->out(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_OUTSB:BAD;
 		case ZYDIS_MNEMONIC_OUTSD:BAD;
 		case ZYDIS_MNEMONIC_OUTSW:BAD;
@@ -3383,36 +3383,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 		}
 		break;
-
-		case ZYDIS_MNEMONIC_OUT:
-			switch (instr.opcode)
-			{
-			case 0xE6:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0xE7: {
-				Value *port = CONST8(instr.operands[OPNUM_DST].imm.value.u);
-				check_io_priv_emit(cpu, ZEXT32(port), size_mode);
-				ST_IO(ZEXT16(port), size_mode == SIZE16 ? LD_R16(EAX_idx) : size_mode == SIZE32 ? LD_R32(EAX_idx) : LD_R8L(EAX_idx));
-			}
-			break;
-
-			case 0xEE:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0xEF: {
-				Value *port = LD_R16(EDX_idx);
-				check_io_priv_emit(cpu, ZEXT32(port), size_mode);
-				ST_IO(port, size_mode == SIZE16 ? LD_R16(EAX_idx) : size_mode == SIZE32 ? LD_R32(EAX_idx) : LD_R8L(EAX_idx));
-			}
-			break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-			break;
 
 		case ZYDIS_MNEMONIC_OUTSB:
 		case ZYDIS_MNEMONIC_OUTSD:

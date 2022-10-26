@@ -38,6 +38,7 @@ public:
 	void cli(ZydisDecodedInstruction *instr);
 	void jmp(ZydisDecodedInstruction *instr);
 	void mov(ZydisDecodedInstruction *instr);
+	void out(ZydisDecodedInstruction *instr);
 
 #if defined(_WIN64)
 	uint8_t *gen_exception_info(uint8_t *code_ptr, size_t code_size);
@@ -73,12 +74,14 @@ private:
 	op_info load_mem(uint8_t size_mode, uint8_t is_priv);
 	void store_mem(uint8_t size_mode, uint8_t is_priv);
 	void store_mem(uint8_t size_mode, uint32_t val, uint8_t is_priv);
+	void store_io(uint8_t size_mode);
+	template<typename T>
+	void check_io_priv_emit(T port);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;
 	x86::Assembler m_a;
 	size_t m_prolog_patch_offset;
-	size_t m_stack_args_size;
 	bool m_needs_epilogue;
 	mem_manager m_mem;
 };

@@ -38,6 +38,8 @@ void rom_flush_cached(cpu_t * cpu, memory_region_t<addr_t> *rom);
 void mmio_flush_cached(cpu_t * cpu, memory_region_t<addr_t> *mmio);
 template<typename T> T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
 template<typename T> void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint8_t is_priv);
+template<typename T> T io_read_helper(cpu_ctx_t * cpu_ctx, port_t port);
+template<typename T> void io_write_helper(cpu_ctx_t * cpu_ctx, port_t port, T val);
 
 inline const uint8_t tlb_access[2][4] = {
 	{ TLB_SUP_READ, TLB_SUP_READ, TLB_SUP_READ, TLB_USER_READ },

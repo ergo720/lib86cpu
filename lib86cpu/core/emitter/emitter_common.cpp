@@ -5,7 +5,104 @@
  */
 
 #include "emitter_common.h"
+#include "instructions.h"
+#include "memory.h"
 
+#define JIT_LOCAL_VARS_STACK_SIZE  0x30 // must be a multiple of 16
+#define JIT_REG_ARGS_STACK_SIZE    0x20
+
+
+// The following calculates how much stack is needed to hold the stack arguments for any callable function from the jitted code. This value is then
+// increased of a fixed amount to hold the stack local variables of the main jitted function and the register args of the calles
+// NOTE1: the jitted main() and exit() are also called during code linking, but those only use register args
+// NOTE2: this assumes the Windows x64 calling convention
+constexpr auto all_callable_funcs = std::make_tuple(
+	cpu_raise_exception<false>,
+	link_indirect_handler,
+	mem_read_helper<uint32_t>,
+	mem_read_helper<uint16_t>,
+	mem_read_helper<uint8_t>,
+	mem_write_helper<uint32_t>,
+	mem_write_helper<uint16_t>,
+	mem_write_helper<uint8_t>,
+	io_write_helper<uint32_t>,
+	io_write_helper<uint16_t>,
+	io_write_helper<uint8_t>,
+	ljmp_pe_helper,
+	update_crN_helper,
+	mov_sel_pe_helper<SS_idx>,
+	mov_sel_pe_helper<DS_idx>,
+	mov_sel_pe_helper<ES_idx>,
+	mov_sel_pe_helper<FS_idx>,
+	mov_sel_pe_helper<GS_idx>,
+	cpu_runtime_abort
+);
+
+template<typename R, typename... Args>
+consteval std::integral_constant<size_t, sizeof...(Args)>
+get_arg_count(R(*f)(Args...))
+{
+	return std::integral_constant<size_t, sizeof...(Args)>{};
+}
+
+template<size_t idx>
+consteval size_t
+max_stack_required_for_func()
+{
+	if constexpr (constexpr size_t num_args = decltype(get_arg_count(std::get<idx>(all_callable_funcs)))::value; num_args > 4) {
+		return (num_args - 4) * 8;
+	}
+
+	return 0;
+}
+
+template<size_t idx>
+struct max_stack_required
+{
+	static constexpr size_t stack = std::max(max_stack_required<idx - 1>::stack, max_stack_required_for_func<idx>());
+};
+
+template<>
+struct max_stack_required<0>
+{
+	static constexpr size_t stack = max_stack_required_for_func<0>();
+};
+
+consteval size_t
+get_tot_args_stack_required()
+{
+	// on WIN64, the stack is 16 byte aligned
+	return (max_stack_required<std::tuple_size_v<decltype(all_callable_funcs)> - 1>::stack + 15) & ~15;
+}
+
+constexpr size_t local_vars_size = JIT_LOCAL_VARS_STACK_SIZE;
+constexpr size_t reg_args_size = JIT_REG_ARGS_STACK_SIZE;
+constexpr size_t stack_args_size = get_tot_args_stack_required();
+constexpr size_t tot_arg_size = stack_args_size + reg_args_size + local_vars_size;
+
+size_t
+get_jit_stack_required()
+{
+	return tot_arg_size;
+}
+
+size_t
+get_jit_reg_args_size()
+{
+	return reg_args_size;
+}
+
+size_t
+get_jit_stack_args_size()
+{
+	return stack_args_size;
+}
+
+size_t
+get_jit_local_vars_size()
+{
+	return local_vars_size;
+}
 
 static const std::unordered_map<ZydisRegister, const std::pair<int, size_t>> zydis_to_reg_offset_table = {
 	{ ZYDIS_REGISTER_AL,         { EAX_idx,       CPU_CTX_EAX     }  },
