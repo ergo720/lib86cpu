@@ -23,7 +23,6 @@ Value *floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits);
 void raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
 void set_flags_sum(cpu_t *cpu, Value *sum, Value *a, Value *b, uint8_t size_mode);
 void set_flags_sub(cpu_t *cpu, Value *sub, Value *a, Value *b, uint8_t size_mode);
-void set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode);
 void update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag, bool is_write);
 void write_eflags(cpu_t *cpu, Value *eflags, Value *mask);
 void hook_emit(cpu_t *cpu, hook *obj);

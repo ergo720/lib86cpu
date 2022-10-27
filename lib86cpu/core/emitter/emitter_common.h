@@ -10,6 +10,8 @@
 
 
 #define CPU_CTX_REG          offsetof(cpu_ctx_t, regs)
+#define CPU_CTX_EFLAGS_RES   offsetof(cpu_ctx_t, lazy_eflags.result)
+#define CPU_CTX_EFLAGS_AUX   offsetof(cpu_ctx_t, lazy_eflags.auxbits)
 #define CPU_CTX_TLB          offsetof(cpu_ctx_t, tlb)
 #define CPU_CTX_IOTLB        offsetof(cpu_ctx_t, iotlb)
 #define CPU_CTX_EXP          offsetof(cpu_ctx_t, exp_info)

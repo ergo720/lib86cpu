@@ -357,13 +357,6 @@ set_flags_sub(cpu_t *cpu, Value *sub, Value *a, Value *b, uint8_t size_mode)
 }
 
 void
-set_flags(cpu_t *cpu, Value *res, Value *aux, uint8_t size_mode)
-{
-	size_mode == SIZE32 ? ST_FLG_RES(res) : ST_FLG_RES_ext(res);
-	ST_FLG_AUX(aux);
-}
-
-void
 update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag, bool is_write)
 {
 	if (is_write) {

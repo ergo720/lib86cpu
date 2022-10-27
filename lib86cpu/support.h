@@ -7,6 +7,7 @@
 #pragma once
 
 #include "lib86cpu_priv.h"
+#include "endianness.h"
 
 
 #define CPU_DISAS_ONE           (1 << 7)
@@ -60,5 +61,3 @@ void cpu_exec_trampoline(cpu_t *cpu, const uint32_t ret_eip);
 
 inline logfn_t logfn = &discard_log;
 inline std::string last_error = "";
-
-#include "endianness.h"

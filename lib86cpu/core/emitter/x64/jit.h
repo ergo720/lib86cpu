@@ -25,6 +25,19 @@ struct op_info {
 	op_info(size_t val_, size_t bits_) : val(val_), bits(bits_) {}
 };
 
+// all x64 regs that can actually be used in the main jitted function
+enum class x64 : uint32_t {
+	rax = 0,
+	rcx,
+	rdx,
+	rdi,
+	r8,
+	r9,
+	r10,
+	r11,
+	max = r11,
+};
+
 class lc86_jit : public Target {
 public:
 	lc86_jit(cpu_t *cpu);
@@ -39,6 +52,7 @@ public:
 	void jmp(ZydisDecodedInstruction *instr);
 	void mov(ZydisDecodedInstruction *instr);
 	void out(ZydisDecodedInstruction *instr);
+	void xor_(ZydisDecodedInstruction *instr);
 
 #if defined(_WIN64)
 	uint8_t *gen_exception_info(uint8_t *code_ptr, size_t code_size);
@@ -67,8 +81,12 @@ private:
 	void raise_exp_inline_emit();
 	op_info get_operand(ZydisDecodedInstruction *instr, const unsigned opnum);
 	op_info get_register_op(ZydisDecodedInstruction *instr, const unsigned opnum);
-	uint32_t get_immediate_op(ZydisDecodedInstruction *instr, uint8_t size_mode, const unsigned opnum);
-	op_info load_reg(op_info info);
+	uint32_t get_immediate_op(ZydisDecodedInstruction *instr, const unsigned opnum);
+	template<unsigned opnum, typename T, typename U>
+	auto get_rm(ZydisDecodedInstruction *instr, T &&reg, U &&mem);
+	template<x64 res_32reg, typename T1, typename T2>
+	void set_flags(T1 res, T2 aux, size_t size);
+	void load_reg(x86::Gp dst, size_t reg_offset, size_t size);
 	void store_reg(size_t size, size_t offset);
 	void store_reg(size_t size, size_t offset, uint32_t val);
 	op_info load_mem(uint8_t size_mode, uint8_t is_priv);

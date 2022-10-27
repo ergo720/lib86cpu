@@ -25,6 +25,7 @@ static_assert(ZYDIS_REGISTER_DR7 - ZYDIS_REGISTER_DR0 == 7);
 
 #define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(m_cpu->virt_pc, instr).c_str())
 
+// all regs available on x64
 #define AH x86::ah
 #define CH x86::ch
 #define DH x86::dh
@@ -89,6 +90,44 @@ static_assert(ZYDIS_REGISTER_DR7 - ZYDIS_REGISTER_DR0 == 7);
 #define R13 x86::r13
 #define R14 x86::r14
 #define R15 x86::r15
+
+constexpr x64
+operator|(x64 reg, uint32_t size)
+{
+	return static_cast<x64>(static_cast<uint32_t>(reg) | size);
+}
+
+x64 consteval
+reg_and_size(x64 reg, uint32_t size)
+{
+	return reg | (size << static_cast<uint32_t>(x64::max));
+}
+
+static const std::unordered_map<x64, x86::Gp> reg_to_sized_reg = {
+	{ reg_and_size(x64::rax, SIZE8),   AL   },
+	{ reg_and_size(x64::rax, SIZE16),  AX   },
+	{ reg_and_size(x64::rax, SIZE32),  EAX  },
+	{ reg_and_size(x64::rcx, SIZE8),   CL   },
+	{ reg_and_size(x64::rcx, SIZE16),  CX   },
+	{ reg_and_size(x64::rcx, SIZE32),  ECX  },
+	{ reg_and_size(x64::rdx, SIZE8),   DL   },
+	{ reg_and_size(x64::rdx, SIZE16),  DX   },
+	{ reg_and_size(x64::rdx, SIZE32),  EDX  },
+	{ reg_and_size(x64::rdi, SIZE16),  DI   },
+	{ reg_and_size(x64::rdi, SIZE32),  EDI  },
+	{ reg_and_size(x64::r8,  SIZE8),   R8B  },
+	{ reg_and_size(x64::r8,  SIZE16),  R8W  },
+	{ reg_and_size(x64::r8,  SIZE32),  R8D  },
+	{ reg_and_size(x64::r9,  SIZE8),   R9B  },
+	{ reg_and_size(x64::r9,  SIZE16),  R9W  },
+	{ reg_and_size(x64::r9,  SIZE32),  R9D  },
+	{ reg_and_size(x64::r10, SIZE8),   R10B },
+	{ reg_and_size(x64::r10, SIZE16),  R10W },
+	{ reg_and_size(x64::r10, SIZE32),  R10D },
+	{ reg_and_size(x64::r11, SIZE8),   R11B },
+	{ reg_and_size(x64::r11, SIZE16),  R11W },
+	{ reg_and_size(x64::r11, SIZE32),  R11D },
+};
 
 template<size_t idx>
 size_t
@@ -168,7 +207,7 @@ get_local_var_offset()
 
 #define LD_R16(dst, reg_offset) MOV(dst, MEMD16(RCX, reg_offset))
 #define LD_R32(dst, reg_offset) MOV(dst, MEMD32(RCX, reg_offset))
-#define LD_REG_val(info) load_reg(info)
+#define LD_REG_val(dst, reg_offset, size) load_reg(dst, reg_offset, size)
 #define LD_SEG(dst, seg_offset) MOV(dst, MEMD16(RCX, seg_offset))
 #define LD_SEG_BASE(dst, seg_offset) MOV(dst, MEMD32(RCX, seg_offset + seg_base_offset))
 #define LD_SEG_LIMIT(dst, seg_offset) MOV(dst, MEMD32(RCX, seg_offset + seg_limit_offset))
@@ -188,9 +227,6 @@ get_local_var_offset()
 
 #define ST_IO() store_io(m_cpu->size_mode)
 
-#define GET_IMM() get_immediate_op(instr, m_cpu->size_mode, OPNUM_SRC)
-#define GET_IMM8() get_immediate_op(instr, SIZE8, OPNUM_SRC)
-
 #define RAISEin_no_param_t() raise_exp_inline_emit<true>()
 #define RAISEin_no_param_f() raise_exp_inline_emit<false>()
 #define RAISEin_t(addr, code, idx, eip) raise_exp_inline_emit<true>(addr, code, idx, eip)
@@ -198,22 +234,10 @@ get_local_var_offset()
 #define RAISEin0_t(idx) raise_exp_inline_emit<true>(0, 0, idx, m_cpu->instr_eip)
 #define RAISEin0_f(idx) raise_exp_inline_emit<false>(0, 0, idx, m_cpu->instr_eip)
 
+#define SIZED_REG(reg, size) reg_to_sized_reg.find(reg | size)->second
 #define GET_REG(op) get_register_op(instr, op)
 #define GET_OP(op) get_operand(instr, op)
-#define GET_RM(idx, r, m) 	op_info rm = GET_OP(idx); \
-switch (instr->operands[idx].type) \
-{ \
-case ZYDIS_OPERAND_TYPE_REGISTER: \
-	r \
-	break; \
-\
-case ZYDIS_OPERAND_TYPE_MEMORY: \
-	m \
-	break; \
-\
-default: \
-	LIB86CPU_ABORT_msg("Invalid operand type used in GET_RM macro!"); \
-}
+#define GET_IMM() get_immediate_op(instr, OPNUM_SRC)
 
 
 lc86_jit::lc86_jit(cpu_t *cpu)
@@ -795,13 +819,13 @@ lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opnum)
 		switch (operand->size)
 		{
 		case 8:
-			return { offset, 8 };
+			return { offset, SIZE8 };
 
 		case 16:
-			return { offset, 16 };
+			return { offset, SIZE16 };
 
 		case 32:
-			return { offset, 32 };
+			return { offset, SIZE32 };
 
 		default:
 			LIB86CPU_ABORT();
@@ -817,18 +841,18 @@ lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opnum)
 		switch (operand->encoding)
 		{
 		case ZYDIS_OPERAND_ENCODING_UIMM16:
-			return { operand->imm.value.u, 16 };
+			return { operand->imm.value.u, SIZE16 };
 
 		case ZYDIS_OPERAND_ENCODING_UIMM8:
 		case ZYDIS_OPERAND_ENCODING_JIMM8:
-			return { operand->imm.value.u, 8 };
+			return { operand->imm.value.u, SIZE8 };
 
 		case ZYDIS_OPERAND_ENCODING_JIMM16_32_32:
 			if (operand->size == 32) {
-				return { operand->imm.value.u, 32 };
+				return { operand->imm.value.u, SIZE32 };
 			}
 			else {
-				return { operand->imm.value.u, 16 };
+				return { operand->imm.value.u, SIZE16 };
 			}
 
 		default:
@@ -849,50 +873,69 @@ lc86_jit::get_register_op(ZydisDecodedInstruction *instr, const unsigned opnum)
 }
 
 uint32_t
-lc86_jit::get_immediate_op(ZydisDecodedInstruction *instr, uint8_t size_mode, const unsigned opnum)
+lc86_jit::get_immediate_op(ZydisDecodedInstruction *instr, const unsigned opnum)
 {
 	assert(instr->operands[opnum].type == ZYDIS_OPERAND_TYPE_IMMEDIATE);
+	return instr->operands[opnum].imm.value.u;
+}
 
-	switch (m_cpu->size_mode)
+template<unsigned opnum, typename T, typename U>
+auto lc86_jit::get_rm(ZydisDecodedInstruction *instr, T &&reg, U &&mem)
+{
+	const op_info rm = GET_OP(opnum);
+	switch (instr->operands[opnum].type)
 	{
-	case SIZE8:
-		return instr->operands[opnum].imm.value.u;
+	case ZYDIS_OPERAND_TYPE_REGISTER:
+		return reg(rm);
 
-	case SIZE16:
-		return instr->operands[opnum].imm.value.u;
-
-	case SIZE32:
-		return instr->operands[opnum].imm.value.u;
+	case ZYDIS_OPERAND_TYPE_MEMORY:
+		return mem(rm);
 
 	default:
-		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s", size_mode, __func__);
+		LIB86CPU_ABORT_msg("Invalid operand type used in %s!", __func__); \
 	}
 }
 
-op_info
-lc86_jit::load_reg(op_info info)
+template<x64 res_32reg, typename T1, typename T2>
+void lc86_jit::set_flags(T1 res, T2 aux, size_t size)
 {
-	// Returns the reg in eax
+	if (size != SIZE32) {
+		if constexpr (std::is_integral_v<T1>) {
+			int32_t res1 = static_cast<int32_t>(res);
+			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), res1);
+		}
+		else {
+			MOVSX(SIZED_REG(res_32reg, SIZE32), res);
+			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), res);
+		}
+	}
+	else {
+		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), res);
+	}
 
-	switch (info.bits)
+	MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), aux);
+}
+
+void
+lc86_jit::load_reg(x86::Gp dst, size_t reg_offset, size_t size)
+{
+	switch (size)
 	{
 	case 8:
-		MOV(AL, MEMD8(RCX, info.val));
+		MOV(dst, MEMD8(RCX, reg_offset));
 		break;
 
 	case 16:
-		MOV(AX, MEMD16(RCX, info.val));
+		MOV(dst, MEMD16(RCX, reg_offset));
 		break;
 
 	case 32:
-		MOV(EAX, MEMD32(RCX, info.val));
+		MOV(dst, MEMD32(RCX, reg_offset));
 		break;
 
 	default:
 		LIB86CPU_ABORT();
 	}
-
-	return info;
 }
 
 void
@@ -1193,7 +1236,15 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 
 	case 0xFF: {
 		if (instr->raw.modrm.reg == 4) {
-			GET_RM(OPNUM_SINGLE, LD_REG_val(rm);, LD_MEM(););
+			get_rm<OPNUM_SINGLE>(instr,
+				[this](const op_info rm)
+				{
+					LD_REG_val(SIZED_REG(x64::rax, m_cpu->size_mode), rm.val, rm.bits);
+				},
+				[this](const op_info rm)
+				{
+					LD_MEM();
+				});
 			if (m_cpu->size_mode == SIZE16) {
 				MOVZX(EAX, AX);
 			}
@@ -1227,7 +1278,9 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			RAISEin0_t(EXP_GP);
 		}
 		else {
-			ST_REG_val(LD_REG_val(GET_REG(OPNUM_SRC)).bits, REG_off(instr->operands[OPNUM_DST].reg.value));
+			op_info src = GET_REG(OPNUM_SRC);
+			LD_REG_val(SIZED_REG(x64::rax, src.bits), src.val, src.bits);
+			ST_REG_val(src.bits, REG_off(instr->operands[OPNUM_DST].reg.value));
 		}
 	}
 	break;
@@ -1453,8 +1506,17 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0x89: {
-		auto src = LD_REG_val(GET_REG(OPNUM_SRC));
-		GET_RM(OPNUM_DST, ST_REG_val(src.bits, rm.val);, ST_MEM_reg(););
+		auto src = GET_REG(OPNUM_SRC);
+		LD_REG_val(EAX, src.val, src.bits);
+		get_rm<OPNUM_DST>(instr,
+			[this, src](const op_info rm)
+			{
+				ST_REG_val(src.bits, rm.val);
+			},
+			[this](const op_info rm)
+			{
+				ST_MEM_reg();
+			});
 	}
 	break;
 
@@ -1464,18 +1526,44 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 
 	case 0x8B: {
 		auto dst = GET_REG(OPNUM_DST);
-		GET_RM(OPNUM_SRC, ST_REG_val(LD_REG_val(rm).bits, dst.val);, ST_REG_val(LD_MEM().bits, dst.val););
+		get_rm<OPNUM_DST>(instr,
+			[this, dst](const op_info rm)
+			{
+				LD_REG_val(SIZED_REG(x64::rax, rm.bits), rm.val, rm.bits);
+				ST_REG_val(rm.bits, dst.val);
+			},
+			[this, dst](const op_info rm)
+			{
+				ST_REG_val(LD_MEM().bits, dst.val);
+			});
 	}
 	break;
 
 	case 0x8C: {
 		LD_SEG(AX, REG_off(instr->operands[OPNUM_SRC].reg.value));
-		GET_RM(OPNUM_DST, MOVZX(EAX, AX); ST_REG_val(32, rm.val);, ST_MEMs_reg(SIZE16););
+		get_rm<OPNUM_DST>(instr,
+			[this](const op_info rm)
+			{
+				MOVZX(EAX, AX);
+				ST_REG_val(32, rm.val);
+			},
+			[this](const op_info rm)
+			{
+				ST_MEMs_reg(SIZE16);
+			});
 	}
 	break;
 
 	case 0x8E: {
-		GET_RM(OPNUM_SRC, LD_REG_val(rm);, LD_MEM(););
+		get_rm<OPNUM_SRC>(instr,
+			[this](const op_info rm)
+			{
+				LD_REG_val(SIZED_REG(x64::rax, rm.bits), rm.val, rm.bits);
+			},
+			[this](const op_info rm)
+			{
+				LD_MEM();
+			});
 		if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
 			if (instr->operands[OPNUM_DST].reg.value == ZYDIS_REGISTER_SS) {
 				MOV(R8D, m_cpu->instr_eip);
@@ -1561,7 +1649,8 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 
 	case 0xA3: {
 		GET_OP(OPNUM_DST);
-		LD_REG_val(GET_OP(OPNUM_SRC));
+		op_info src = GET_OP(OPNUM_SRC);
+		LD_REG_val(SIZED_REG(x64::rax, src.bits), src.val, src.bits);
 		ST_MEM_reg();
 	}
 	break;
@@ -1575,7 +1664,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 	case 0xB6:
 	case 0xB7: {
 		auto dst = GET_OP(OPNUM_DST);
-		ST_REG_imm(dst.bits, dst.val, GET_IMM8());
+		ST_REG_imm(dst.bits, dst.val, GET_IMM());
 	}
 	break;
 
@@ -1597,7 +1686,15 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0xC7: {
-		GET_RM(OPNUM_DST, ST_REG_imm(rm.bits, rm.val, GET_IMM());, ST_MEM_imm(GET_IMM()););
+		get_rm<OPNUM_DST>(instr,
+			[this, instr](const op_info rm)
+			{
+				ST_REG_imm(rm.bits, rm.val, GET_IMM());
+			},
+			[this, instr](const op_info rm)
+			{
+				ST_MEM_imm(GET_IMM());
+			});
 	}
 	break;
 
@@ -1620,7 +1717,7 @@ lc86_jit::out(ZydisDecodedInstruction *instr)
 		check_io_priv_emit(port);
 		MOV(EDX, port);
 		XOR(EAX, EAX);
-		LD_REG_val((op_info{ CPU_CTX_EAX, m_cpu->size_mode }));
+		LD_REG_val(SIZED_REG(x64::rax, m_cpu->size_mode), CPU_CTX_EAX, m_cpu->size_mode);
 		ST_IO();
 	}
 	break;
@@ -1634,8 +1731,138 @@ lc86_jit::out(ZydisDecodedInstruction *instr)
 		MOVZX(EDX, DX);
 		check_io_priv_emit(EDX);
 		XOR(EAX, EAX);
-		LD_REG_val((op_info{ CPU_CTX_EAX, m_cpu->size_mode }));
+		LD_REG_val(SIZED_REG(x64::rax, m_cpu->size_mode), CPU_CTX_EAX, m_cpu->size_mode);
 		ST_IO();
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+void
+lc86_jit::xor_(ZydisDecodedInstruction *instr)
+{
+	switch (instr->opcode)
+	{
+	case 0x30:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0x31: {
+		op_info src = GET_REG(OPNUM_SRC);
+		auto src_reg = SIZED_REG(x64::rdx, src.bits);
+		LD_REG_val(src_reg, src.val, src.bits);
+		auto dst_reg = get_rm<OPNUM_DST>(instr,
+			[this, src_reg, instr](const op_info rm)
+			{
+				auto dst_reg = SIZED_REG(x64::rax, rm.bits);
+				LD_REG_val(dst_reg, rm.val, rm.bits);
+				XOR(dst_reg, src_reg);
+				ST_REG_val(rm.bits, rm.val);
+				return dst_reg;
+			},
+			[this, src_reg, instr](const op_info rm)
+			{
+				auto dst_reg = SIZED_REG(x64::rax, rm.bits);
+				LD_MEMs(rm.bits);
+				XOR(dst_reg, src_reg);
+				ST_REG_val(rm.bits, rm.val);
+				return dst_reg;
+			});
+		set_flags<x64::rax>(dst_reg, 0, m_cpu->size_mode);
+	}
+	break;
+
+	case 0x32:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0x33: {
+		op_info dst = GET_REG(OPNUM_DST);
+		auto dst_reg = SIZED_REG(x64::rdx, dst.bits);
+		LD_REG_val(dst_reg, dst.val, dst.bits);
+		get_rm<OPNUM_SRC>(instr,
+			[this, dst_reg, dst, instr](const op_info rm)
+			{
+				auto src_reg = SIZED_REG(x64::rax, rm.bits);
+				LD_REG_val(src_reg, rm.val, rm.bits);
+				XOR(dst_reg, src_reg);
+				ST_REG_val(dst.bits, dst.val);
+			},
+			[this, dst_reg, dst, instr](const op_info rm)
+			{
+				auto src_reg = SIZED_REG(x64::rax, rm.bits);
+				LD_MEMs(rm.bits);
+				XOR(dst_reg, src_reg);
+				ST_REG_val(dst.bits, dst.val);
+			});
+		set_flags<x64::rdx>(dst_reg, 0, m_cpu->size_mode);
+	}
+	break;
+
+	case 0x34:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0x35: {
+		op_info dst = GET_REG(OPNUM_DST);
+		auto dst_reg = SIZED_REG(x64::rax, dst.bits);
+		LD_REG_val(dst_reg, dst.val, dst.bits);
+		XOR(dst_reg, GET_IMM());
+		ST_REG_val(dst.bits, dst.val);
+		set_flags<x64::rax>(dst_reg, 0, m_cpu->size_mode);
+	}
+	break;
+
+	case 0x80:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0x81: {
+		uint32_t src = GET_IMM();
+		auto dst_reg = get_rm<OPNUM_DST>(instr,
+			[this, src, instr](const op_info rm)
+			{
+				auto dst_reg = SIZED_REG(x64::rax, rm.bits);
+				LD_REG_val(dst_reg, rm.val, rm.bits);
+				XOR(dst_reg, src);
+				ST_REG_val(rm.bits, rm.val);
+				return dst_reg;
+			},
+			[this, src, instr](const op_info rm)
+			{
+				auto dst_reg = SIZED_REG(x64::rax, rm.bits);
+				LD_MEMs(rm.bits);
+				XOR(dst_reg, src);
+				ST_REG_val(rm.bits, rm.val);
+				return dst_reg;
+			});
+		set_flags<x64::rax>(dst_reg, 0, m_cpu->size_mode);
+	}
+	break;
+
+	case 0x83: {
+		int32_t src = static_cast<int32_t>(static_cast<int8_t>(GET_IMM()));
+		auto dst_reg = get_rm<OPNUM_DST>(instr,
+			[this, src, instr](const op_info rm)
+			{
+				auto dst_reg = SIZED_REG(x64::rax, rm.bits);
+				LD_REG_val(dst_reg, rm.val, rm.bits);
+				XOR(dst_reg, src);
+				ST_REG_val(rm.bits, rm.val);
+				return dst_reg;
+			},
+			[this, src, instr](const op_info rm)
+			{
+				auto dst_reg = SIZED_REG(x64::rax, rm.bits);
+				LD_MEMs(rm.bits);
+				XOR(dst_reg, src);
+				ST_REG_val(rm.bits, rm.val);
+				return dst_reg;
+			});
+		set_flags<x64::rax>(dst_reg, 0, m_cpu->size_mode);
 	}
 	break;
 
