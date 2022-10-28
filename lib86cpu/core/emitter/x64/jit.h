@@ -25,19 +25,6 @@ struct op_info {
 	op_info(size_t val_, size_t bits_) : val(val_), bits(bits_) {}
 };
 
-// all x64 regs that can actually be used in the main jitted function
-enum class x64 : uint32_t {
-	rax = 0,
-	rcx,
-	rdx,
-	rdi,
-	r8,
-	r9,
-	r10,
-	r11,
-	max = r11,
-};
-
 class lc86_jit : public Target {
 public:
 	lc86_jit(cpu_t *cpu);
@@ -84,14 +71,14 @@ private:
 	uint32_t get_immediate_op(ZydisDecodedInstruction *instr, const unsigned opnum);
 	template<unsigned opnum, typename T, typename U>
 	auto get_rm(ZydisDecodedInstruction *instr, T &&reg, U &&mem);
-	template<x64 res_32reg, typename T1, typename T2>
+	template<x86::Gp res_32reg, typename T1, typename T2>
 	void set_flags(T1 res, T2 aux, size_t size);
 	void load_reg(x86::Gp dst, size_t reg_offset, size_t size);
-	void store_reg(size_t size, size_t offset);
-	void store_reg(size_t size, size_t offset, uint32_t val);
-	op_info load_mem(uint8_t size_mode, uint8_t is_priv);
-	void store_mem(uint8_t size_mode, uint8_t is_priv);
-	void store_mem(uint8_t size_mode, uint32_t val, uint8_t is_priv);
+	template<typename T>
+	void store_reg(T val, size_t reg_offset, size_t size);
+	void load_mem(uint8_t size, uint8_t is_priv);
+	template<typename T>
+	void store_mem(T val, uint8_t size, uint8_t is_priv);
 	void store_io(uint8_t size_mode);
 	template<typename T>
 	void check_io_priv_emit(T port);
