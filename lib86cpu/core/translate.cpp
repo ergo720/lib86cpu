@@ -756,7 +756,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_IDIV: BAD;
 		case ZYDIS_MNEMONIC_IMUL: BAD;
 		case ZYDIS_MNEMONIC_IN: BAD;
-		case ZYDIS_MNEMONIC_INC: BAD;
+		case ZYDIS_MNEMONIC_INC:
+			cpu->jit->inc(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_INSB:BAD;
 		case ZYDIS_MNEMONIC_INSD:BAD;
 		case ZYDIS_MNEMONIC_INSW: BAD;
@@ -2290,59 +2293,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				check_io_priv_emit(cpu, ZEXT32(port), size_mode);
 				Value *val = LD_IO(port);
 				size_mode == SIZE16 ? ST_REG_idx(val, EAX_idx) : size_mode == SIZE32 ? ST_REG_idx(val, EAX_idx) : ST_REG_idx(val, EAX_idx);
-			}
-			break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-		}
-		break;
-
-		case ZYDIS_MNEMONIC_INC: {
-			switch (instr.opcode)
-			{
-			case 0xFE:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x40:
-			case 0x41:
-			case 0x42:
-			case 0x43:
-			case 0x44:
-			case 0x45:
-			case 0x46:
-			case 0x47:
-			case 0xFF: {
-				Value *sum, *val, *one, *cf_old, *rm;
-				switch (size_mode)
-				{
-				case SIZE8:
-					one = CONST8(1);
-					GET_RM(OPNUM_SINGLE, val = LD_REG_val(rm); sum = ADD(val, one); ST_REG_val(sum, rm);,
-						val = LD_MEM(fn_idx[size_mode], rm); sum = ADD(val, one); ST_MEM(fn_idx[size_mode], rm, sum););
-					break;
-
-				case SIZE16:
-					one = CONST16(1);
-					GET_RM(OPNUM_SINGLE, val = LD_REG_val(rm); sum = ADD(val, one); ST_REG_val(sum, rm);,
-						val = LD_MEM(fn_idx[size_mode], rm); sum = ADD(val, one); ST_MEM(fn_idx[size_mode], rm, sum););
-					break;
-
-				case SIZE32:
-					one = CONST32(1);
-					GET_RM(OPNUM_SINGLE, val = LD_REG_val(rm); sum = ADD(val, one); ST_REG_val(sum, rm);,
-						val = LD_MEM(fn_idx[size_mode], rm); sum = ADD(val, one); ST_MEM(fn_idx[size_mode], rm, sum););
-					break;
-
-				default:
-					LIB86CPU_ABORT();
-				}
-
-				cf_old = LD_CF();
-				SET_FLG_SUM(sum, val, one);
-				ST_FLG_AUX(OR(OR(cf_old, SHR(XOR(cf_old, LD_OF()), CONST32(1))), AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF))));
 			}
 			break;
 

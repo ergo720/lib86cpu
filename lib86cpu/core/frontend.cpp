@@ -307,56 +307,6 @@ stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigne
 }
 
 void
-set_flags_sum(cpu_t *cpu, Value *sum, Value *a, Value *b, uint8_t size_mode)
-{
-	switch (size_mode)
-	{
-	case SIZE8:
-		ST_FLG_RES_ext(sum);
-		ST_FLG_SUM_AUX8(a, b, sum);
-		break;
-
-	case SIZE16:
-		ST_FLG_RES_ext(sum);
-		ST_FLG_SUM_AUX16(a, b, sum);
-		break;
-
-	case SIZE32:
-		ST_FLG_RES(sum);
-		ST_FLG_SUM_AUX32(a, b, sum);
-		break;
-
-	default:
-		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s", size_mode, __func__);
-	}
-}
-
-void
-set_flags_sub(cpu_t *cpu, Value *sub, Value *a, Value *b, uint8_t size_mode)
-{
-	switch (size_mode)
-	{
-	case SIZE8:
-		ST_FLG_RES_ext(sub);
-		ST_FLG_SUB_AUX8(a, b, sub);
-		break;
-
-	case SIZE16:
-		ST_FLG_RES_ext(sub);
-		ST_FLG_SUB_AUX16(a, b, sub);
-		break;
-
-	case SIZE32:
-		ST_FLG_RES(sub);
-		ST_FLG_SUB_AUX32(a, b, sub);
-		break;
-
-	default:
-		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s", size_mode, __func__);
-	}
-}
-
-void
 update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag, bool is_write)
 {
 	if (is_write) {

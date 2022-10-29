@@ -162,21 +162,25 @@ get_local_var_offset()
 #define MEM16(reg) x86::word_ptr(reg)
 #define MEM32(reg) x86::dword_ptr(reg)
 #define MEM64(reg) x86::qword_ptr(reg)
+#define MEM(reg, size) x86::Mem(reg, size)
 // [reg + disp]
 #define MEMD8(reg, disp)  x86::byte_ptr(reg, disp)
 #define MEMD16(reg, disp) x86::word_ptr(reg, disp)
 #define MEMD32(reg, disp) x86::dword_ptr(reg, disp)
 #define MEMD64(reg, disp) x86::qword_ptr(reg, disp)
+#define MEMD(reg, disp, size) x86::Mem(reg, disp, size)
 // [reg + idx * scale], scale specified as 1 << n; e.g. scale = 8 -> n = 3
 #define MEMS8(reg, idx, scale)  x86::byte_ptr(reg, idx, scale)
 #define MEMS16(reg, idx, scale) x86::word_ptr(reg, idx, scale)
 #define MEMS32(reg, idx, scale) x86::dword_ptr(reg, idx, scale)
 #define MEMS64(reg, idx, scale) x86::qword_ptr(reg, idx, scale)
+#define MEMS(reg, idx, scale, size) x86::Mem(reg, idx, scale, size)
 // [reg + idx * scale + disp], scale specified as 1 << n; e.g. scale = 8 -> n = 3
 #define MEMSD8(reg, idx, scale, disp)  x86::byte_ptr(reg, idx, scale, disp)
 #define MEMSD16(reg, idx, scale, disp) x86::word_ptr(reg, idx, scale, disp)
 #define MEMSD32(reg, idx, scale, disp) x86::dword_ptr(reg, idx, scale, disp)
 #define MEMSD64(reg, idx, scale, disp) x86::qword_ptr(reg, idx, scale, disp)
+#define MEMSD(reg, idx, scale, disp, size) x86::Mem(reg, idx, scale, disp, size)
 
 #define MOV(dst, src) m_a.mov(dst, src)
 #define MOVZX(dst, src) m_a.movzx(dst, src)
@@ -187,6 +191,7 @@ get_local_var_offset()
 #define XOR(dst, src) m_a.xor_(dst, src)
 #define SHL(dst, src) m_a.shl(dst, src)
 #define SHR(dst, src) m_a.shr(dst, src)
+#define NOT(dst) m_a.not_(dst)
 #define ADD(dst, src) m_a.add(dst, src)
 #define SUB(dst, src) m_a.sub(dst, src)
 #define CMP(dst, src) m_a.cmp(dst, src)
@@ -236,6 +241,13 @@ get_local_var_offset()
 #define ST_MEMs(val, size) store_mem(val, size, 0)
 
 #define ST_IO() store_io(m_cpu->size_mode)
+
+#define LD_CF(dst) MOV(dst, MEMD32(RCX, CPU_CTX_EFLAGS_AUX)); AND(dst, 0x80000000)
+#define LD_OF(dst, aux) ld_of(dst, aux)
+#define LD_ZF(dst) MOV(dst, MEMD32(RCX, CPU_CTX_EFLAGS_RES))
+#define LD_SF(dst, res, aux) ld_sf(dst, res, aux)
+#define LD_PF(dst, res, aux) ld_pf(dst, res, aux)
+#define LD_AF(dst) MOV(dst, MEMD32(RCX, CPU_CTX_EFLAGS_AUX)); AND(dst, 8)
 
 #define RAISEin_no_param_t() raise_exp_inline_emit<true>()
 #define RAISEin_no_param_f() raise_exp_inline_emit<false>()
@@ -889,8 +901,8 @@ lc86_jit::get_immediate_op(ZydisDecodedInstruction *instr, const unsigned opnum)
 	return instr->operands[opnum].imm.value.u;
 }
 
-template<unsigned opnum, typename T, typename U>
-auto lc86_jit::get_rm(ZydisDecodedInstruction *instr, T &&reg, U &&mem)
+template<unsigned opnum, typename T1, typename T2>
+auto lc86_jit::get_rm(ZydisDecodedInstruction *instr, T1 &&reg, T2 &&mem)
 {
 	const op_info rm = GET_OP(opnum);
 	switch (instr->operands[opnum].type)
@@ -904,6 +916,168 @@ auto lc86_jit::get_rm(ZydisDecodedInstruction *instr, T &&reg, U &&mem)
 	default:
 		LIB86CPU_ABORT_msg("Invalid operand type used in %s!", __func__); \
 	}
+}
+
+template<unsigned size, typename T>
+void lc86_jit::gen_sum_vec16_8(x86::Gp a, T b, x86::Gp sum)
+{
+	// a: cx/cl, b: dx/dl or imm16/8, sum: r8w/r8b
+
+	MOVZX(R9D, a);
+	if constexpr (std::is_integral_v<T>) {
+		MOV(EAX, b);
+	}
+	else {
+		MOVZX(EAX, b);
+	}
+	OR(R9D, EAX);
+	MOVZX(ECX, a);
+	MOVZX(EAX, sum);
+	NOT(EAX);
+	AND(R9D, EAX);
+	if constexpr (std::is_integral_v<T>) {
+		MOV(EAX, b);
+	}
+	else {
+		MOVZX(EAX, b);
+	}
+	AND(ECX, EAX);
+	OR(R9D, ECX);
+	MOV(EAX, R9D);
+	SHL(EAX, size == SIZE16 ? 16 : 24);
+	OR(EAX, R9D);
+	AND(EAX, 0xC0000008);
+}
+
+template<typename T>
+void lc86_jit::gen_sum_vec32(T b)
+{
+	// a: ecx, b: edx or imm32, sum: r8d
+
+	MOV(EAX, ECX);
+	NOT(R8D);
+	OR(EAX, b);
+	AND(ECX, b);
+	AND(EAX, R8D);
+	OR(EAX, ECX);
+	AND(EAX, 0xC0000008);
+}
+
+template<unsigned size, typename T>
+void lc86_jit::gen_sub_vec16_8(x86::Gp a, T b, x86::Gp sub)
+{
+	// a: cx/cl, b: dx/dl or imm16/8, sub: r8w/r8b
+
+	MOVZX(R9D, a);
+	if constexpr (std::is_integral_v<T>) {
+		MOV(EAX, b);
+	}
+	else {
+		MOVZX(EAX, b);
+	}
+	XOR(R9D, EAX);
+	MOVZX(ECX, a);
+	NOT(R9D);
+	MOVZX(EAX, sub);
+	AND(R9D, EAX);
+	NOT(ECX);
+	if constexpr (std::is_integral_v<T>) {
+		MOV(EAX, b);
+	}
+	else {
+		MOVZX(EAX, b);
+	}
+	AND(ECX, EAX);
+	OR(R9D, ECX);
+	MOV(EAX, R9D);
+	SHL(EAX, size == SIZE16 ? 16 : 24);
+	OR(EAX, R9D);
+	AND(EAX, 0xC0000008);
+}
+
+template<typename T>
+void lc86_jit::gen_sub_vec32(T b)
+{
+	// a: ecx, b: edx or imm32, sub: r8d
+
+	MOV(EAX, ECX);
+	NOT(ECX);
+	XOR(EAX, b);
+	AND(ECX, b);
+	NOT(EAX);
+	AND(EAX, R8D);
+	OR(EAX, ECX);
+	AND(EAX, 0xC0000008);
+}
+
+template<typename T>
+void lc86_jit::set_flags_sum(x86::Gp a, T b, x86::Gp sum)
+{
+	// a: reg, b: edx/dx/dl or imm32/16/8, sum: r8d/r8w/r8b
+
+	MOV(R10, RCX);
+
+	switch (m_cpu->size_mode)
+	{
+	case SIZE8:
+		MOV(CL, a);
+		gen_sum_vec16_8<SIZE8>(CL, b, sum);
+		MOVSX(R8D, sum);
+		break;
+
+	case SIZE16:
+		MOV(CX, a);
+		gen_sum_vec16_8<SIZE16>(CX, b, sum);
+		MOVSX(R8D, sum);
+		break;
+
+	case SIZE32:
+		MOV(ECX, a);
+		gen_sum_vec32(b);
+		break;
+
+	default:
+		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s", m_cpu->size_mode, __func__);
+	}
+
+	MOV(MEMD32(R10, CPU_CTX_EFLAGS_RES), R8D);
+	MOV(MEMD32(R10, CPU_CTX_EFLAGS_AUX), EAX);
+	MOV(RCX, R10);
+}
+
+template<typename T>
+void lc86_jit::set_flags_sub(x86::Gp a, T b, x86::Gp sub)
+{
+	// a: reg, b: edx/dx/dl or imm32/16/8, sub: r8d/r8w/r8b
+
+	MOV(R10, RCX);
+
+	switch (m_cpu->size_mode)
+	{
+	case SIZE8:
+		MOV(CL, a);
+		gen_sub_vec16_8<SIZE8>(CL, b, sub);
+		MOVSX(R8D, sub);
+		break;
+
+	case SIZE16:
+		MOV(CX, a);
+		gen_sub_vec16_8<SIZE16>(CX, b, sub);
+		MOVSX(R8D, sub);
+		break;
+
+	case SIZE32:
+		MOV(ECX, a);
+		gen_sub_vec32(b);
+		break;
+
+	default:
+		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s", m_cpu->size_mode, __func__);
+	}
+
+	MOV(MEMD32(R10, CPU_CTX_EFLAGS_RES), R8D);
+	MOV(MEMD32(R10, CPU_CTX_EFLAGS_AUX), EAX);
+	MOV(RCX, R10);
 }
 
 template<x86::Gp res_32reg, typename T1, typename T2>
@@ -924,6 +1098,35 @@ void lc86_jit::set_flags(T1 res, T2 aux, size_t size)
 	}
 
 	MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), aux);
+}
+
+void
+lc86_jit::ld_of(x86::Gp dst, x86::Gp aux)
+{
+	LEA(dst, MEMS32(aux, aux, 0));
+	XOR(dst, aux);
+	AND(dst, 0x80000000);
+}
+
+void
+lc86_jit::ld_sf(x86::Gp dst, x86::Gp res, x86::Gp aux)
+{
+	SHR(res, 0x1F);
+	AND(aux, 1);
+	XOR(res, aux);
+	MOV(dst, res);
+}
+
+void
+lc86_jit::ld_pf(x86::Gp dst, x86::Gp res, x86::Gp aux)
+{
+	MOV(dst, res);
+	MOV(R8D, aux);
+	SHR(R8, 8);
+	MOV(res.r64(), MEMD64(RCX, CPU_CTX_EFLAGS_PAR));
+	XOR(R8, dst.r64());
+	MOVZX(dst, R8B);
+	MOVZX(dst, MEMS8(dst.r64(), res.r64(), 0));
 }
 
 void
@@ -1134,6 +1337,70 @@ lc86_jit::cli(ZydisDecodedInstruction *instr)
 		LD_R32(EDX, CPU_CTX_EFLAGS);
 		AND(EDX, ~IF_MASK);
 		ST_R32(CPU_CTX_EFLAGS, EDX);
+	}
+}
+
+void
+lc86_jit::inc(ZydisDecodedInstruction *instr)
+{
+	switch (instr->opcode)
+	{
+	case 0xFE:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0x40:
+	case 0x41:
+	case 0x42:
+	case 0x43:
+	case 0x44:
+	case 0x45:
+	case 0x46:
+	case 0x47:
+	case 0xFF: {
+		size_t size = get_rm<OPNUM_SINGLE>(instr,
+			[this](const op_info rm)
+			{
+				auto sum_host_reg = SIZED_REG(x64::rax, rm.bits);
+				LD_REG_val(sum_host_reg, rm.val, rm.bits);
+				MOV(MEMD(RSP, LOCAL_VARS_off(0), rm.bits), sum_host_reg);
+				ADD(sum_host_reg, 1);
+				MOV(MEMD(RSP, LOCAL_VARS_off(1), rm.bits), sum_host_reg);
+				ST_REG_val(sum_host_reg, rm.val, rm.bits);
+				return rm.bits;
+			},
+			[this](const op_info rm)
+			{
+				auto sum_host_reg = SIZED_REG(x64::rax, rm.bits);
+				MOV(EDI, EDX);
+				LD_MEM();
+				MOV(MEMD(RSP, LOCAL_VARS_off(0), rm.bits), sum_host_reg);
+				ADD(sum_host_reg, 1);
+				MOV(MEMD(RSP, LOCAL_VARS_off(1), rm.bits), sum_host_reg);
+				MOV(EDX, EDI);
+				ST_MEM(sum_host_reg);
+				return rm.bits;
+			});
+
+		LD_CF(EDI);
+		auto sum_host_reg = SIZED_REG(x64::r8, size);
+		auto a_host_reg = SIZED_REG(x64::rax, size);
+		MOV(a_host_reg, MEMD(RSP, LOCAL_VARS_off(0), size));
+		MOV(sum_host_reg, MEMD(RSP, LOCAL_VARS_off(1), size));
+		set_flags_sum(a_host_reg, 1, sum_host_reg);
+		MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
+		LD_OF(EDX, EAX);
+		XOR(EDX, EDI);
+		SHR(EDX, 1);
+		OR(EDX, EDI);
+		AND(EAX, 0x3FFFFFFF);
+		OR(EDX, EAX);
+		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EDX);
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
 	}
 }
 

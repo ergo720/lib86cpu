@@ -36,6 +36,7 @@ public:
 	void destroy_all_code() { m_mem.destroy_all_blocks(); }
 
 	void cli(ZydisDecodedInstruction *instr);
+	void inc(ZydisDecodedInstruction *instr);
 	void jmp(ZydisDecodedInstruction *instr);
 	void mov(ZydisDecodedInstruction *instr);
 	void out(ZydisDecodedInstruction *instr);
@@ -69,10 +70,25 @@ private:
 	op_info get_operand(ZydisDecodedInstruction *instr, const unsigned opnum);
 	op_info get_register_op(ZydisDecodedInstruction *instr, const unsigned opnum);
 	uint32_t get_immediate_op(ZydisDecodedInstruction *instr, const unsigned opnum);
-	template<unsigned opnum, typename T, typename U>
-	auto get_rm(ZydisDecodedInstruction *instr, T &&reg, U &&mem);
+	template<unsigned opnum, typename T1, typename T2>
+	auto get_rm(ZydisDecodedInstruction *instr, T1 &&reg, T2 &&mem);
+	template<unsigned size, typename T>
+	void gen_sum_vec16_8(x86::Gp a, T b, x86::Gp sum);
+	template<typename T>
+	void gen_sum_vec32(T b);
+	template<unsigned size, typename T>
+	void gen_sub_vec16_8(x86::Gp a, T b, x86::Gp sum);
+	template<typename T>
+	void gen_sub_vec32(T b);
+	template<typename T>
+	void set_flags_sum(x86::Gp a, T b, x86::Gp sum);
+	template<typename T>
+	void set_flags_sub(x86::Gp a, T b, x86::Gp sub);
 	template<x86::Gp res_32reg, typename T1, typename T2>
 	void set_flags(T1 res, T2 aux, size_t size);
+	void ld_of(x86::Gp dst, x86::Gp aux);
+	void ld_sf(x86::Gp dst, x86::Gp res, x86::Gp aux);
+	void ld_pf(x86::Gp dst, x86::Gp res, x86::Gp aux);
 	void load_reg(x86::Gp dst, size_t reg_offset, size_t size);
 	template<typename T>
 	void store_reg(T val, size_t reg_offset, size_t size);
