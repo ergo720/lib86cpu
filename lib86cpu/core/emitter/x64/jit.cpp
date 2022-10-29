@@ -192,6 +192,7 @@ get_local_var_offset()
 #define SHL(dst, src) m_a.shl(dst, src)
 #define SHR(dst, src) m_a.shr(dst, src)
 #define NOT(dst) m_a.not_(dst)
+#define TEST(dst, src) m_a.test(dst, src)
 #define ADD(dst, src) m_a.add(dst, src)
 #define SUB(dst, src) m_a.sub(dst, src)
 #define CMP(dst, src) m_a.cmp(dst, src)
@@ -1480,6 +1481,75 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 		LIB86CPU_ABORT();
 	}
 
+	m_cpu->translate_next = 0;
+}
+
+void
+lc86_jit::loop(ZydisDecodedInstruction *instr)
+{
+	switch (m_cpu->addr_mode)
+	{
+	case ADDR16:
+		LD_R16(DI, CPU_CTX_ECX);
+		SUB(DI, 1);
+		ST_R16(CPU_CTX_ECX, DI);
+		MOVZX(EDI, DI);
+		break;
+
+	case ADDR32:
+		LD_R32(EDI, CPU_CTX_ECX);
+		SUB(EDI, 1);
+		ST_R32(CPU_CTX_ECX, EDI);
+		break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+
+	Label next_taken = m_a.newLabel();
+	Label end = m_a.newLabel();
+	TEST(EDI, EDI);
+	BR_EQ(next);
+
+	switch (instr->opcode)
+	{
+	case 0xE0:
+		LD_ZF(EDX);
+		TEST(EDX, EDX);
+		BR_NE(next);
+		break;
+
+	case 0xE1:
+		LD_ZF(EDX);
+		TEST(EDX, EDX);
+		BR_EQ(next);
+		break;
+
+	case 0xE2:
+		break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+
+	addr_t next_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
+	addr_t loop_eip = next_eip + instr->operands[OPNUM_SINGLE].imm.value.s;
+	if (m_cpu->size_mode == SIZE16) {
+		loop_eip &= 0x0000FFFF;
+	}
+	addr_t next_pc = next_eip + m_cpu->cpu_ctx.regs.cs_hidden.base;
+	addr_t dst_pc = loop_eip + m_cpu->cpu_ctx.regs.cs_hidden.base;
+
+	ST_R32(CPU_CTX_EIP, loop_eip);
+	MOV(EDX, dst_pc);
+	BR_UNCOND(end);
+	m_a.bind(next_taken);
+	ST_R32(CPU_CTX_EIP, next_eip);
+	MOV(EDX, next_pc);
+	m_a.bind(end);
+
+	link_direct_emit(dst_pc, &next_pc, EDX);
+	m_cpu->tc->flags |= TC_FLG_DIRECT;
 	m_cpu->translate_next = 0;
 }
 

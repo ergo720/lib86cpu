@@ -803,9 +803,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_LODSB:BAD;
 		case ZYDIS_MNEMONIC_LODSD:BAD;
 		case ZYDIS_MNEMONIC_LODSW: BAD;
-		case ZYDIS_MNEMONIC_LOOP:BAD;
-		case ZYDIS_MNEMONIC_LOOPE:BAD;
-		case ZYDIS_MNEMONIC_LOOPNE: BAD;
+		case ZYDIS_MNEMONIC_LOOP:
+		case ZYDIS_MNEMONIC_LOOPE:
+		case ZYDIS_MNEMONIC_LOOPNE:
+			cpu->jit->loop(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_LSL:         BAD;
 		case ZYDIS_MNEMONIC_LDS:BAD;
 		case ZYDIS_MNEMONIC_LES:BAD;
@@ -2787,72 +2790,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			default:
 				LIB86CPU_ABORT();
 			}
-		}
-		break;
-
-		case ZYDIS_MNEMONIC_LOOP:
-		case ZYDIS_MNEMONIC_LOOPE:
-		case ZYDIS_MNEMONIC_LOOPNE: {
-			Value *val, *zero, *zf;
-			switch (instr.opcode)
-			{
-			case 0xE0:
-				zf = ICMP_NE(LD_ZF(), CONST32(0));
-				break;
-
-			case 0xE1:
-				zf = ICMP_EQ(LD_ZF(), CONST32(0));
-				break;
-
-			case 0xE2:
-				zf = CONSTs(1, 1);
-				break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-
-			switch (addr_mode)
-			{
-			case ADDR16:
-				val = SUB(LD_R16(ECX_idx), CONST16(1));
-				ST_REG_idx(val, ECX_idx);
-				zero = CONST16(0);
-				break;
-
-			case ADDR32:
-				val = SUB(LD_R32(ECX_idx), CONST32(1));
-				ST_REG_idx(val, ECX_idx);
-				zero = CONST32(0);
-				break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-
-			Value *dst_pc = ALLOC32();
-			std::vector<BasicBlock *> vec_bb = getBBs(3);
-			BR_COND(vec_bb[0], vec_bb[1], AND(ICMP_NE(val, zero), zf));
-
-			cpu->bb = vec_bb[1];
-			Value *exit_pc = calc_next_pc_emit(cpu, bytes);
-			ST(dst_pc, exit_pc);
-			BR_UNCOND(vec_bb[2]);
-
-			addr_t loop_eip = (pc - cpu_ctx->regs.cs_hidden.base) + bytes + instr.operands[OPNUM_SINGLE].imm.value.s;
-			if (size_mode == SIZE16) {
-				loop_eip &= 0x0000FFFF;
-			}
-			cpu->bb = vec_bb[0];
-			ST(GEP_EIP(), CONST32(loop_eip));
-			ST(dst_pc, CONST32(loop_eip + cpu_ctx->regs.cs_hidden.base));
-			BR_UNCOND(vec_bb[2]);
-
-			cpu->bb = vec_bb[2];
-			addr_t next_pc = pc + bytes;
-			link_direct_emit(cpu, pc, cpu_ctx->regs.cs_hidden.base + loop_eip, &next_pc, LD(dst_pc, getIntegerType(32)));
-			cpu->tc->flags |= TC_FLG_DIRECT;
-			translate_next = 0;
 		}
 		break;
 

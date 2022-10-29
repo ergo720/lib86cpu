@@ -38,6 +38,7 @@ public:
 	void cli(ZydisDecodedInstruction *instr);
 	void inc(ZydisDecodedInstruction *instr);
 	void jmp(ZydisDecodedInstruction *instr);
+	void loop(ZydisDecodedInstruction *instr);
 	void mov(ZydisDecodedInstruction *instr);
 	void out(ZydisDecodedInstruction *instr);
 	void xor_(ZydisDecodedInstruction *instr);
