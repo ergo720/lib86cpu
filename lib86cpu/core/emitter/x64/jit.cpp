@@ -107,39 +107,33 @@ enum class x64 : uint32_t {
 constexpr x64
 operator|(x64 reg, uint32_t size)
 {
-	return static_cast<x64>(static_cast<uint32_t>(reg) | size);
-}
-
-x64 consteval
-reg_and_size(x64 reg, uint32_t size)
-{
-	return reg | (size << static_cast<uint32_t>(x64::max));
+	return static_cast<x64>(static_cast<uint32_t>(reg) | (size << static_cast<uint32_t>(x64::max)));
 }
 
 static const std::unordered_map<x64, x86::Gp> reg_to_sized_reg = {
-	{ reg_and_size(x64::rax, SIZE8),   AL   },
-	{ reg_and_size(x64::rax, SIZE16),  AX   },
-	{ reg_and_size(x64::rax, SIZE32),  EAX  },
-	{ reg_and_size(x64::rcx, SIZE8),   CL   },
-	{ reg_and_size(x64::rcx, SIZE16),  CX   },
-	{ reg_and_size(x64::rcx, SIZE32),  ECX  },
-	{ reg_and_size(x64::rdx, SIZE8),   DL   },
-	{ reg_and_size(x64::rdx, SIZE16),  DX   },
-	{ reg_and_size(x64::rdx, SIZE32),  EDX  },
-	{ reg_and_size(x64::rdi, SIZE16),  DI   },
-	{ reg_and_size(x64::rdi, SIZE32),  EDI  },
-	{ reg_and_size(x64::r8,  SIZE8),   R8B  },
-	{ reg_and_size(x64::r8,  SIZE16),  R8W  },
-	{ reg_and_size(x64::r8,  SIZE32),  R8D  },
-	{ reg_and_size(x64::r9,  SIZE8),   R9B  },
-	{ reg_and_size(x64::r9,  SIZE16),  R9W  },
-	{ reg_and_size(x64::r9,  SIZE32),  R9D  },
-	{ reg_and_size(x64::r10, SIZE8),   R10B },
-	{ reg_and_size(x64::r10, SIZE16),  R10W },
-	{ reg_and_size(x64::r10, SIZE32),  R10D },
-	{ reg_and_size(x64::r11, SIZE8),   R11B },
-	{ reg_and_size(x64::r11, SIZE16),  R11W },
-	{ reg_and_size(x64::r11, SIZE32),  R11D },
+	{ x64::rax | SIZE8,   AL   },
+	{ x64::rax | SIZE16,  AX   },
+	{ x64::rax | SIZE32,  EAX  },
+	{ x64::rcx | SIZE8,   CL   },
+	{ x64::rcx | SIZE16,  CX   },
+	{ x64::rcx | SIZE32,  ECX  },
+	{ x64::rdx | SIZE8,   DL   },
+	{ x64::rdx | SIZE16,  DX   },
+	{ x64::rdx | SIZE32,  EDX  },
+	{ x64::rdi | SIZE16,  DI   },
+	{ x64::rdi | SIZE32,  EDI  },
+	{ x64::r8  | SIZE8,   R8B  },
+	{ x64::r8  | SIZE16,  R8W  },
+	{ x64::r8  | SIZE32,  R8D  },
+	{ x64::r9  | SIZE8,   R9B  },
+	{ x64::r9  | SIZE16,  R9W  },
+	{ x64::r9  | SIZE32,  R9D  },
+	{ x64::r10 | SIZE8,   R10B },
+	{ x64::r10 | SIZE16,  R10W },
+	{ x64::r10 | SIZE32,  R10D },
+	{ x64::r11 | SIZE8,   R11B },
+	{ x64::r11 | SIZE16,  R11W },
+	{ x64::r11 | SIZE32,  R11D },
 };
 
 template<size_t idx>
@@ -156,6 +150,10 @@ get_local_var_offset()
 
 #define LOCAL_VARS_off(idx) get_local_var_offset<idx>()
 #define STACK_ARGS_off get_jit_reg_args_size()
+#define RCX_HOME_off 8
+#define RDX_HOME_off 16
+#define R8_HOME_off 24
+#define R9_HOME_off 32
 
 // [reg]
 #define MEM8(reg)  x86::byte_ptr(reg)
@@ -425,6 +423,7 @@ void
 lc86_jit::gen_prologue_main()
 {
 	// Prolog of our main() function:
+	// mov [rsp + 8], rcx
 	// push rdi
 	// sub rsp, 0x20 + sizeof(stack args) + sizeof(local vars)
 	//
@@ -438,6 +437,7 @@ lc86_jit::gen_prologue_main()
 	// to avoid having to use additional add instructions. Local variables on the stack are always allocated at a fixed offset computed at compile time,
 	// and the shadow area to spill registers is available too (always allocated by the caller of the jitted function)
 
+	MOV(MEMD64(RSP, RCX_HOME_off), RCX);
 	PUSH(RDI);
 	m_prolog_patch_offset = m_a.offset();
 	m_a.long_().sub(RSP, 0);
@@ -448,19 +448,15 @@ lc86_jit::gen_prologue_main()
 void
 lc86_jit::gen_epilogue_main()
 {
-	size_t tot_stack_used = get_jit_stack_required();
-	ADD(RSP, tot_stack_used);
+	ADD(RSP, get_jit_stack_required());
 	POP(RDI);
 	RET();
-	m_a.setOffset(m_prolog_patch_offset);
-	m_a.long_().sub(RSP, tot_stack_used);
 }
 
 void
 lc86_jit::gen_tail_call(x86::Gp addr)
 {
-	size_t tot_stack_used = get_jit_stack_required();
-	ADD(RSP, tot_stack_used);
+	ADD(RSP, get_jit_stack_required());
 	POP(RDI);
 	BR_UNCOND(addr);
 }
@@ -483,6 +479,9 @@ lc86_jit::gen_tc_epilogue()
 	if (m_needs_epilogue) {
 		gen_epilogue_main();
 	}
+
+	m_a.setOffset(m_prolog_patch_offset);
+	m_a.long_().sub(RSP, get_jit_stack_required());
 }
 
 template<bool terminates, typename T1, typename T2, typename T3, typename T4>
@@ -568,7 +567,7 @@ void lc86_jit::link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_pc)
 {
 	// dst_pc: destination pc, next_pc: pc of next instr, target_addr: pc where instr jumps to at runtime
 	// If target_pc is an integral type, then we know already where the instr will jump, and so we can perform the comparisons at compile time
-	// and only emit the taken code path
+	// and only emit the taken code path. If it's in a reg, it should not be eax, edx or edi
 
 	m_needs_epilogue = false;
 
@@ -776,8 +775,9 @@ lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opnum)
 				}
 
 				if (operand->mem.scale != 0) {
+					// asmjit wants the scale expressed as indexed value scale = 1 << n, so don't use operand->mem.scale
 					LD_R32(EDI, REG_off(operand->mem.index));
-					LEA(EAX, MEMS32(EAX, EDI, operand->mem.scale));
+					LEA(EAX, MEMS32(EAX, EDI, instr->raw.sib.scale));
 				}
 
 				if (operand->mem.disp.has_displacement) {
@@ -805,9 +805,10 @@ lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opnum)
 				}
 
 				if (operand->mem.scale != 0) {
+					// asmjit wants the scale expressed as indexed value scale = 1 << n, so don't use operand->mem.scale
 					XOR(EDI, EDI);
 					LD_R16(DI, REG_off(operand->mem.index));
-					LEA(AX, MEMS16(EAX, EDI, operand->mem.scale));
+					LEA(AX, MEMS16(EAX, EDI, instr->raw.sib.scale));
 				}
 
 				if (operand->mem.disp.has_displacement) {
@@ -1201,6 +1202,7 @@ lc86_jit::load_mem(uint8_t size, uint8_t is_priv)
 	}
 
 	CALL(RAX);
+	MOV(RCX, MEMD64(RSP, get_jit_stack_required() + 8 + RCX_HOME_off));
 }
 
 template<typename T>
@@ -1233,6 +1235,7 @@ void lc86_jit::store_mem(T val, uint8_t size, uint8_t is_priv)
 	}
 
 	CALL(RAX);
+	MOV(RCX, MEMD64(RSP, get_jit_stack_required() + 8 + RCX_HOME_off));
 }
 
 void
@@ -1263,10 +1266,11 @@ lc86_jit::store_io(uint8_t size_mode)
 	}
 
 	CALL(RAX);
+	MOV(RCX, MEMD64(RSP, get_jit_stack_required() + 8 + RCX_HOME_off));
 }
 
 template<typename T>
-void lc86_jit::check_io_priv_emit(T port)
+bool lc86_jit::check_io_priv_emit(T port)
 {
 	// port is either an immediate or in EDX
 
@@ -1314,7 +1318,10 @@ void lc86_jit::check_io_priv_emit(T port)
 		m_a.bind(exp_taken);
 		RAISEin0_f(EXP_GP);
 		m_a.bind(ok);
+		return true;
 	}
+
+	return false;
 }
 
 void
@@ -1426,12 +1433,14 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 		addr_t new_eip = instr->operands[OPNUM_SINGLE].ptr.offset;
 		uint16_t new_sel = instr->operands[OPNUM_SINGLE].ptr.segment;
 		if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
+			MOV(RDI, RCX);
 			MOV(MEMD32(RSP, STACK_ARGS_off), m_cpu->instr_eip);
 			MOV(R9D, new_eip);
 			MOV(R8B, m_cpu->size_mode);
 			MOV(EDX, new_sel);
 			MOV(RAX, &ljmp_pe_helper);
 			CALL(RAX);
+			MOV(RCX, RDI);
 			CMP(AL, 0);
 			BR_NEl(exp);
 			link_indirect_emit();
@@ -1541,14 +1550,14 @@ lc86_jit::loop(ZydisDecodedInstruction *instr)
 	addr_t dst_pc = loop_eip + m_cpu->cpu_ctx.regs.cs_hidden.base;
 
 	ST_R32(CPU_CTX_EIP, loop_eip);
-	MOV(EDX, dst_pc);
+	MOV(R8D, dst_pc);
 	BR_UNCOND(end);
 	m_a.bind(next_taken);
 	ST_R32(CPU_CTX_EIP, next_eip);
-	MOV(EDX, next_pc);
+	MOV(R8D, next_pc);
 	m_a.bind(end);
 
-	link_direct_emit(dst_pc, &next_pc, EDX);
+	link_direct_emit(dst_pc, &next_pc, R8D);
 	m_cpu->tc->flags |= TC_FLG_DIRECT;
 	m_cpu->translate_next = 0;
 }
@@ -1615,11 +1624,13 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 
 			case ZYDIS_REGISTER_CR3:
 			case ZYDIS_REGISTER_CR4: {
+				MOV(RDI, RCX);
 				MOV(MEMD32(RSP, STACK_ARGS_off), m_cpu->instr_bytes);
 				MOV(R9D, m_cpu->instr_eip);
 				MOV(R8D, cr_idx - CR_offset);
 				MOV(RAX, &update_crN_helper);
 				CALL(RAX);
+				MOV(RCX, RDI);
 				CMP(AL, 0);
 				BR_EQl(ok);
 				RAISEin0_f(EXP_GP);
@@ -1855,10 +1866,12 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			});
 		if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
 			if (instr->operands[OPNUM_DST].reg.value == ZYDIS_REGISTER_SS) {
+				MOV(RDI, RCX);
 				MOV(R8D, m_cpu->instr_eip);
 				MOV(DX, AX);
 				MOV(RAX, &mov_sel_pe_helper<SS_idx>);
 				CALL(RAX);
+				MOV(RCX, RDI);
 				CMP(AL, 0);
 				BR_EQl(ok);
 				RAISEin_no_param_f();
@@ -1879,6 +1892,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				m_cpu->translate_next = 0;
 			}
 			else {
+				MOV(RDI, RCX);
 				MOV(R8D, m_cpu->instr_eip);
 				MOV(DX, AX);
 
@@ -1905,6 +1919,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				}
 
 				CALL(RAX);
+				MOV(RCX, RDI);
 				CMP(AL, 0);
 				BR_EQl(ok);
 				RAISEin_no_param_f();
@@ -2019,7 +2034,9 @@ lc86_jit::out(ZydisDecodedInstruction *instr)
 	case 0xEF: {
 		LD_R16(DX, CPU_CTX_EDX);
 		MOVZX(EDX, DX);
-		check_io_priv_emit(EDX);
+		if (check_io_priv_emit(EDX)) {
+			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
+		}
 		XOR(EAX, EAX);
 		LD_REG_val(SIZED_REG(x64::rax, m_cpu->size_mode), CPU_CTX_EAX, m_cpu->size_mode);
 		ST_IO();

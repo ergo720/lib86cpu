@@ -98,7 +98,7 @@ private:
 	void store_mem(T val, uint8_t size, uint8_t is_priv);
 	void store_io(uint8_t size_mode);
 	template<typename T>
-	void check_io_priv_emit(T port);
+	bool check_io_priv_emit(T port);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;
