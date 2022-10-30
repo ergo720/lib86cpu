@@ -37,10 +37,12 @@ public:
 
 	void cli(ZydisDecodedInstruction *instr);
 	void inc(ZydisDecodedInstruction *instr);
+	void jcc(ZydisDecodedInstruction *instr);
 	void jmp(ZydisDecodedInstruction *instr);
 	void loop(ZydisDecodedInstruction *instr);
 	void mov(ZydisDecodedInstruction *instr);
 	void out(ZydisDecodedInstruction *instr);
+	void sahf(ZydisDecodedInstruction *instr);
 	void xor_(ZydisDecodedInstruction *instr);
 
 #if defined(_WIN64)
@@ -88,7 +90,7 @@ private:
 	template<x86::Gp res_32reg, typename T1, typename T2>
 	void set_flags(T1 res, T2 aux, size_t size);
 	void ld_of(x86::Gp dst, x86::Gp aux);
-	void ld_sf(x86::Gp dst, x86::Gp res, x86::Gp aux);
+	void ld_sf(x86::Gp res_dst, x86::Gp aux);
 	void ld_pf(x86::Gp dst, x86::Gp res, x86::Gp aux);
 	void load_reg(x86::Gp dst, size_t reg_offset, size_t size);
 	template<typename T>
