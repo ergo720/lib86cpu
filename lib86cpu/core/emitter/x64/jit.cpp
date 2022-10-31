@@ -432,9 +432,9 @@ void
 lc86_jit::gen_prologue_main()
 {
 	// Prolog of our main() function:
-	// mov [rsp + 8], rcx
 	// push rdi
 	// sub rsp, 0x20 + sizeof(stack args) + sizeof(local vars)
+	// mov [rsp + sizeof(tot stack) + 8 + 8], rcx
 	//
 	// NOTE1: we don't know yet how much stack we'll need for the function, so we need to patch the correct amount later
 	// NOTE2: for sub, always use the 0x81 opcode, since the opcode 0x83 only accepts imm8, and thus can only represents sizes up to 127
@@ -446,10 +446,10 @@ lc86_jit::gen_prologue_main()
 	// to avoid having to use additional add instructions. Local variables on the stack are always allocated at a fixed offset computed at compile time,
 	// and the shadow area to spill registers is available too (always allocated by the caller of the jitted function)
 
-	MOV(MEMD64(RSP, RCX_HOME_off), RCX);
 	PUSH(RDI);
 	m_prolog_patch_offset = m_a.offset();
 	m_a.long_().sub(RSP, 0);
+	MOV(MEMD64(RSP, get_jit_stack_required() + 8 + RCX_HOME_off), RCX);
 
 	m_needs_epilogue = true;
 }
