@@ -738,7 +738,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_CMOVP:	 BAD;
 		case ZYDIS_MNEMONIC_CMOVS:	 BAD;
 		case ZYDIS_MNEMONIC_CMOVZ: BAD;
-		case ZYDIS_MNEMONIC_CMP: BAD;
+		case ZYDIS_MNEMONIC_CMP:
+			cpu->jit->cmp(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_CMPSB: BAD;
 		case ZYDIS_MNEMONIC_CMPSW: BAD;
 		case ZYDIS_MNEMONIC_CMPSD: BAD;
@@ -1650,72 +1653,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			ST_REG_val(src, GET_REG(OPNUM_DST));
 			BR_UNCOND(vec_bb[1]);
 			cpu->bb = vec_bb[1];
-		}
-		break;
-
-		case ZYDIS_MNEMONIC_CMP: {
-			Value *val, *cmp, *sub, *rm;
-			switch (instr.opcode)
-			{
-			case 0x38:
-				size_mode = SIZE8;
-				cmp = LD_REG_val(GET_REG(OPNUM_SRC));
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-				break;
-
-			case 0x39:
-				cmp = LD_REG_val(GET_REG(OPNUM_SRC));
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-				break;
-
-			case 0x3A:
-				size_mode = SIZE8;
-				val = LD_REG_val(GET_REG(OPNUM_DST));
-				GET_RM(OPNUM_SRC, cmp = LD_REG_val(rm);, cmp = LD_MEM(fn_idx[size_mode], rm););
-				break;
-
-			case 0x3B:
-				val = LD_REG_val(GET_REG(OPNUM_DST));
-				GET_RM(OPNUM_SRC, cmp = LD_REG_val(rm);, cmp = LD_MEM(fn_idx[size_mode], rm););
-				break;
-
-			case 0x3C:
-				size_mode = SIZE8;
-				val = LD_REG_val(GET_REG(OPNUM_DST));
-				cmp = GET_IMM8();
-				break;
-
-			case 0x3D:
-				val = LD_REG_val(GET_REG(OPNUM_DST));
-				cmp = GET_IMM();
-				break;
-
-			case 0x80:
-			case 0x82:
-				assert(instr.raw.modrm.reg == 7);
-				size_mode = SIZE8;
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-				cmp = GET_IMM8();
-				break;
-
-			case 0x81:
-				assert(instr.raw.modrm.reg == 7);
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-				cmp = GET_IMM();
-				break;
-
-			case 0x83:
-				assert(instr.raw.modrm.reg == 7);
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm);, val = LD_MEM(fn_idx[size_mode], rm););
-				cmp = SEXTs(size_mode == SIZE16 ? 16 : 32, GET_IMM8());
-				break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-
-			sub = SUB(val, cmp);
-			SET_FLG_SUB(sub, val, cmp);
 		}
 		break;
 

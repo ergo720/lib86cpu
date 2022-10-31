@@ -36,6 +36,7 @@ public:
 	void destroy_all_code() { m_mem.destroy_all_blocks(); }
 
 	void cli(ZydisDecodedInstruction *instr);
+	void cmp(ZydisDecodedInstruction *instr);
 	void inc(ZydisDecodedInstruction *instr);
 	void jcc(ZydisDecodedInstruction *instr);
 	void jmp(ZydisDecodedInstruction *instr);
