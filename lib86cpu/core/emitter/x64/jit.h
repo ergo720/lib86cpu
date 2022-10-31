@@ -43,6 +43,7 @@ public:
 	void mov(ZydisDecodedInstruction *instr);
 	void out(ZydisDecodedInstruction *instr);
 	void sahf(ZydisDecodedInstruction *instr);
+	void shl(ZydisDecodedInstruction *instr);
 	void xor_(ZydisDecodedInstruction *instr);
 
 #if defined(_WIN64)
@@ -87,7 +88,7 @@ private:
 	void set_flags_sum(x86::Gp a, T b, x86::Gp sum);
 	template<typename T>
 	void set_flags_sub(x86::Gp a, T b, x86::Gp sub);
-	template<x86::Gp res_32reg, typename T1, typename T2>
+	template<typename T1, typename T2>
 	void set_flags(T1 res, T2 aux, size_t size);
 	void ld_of(x86::Gp dst, x86::Gp aux);
 	void ld_sf(x86::Gp res_dst, x86::Gp aux);

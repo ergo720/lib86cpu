@@ -8,6 +8,7 @@
 #include "support.h"
 #include "instructions.h"
 #include <assert.h>
+#include <optional>
 
 #ifdef LIB86CPU_X64_EMITTER
 
@@ -94,9 +95,9 @@ static_assert(ZYDIS_REGISTER_DR7 - ZYDIS_REGISTER_DR0 == 7);
 // all x64 regs that can actually be used in the main jitted function
 enum class x64 : uint32_t {
 	rax = 0,
+	rbx,
 	rcx,
 	rdx,
-	rdi,
 	r8,
 	r9,
 	r10,
@@ -114,14 +115,15 @@ static const std::unordered_map<x64, x86::Gp> reg_to_sized_reg = {
 	{ x64::rax | SIZE8,   AL   },
 	{ x64::rax | SIZE16,  AX   },
 	{ x64::rax | SIZE32,  EAX  },
+	{ x64::rbx | SIZE8,   BL   },
+	{ x64::rbx | SIZE16,  BX   },
+	{ x64::rbx | SIZE32,  EBX  },
 	{ x64::rcx | SIZE8,   CL   },
 	{ x64::rcx | SIZE16,  CX   },
 	{ x64::rcx | SIZE32,  ECX  },
 	{ x64::rdx | SIZE8,   DL   },
 	{ x64::rdx | SIZE16,  DX   },
 	{ x64::rdx | SIZE32,  EDX  },
-	{ x64::rdi | SIZE16,  DI   },
-	{ x64::rdi | SIZE32,  EDI  },
 	{ x64::r8  | SIZE8,   R8B  },
 	{ x64::r8  | SIZE16,  R8W  },
 	{ x64::r8  | SIZE32,  R8D  },
@@ -228,9 +230,13 @@ get_local_var_offset()
 #define BR_SLT(dst, src, label) m_a.cmp(dst, src); m_a.jl(label ## _taken)
 #define BR_SLE(dst, src, label) m_a.cmp(dst, src); m_a.jle(label ## _taken)
 
+#define SETC(dst) m_a.setc(dst)
+#define SETO(dst) m_a.seto(dst)
+
 #define CMOV_EQ(dst, src) m_a.cmove(dst, src)
 #define CMOV_NE(dst, src) m_a.cmovne(dst, src)
 
+#define LD_R8(dst, reg_offset) MOV(dst, MEMD8(RCX, reg_offset))
 #define LD_R16(dst, reg_offset) MOV(dst, MEMD16(RCX, reg_offset))
 #define LD_R32(dst, reg_offset) MOV(dst, MEMD32(RCX, reg_offset))
 #define LD_REG_val(dst, reg_offset, size) load_reg(dst, reg_offset, size)
@@ -441,12 +447,12 @@ lc86_jit::gen_prologue_main()
 	// 48 83 ec 7f             sub    rsp,0x7f
 	// 48 81 ec 80 00 00 00    sub    rsp,0x80
 	//
-	// RCX always holds the cpu_ctx arg, and should never be changed. Prologue and epilog always push and pop RDI, so it's volatile too.
-	// Prefer using RAX, RDX, RDI over R8, R9, R10 and R11 to reduce the code size. Offsets from cpu_ctx can be calculated with displacements,
+	// RCX always holds the cpu_ctx arg, and should never be changed. Prologue and epilog always push and pop RBX, so it's volatile too.
+	// Prefer using RAX, RDX, RBX over R8, R9, R10 and R11 to reduce the code size. Offsets from cpu_ctx can be calculated with displacements,
 	// to avoid having to use additional add instructions. Local variables on the stack are always allocated at a fixed offset computed at compile time,
 	// and the shadow area to spill registers is available too (always allocated by the caller of the jitted function)
 
-	PUSH(RDI);
+	PUSH(RBX);
 	m_prolog_patch_offset = m_a.offset();
 	m_a.long_().sub(RSP, 0);
 	MOV(MEMD64(RSP, get_jit_stack_required() + 8 + RCX_HOME_off), RCX);
@@ -458,7 +464,7 @@ void
 lc86_jit::gen_epilogue_main()
 {
 	ADD(RSP, get_jit_stack_required());
-	POP(RDI);
+	POP(RBX);
 	RET();
 }
 
@@ -466,7 +472,7 @@ void
 lc86_jit::gen_tail_call(x86::Gp addr)
 {
 	ADD(RSP, get_jit_stack_required());
-	POP(RDI);
+	POP(RBX);
 	BR_UNCOND(addr);
 }
 
@@ -534,8 +540,8 @@ lc86_jit::check_int_emit()
 {
 	MOV(DL, MEMD8(RCX, CPU_CTX_INT));
 	MOVZX(EAX, DL);
-	MOV(RDI, &m_cpu->tc->jmp_offset[TC_JMP_INT_OFFSET]);
-	LEA(RDX, MEMS64(RDI, RAX, 3));
+	MOV(RBX, &m_cpu->tc->jmp_offset[TC_JMP_INT_OFFSET]);
+	LEA(RDX, MEMS64(RBX, RAX, 3));
 	MOV(RAX, MEM64(RDX));
 	CALL(RAX);
 }
@@ -576,7 +582,7 @@ void lc86_jit::link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_pc)
 {
 	// dst_pc: destination pc, next_pc: pc of next instr, target_addr: pc where instr jumps to at runtime
 	// If target_pc is an integral type, then we know already where the instr will jump, and so we can perform the comparisons at compile time
-	// and only emit the taken code path. If it's in a reg, it should not be eax, edx or edi
+	// and only emit the taken code path. If it's in a reg, it should not be eax, edx or ebx
 
 	m_needs_epilogue = false;
 
@@ -608,9 +614,9 @@ void lc86_jit::link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_pc)
 		if (next_pc) { // if(dst_pc) -> cond jmp dst_pc; if(next_pc) -> cond jmp next_pc
 			if (dst) {
 				MOV(RDX, &m_cpu->tc->flags);
-				MOV(EDI, MEM32(RDX));
+				MOV(EBX, MEM32(RDX));
 				MOV(EAX, ~TC_FLG_JMP_TAKEN);
-				AND(EAX, EDI);
+				AND(EAX, EBX);
 				if constexpr (std::is_integral_v<T>) {
 					if (target_pc == dst_pc) {
 						MOV(MEM32(RDX), EAX);
@@ -639,9 +645,9 @@ void lc86_jit::link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_pc)
 			}
 			else {
 				MOV(RDX, &m_cpu->tc->flags);
-				MOV(EDI, MEM32(RDX));
+				MOV(EBX, MEM32(RDX));
 				MOV(EAX, ~TC_FLG_JMP_TAKEN);
-				AND(EAX, EDI);
+				AND(EAX, EBX);
 				if constexpr (std::is_integral_v<T>) {
 					if (target_pc == *next_pc) {
 						OR(EAX, TC_JMP_NEXT_PC << 4);
@@ -681,9 +687,9 @@ void lc86_jit::link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_pc)
 
 	case 2: { // cond jmp next_pc + uncond jmp dst_pc
 		MOV(RDX, &m_cpu->tc->flags);
-		MOV(EDI, MEM32(RDX));
+		MOV(EBX, MEM32(RDX));
 		MOV(EAX, ~TC_FLG_JMP_TAKEN);
-		AND(EAX, EDI);
+		AND(EAX, EBX);
 		if constexpr (std::is_integral_v<T>) {
 			if (target_pc == *next_pc) {
 				OR(EAX, TC_JMP_NEXT_PC << 4);
@@ -785,8 +791,8 @@ lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opnum)
 
 				if (operand->mem.scale != 0) {
 					// asmjit wants the scale expressed as indexed value scale = 1 << n, so don't use operand->mem.scale
-					LD_R32(EDI, REG_off(operand->mem.index));
-					LEA(EAX, MEMS32(EAX, EDI, instr->raw.sib.scale));
+					LD_R32(EBX, REG_off(operand->mem.index));
+					LEA(EAX, MEMS32(EAX, EBX, instr->raw.sib.scale));
 				}
 
 				if (operand->mem.disp.has_displacement) {
@@ -797,9 +803,9 @@ lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opnum)
 						MOV(EDX, operand->mem.disp.value);
 					}
 
-					LD_SEG_BASE(EDI, REG_off(operand->mem.segment));
+					LD_SEG_BASE(EBX, REG_off(operand->mem.segment));
 					LEA(EDX, MEMS32(EDX, EAX, 0));
-					ADD(EDX, EDI);
+					ADD(EDX, EBX);
 					return {};
 				}
 
@@ -815,8 +821,8 @@ lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opnum)
 
 				if (operand->mem.scale != 0) {
 					// asmjit wants the scale expressed as indexed value scale = 1 << n, so don't use operand->mem.scale
-					MOVZX(EDI, MEMD16(RCX, REG_off(operand->mem.index)));
-					LEA(AX, MEMS16(EAX, EDI, instr->raw.sib.scale));
+					MOVZX(EBX, MEMD16(RCX, REG_off(operand->mem.index)));
+					LEA(AX, MEMS16(EAX, EBX, instr->raw.sib.scale));
 				}
 
 				if (operand->mem.disp.has_displacement) {
@@ -827,9 +833,9 @@ lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opnum)
 						MOV(EDX, operand->mem.disp.value);
 					}
 
-					LD_SEG_BASE(EDI, REG_off(operand->mem.segment));
+					LD_SEG_BASE(EBX, REG_off(operand->mem.segment));
 					LEA(EDX, MEMS32(EDX, EAX, 0));
-					ADD(EDX, EDI);
+					ADD(EDX, EBX);
 					return {};
 				}
 
@@ -1090,7 +1096,7 @@ void lc86_jit::set_flags_sub(x86::Gp a, T b, x86::Gp sub)
 	MOV(RCX, R10);
 }
 
-template<x86::Gp res_32reg, typename T1, typename T2>
+template<typename T1, typename T2>
 void lc86_jit::set_flags(T1 res, T2 aux, size_t size)
 {
 	if (size != SIZE32) {
@@ -1099,8 +1105,8 @@ void lc86_jit::set_flags(T1 res, T2 aux, size_t size)
 			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), res1);
 		}
 		else {
-			MOVSX(res_32reg, res);
-			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), res);
+			MOVSX(EAX, res);
+			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), EAX);
 		}
 	}
 	else {
@@ -1313,10 +1319,10 @@ bool lc86_jit::check_io_priv_emit(T port)
 		else {
 			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
 			AND(EDX, 7);
-			MOV(RDI, RCX);
+			MOV(RBX, RCX);
 			MOV(ECX, EDX);
 			SHR(EAX, CL);
-			MOV(RCX, RDI);
+			MOV(RCX, RBX);
 		}
 		AND(EAX, (1 << op_size_to_mem_size[m_cpu->size_mode]) - 1);
 		BR_NE(exp);
@@ -1386,18 +1392,18 @@ lc86_jit::inc(ZydisDecodedInstruction *instr)
 			},
 			[this](const op_info rm)
 			{
-				auto sum_host_reg = SIZED_REG(x64::rax, rm.bits);
-				MOV(EDI, EDX);
+				auto sum_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+				MOV(EBX, EDX);
 				LD_MEM();
-				MOV(MEMD(RSP, LOCAL_VARS_off(0), rm.bits), sum_host_reg);
+				MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), sum_host_reg);
 				ADD(sum_host_reg, 1);
-				MOV(MEMD(RSP, LOCAL_VARS_off(1), rm.bits), sum_host_reg);
-				MOV(EDX, EDI);
+				MOV(MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode), sum_host_reg);
+				MOV(EDX, EBX);
 				ST_MEM(sum_host_reg);
-				return rm.bits;
+				return static_cast<size_t>(m_cpu->size_mode);
 			});
 
-		LD_CF(EDI);
+		LD_CF(EBX);
 		auto sum_host_reg = SIZED_REG(x64::r8, size);
 		auto a_host_reg = SIZED_REG(x64::rax, size);
 		MOV(a_host_reg, MEMD(RSP, LOCAL_VARS_off(0), size));
@@ -1405,9 +1411,9 @@ lc86_jit::inc(ZydisDecodedInstruction *instr)
 		set_flags_sum(a_host_reg, 1, sum_host_reg);
 		MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
 		LD_OF(EDX, EAX);
-		XOR(EDX, EDI);
+		XOR(EDX, EBX);
 		SHR(EDX, 1);
-		OR(EDX, EDI);
+		OR(EDX, EBX);
 		AND(EAX, 0x3FFFFFFF);
 		OR(EDX, EAX);
 		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EDX);
@@ -1437,9 +1443,9 @@ lc86_jit::jcc(ZydisDecodedInstruction *instr)
 		MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
 		LD_OF(EAX, EDX);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
+		MOV(EBX, jmp_eip);
 		CMP(EAX, 0x80000000);
-		CMOV_EQ(R9D, EDI); // OF != 0
+		CMOV_EQ(R9D, EBX); // OF != 0
 		break;
 
 	case 0x71:
@@ -1447,83 +1453,83 @@ lc86_jit::jcc(ZydisDecodedInstruction *instr)
 		MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
 		LD_OF(EAX, EDX);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
+		MOV(EBX, jmp_eip);
 		CMP(EAX, 0);
-		CMOV_EQ(R9D, EDI); // OF == 0
+		CMOV_EQ(R9D, EBX); // OF == 0
 		break;
 
 	case 0x72:
 	case 0x82:
 		LD_CF(EAX);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
+		MOV(EBX, jmp_eip);
 		CMP(EAX, 0x80000000);
-		CMOV_EQ(R9D, EDI); // CF != 0
+		CMOV_EQ(R9D, EBX); // CF != 0
 		break;
 
 	case 0x73:
 	case 0x83:
 		LD_CF(EAX);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
+		MOV(EBX, jmp_eip);
 		CMP(EAX, 0);
-		CMOV_EQ(R9D, EDI); // CF == 0
+		CMOV_EQ(R9D, EBX); // CF == 0
 		break;
 
 	case 0x74:
 	case 0x84:
 		LD_ZF(EAX);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
+		MOV(EBX, jmp_eip);
 		CMP(EAX, 0);
-		CMOV_EQ(R9D, EDI); // ZF != 0
+		CMOV_EQ(R9D, EBX); // ZF != 0
 		break;
 
 	case 0x75:
 	case 0x85:
 		LD_ZF(EAX);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
+		MOV(EBX, jmp_eip);
 		CMP(EAX, 0);
-		CMOV_NE(R9D, EDI); // ZF == 0
+		CMOV_NE(R9D, EBX); // ZF == 0
 		break;
 
 	case 0x76:
 	case 0x86:
 		LD_CF(EAX);
 		MOV(EDX, 0);
-		MOV(EDI, 1);
+		MOV(EBX, 1);
 		CMP(EAX, 0x80000000);
-		CMOV_EQ(EDX, EDI);
+		CMOV_EQ(EDX, EBX);
 		MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
 		LD_ZF(EAX);
 		MOV(R8D, 0);
 		CMP(EAX, 0);
-		CMOV_EQ(R8D, EDI);
+		CMOV_EQ(R8D, EBX);
 		OR(EDX, R8D);
 		CMP(EDX, 1);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
-		CMOV_EQ(R9D, EDI); // CF != 0 OR ZF != 0
+		MOV(EBX, jmp_eip);
+		CMOV_EQ(R9D, EBX); // CF != 0 OR ZF != 0
 		break;
 
 	case 0x77:
 	case 0x87:
 		LD_CF(EAX);
 		MOV(EDX, 0);
-		MOV(EDI, 1);
+		MOV(EBX, 1);
 		CMP(EAX, 0);
-		CMOV_EQ(EDX, EDI);
+		CMOV_EQ(EDX, EBX);
 		MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
 		LD_ZF(EAX);
 		MOV(R8D, 0);
 		CMP(EAX, 0);
-		CMOV_NE(R8D, EDI);
+		CMOV_NE(R8D, EBX);
 		AND(EDX, R8D);
 		CMP(EDX, 1);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
-		CMOV_EQ(R9D, EDI); // CF == 0 AND ZF == 0
+		MOV(EBX, jmp_eip);
+		CMOV_EQ(R9D, EBX); // CF == 0 AND ZF == 0
 		break;
 
 	case 0x78:
@@ -1532,9 +1538,9 @@ lc86_jit::jcc(ZydisDecodedInstruction *instr)
 		MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
 		LD_SF(EAX, EDX);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
+		MOV(EBX, jmp_eip);
 		CMP(EAX, 1);
-		CMOV_EQ(R9D, EDI); // SF != 0
+		CMOV_EQ(R9D, EBX); // SF != 0
 		break;
 
 	case 0x79:
@@ -1543,105 +1549,105 @@ lc86_jit::jcc(ZydisDecodedInstruction *instr)
 		MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
 		LD_SF(EAX, EDX);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
+		MOV(EBX, jmp_eip);
 		CMP(EAX, 0);
-		CMOV_EQ(R9D, EDI); // SF == 0
+		CMOV_EQ(R9D, EBX); // SF == 0
 		break;
 
 	case 0x7A:
 	case 0x8A:
 		MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_RES));
-		MOV(EDI, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
-		LD_PF(EAX, EDX, EDI);
+		MOV(EBX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
+		LD_PF(EAX, EDX, EBX);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
+		MOV(EBX, jmp_eip);
 		CMP(EAX, 0);
-		CMOV_EQ(R9D, EDI); // PF != 0
+		CMOV_EQ(R9D, EBX); // PF != 0
 		break;
 
 	case 0x7B:
 	case 0x8B:
 		MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_RES));
-		MOV(EDI, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
-		LD_PF(EAX, EDX, EDI);
+		MOV(EBX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
+		LD_PF(EAX, EDX, EBX);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
+		MOV(EBX, jmp_eip);
 		CMP(EAX, 1);
-		CMOV_EQ(R9D, EDI); // PF == 0
+		CMOV_EQ(R9D, EBX); // PF == 0
 		break;
 
 	case 0x7C:
 	case 0x8C:
 		MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
 		LD_OF(EAX, EDX);
-		MOV(EDI, MEMD32(RCX, CPU_CTX_EFLAGS_RES));
-		LD_SF(EDI, EDX);
+		MOV(EBX, MEMD32(RCX, CPU_CTX_EFLAGS_RES));
+		LD_SF(EBX, EDX);
 		SHR(EAX, 0x1F);
-		XOR(EAX, EDI);
+		XOR(EAX, EBX);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
+		MOV(EBX, jmp_eip);
 		CMP(EAX, 1);
-		CMOV_EQ(R9D, EDI); // SF != OF
+		CMOV_EQ(R9D, EBX); // SF != OF
 		break;
 
 	case 0x7D:
 	case 0x8D:
 		MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
 		LD_OF(EAX, EDX);
-		MOV(EDI, MEMD32(RCX, CPU_CTX_EFLAGS_RES));
-		LD_SF(EDI, EDX);
+		MOV(EBX, MEMD32(RCX, CPU_CTX_EFLAGS_RES));
+		LD_SF(EBX, EDX);
 		SHR(EAX, 0x1F);
-		XOR(EAX, EDI);
+		XOR(EAX, EBX);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
+		MOV(EBX, jmp_eip);
 		CMP(EAX, 0);
-		CMOV_EQ(R9D, EDI); // SF == OF
+		CMOV_EQ(R9D, EBX); // SF == OF
 		break;
 
 	case 0x7E:
 	case 0x8E:
 		LD_ZF(EAX);
 		MOV(R8D, 0);
-		MOV(EDI, 1);
+		MOV(EBX, 1);
 		CMP(EAX, 0);
-		CMOV_EQ(R8D, EDI);
+		CMOV_EQ(R8D, EBX);
 		MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
-		LD_OF(EDI, EDX);
+		LD_OF(EBX, EDX);
 		LD_SF(EAX, EDX);
-		SHR(EDI, 0x1F);
-		XOR(EAX, EDI);
+		SHR(EBX, 0x1F);
+		XOR(EAX, EBX);
 		MOV(R9D, 0);
-		MOV(EDI, 1);
+		MOV(EBX, 1);
 		CMP(EAX, 1);
-		CMOV_EQ(R9D, EDI);
+		CMOV_EQ(R9D, EBX);
 		OR(R8D, R9D);
 		CMP(R8D, 1);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
-		CMOV_EQ(R9D, EDI); // ZF != 0 OR SF != OF
+		MOV(EBX, jmp_eip);
+		CMOV_EQ(R9D, EBX); // ZF != 0 OR SF != OF
 		break;
 
 	case 0x7F:
 	case 0x8F:
 		LD_ZF(EAX);
 		MOV(R8D, 0);
-		MOV(EDI, 1);
+		MOV(EBX, 1);
 		CMP(EAX, 0);
-		CMOV_NE(R8D, EDI);
+		CMOV_NE(R8D, EBX);
 		MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
-		LD_OF(EDI, EDX);
+		LD_OF(EBX, EDX);
 		LD_SF(EAX, EDX);
-		SHR(EDI, 0x1F);
-		XOR(EAX, EDI);
+		SHR(EBX, 0x1F);
+		XOR(EAX, EBX);
 		MOV(R9D, 0);
-		MOV(EDI, 1);
+		MOV(EBX, 1);
 		CMP(EAX, 0);
-		CMOV_EQ(R9D, EDI);
+		CMOV_EQ(R9D, EBX);
 		AND(R8D, R9D);
 		CMP(R8D, 1);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
-		CMOV_EQ(R9D, EDI); // ZF == 0 AND SF == OF
+		MOV(EBX, jmp_eip);
+		CMOV_EQ(R9D, EBX); // ZF == 0 AND SF == OF
 		break;
 
 	case 0xE3:
@@ -1653,8 +1659,8 @@ lc86_jit::jcc(ZydisDecodedInstruction *instr)
 		}
 		CMP(EAX, 0);
 		MOV(R9D, next_eip);
-		MOV(EDI, jmp_eip);
-		CMOV_EQ(R9D, EDI); // ECX == 0
+		MOV(EBX, jmp_eip);
+		CMOV_EQ(R9D, EBX); // ECX == 0
 		break;
 
 	default:
@@ -1690,14 +1696,14 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 		addr_t new_eip = instr->operands[OPNUM_SINGLE].ptr.offset;
 		uint16_t new_sel = instr->operands[OPNUM_SINGLE].ptr.segment;
 		if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
-			MOV(RDI, RCX);
+			MOV(RBX, RCX);
 			MOV(MEMD32(RSP, STACK_ARGS_off), m_cpu->instr_eip);
 			MOV(R9D, new_eip);
 			MOV(R8B, m_cpu->size_mode);
 			MOV(EDX, new_sel);
 			MOV(RAX, &ljmp_pe_helper);
 			CALL(RAX);
-			MOV(RCX, RDI);
+			MOV(RCX, RBX);
 			CMP(AL, 0);
 			BR_NEl(exp);
 			link_indirect_emit();
@@ -1756,16 +1762,16 @@ lc86_jit::loop(ZydisDecodedInstruction *instr)
 	switch (m_cpu->addr_mode)
 	{
 	case ADDR16:
-		LD_R16(DI, CPU_CTX_ECX);
-		SUB(DI, 1);
-		ST_R16(CPU_CTX_ECX, DI);
-		MOVZX(EDI, DI);
+		LD_R16(BX, CPU_CTX_ECX);
+		SUB(BX, 1);
+		ST_R16(CPU_CTX_ECX, BX);
+		MOVZX(EBX, BX);
 		break;
 
 	case ADDR32:
-		LD_R32(EDI, CPU_CTX_ECX);
-		SUB(EDI, 1);
-		ST_R32(CPU_CTX_ECX, EDI);
+		LD_R32(EBX, CPU_CTX_ECX);
+		SUB(EBX, 1);
+		ST_R32(CPU_CTX_ECX, EBX);
 		break;
 
 	default:
@@ -1774,7 +1780,7 @@ lc86_jit::loop(ZydisDecodedInstruction *instr)
 
 	Label next_taken = m_a.newLabel();
 	Label end = m_a.newLabel();
-	TEST(EDI, EDI);
+	TEST(EBX, EBX);
 	BR_EQ(next);
 
 	switch (instr->opcode)
@@ -1881,13 +1887,13 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 
 			case ZYDIS_REGISTER_CR3:
 			case ZYDIS_REGISTER_CR4: {
-				MOV(RDI, RCX);
+				MOV(RBX, RCX);
 				MOV(MEMD32(RSP, STACK_ARGS_off), m_cpu->instr_bytes);
 				MOV(R9D, m_cpu->instr_eip);
 				MOV(R8D, cr_idx - CR_offset);
 				MOV(RAX, &update_crN_helper);
 				CALL(RAX);
-				MOV(RCX, RDI);
+				MOV(RCX, RBX);
 				CMP(AL, 0);
 				BR_EQl(ok);
 				RAISEin0_f(EXP_GP);
@@ -1940,36 +1946,36 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				OR(EAX, EDX);
 				CMP(EAX, DR7_TYPE_IO_RW | CR4_DE_MASK); // check if it is a mem or io watchpoint
 				BR_EQl(io);
-				LEA(RDI, MEMD64(RCX, CPU_CTX_TLB));
+				LEA(RBX, MEMD64(RCX, CPU_CTX_TLB));
 				LD_R32(EAX, dr_offset);
 				SHR(EAX, PAGE_SHIFT);
-				MOV(EDX, MEMS32(RDI, RAX, 2));
+				MOV(EDX, MEMS32(RBX, RAX, 2));
 				AND(EDX, (TLB_CODE | TLB_GLOBAL | TLB_DIRTY | TLB_WATCH));
-				MOV(MEMS32(RDI, RAX, 2), EDX); // flush old tlb entry
+				MOV(MEMS32(RBX, RAX, 2), EDX); // flush old tlb entry
 				SHR(R9D, (dr_idx - DR_offset) * 2);
 				AND(R9D, 3);
 				BR_EQl(disabled); // check if new watchpoint is enabled
 				MOV(EAX, R8D);
 				SHR(EAX, PAGE_SHIFT);
-				MOV(EDX, MEMS32(RDI, RAX, 2));
+				MOV(EDX, MEMS32(RBX, RAX, 2));
 				OR(EDX, TLB_WATCH);
-				MOV(MEMS32(RDI, RAX, 2), EDX); // set new enabled watchpoint
+				MOV(MEMS32(RBX, RAX, 2), EDX); // set new enabled watchpoint
 				BR_UNCOND(disabled_taken);
 				m_a.bind(io_taken);
-				LEA(RDI, MEMD64(RCX, CPU_CTX_IOTLB));
+				LEA(RBX, MEMD64(RCX, CPU_CTX_IOTLB));
 				LD_R32(EAX, dr_offset);
 				SHR(EAX, IO_SHIFT);
-				MOV(DX, MEMS16(RDI, RAX, 1));
+				MOV(DX, MEMS16(RBX, RAX, 1));
 				AND(DX, IOTLB_WATCH);
-				MOV(MEMS16(RDI, RAX, 1), DX); // flush old iotlb entry
+				MOV(MEMS16(RBX, RAX, 1), DX); // flush old iotlb entry
 				SHR(R9D, (dr_idx - DR_offset) * 2);
 				AND(R9D, 3);
 				m_a.je(disabled_taken); // check if new io watchpoint is enabled
 				MOV(EAX, R8D);
 				SHR(EAX, IO_SHIFT);
-				MOV(DX, MEMS16(RDI, RAX, 1));
+				MOV(DX, MEMS16(RBX, RAX, 1));
 				OR(DX, IOTLB_WATCH);
-				MOV(MEMS16(RDI, RAX, 1), DX); // set new enabled io watchpoint
+				MOV(MEMS16(RBX, RAX, 1), DX); // set new enabled io watchpoint
 				m_a.bind(disabled_taken);
 			}
 			break;
@@ -2010,24 +2016,24 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 					OR(EAX, R9D);
 					CMP(EAX, DR7_TYPE_IO_RW | CR4_DE_MASK); // check if it is a mem or io watchpoint
 					BR_EQl(io);
-					LEA(RDI, MEMD64(RCX, CPU_CTX_TLB));
+					LEA(RBX, MEMD64(RCX, CPU_CTX_TLB));
 					MOV(EDX, R8D);
 					SHR(EDX, idx * 2);
 					AND(EDX, 3);
 					BR_EQl(disabled); // check if watchpoint is enabled
 					LD_R32(EAX, REG_off(static_cast<ZydisRegister>(ZYDIS_REGISTER_DR0 + idx)));
 					SHR(EAX, PAGE_SHIFT);
-					MOV(EDX, MEMS32(RDI, RAX, 2));
+					MOV(EDX, MEMS32(RBX, RAX, 2));
 					OR(EDX, TLB_WATCH);
-					MOV(MEMS32(RDI, RAX, 2), EDX); // set enabled watchpoint
+					MOV(MEMS32(RBX, RAX, 2), EDX); // set enabled watchpoint
 					Label exit = m_a.newLabel();
 					BR_UNCOND(exit);
 					m_a.bind(disabled_taken);
 					LD_R32(EAX, REG_off(static_cast<ZydisRegister>(ZYDIS_REGISTER_DR0 + idx)));
 					SHR(EAX, PAGE_SHIFT);
-					MOV(EDX, MEMS32(RDI, RAX, 2));
+					MOV(EDX, MEMS32(RBX, RAX, 2));
 					AND(EDX, ~TLB_WATCH);
-					MOV(MEMS32(RDI, RAX, 2), EDX); // remove disabled watchpoint
+					MOV(MEMS32(RBX, RAX, 2), EDX); // remove disabled watchpoint
 					BR_UNCOND(exit);
 					m_a.bind(io_taken);
 					// we don't support io watchpoints yet so for now we just abort
@@ -2091,7 +2097,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			[this, dst](const op_info rm)
 			{
 				LD_MEM();
-				ST_REG_val(SIZED_REG(x64::rax, rm.bits), dst.val, dst.bits);
+				ST_REG_val(SIZED_REG(x64::rax, m_cpu->size_mode), dst.val, dst.bits);
 			});
 	}
 	break;
@@ -2123,12 +2129,12 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			});
 		if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
 			if (instr->operands[OPNUM_DST].reg.value == ZYDIS_REGISTER_SS) {
-				MOV(RDI, RCX);
+				MOV(RBX, RCX);
 				MOV(R8D, m_cpu->instr_eip);
 				MOV(DX, AX);
 				MOV(RAX, &mov_sel_pe_helper<SS_idx>);
 				CALL(RAX);
-				MOV(RCX, RDI);
+				MOV(RCX, RBX);
 				CMP(AL, 0);
 				BR_EQl(ok);
 				RAISEin_no_param_f();
@@ -2149,7 +2155,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				m_cpu->translate_next = 0;
 			}
 			else {
-				MOV(RDI, RCX);
+				MOV(RBX, RCX);
 				MOV(R8D, m_cpu->instr_eip);
 				MOV(DX, AX);
 
@@ -2176,7 +2182,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				}
 
 				CALL(RAX);
-				MOV(RCX, RDI);
+				MOV(RCX, RBX);
 				CMP(AL, 0);
 				BR_EQl(ok);
 				RAISEin_no_param_f();
@@ -2309,9 +2315,9 @@ lc86_jit::sahf(ZydisDecodedInstruction *instr)
 {
 	MOVZX(R8D, MEMD8(RCX, CPU_CTX_EAX + 1));
 	MOV(EDX, R8D);
-	MOV(EDI, R8D);
+	MOV(EBX, R8D);
 	AND(EDX, 1);
-	AND(EDI, 0x10);
+	AND(EBX, 0x10);
 	SHL(EDX, 0x1E);
 	LEA(EAX, MEMSb32(R8, 2, 0));
 	NOT(EAX);
@@ -2323,17 +2329,144 @@ lc86_jit::sahf(ZydisDecodedInstruction *instr)
 	XOR(EDX, EAX);
 	MOV(EAX, R8D);
 	SHR(EAX, 6);
-	OR(EDI, EAX);
+	OR(EBX, EAX);
 	MOV(EAX, R8D);
 	SHL(EAX, 6);
 	NOT(EAX);
-	SHR(EDI, 1);
-	OR(EDX, EDI);
+	SHR(EBX, 1);
+	OR(EDX, EBX);
 	SHL(R8D, 0x1F);
 	AND(EAX, 0x100);
 	OR(EDX, EAX);
 	OR(EDX, R8D);
 	MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EDX);
+}
+
+void
+lc86_jit::shl(ZydisDecodedInstruction *instr)
+{
+	assert(instr->raw.modrm.reg == 4);
+
+	std::optional<uint64_t> imm_count;
+	switch (instr->opcode)
+	{
+	case 0xD2:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0xD3:
+		LD_R8(R11B, CPU_CTX_ECX);
+		break;
+
+	case 0xD0:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0xD1:
+		imm_count = 1;
+		break;
+
+	case 0xC0:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0xC1:
+		imm_count = instr->operands[OPNUM_SRC].imm.value.u;
+		break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+
+	if (imm_count) {
+		if (*imm_count > 0) {
+			get_rm<OPNUM_DST>(instr,
+				[this, &imm_count](const op_info rm)
+				{
+					auto dst_host_reg = SIZED_REG(x64::rax, rm.bits);
+					LD_REG_val(dst_host_reg, rm.val, rm.bits);
+					SHL(dst_host_reg, *imm_count);
+					SETC(BL);
+					SETO(DL);
+					MOVZX(EBX, BL);
+					MOVZX(EDX, DL);
+					ADD(EBX, EBX);
+					OR(EBX, EDX);
+					SHL(EBX, 0x1E);
+					ST_REG_val(dst_host_reg, rm.val, rm.bits);
+					set_flags(dst_host_reg, EBX, rm.bits);
+				},
+				[this, &imm_count](const op_info rm)
+				{
+					auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+					MOV(EBX, EDX);
+					LD_MEM();
+					SHL(dst_host_reg, *imm_count);
+					MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), dst_host_reg);
+					auto dst2_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
+					MOV(dst2_host_reg, dst_host_reg);
+					MOV(EDX, EBX);
+					SETC(BL);
+					SETO(AL);
+					MOVZX(EBX, BL);
+					MOVZX(EAX, AL);
+					ADD(EBX, EBX);
+					OR(EBX, EAX);
+					SHL(EBX, 0x1E);
+					ST_MEM(dst2_host_reg);
+					MOV(dst_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
+					set_flags(dst_host_reg, EBX, m_cpu->size_mode);
+				});
+		}
+	}
+	else {
+		CMP(R11B, 0);
+		BR_EQl(nop);
+		get_rm<OPNUM_DST>(instr,
+			[this](const op_info rm)
+			{
+				auto dst_host_reg = SIZED_REG(x64::rax, rm.bits);
+				LD_REG_val(dst_host_reg, rm.val, rm.bits);
+				MOV(R8, RCX);
+				MOV(CL, R11B);
+				SHL(dst_host_reg, CL);
+				MOV(RCX, R8);
+				SETC(BL);
+				SETO(DL);
+				MOVZX(EBX, BL);
+				MOVZX(EDX, DL);
+				ADD(EBX, EBX);
+				OR(EBX, EDX);
+				SHL(EBX, 0x1E);
+				ST_REG_val(dst_host_reg, rm.val, rm.bits);
+				set_flags(dst_host_reg, EBX, rm.bits);
+			},
+			[this](const op_info rm)
+			{
+				auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+				MOV(EBX, EDX);
+				LD_MEM();
+				MOV(R8, RCX);
+				MOV(CL, R11B);
+				SHL(dst_host_reg, CL);
+				MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), dst_host_reg);
+				auto dst2_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
+				MOV(dst2_host_reg, dst_host_reg);
+				MOV(EDX, EBX);
+				MOV(RCX, R8);
+				SETC(BL);
+				SETO(AL);
+				MOVZX(EBX, BL);
+				MOVZX(EAX, AL);
+				ADD(EBX, EBX);
+				OR(EBX, EAX);
+				SHL(EBX, 0x1E);
+				ST_MEM(dst2_host_reg);
+				MOV(dst_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
+				set_flags(dst_host_reg, EBX, m_cpu->size_mode);
+			});
+		m_a.bind(nop_taken);
+	}
 }
 
 void
@@ -2360,13 +2493,17 @@ lc86_jit::xor_(ZydisDecodedInstruction *instr)
 			},
 			[this, src_host_reg, instr](const op_info rm)
 			{
-				auto dst_host_reg = SIZED_REG(x64::rax, rm.bits);
-				LD_MEMs(rm.bits);
+				auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+				MOV(EBX, EDX);
+				LD_MEM();
 				XOR(dst_host_reg, src_host_reg);
-				ST_REG_val(dst_host_reg, rm.val, rm.bits);
-				return dst_host_reg;
+				MOV(EDX, EBX);
+				auto dst2_host_reg = SIZED_REG(x64::rbx, m_cpu->size_mode);
+				MOV(dst2_host_reg, dst_host_reg);
+				ST_MEM(dst_host_reg);
+				return dst2_host_reg;
 			});
-		set_flags<EAX>(dst_host_reg, 0, m_cpu->size_mode);
+		set_flags(dst_host_reg, 0, m_cpu->size_mode);
 	}
 	break;
 
@@ -2388,12 +2525,12 @@ lc86_jit::xor_(ZydisDecodedInstruction *instr)
 			},
 			[this, dst_host_reg, dst, instr](const op_info rm)
 			{
-				auto src_host_reg = SIZED_REG(x64::rax, rm.bits);
-				LD_MEMs(rm.bits);
+				auto src_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+				LD_MEM();
 				XOR(dst_host_reg, src_host_reg);
 				ST_REG_val(dst_host_reg, dst.val, dst.bits);
 			});
-		set_flags<EDX>(dst_host_reg, 0, m_cpu->size_mode);
+		set_flags(dst_host_reg, 0, m_cpu->size_mode);
 	}
 	break;
 
@@ -2407,7 +2544,7 @@ lc86_jit::xor_(ZydisDecodedInstruction *instr)
 		LD_REG_val(dst_host_reg, dst.val, dst.bits);
 		XOR(dst_host_reg, GET_IMM());
 		ST_REG_val(dst_host_reg, dst.val, dst.bits);
-		set_flags<EAX>(dst_host_reg, 0, m_cpu->size_mode);
+		set_flags(dst_host_reg, 0, m_cpu->size_mode);
 	}
 	break;
 
@@ -2428,13 +2565,17 @@ lc86_jit::xor_(ZydisDecodedInstruction *instr)
 			},
 			[this, src, instr](const op_info rm)
 			{
-				auto dst_host_reg = SIZED_REG(x64::rax, rm.bits);
-				LD_MEMs(rm.bits);
+				auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+				MOV(EBX, EDX);
+				LD_MEM();
 				XOR(dst_host_reg, src);
-				ST_REG_val(dst_host_reg, rm.val, rm.bits);
-				return dst_host_reg;
+				MOV(EDX, EBX);
+				auto dst2_host_reg = SIZED_REG(x64::rbx, m_cpu->size_mode);
+				MOV(dst2_host_reg, dst_host_reg);
+				ST_MEM(dst_host_reg);
+				return dst2_host_reg;
 			});
-		set_flags<EAX>(dst_host_reg, 0, m_cpu->size_mode);
+		set_flags(dst_host_reg, 0, m_cpu->size_mode);
 	}
 	break;
 
@@ -2451,13 +2592,17 @@ lc86_jit::xor_(ZydisDecodedInstruction *instr)
 			},
 			[this, src, instr](const op_info rm)
 			{
-				auto dst_host_reg = SIZED_REG(x64::rax, rm.bits);
-				LD_MEMs(rm.bits);
+				auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+				MOV(EBX, EDX);
+				LD_MEM();
 				XOR(dst_host_reg, src);
-				ST_REG_val(dst_host_reg, rm.val, rm.bits);
-				return dst_host_reg;
+				MOV(EDX, EBX);
+				auto dst2_host_reg = SIZED_REG(x64::rbx, m_cpu->size_mode);
+				MOV(dst2_host_reg, dst_host_reg);
+				ST_MEM(dst_host_reg);
+				return dst2_host_reg;
 			});
-		set_flags<EAX>(dst_host_reg, 0, m_cpu->size_mode);
+		set_flags(dst_host_reg, 0, m_cpu->size_mode);
 	}
 	break;
 
