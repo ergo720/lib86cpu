@@ -28,7 +28,7 @@ struct op_info {
 class lc86_jit : public Target {
 public:
 	lc86_jit(cpu_t *cpu);
-	void gen_code_block(translated_code_t *tc);
+	void gen_code_block();
 	void gen_tc_prologue() { start_new_session(); gen_prologue_main(); }
 	void gen_tc_epilogue();
 	void raise_exp_inline_emit(uint32_t fault_addr, uint16_t code, uint16_t idx, uint32_t eip);
@@ -37,14 +37,18 @@ public:
 
 	void cli(ZydisDecodedInstruction *instr);
 	void cmp(ZydisDecodedInstruction *instr);
+	void div(ZydisDecodedInstruction *instr);
+	void imul(ZydisDecodedInstruction *instr);
 	void inc(ZydisDecodedInstruction *instr);
 	void jcc(ZydisDecodedInstruction *instr);
 	void jmp(ZydisDecodedInstruction *instr);
 	void loop(ZydisDecodedInstruction *instr);
 	void mov(ZydisDecodedInstruction *instr);
+	void mul(ZydisDecodedInstruction *instr);
 	void out(ZydisDecodedInstruction *instr);
 	void sahf(ZydisDecodedInstruction *instr);
 	void shl(ZydisDecodedInstruction *instr);
+	void test(ZydisDecodedInstruction *instr);
 	void xor_(ZydisDecodedInstruction *instr);
 
 #if defined(_WIN64)
@@ -90,7 +94,7 @@ private:
 	template<typename T>
 	void set_flags_sub(x86::Gp a, T b, x86::Gp sub);
 	template<typename T1, typename T2>
-	void set_flags(T1 res, T2 aux, size_t size);
+	void set_flags(T1 res, T2 aux, size_t res_size);
 	void ld_of(x86::Gp dst, x86::Gp aux);
 	void ld_sf(x86::Gp res_dst, x86::Gp aux);
 	void ld_pf(x86::Gp dst, x86::Gp res, x86::Gp aux);
