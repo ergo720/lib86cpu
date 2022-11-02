@@ -194,59 +194,6 @@ mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const 
 	CALL(cpu->ptr_mem_stfn[idx]->getFunctionType(), cpu->ptr_mem_stfn[idx], cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv));
 }
 
-void
-stack_push_emit(cpu_t *cpu, const std::vector<Value *> &vec, uint32_t size_mode)
-{
-	assert(size_mode != SIZE8);
-	assert(vec.size() != 0);
-
-	switch ((size_mode << 1) | ((cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
-	{
-	case 0: { // sp, push 32
-		Value *sp = LD_R16(ESP_idx);
-		for (auto &val : vec) {
-			sp = SUB(sp, CONST16(4));
-			ST_MEM(MEM_ST32_idx, ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), val);
-		}
-		ST_REG_idx(sp, ESP_idx);
-	}
-	break;
-
-	case 1: { // esp, push 32
-		Value *esp = LD_R32(ESP_idx);
-		for (auto &val : vec) {
-			esp = SUB(esp, CONST32(4));
-			ST_MEM(MEM_ST32_idx, ADD(esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), val);
-		}
-		ST_REG_idx(esp, ESP_idx);
-	}
-	break;
-
-	case 2: { // sp, push 16
-		Value *sp = LD_R16(ESP_idx);
-		for (auto &val : vec) {
-			sp = SUB(sp, CONST16(2));
-			ST_MEM(MEM_ST16_idx, ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), val);
-		}
-		ST_REG_idx(sp, ESP_idx);
-	}
-	break;
-
-	case 3: { // esp, push 16
-		Value *esp = LD_R32(ESP_idx);
-		for (auto &val : vec) {
-			esp = SUB(esp, CONST32(2));
-			ST_MEM(MEM_ST16_idx, ADD(esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)), val);
-		}
-		ST_REG_idx(esp, ESP_idx);
-	}
-	break;
-
-	default:
-		LIB86CPU_ABORT();
-	}
-}
-
 std::vector<Value *>
 stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at)
 {
@@ -314,38 +261,6 @@ update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag, bool is_write)
 	}
 	ST_REG_idx(tag, TAG_idx);
 	ST_REG_idx(AND(LD_R16(ST_idx), CONST16(~ST_TOP_MASK)), ST_idx);
-}
-
-int
-get_seg_prfx_idx(ZydisDecodedInstruction *instr)
-{
-	// This is to be used for instructions that have hidden operands, for which zydis does not guarantee
-	// their position in the operand array
-
-	if (!(instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT)) {
-		return DS_idx;
-	}
-	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_CS) {
-		return CS_idx;
-	}
-	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_SS) {
-		return SS_idx;
-	}
-	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_DS) {
-		return DS_idx;
-	}
-	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_ES) {
-		return ES_idx;
-	}
-	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_FS) {
-		return FS_idx;
-	}
-	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_GS) {
-		return GS_idx;
-	}
-	else {
-		LIB86CPU_ABORT();
-	}
 }
 
 void

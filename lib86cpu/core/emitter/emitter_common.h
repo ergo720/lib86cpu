@@ -104,6 +104,7 @@
 
 entry_t link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc);
 size_t get_reg_offset(ZydisRegister reg);
+size_t get_seg_prfx_offset(ZydisDecodedInstruction *instr);;
 int get_reg_idx(ZydisRegister reg);
 const std::pair<int, size_t> get_reg_pair(ZydisRegister reg);
 size_t get_jit_stack_required();

@@ -10,9 +10,9 @@
 #include "Zydis/Zydis.h"
 #include <stdint.h>
 
-#define SIZE32 0
+#define SIZE32 2
 #define SIZE16 1
-#define SIZE8  2
+#define SIZE8  0
 #define ADDR32 0
 #define ADDR16 1
 

@@ -12,7 +12,6 @@ Value *gep_seg_emit(cpu_t *cpu, const int gep_index);
 Value *gep_seg_hidden_emit(cpu_t *cpu, const int seg_index, const int gep_index);
 Value *gep_f80_emit(cpu_t *cpu, const int gep_index, const int f80_index);
 Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
-int get_seg_prfx_idx(ZydisDecodedInstruction *instr);
 Value *mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_priv);
 void mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const unsigned is_priv);
 void stack_push_emit(cpu_t *cpu, const std::vector<Value *> &vec, uint32_t size_mode);
@@ -21,8 +20,6 @@ void link_ret_emit(cpu_t *cpu);
 Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
 Value *floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits);
 void raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
-void set_flags_sum(cpu_t *cpu, Value *sum, Value *a, Value *b, uint8_t size_mode);
-void set_flags_sub(cpu_t *cpu, Value *sub, Value *a, Value *b, uint8_t size_mode);
 void update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag, bool is_write);
 void write_eflags(cpu_t *cpu, Value *eflags, Value *mask);
 void hook_emit(cpu_t *cpu, hook *obj);
@@ -199,70 +196,6 @@ cpu->bb = getBB()
 #define UPDATE_FPU_AFTER_MMX(tag, idx, w) update_fpu_state_after_mmx_emit(cpu, idx, tag, w)
 #define UPDATE_FPU_AFTER_MMX_w(tag, idx) UPDATE_FPU_AFTER_MMX(tag, idx, true)
 #define UPDATE_FPU_AFTER_MMX_r(tag, idx) UPDATE_FPU_AFTER_MMX(tag, idx, false)
-
-#define REP_start() vec_bb.push_back(BasicBlock::Create(CTX(), "", cpu->bb->getParent(), 0)); \
-Value *ecx, *zero; \
-if (addr_mode == ADDR16) { \
-	ecx = LD_R16(ECX_idx); \
-	zero = CONST16(0); \
-} \
-else { \
-	ecx = LD_R32(ECX_idx); \
-	zero = CONST32(0); \
-} \
-BR_COND(vec_bb[3], vec_bb[2], ICMP_NE(ecx, zero)); \
-cpu->bb = vec_bb[3];
-
-#define REP() Value *ecx, *zero, *one; \
-if (addr_mode == ADDR16) { \
-	ecx = LD_R16(ECX_idx); \
-	zero = CONST16(0); \
-	one = CONST16(1); \
-	ecx = SUB(ecx, one); \
-	ST_REG_idx(ecx, ECX_idx); \
-} \
-else { \
-	ecx = LD_R32(ECX_idx); \
-	zero = CONST32(0); \
-	one = CONST32(1); \
-	ecx = SUB(ecx, one); \
-	ST_REG_idx(ecx, ECX_idx); \
-} \
-BR_COND(vec_bb[3], vec_bb[2], ICMP_NE(ecx, zero))
-
-#define REPNZ() Value *ecx, *zero, *one; \
-if (addr_mode == ADDR16) { \
-	ecx = LD_R16(ECX_idx); \
-	zero = CONST16(0); \
-	one = CONST16(1); \
-	ecx = SUB(ecx, one); \
-	ST_REG_idx(ecx, ECX_idx); \
-} \
-else { \
-	ecx = LD_R32(ECX_idx); \
-	zero = CONST32(0); \
-	one = CONST32(1); \
-	ecx = SUB(ecx, one); \
-	ST_REG_idx(ecx, ECX_idx); \
-} \
-BR_COND(vec_bb[3], vec_bb[2], AND(ICMP_NE(ecx, zero), ICMP_NE(LD_ZF(), CONST32(0))))
-
-#define REPZ() Value *ecx, *zero, *one; \
-if (addr_mode == ADDR16) { \
-	ecx = LD_R16(ECX_idx); \
-	zero = CONST16(0); \
-	one = CONST16(1); \
-	ecx = SUB(ecx, one); \
-	ST_REG_idx(ecx, ECX_idx); \
-} \
-else { \
-	ecx = LD_R32(ECX_idx); \
-	zero = CONST32(0); \
-	one = CONST32(1); \
-	ecx = SUB(ecx, one); \
-	ST_REG_idx(ecx, ECX_idx); \
-} \
-BR_COND(vec_bb[3], vec_bb[2], AND(ICMP_NE(ecx, zero), ICMP_EQ(LD_ZF(), CONST32(0))))
 
 // the lazy eflags idea comes from reading these two papers:
 // How Bochs Works Under the Hood (2nd edition) http://bochs.sourceforge.net/How%20the%20Bochs%20works%20under%20the%20hood%202nd%20edition.pdf

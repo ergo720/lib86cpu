@@ -35,22 +35,30 @@ public:
 	void free_code_block(void *addr) { m_mem.release_sys_mem(addr); }
 	void destroy_all_code() { m_mem.destroy_all_blocks(); }
 
-	void cli(ZydisDecodedInstruction *instr);
+	void call(ZydisDecodedInstruction *instr);
+	void clc(ZydisDecodedInstruction *instr);
 	void cld(ZydisDecodedInstruction *instr);
+	void cli(ZydisDecodedInstruction *instr);
 	void cmp(ZydisDecodedInstruction *instr);
+	void cmps(ZydisDecodedInstruction *instr);
 	void div(ZydisDecodedInstruction *instr);
 	void imul(ZydisDecodedInstruction *instr);
 	void inc(ZydisDecodedInstruction *instr);
 	void jcc(ZydisDecodedInstruction *instr);
 	void jmp(ZydisDecodedInstruction *instr);
+	void lods(ZydisDecodedInstruction *instr);
 	void loop(ZydisDecodedInstruction *instr);
 	void mov(ZydisDecodedInstruction *instr);
+	void movs(ZydisDecodedInstruction *instr);
 	void mul(ZydisDecodedInstruction *instr);
 	void out(ZydisDecodedInstruction *instr);
 	void sahf(ZydisDecodedInstruction *instr);
+	void scas(ZydisDecodedInstruction *instr);
 	void shl(ZydisDecodedInstruction *instr);
 	void stos(ZydisDecodedInstruction *instr);
+	void std(ZydisDecodedInstruction *instr);
 	void test(ZydisDecodedInstruction *instr);
+	void xchg(ZydisDecodedInstruction *instr);
 	void xor_(ZydisDecodedInstruction *instr);
 
 #if defined(_WIN64)
@@ -110,7 +118,10 @@ private:
 	template<typename T>
 	bool check_io_priv_emit(T port);
 	Label rep_start(Label end_taken);
+	template<unsigned rep_prfx>
 	void rep(Label start_taken, Label end_taken);
+	template<typename... Args>
+	void stack_push_emit(Args... pushed_args);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;

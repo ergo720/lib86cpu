@@ -29,6 +29,7 @@ constexpr auto all_callable_funcs = std::make_tuple(
 	io_write_helper<uint16_t>,
 	io_write_helper<uint8_t>,
 	ljmp_pe_helper,
+	lcall_pe_helper,
 	update_crN_helper,
 	mov_sel_pe_helper<SS_idx>,
 	mov_sel_pe_helper<DS_idx>,
@@ -195,4 +196,36 @@ get_reg_pair(ZydisRegister reg)
 	}
 
 	LIB86CPU_ABORT_msg("Unhandled register %d in %s", reg, __func__);
+}
+
+size_t
+get_seg_prfx_offset(ZydisDecodedInstruction *instr)
+{
+	// This is to be used for instructions that have hidden operands, for which zydis does not guarantee
+	// their position in the operand array
+
+	if (!(instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT)) {
+		return CPU_CTX_DS;
+	}
+	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_CS) {
+		return CPU_CTX_CS;
+	}
+	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_SS) {
+		return CPU_CTX_SS;
+	}
+	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_DS) {
+		return CPU_CTX_DS;
+	}
+	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_ES) {
+		return CPU_CTX_ES;
+	}
+	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_FS) {
+		return CPU_CTX_FS;
+	}
+	else if (instr->attributes & ZYDIS_ATTRIB_HAS_SEGMENT_GS) {
+		return CPU_CTX_GS;
+	}
+	else {
+		LIB86CPU_ABORT();
+	}
 }

@@ -1365,8 +1365,8 @@ lc86_jit::rep_start(Label end_taken)
 	return start;
 }
 
-void
-lc86_jit::rep(Label start_taken, Label end_taken)
+template<unsigned rep_prfx>
+void lc86_jit::rep(Label start_taken, Label end_taken)
 {
 	if (m_cpu->addr_mode == ADDR16) {
 		MOVZX(EAX, MEMD16(RCX, CPU_CTX_ECX));
@@ -1380,7 +1380,252 @@ lc86_jit::rep(Label start_taken, Label end_taken)
 	}
 	TEST(EAX, EAX);
 	BR_EQ(end);
+	if constexpr (rep_prfx != ZYDIS_ATTRIB_HAS_REP) {
+		LD_ZF(EAX);
+		TEST(EAX, EAX);
+		if constexpr (rep_prfx == ZYDIS_ATTRIB_HAS_REPZ) {
+			BR_NE(end);
+		}
+		else {
+			BR_EQ(end);
+		}
+	}
 	BR_UNCOND(start_taken);
+}
+
+template<typename... Args>
+void lc86_jit::stack_push_emit(Args... pushed_args)
+{
+	// edx, ebx, eax are clobbered, pushed val is either a sized imm or sized reg -> same size of pushed val
+
+	assert(m_cpu->size_mode != SIZE8);
+	static_assert(sizeof...(Args), "Cannot push zero arguments!");
+
+	LD_SEG_BASE(EAX, CPU_CTX_SS);
+	switch ((m_cpu->size_mode << 1) | ((m_cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
+	{
+	case 0: { // sp, push 32
+		MOVZX(EBX, MEMD16(RCX, CPU_CTX_ESP));
+		ADD(EBX, EAX);
+		([this, &pushed_args] {
+			SUB(EBX, 4);
+			MOV(EDX, EBX);
+			ST_MEM(pushed_args);
+			}(), ...);
+		LD_SEG_BASE(EAX, CPU_CTX_SS);
+		SUB(EBX, EAX);
+		ST_R16(BX, CPU_CTX_ESP);
+	}
+	break;
+
+	case 1: { // esp, push 32
+		LD_R32(EBX, CPU_CTX_ESP);
+		ADD(EBX, EAX);
+		([this, &pushed_args] {
+			SUB(EBX, 4);
+			MOV(EDX, EBX);
+			ST_MEM(pushed_args);
+			}(), ...);
+		LD_SEG_BASE(EAX, CPU_CTX_SS);
+		SUB(EBX, EAX);
+		ST_R32(EBX, CPU_CTX_ESP);
+	}
+	break;
+
+	case 2: { // sp, push 16
+		MOVZX(EBX, MEMD16(RCX, CPU_CTX_ESP));
+		ADD(EBX, EAX);
+		([this, &pushed_args] {
+			SUB(EBX, 2);
+			MOV(EDX, EBX);
+			ST_MEM(pushed_args);
+			}(), ...);
+		LD_SEG_BASE(EAX, CPU_CTX_SS);
+		SUB(EBX, EAX);
+		ST_R16(BX, CPU_CTX_ESP);
+	}
+	break;
+
+	case 3: { // esp, push 16
+		LD_R32(EBX, CPU_CTX_ESP);
+		ADD(EBX, EAX);
+		([this, &pushed_args] {
+			SUB(EBX, 2);
+			MOV(EDX, EBX);
+			ST_MEM(pushed_args);
+			}(), ...);
+		LD_SEG_BASE(EAX, CPU_CTX_SS);
+		SUB(EBX, EAX);
+		ST_R32(EBX, CPU_CTX_ESP);
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+void
+lc86_jit::call(ZydisDecodedInstruction *instr)
+{
+	switch (instr->opcode)
+	{
+	case 0x9A: {
+		// cs holds the cpl, so it can be assumed a constant
+		addr_t ret_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
+		addr_t call_eip = instr->operands[OPNUM_SINGLE].ptr.offset;
+		uint16_t new_sel = instr->operands[OPNUM_SINGLE].ptr.segment;
+		if (m_cpu->size_mode == SIZE16) {
+			call_eip &= 0x0000FFFF;
+		}
+
+		if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
+			MOV(RBX, RCX);
+			MOV(MEMD32(RSP, STACK_ARGS_off + 8), m_cpu->instr_eip);
+			MOV(MEMD32(RSP, STACK_ARGS_off), ret_eip);
+			MOV(R9B, m_cpu->size_mode);
+			MOV(R8D, call_eip);
+			MOV(EDX, new_sel);
+			MOV(RAX, &lcall_pe_helper);
+			CALL(RAX);
+			MOV(RCX, RBX);
+			CMP(AL, 0);
+			BR_NEl(exp);
+			link_indirect_emit();
+			m_a.bind(exp_taken);
+			RAISEin_no_param_f();
+			m_cpu->tc->flags |= TC_FLG_INDIRECT;
+		}
+		else {
+			stack_push_emit(m_cpu->cpu_ctx.regs.cs, ret_eip);
+			uint32_t new_cs_base = new_sel << 4;
+			ST_SEG(CPU_CTX_CS, new_sel);
+			ST_R32(CPU_CTX_EIP, call_eip);
+			ST_SEG_BASE(CPU_CTX_CS, new_cs_base);
+			link_direct_emit(new_cs_base + call_eip, nullptr, new_cs_base + call_eip);
+			m_cpu->tc->flags |= TC_FLG_DIRECT;
+		}
+	}
+	break;
+
+	case 0xE8: {
+		addr_t ret_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
+		addr_t call_eip = ret_eip + instr->operands[OPNUM_SINGLE].imm.value.s;
+		if (m_cpu->size_mode == SIZE16) {
+			call_eip &= 0x0000FFFF;
+		}
+		addr_t call_pc = m_cpu->cpu_ctx.regs.cs_hidden.base + call_eip;
+
+		stack_push_emit(ret_eip);
+		ST_R32(CPU_CTX_EIP, call_eip);
+		link_direct_emit(call_pc, nullptr, call_pc);
+		m_cpu->tc->flags |= TC_FLG_DIRECT;
+	}
+	break;
+
+	case 0xFF: {
+		if (instr->raw.modrm.reg == 2) {
+			addr_t ret_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
+			get_rm<OPNUM_SINGLE>(instr,
+				[this](const op_info rm)
+				{
+					auto dst_host_reg = SIZED_REG(x64::rax, rm.bits);
+					LD_REG_val(dst_host_reg, rm.val, rm.bits);
+				},
+				[this](const op_info rm)
+				{
+					LD_MEM();
+				});
+			stack_push_emit(ret_eip);
+			if (m_cpu->size_mode == SIZE16) {
+				MOVZX(EAX, AX);
+			}
+			ST_R32(CPU_CTX_EIP, EAX);
+			link_indirect_emit();
+			m_cpu->tc->flags |= TC_FLG_INDIRECT;
+		}
+		else if (instr->raw.modrm.reg == 3) {
+			assert(instr->operands[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_MEMORY);
+
+			// cs holds the cpl, so it can be assumed a constant
+			addr_t ret_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
+			GET_OP(OPNUM_SINGLE);
+			MOV(EBX, EDX);
+			LD_MEM();
+			if (m_cpu->size_mode == SIZE16) {
+				MOVZX(EAX, AX);
+				ADD(EBX, 2);
+			}
+			else {
+				ADD(EBX, 4);
+			}
+			MOV(EDX, EBX);
+			MOV(EBX, EAX);
+			LD_MEMs(SIZE16);
+			if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
+				MOV(MEMD32(RSP, STACK_ARGS_off + 8), m_cpu->instr_eip);
+				MOV(MEMD32(RSP, STACK_ARGS_off), ret_eip);
+				MOV(R9B, m_cpu->size_mode);
+				MOV(R8D, EBX);
+				MOV(EDX, EAX);
+				MOV(RBX, RCX);
+				MOV(RAX, &lcall_pe_helper);
+				CALL(RAX);
+				MOV(RCX, RBX);
+				CMP(AL, 0);
+				BR_NEl(exp);
+				link_indirect_emit();
+				m_a.bind(exp_taken);
+				RAISEin_no_param_f();
+			}
+			else {
+				MOV(MEMD16(RSP, LOCAL_VARS_off(0)), AX);
+				MOV(MEMD32(RSP, LOCAL_VARS_off(1)), EBX);
+				stack_push_emit(m_cpu->cpu_ctx.regs.cs, ret_eip);
+				MOV(AX, MEMD16(RSP, LOCAL_VARS_off(0)));
+				MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(1)));
+				ST_SEG(CPU_CTX_CS, AX);
+				ST_R32(CPU_CTX_EIP, EDX);
+				SHL(AX, 4);
+				ST_SEG_BASE(CPU_CTX_CS, AX);
+				link_indirect_emit();
+			}
+			m_cpu->tc->flags |= TC_FLG_INDIRECT;
+		}
+		else {
+			LIB86CPU_ABORT();
+		}
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+
+	m_cpu->translate_next = 0;
+}
+
+void
+lc86_jit::clc(ZydisDecodedInstruction *instr)
+{
+	assert(instr->opcode == 0xF8);
+
+	MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
+	LD_OF(EDX, EAX);
+	AND(EAX, 0x3FFFFFFF);
+	SHR(EDX, 1);
+	OR(EAX, EDX);
+	MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EAX);
+}
+
+void
+lc86_jit::cld(ZydisDecodedInstruction *instr)
+{
+	assert(instr->opcode == 0xFC);
+
+	LD_R32(EDX, CPU_CTX_EFLAGS);
+	AND(EDX, ~DF_MASK);
+	ST_R32(CPU_CTX_EFLAGS, EDX);
 }
 
 void
@@ -1405,16 +1650,6 @@ lc86_jit::cli(ZydisDecodedInstruction *instr)
 		AND(EDX, ~IF_MASK);
 		ST_R32(CPU_CTX_EFLAGS, EDX);
 	}
-}
-
-void
-lc86_jit::cld(ZydisDecodedInstruction *instr)
-{
-	assert(instr->opcode == 0xFC);
-
-	LD_R32(EDX, CPU_CTX_EFLAGS);
-	AND(EDX, ~DF_MASK);
-	ST_R32(CPU_CTX_EFLAGS, EDX);
 }
 
 void
@@ -1548,6 +1783,112 @@ lc86_jit::cmp(ZydisDecodedInstruction *instr)
 				SUB(sub_host_reg, src_imm);
 				set_flags_sub(dst_host_reg, src_imm, sub_host_reg);
 			});
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+void
+lc86_jit::cmps(ZydisDecodedInstruction *instr)
+{
+	switch (instr->opcode)
+	{
+	case 0xA6:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0xA7: {
+		Label start_taken, end_taken = m_a.newLabel();
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
+			start_taken = rep_start(end_taken);
+		}
+
+		LD_SEG_BASE(EAX, CPU_CTX_ES);
+		if (m_cpu->addr_mode == ADDR16) {
+			MOVZX(EDX, MEMD16(RCX, CPU_CTX_EDI));
+		}
+		else {
+			LD_R32(EDX, CPU_CTX_EDI);
+		}
+		MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
+		ADD(EDX, EAX);
+
+		auto eax_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+		auto ebx_host_reg = SIZED_REG(x64::rbx, m_cpu->size_mode);
+		auto edx_host_reg = SIZED_REG(x64::rdx, m_cpu->size_mode);
+		auto r8_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
+		LD_MEM();
+		MOV(ebx_host_reg, eax_host_reg);
+
+		LD_SEG_BASE(EAX, get_seg_prfx_offset(instr));
+		if (m_cpu->addr_mode == ADDR16) {
+			MOVZX(EDX, MEMD16(RCX, CPU_CTX_ESI));
+		}
+		else {
+			LD_R32(EDX, CPU_CTX_ESI);
+		}
+		MOV(MEMD32(RSP, LOCAL_VARS_off(1)), EDX);
+		ADD(EDX, EAX);
+
+		LD_MEM();
+		MOV(r8_host_reg, eax_host_reg);
+		SUB(r8_host_reg, ebx_host_reg);
+		set_flags_sub(eax_host_reg, ebx_host_reg, r8_host_reg);
+
+		uint32_t k = 1 << m_cpu->size_mode;
+		MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
+		MOV(EAX, MEMD32(RSP, LOCAL_VARS_off(1)));
+		LD_R32(EBX, CPU_CTX_EFLAGS);
+		AND(EBX, DF_MASK);
+		TEST(EBX, EBX);
+		BR_NEl(sub);
+
+		ADD(EDX, k);
+		ADD(EAX, k);
+		if (m_cpu->addr_mode == ADDR16) {
+			ST_R16(CPU_CTX_EDI, DX);
+			ST_R16(CPU_CTX_ESI, AX);
+		}
+		else {
+			ST_R32(CPU_CTX_EDI, EDX);
+			ST_R32(CPU_CTX_ESI, EAX);
+		}
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
+			if (instr->attributes & ZYDIS_ATTRIB_HAS_REPNZ) {
+				rep<ZYDIS_ATTRIB_HAS_REPNZ>(start_taken, end_taken);
+			}
+			else {
+				rep<ZYDIS_ATTRIB_HAS_REPZ>(start_taken, end_taken);
+			}
+		}
+		else {
+			BR_UNCOND(end_taken);
+		}
+
+		m_a.bind(sub_taken);
+		SUB(EDX, k);
+		SUB(EAX, k);
+		if (m_cpu->addr_mode == ADDR16) {
+			ST_R16(CPU_CTX_EDI, DX);
+			ST_R16(CPU_CTX_ESI, AX);
+		}
+		else {
+			ST_R32(CPU_CTX_EDI, EDX);
+			ST_R32(CPU_CTX_ESI, EAX);
+		}
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
+			if (instr->attributes & ZYDIS_ATTRIB_HAS_REPNZ) {
+				rep<ZYDIS_ATTRIB_HAS_REPNZ>(start_taken, end_taken);
+			}
+			else {
+				rep<ZYDIS_ATTRIB_HAS_REPZ>(start_taken, end_taken);
+			}
+		}
+
+		m_a.bind(end_taken);
 	}
 	break;
 
@@ -2163,6 +2504,76 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::lods(ZydisDecodedInstruction *instr)
+{
+	switch (instr->opcode)
+	{
+	case 0xAC:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0xAD: {
+		Label start_taken, end_taken = m_a.newLabel();
+		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+			start_taken = rep_start(end_taken);
+		}
+
+		LD_SEG_BASE(EAX, get_seg_prfx_offset(instr));
+		if (m_cpu->addr_mode == ADDR16) {
+			MOVZX(EDX, MEMD16(RCX, CPU_CTX_ESI));
+		}
+		else {
+			LD_R32(EDX, CPU_CTX_ESI);
+		}
+		MOV(EBX, EDX);
+		ADD(EDX, EAX);
+
+		LD_MEM();
+		auto eax_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+		ST_REG_val(eax_host_reg, CPU_CTX_EAX, m_cpu->size_mode);
+
+		uint32_t k = 1 << m_cpu->size_mode;
+		LD_R32(EAX, CPU_CTX_EFLAGS);
+		AND(EAX, DF_MASK);
+		TEST(EAX, EAX);
+		BR_NEl(sub);
+
+		ADD(EBX, k);
+		if (m_cpu->addr_mode == ADDR16) {
+			ST_R16(CPU_CTX_ESI, BX);
+		}
+		else {
+			ST_R32(CPU_CTX_ESI, EBX);
+		}
+		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+			rep<ZYDIS_ATTRIB_HAS_REP>(start_taken, end_taken);
+		}
+		else {
+			BR_UNCOND(end_taken);
+		}
+
+		m_a.bind(sub_taken);
+		SUB(EBX, k);
+		if (m_cpu->addr_mode == ADDR16) {
+			ST_R16(CPU_CTX_ESI, BX);
+		}
+		else {
+			ST_R32(CPU_CTX_ESI, EBX);
+		}
+		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+			rep<ZYDIS_ATTRIB_HAS_REP>(start_taken, end_taken);
+		}
+
+		m_a.bind(end_taken);
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+void
 lc86_jit::loop(ZydisDecodedInstruction *instr)
 {
 	switch (m_cpu->addr_mode)
@@ -2677,6 +3088,94 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::movs(ZydisDecodedInstruction *instr)
+{
+	switch (instr->opcode)
+	{
+	case 0xA4:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0xA5: {
+		Label start_taken, end_taken = m_a.newLabel();
+		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+			start_taken = rep_start(end_taken);
+		}
+
+		LD_SEG_BASE(EAX, get_seg_prfx_offset(instr));
+		if (m_cpu->addr_mode == ADDR16) {
+			MOVZX(EDX, MEMD16(RCX, CPU_CTX_ESI));
+		}
+		else {
+			LD_R32(EDX, CPU_CTX_ESI);
+		}
+		MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
+		ADD(EDX, EAX);
+
+		LD_MEM();
+
+		LD_SEG_BASE(R8D, CPU_CTX_ES);
+		if (m_cpu->addr_mode == ADDR16) {
+			MOVZX(EDX, MEMD16(RCX, CPU_CTX_EDI));
+		}
+		else {
+			LD_R32(EDX, CPU_CTX_EDI);
+		}
+		MOV(EBX, EDX);
+		ADD(EDX, R8D);
+
+		auto eax_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+		ST_MEM(eax_host_reg);
+
+		uint32_t k = 1 << m_cpu->size_mode;
+		MOV(EAX, MEMD32(RSP, LOCAL_VARS_off(0)));
+		LD_R32(EDX, CPU_CTX_EFLAGS);
+		AND(EDX, DF_MASK);
+		TEST(EDX, EDX);
+		BR_NEl(sub);
+
+		ADD(EBX, k);
+		ADD(EAX, k);
+		if (m_cpu->addr_mode == ADDR16) {
+			ST_R16(CPU_CTX_EDI, BX);
+			ST_R16(CPU_CTX_ESI, AX);
+		}
+		else {
+			ST_R32(CPU_CTX_EDI, EBX);
+			ST_R32(CPU_CTX_ESI, EAX);
+		}
+		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+			rep<ZYDIS_ATTRIB_HAS_REP>(start_taken, end_taken);
+		}
+		else {
+			BR_UNCOND(end_taken);
+		}
+
+		m_a.bind(sub_taken);
+		SUB(EBX, k);
+		SUB(EAX, k);
+		if (m_cpu->addr_mode == ADDR16) {
+			ST_R16(CPU_CTX_EDI, BX);
+			ST_R16(CPU_CTX_ESI, AX);
+		}
+		else {
+			ST_R32(CPU_CTX_EDI, EBX);
+			ST_R32(CPU_CTX_ESI, EAX);
+		}
+		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+			rep<ZYDIS_ATTRIB_HAS_REP>(start_taken, end_taken);
+		}
+
+		m_a.bind(end_taken);
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+void
 lc86_jit::mul(ZydisDecodedInstruction *instr)
 {
 	switch (instr->opcode)
@@ -2829,6 +3328,91 @@ lc86_jit::sahf(ZydisDecodedInstruction *instr)
 	OR(EDX, EAX);
 	OR(EDX, R8D);
 	MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EDX);
+}
+
+void
+lc86_jit::scas(ZydisDecodedInstruction *instr)
+{
+	switch (instr->opcode)
+	{
+	case 0xAE:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0xAF: {
+		Label start_taken, end_taken = m_a.newLabel();
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
+			start_taken = rep_start(end_taken);
+		}
+
+		LD_SEG_BASE(EAX, CPU_CTX_ES);
+		if (m_cpu->addr_mode == ADDR16) {
+			MOVZX(EDX, MEMD16(RCX, CPU_CTX_EDI));
+		}
+		else {
+			LD_R32(EDX, CPU_CTX_EDI);
+		}
+		MOV(EBX, EDX);
+		ADD(EDX, EAX);
+
+		auto eax_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+		auto edx_host_reg = SIZED_REG(x64::rdx, m_cpu->size_mode);
+		auto r8_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
+		LD_MEM();
+		LD_REG_val(r8_host_reg, CPU_CTX_EAX, m_cpu->size_mode);
+		MOV(edx_host_reg, r8_host_reg);
+		SUB(r8_host_reg, eax_host_reg);
+		set_flags_sub(edx_host_reg, eax_host_reg, r8_host_reg);
+
+		uint32_t k = 1 << m_cpu->size_mode;
+		LD_R32(EAX, CPU_CTX_EFLAGS);
+		AND(EAX, DF_MASK);
+		TEST(EAX, EAX);
+		BR_NEl(sub);
+
+		ADD(EBX, k);
+		if (m_cpu->addr_mode == ADDR16) {
+			ST_R16(CPU_CTX_EDI, BX);
+		}
+		else {
+			ST_R32(CPU_CTX_EDI, EBX);
+		}
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
+			if (instr->attributes & ZYDIS_ATTRIB_HAS_REPNZ) {
+				rep<ZYDIS_ATTRIB_HAS_REPNZ>(start_taken, end_taken);
+			}
+			else {
+				rep<ZYDIS_ATTRIB_HAS_REPZ>(start_taken, end_taken);
+			}
+		}
+		else {
+			BR_UNCOND(end_taken);
+		}
+
+		m_a.bind(sub_taken);
+		SUB(EBX, k);
+		if (m_cpu->addr_mode == ADDR16) {
+			ST_R16(CPU_CTX_EDI, BX);
+		}
+		else {
+			ST_R32(CPU_CTX_EDI, EBX);
+		}
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
+			if (instr->attributes & ZYDIS_ATTRIB_HAS_REPNZ) {
+				rep<ZYDIS_ATTRIB_HAS_REPNZ>(start_taken, end_taken);
+			}
+			else {
+				rep<ZYDIS_ATTRIB_HAS_REPZ>(start_taken, end_taken);
+			}
+		}
+
+		m_a.bind(end_taken);
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
 }
 
 void
@@ -3022,7 +3606,7 @@ lc86_jit::stos(ZydisDecodedInstruction *instr)
 			ST_R32(CPU_CTX_EDI, EBX);
 		}
 		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
-			rep(start_taken, end_taken);
+			rep<ZYDIS_ATTRIB_HAS_REP>(start_taken, end_taken);
 		}
 		else {
 			BR_UNCOND(end_taken);
@@ -3037,7 +3621,7 @@ lc86_jit::stos(ZydisDecodedInstruction *instr)
 			ST_R32(CPU_CTX_EDI, EBX);
 		}
 		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
-			rep(start_taken, end_taken);
+			rep<ZYDIS_ATTRIB_HAS_REP>(start_taken, end_taken);
 		}
 
 		m_a.bind(end_taken);
@@ -3047,6 +3631,16 @@ lc86_jit::stos(ZydisDecodedInstruction *instr)
 	default:
 		LIB86CPU_ABORT();
 	}
+}
+
+void
+lc86_jit::std(ZydisDecodedInstruction *instr)
+{
+	assert(instr->opcode == 0xFD);
+
+	LD_R32(EDX, CPU_CTX_EFLAGS);
+	OR(EDX, DF_MASK);
+	ST_R32(CPU_CTX_EFLAGS, EDX);
 }
 
 void
@@ -3113,6 +3707,60 @@ lc86_jit::test(ZydisDecodedInstruction *instr)
 				AND(dst_host_reg, src_host_reg);
 				set_flags(dst_host_reg, 0, m_cpu->size_mode);
 			});
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+void
+lc86_jit::xchg(ZydisDecodedInstruction *instr)
+{
+	switch (instr->opcode)
+	{
+	case 0x86:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0x87: {
+		auto src = GET_REG(OPNUM_SRC);
+		auto src_host_reg = SIZED_REG(x64::rbx, m_cpu->size_mode);
+		LD_REG_val(src_host_reg, src.val, src.bits);
+		get_rm<OPNUM_DST>(instr,
+			[this, src, src_host_reg](const op_info rm)
+			{
+				auto dst_host_reg = SIZED_REG(x64::rax, rm.bits);
+				LD_REG_val(dst_host_reg, rm.val, rm.bits);
+				ST_REG_val(dst_host_reg, src.val, src.bits);
+				ST_REG_val(src_host_reg, rm.val, rm.bits);
+			},
+			[this, src, src_host_reg](const op_info rm)
+			{
+				auto dst_host_reg = SIZED_REG(x64::rax, rm.bits);
+				LD_MEM();
+				ST_REG_val(dst_host_reg, src.val, src.bits);
+				ST_MEM(src_host_reg);
+			});
+	}
+	break;
+
+	case 0x90:
+	case 0x91:
+	case 0x92:
+	case 0x93:
+	case 0x94:
+	case 0x95:
+	case 0x96:
+	case 0x97: {
+		auto dst = GET_REG(OPNUM_DST);
+		auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+		auto src_host_reg = SIZED_REG(x64::rdx, m_cpu->size_mode);
+		LD_REG_val(dst_host_reg, dst.val, dst.bits);
+		LD_REG_val(src_host_reg, CPU_CTX_EAX, m_cpu->size_mode);
+		ST_REG_val(dst_host_reg, CPU_CTX_EAX, m_cpu->size_mode);
+		ST_REG_val(src_host_reg, dst.val, dst.bits);
 	}
 	break;
 

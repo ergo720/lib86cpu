@@ -559,7 +559,7 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv
 	return mem_read<T>(cpu_ctx->cpu, addr, eip, is_priv);
 }
 
-// memory write helper invoked by the llvm generated code
+// memory write helper invoked by the jitted code
 template<typename T>
 void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint8_t is_priv)
 {
