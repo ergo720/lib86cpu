@@ -36,6 +36,7 @@ public:
 	void destroy_all_code() { m_mem.destroy_all_blocks(); }
 
 	void cli(ZydisDecodedInstruction *instr);
+	void cld(ZydisDecodedInstruction *instr);
 	void cmp(ZydisDecodedInstruction *instr);
 	void div(ZydisDecodedInstruction *instr);
 	void imul(ZydisDecodedInstruction *instr);
@@ -48,6 +49,7 @@ public:
 	void out(ZydisDecodedInstruction *instr);
 	void sahf(ZydisDecodedInstruction *instr);
 	void shl(ZydisDecodedInstruction *instr);
+	void stos(ZydisDecodedInstruction *instr);
 	void test(ZydisDecodedInstruction *instr);
 	void xor_(ZydisDecodedInstruction *instr);
 
@@ -107,6 +109,8 @@ private:
 	void store_io(uint8_t size_mode);
 	template<typename T>
 	bool check_io_priv_emit(T port);
+	Label rep_start(Label end_taken);
+	void rep(Label start_taken, Label end_taken);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;

@@ -715,7 +715,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_CBW: BAD;
 		case ZYDIS_MNEMONIC_CDQ: BAD;
 		case ZYDIS_MNEMONIC_CLC: BAD;
-		case ZYDIS_MNEMONIC_CLD: BAD;
+		case ZYDIS_MNEMONIC_CLD:
+			cpu->jit->cld(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_CLI:
 			cpu->jit->cli(&instr);
 			break;
@@ -911,9 +914,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_STC: BAD;
 		case ZYDIS_MNEMONIC_STD: BAD;
 		case ZYDIS_MNEMONIC_STI: BAD;
-		case ZYDIS_MNEMONIC_STOSB:BAD;
-		case ZYDIS_MNEMONIC_STOSD:BAD;
-		case ZYDIS_MNEMONIC_STOSW: BAD;
+		case ZYDIS_MNEMONIC_STOSB:
+		case ZYDIS_MNEMONIC_STOSD:
+		case ZYDIS_MNEMONIC_STOSW:
+			cpu->jit->stos(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_STR:         BAD;
 		case ZYDIS_MNEMONIC_SUB: BAD;
 		case ZYDIS_MNEMONIC_SYSENTER:    BAD;
@@ -1556,15 +1562,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 			Value *of_new = SHR(XOR(CONST32(0), LD_OF()), CONST32(1));
 			ST_FLG_AUX(OR(AND(LD_FLG_AUX(), CONST32(0x3FFFFFFF)), of_new));
-		}
-		break;
-
-		case ZYDIS_MNEMONIC_CLD: {
-			assert(instr.opcode == 0xFC);
-
-			Value *eflags = LD_R32(EFLAGS_idx);
-			eflags = AND(eflags, CONST32(~DF_MASK));
-			ST_REG_idx(eflags, EFLAGS_idx);
 		}
 		break;
 
@@ -4403,93 +4400,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			else {
 				eflags = OR(eflags, CONST32(IF_MASK));
 				ST_REG_idx(eflags, EFLAGS_idx);
-			}
-		}
-		break;
-
-		case ZYDIS_MNEMONIC_STOSB:
-		case ZYDIS_MNEMONIC_STOSD:
-		case ZYDIS_MNEMONIC_STOSW: {
-			switch (instr.opcode)
-			{
-			case 0xAA:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0xAB: {
-				Value *val, *df, *addr, *edi;
-				std::vector<BasicBlock *> vec_bb = getBBs(3);
-
-				if (instr.attributes & ZYDIS_ATTRIB_HAS_REP) {
-					REP_start();
-				}
-
-				switch (addr_mode)
-				{
-				case ADDR16:
-					edi = ZEXT32(LD_R16(EDI_idx));
-					addr = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi);
-					break;
-
-				case ADDR32:
-					edi = LD_R32(EDI_idx);
-					addr = ADD(LD_SEG_HIDDEN(ES_idx, SEG_BASE_idx), edi);
-					break;
-
-				default:
-					LIB86CPU_ABORT();
-				}
-
-				switch (size_mode)
-				{
-				case SIZE8:
-					val = CONST32(1);
-					ST_MEM(fn_idx[size_mode], addr, LD_R8L(EAX_idx));
-					break;
-
-				case SIZE16:
-					val = CONST32(2);
-					ST_MEM(fn_idx[size_mode], addr, LD_R16(EAX_idx));
-					break;
-
-				case SIZE32:
-					val = CONST32(4);
-					ST_MEM(fn_idx[size_mode], addr, LD_R32(EAX_idx));
-					break;
-
-				default:
-					LIB86CPU_ABORT();
-				}
-
-				df = AND(LD_R32(EFLAGS_idx), CONST32(DF_MASK));
-				BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(df, CONST32(0)));
-
-				cpu->bb = vec_bb[0];
-				Value *edi_sum = ADD(edi, val);
-				addr_mode == ADDR16 ? ST_REG_idx(TRUNC16(edi_sum), EDI_idx) : ST_REG_idx(edi_sum, EDI_idx);
-				if (instr.attributes & ZYDIS_ATTRIB_HAS_REP) {
-					REP();
-				}
-				else {
-					BR_UNCOND(vec_bb[2]);
-				}
-
-				cpu->bb = vec_bb[1];
-				Value *edi_sub = SUB(edi, val);
-				addr_mode == ADDR16 ? ST_REG_idx(TRUNC16(edi_sub), EDI_idx) : ST_REG_idx(edi_sub, EDI_idx);
-				if (instr.attributes & ZYDIS_ATTRIB_HAS_REP) {
-					REP();
-				}
-				else {
-					BR_UNCOND(vec_bb[2]);
-				}
-
-				cpu->bb = vec_bb[2];
-			}
-			break;
-
-			default:
-				LIB86CPU_ABORT();
 			}
 		}
 		break;

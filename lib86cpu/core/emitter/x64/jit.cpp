@@ -1349,6 +1349,40 @@ bool lc86_jit::check_io_priv_emit(T port)
 	return false;
 }
 
+Label
+lc86_jit::rep_start(Label end_taken)
+{
+	if (m_cpu->addr_mode == ADDR16) {
+		MOVZX(EAX, MEMD16(RCX, CPU_CTX_ECX));
+	}
+	else {
+		LD_R32(EAX, CPU_CTX_ECX);
+	}
+	TEST(EAX, EAX);
+	BR_EQ(end);
+	Label start = m_a.newLabel();
+	m_a.bind(start);
+	return start;
+}
+
+void
+lc86_jit::rep(Label start_taken, Label end_taken)
+{
+	if (m_cpu->addr_mode == ADDR16) {
+		MOVZX(EAX, MEMD16(RCX, CPU_CTX_ECX));
+		SUB(AX, 1);
+		ST_R16(CPU_CTX_ECX, AX);
+	}
+	else {
+		LD_R32(EAX, CPU_CTX_ECX);
+		SUB(EAX, 1);
+		ST_R32(CPU_CTX_ECX, EAX);
+	}
+	TEST(EAX, EAX);
+	BR_EQ(end);
+	BR_UNCOND(start_taken);
+}
+
 void
 lc86_jit::cli(ZydisDecodedInstruction *instr)
 {
@@ -1371,6 +1405,16 @@ lc86_jit::cli(ZydisDecodedInstruction *instr)
 		AND(EDX, ~IF_MASK);
 		ST_R32(CPU_CTX_EFLAGS, EDX);
 	}
+}
+
+void
+lc86_jit::cld(ZydisDecodedInstruction *instr)
+{
+	assert(instr->opcode == 0xFC);
+
+	LD_R32(EDX, CPU_CTX_EFLAGS);
+	AND(EDX, ~DF_MASK);
+	ST_R32(CPU_CTX_EFLAGS, EDX);
 }
 
 void
@@ -2912,6 +2956,96 @@ lc86_jit::shl(ZydisDecodedInstruction *instr)
 				set_flags(dst_host_reg, EBX, m_cpu->size_mode);
 			});
 		m_a.bind(nop_taken);
+	}
+}
+
+void
+lc86_jit::stos(ZydisDecodedInstruction *instr)
+{
+	switch (instr->opcode)
+	{
+	case 0xAA:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0xAB: {
+		Label start_taken, end_taken = m_a.newLabel();
+		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+			start_taken = rep_start(end_taken);
+		}
+
+		LD_SEG_BASE(EAX, CPU_CTX_ES);
+		if (m_cpu->addr_mode == ADDR16) {
+			MOVZX(EDX, MEMD16(RCX, CPU_CTX_EDI));
+		}
+		else {
+			LD_R32(EDX, CPU_CTX_EDI);
+		}
+		MOV(EBX, EDX);
+		ADD(EDX, EAX);
+
+		uint32_t k;
+		switch (m_cpu->size_mode)
+		{
+		case SIZE8:
+			k = 1;
+			LD_R8(AL, CPU_CTX_EAX);
+			ST_MEM(AL);
+			break;
+
+		case SIZE16:
+			k = 2;
+			LD_R16(AX, CPU_CTX_EAX);
+			ST_MEM(AX);
+			break;
+
+		case SIZE32:
+			k = 4;
+			LD_R32(EAX, CPU_CTX_EAX);
+			ST_MEM(EAX);
+			break;
+
+		default:
+			LIB86CPU_ABORT();
+		}
+
+		LD_R32(EAX, CPU_CTX_EFLAGS);
+		AND(EAX, DF_MASK);
+		TEST(EAX, EAX);
+		BR_NEl(sub);
+
+		ADD(EBX, k);
+		if (m_cpu->addr_mode == ADDR16) {
+			ST_R16(CPU_CTX_EDI, BX);
+		}
+		else {
+			ST_R32(CPU_CTX_EDI, EBX);
+		}
+		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+			rep(start_taken, end_taken);
+		}
+		else {
+			BR_UNCOND(end_taken);
+		}
+
+		m_a.bind(sub_taken);
+		SUB(EBX, k);
+		if (m_cpu->addr_mode == ADDR16) {
+			ST_R16(CPU_CTX_EDI, BX);
+		}
+		else {
+			ST_R32(CPU_CTX_EDI, EBX);
+		}
+		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+			rep(start_taken, end_taken);
+		}
+
+		m_a.bind(end_taken);
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
 	}
 }
 
