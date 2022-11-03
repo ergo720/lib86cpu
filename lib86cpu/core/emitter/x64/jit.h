@@ -35,6 +35,7 @@ public:
 	void free_code_block(void *addr) { m_mem.release_sys_mem(addr); }
 	void destroy_all_code() { m_mem.destroy_all_blocks(); }
 
+	void add(ZydisDecodedInstruction *instr);
 	void call(ZydisDecodedInstruction *instr);
 	void clc(ZydisDecodedInstruction *instr);
 	void cld(ZydisDecodedInstruction *instr);
@@ -52,11 +53,14 @@ public:
 	void movs(ZydisDecodedInstruction *instr);
 	void mul(ZydisDecodedInstruction *instr);
 	void out(ZydisDecodedInstruction *instr);
+	void ret(ZydisDecodedInstruction *instr);
 	void sahf(ZydisDecodedInstruction *instr);
 	void scas(ZydisDecodedInstruction *instr);
 	void shl(ZydisDecodedInstruction *instr);
-	void stos(ZydisDecodedInstruction *instr);
+	void stc(ZydisDecodedInstruction *instr);
 	void std(ZydisDecodedInstruction *instr);
+	void stos(ZydisDecodedInstruction *instr);
+	void sub(ZydisDecodedInstruction *instr);
 	void test(ZydisDecodedInstruction *instr);
 	void xchg(ZydisDecodedInstruction *instr);
 	void xor_(ZydisDecodedInstruction *instr);
@@ -82,6 +86,7 @@ private:
 	void link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_addr);
 	void link_dst_only_emit();
 	void link_indirect_emit();
+	void link_ret_emit();
 	template<bool terminates, typename T1, typename T2, typename T3, typename T4>
 	void raise_exp_inline_emit(T1 fault_addr, T2 code, T3 idx, T4 eip);
 	template<bool terminates>
@@ -122,6 +127,8 @@ private:
 	void rep(Label start_taken, Label end_taken);
 	template<typename... Args>
 	void stack_push_emit(Args... pushed_args);
+	template<unsigned num, bool write_esp = true>
+	void stack_pop_emit();
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;

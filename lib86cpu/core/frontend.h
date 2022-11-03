@@ -14,9 +14,6 @@ Value *gep_f80_emit(cpu_t *cpu, const int gep_index, const int f80_index);
 Value *get_r8h_pointer(cpu_t *cpu, Value *gep_start);
 Value *mem_read_emit(cpu_t *cpu, Value *addr, const unsigned idx, const unsigned is_priv);
 void mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const unsigned is_priv);
-void stack_push_emit(cpu_t *cpu, const std::vector<Value *> &vec, uint32_t size_mode);
-std::vector<Value *> stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at = 0);
-void link_ret_emit(cpu_t *cpu);
 Value *calc_next_pc_emit(cpu_t *cpu, size_t instr_size);
 Value *floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits);
 void raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
@@ -180,7 +177,6 @@ void hook_emit(cpu_t *cpu, hook *obj);
 #define ST_MEM(idx, addr, val) mem_write_emit(cpu, addr, val, idx, 0)
 #define LD_MEM_PRIV(idx, addr) mem_read_emit(cpu, addr, idx, 2)
 #define ST_MEM_PRIV(idx, addr, val) mem_write_emit(cpu, addr, val, idx, 2)
-#define MEM_PUSH(vec) stack_push_emit(cpu, vec, size_mode)
 #define MEM_POP(n) stack_pop_emit(cpu, size_mode, n)
 #define MEM_POP_AT(n, at) stack_pop_emit(cpu, size_mode, n, at)
 #define LD_IO(port) io_read_emit(cpu, port, size_mode)

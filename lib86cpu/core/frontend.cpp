@@ -148,14 +148,6 @@ floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits)
 }
 
 void
-link_ret_emit(cpu_t *cpu)
-{
-	// NOTE: perhaps find a way to use a return stack buffer to link to the next tc
-
-	link_indirect_emit(cpu);
-}
-
-void
 raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip)
 {
 	GetElementPtrInst *gep1 = GetElementPtrInst::CreateInBounds(cpu->cpu_ctx_type, cpu->ptr_cpu_ctx, { CONST32(0), CONST32(8) }, "", cpu->bb);
@@ -192,65 +184,6 @@ void
 mem_write_emit(cpu_t *cpu, Value *addr, Value *value, const unsigned idx, const unsigned is_priv)
 {
 	CALL(cpu->ptr_mem_stfn[idx]->getFunctionType(), cpu->ptr_mem_stfn[idx], cpu->ptr_cpu_ctx, addr, value, cpu->instr_eip, CONST8(is_priv));
-}
-
-std::vector<Value *>
-stack_pop_emit(cpu_t *cpu, uint32_t size_mode, const unsigned num, const unsigned pop_at)
-{
-	assert(size_mode != SIZE8);
-	std::vector<Value *> vec;
-
-	switch ((size_mode << 1) | ((cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
-	{
-	case 0: { // sp, pop 32
-		Value *sp = ADD(LD_R16(ESP_idx), MUL(CONST16(pop_at), CONST16(4)));
-		for (unsigned i = 0; i < num; i++) {
-			vec.push_back(LD_MEM(MEM_LD32_idx, ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx))));
-			sp = ADD(sp, CONST16(4));
-		}
-		vec.push_back(sp);
-		vec.push_back(GEP_REG_idx(ESP_idx));
-	}
-	break;
-
-	case 1: { // esp, pop 32
-		Value *esp = ADD(LD_R32(ESP_idx), MUL(CONST32(pop_at), CONST32(4)));
-		for (unsigned i = 0; i < num; i++) {
-			vec.push_back(LD_MEM(MEM_LD32_idx, ADD(esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx))));
-			esp = ADD(esp, CONST32(4));
-		}
-		vec.push_back(esp);
-		vec.push_back(GEP_REG_idx(ESP_idx));
-	}
-	break;
-
-	case 2: { // sp, pop 16
-		Value *sp = ADD(LD_R16(ESP_idx), MUL(CONST16(pop_at), CONST16(2)));
-		for (unsigned i = 0; i < num; i++) {
-			vec.push_back(LD_MEM(MEM_LD16_idx, ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx))));
-			sp = ADD(sp, CONST16(2));
-		}
-		vec.push_back(sp);
-		vec.push_back(GEP_REG_idx(ESP_idx));
-	}
-	break;
-
-	case 3: { // esp, pop 16
-		Value *esp = ADD(LD_R32(ESP_idx), MUL(CONST32(pop_at), CONST32(2)));
-		for (unsigned i = 0; i < num; i++) {
-			vec.push_back(LD_MEM(MEM_LD16_idx, ADD(esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx))));
-			esp = ADD(esp, CONST32(2));
-		}
-		vec.push_back(esp);
-		vec.push_back(GEP_REG_idx(ESP_idx));
-	}
-	break;
-
-	default:
-		LIB86CPU_ABORT();
-	}
-
-	return vec;
 }
 
 void
