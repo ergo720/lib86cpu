@@ -113,6 +113,22 @@ private:
 	uint32_t get_immediate_op(ZydisDecodedInstruction *instr, const unsigned opnum);
 	template<unsigned opnum, typename T1, typename T2>
 	auto get_rm(ZydisDecodedInstruction *instr, T1 &&reg, T2 &&mem);
+	template<bool write_dst = true, typename T>
+	void r_to_rm(ZydisDecodedInstruction *instr, T &&lambda);
+	template<bool is_sum, bool write_dst = true, typename T>
+	void r_to_rm_flags(ZydisDecodedInstruction *instr, T &&lambda);
+	template<bool write_dst = true, typename T>
+	void rm_to_r(ZydisDecodedInstruction *instr, T &&lambda);
+	template<bool is_sum, bool write_dst = true, typename T>
+	void rm_to_r_flags(ZydisDecodedInstruction *instr, T &&lambda);
+	template<bool write_dst = true, typename T>
+	void imm_to_eax(ZydisDecodedInstruction *instr, T &&lambda);
+	template<bool is_sum, bool write_dst = true, typename T>
+	void imm_to_eax_flags(ZydisDecodedInstruction *instr, T &&lambda);
+	template<typename Imm, bool write_dst = true, typename T>
+	void imm_to_rm(ZydisDecodedInstruction *instr, Imm src_imm, T &&lambda);
+	template<bool is_sum, typename Imm, bool write_dst = true, typename T>
+	void imm_to_rm_flags(ZydisDecodedInstruction *instr, Imm src_imm, T &&lambda);
 	template<unsigned size, typename T>
 	void gen_sum_vec16_8(x86::Gp a, T b, x86::Gp sum);
 	template<typename T>
