@@ -36,6 +36,7 @@ public:
 	void destroy_all_code() { m_mem.destroy_all_blocks(); }
 
 	void add(ZydisDecodedInstruction *instr);
+	void and_(ZydisDecodedInstruction *instr);
 	void call(ZydisDecodedInstruction *instr);
 	void clc(ZydisDecodedInstruction *instr);
 	void cld(ZydisDecodedInstruction *instr);
@@ -47,21 +48,37 @@ public:
 	void inc(ZydisDecodedInstruction *instr);
 	void jcc(ZydisDecodedInstruction *instr);
 	void jmp(ZydisDecodedInstruction *instr);
+	void lgdt(ZydisDecodedInstruction *instr);
+	void lidt(ZydisDecodedInstruction *instr);
+	void lldt(ZydisDecodedInstruction *instr);
 	void lods(ZydisDecodedInstruction *instr);
 	void loop(ZydisDecodedInstruction *instr);
+	void lds(ZydisDecodedInstruction *instr);
+	void les(ZydisDecodedInstruction *instr);
+	void lfs(ZydisDecodedInstruction *instr);
+	void lgs(ZydisDecodedInstruction *instr);
+	void lss(ZydisDecodedInstruction *instr);
+	void ltr(ZydisDecodedInstruction *instr);
 	void mov(ZydisDecodedInstruction *instr);
 	void movs(ZydisDecodedInstruction *instr);
 	void mul(ZydisDecodedInstruction *instr);
+	void or_(ZydisDecodedInstruction *instr);
 	void out(ZydisDecodedInstruction *instr);
+	void popa(ZydisDecodedInstruction *instr);
+	void pusha(ZydisDecodedInstruction *instr);
 	void ret(ZydisDecodedInstruction *instr);
 	void sahf(ZydisDecodedInstruction *instr);
+	void sbb(ZydisDecodedInstruction *instr);
 	void scas(ZydisDecodedInstruction *instr);
 	void shl(ZydisDecodedInstruction *instr);
+	void shr(ZydisDecodedInstruction *instr);
 	void stc(ZydisDecodedInstruction *instr);
 	void std(ZydisDecodedInstruction *instr);
 	void stos(ZydisDecodedInstruction *instr);
 	void sub(ZydisDecodedInstruction *instr);
 	void test(ZydisDecodedInstruction *instr);
+	void verr(ZydisDecodedInstruction *instr);
+	void verw(ZydisDecodedInstruction *instr);
 	void xchg(ZydisDecodedInstruction *instr);
 	void xor_(ZydisDecodedInstruction *instr);
 
@@ -129,6 +146,14 @@ private:
 	void stack_push_emit(Args... pushed_args);
 	template<unsigned num, bool write_esp = true>
 	void stack_pop_emit();
+	template<unsigned idx>
+	void shift(ZydisDecodedInstruction *instr);
+	template<unsigned idx>
+	void load_sys_seg_reg(ZydisDecodedInstruction *instr);
+	template<bool is_verr>
+	void verx(ZydisDecodedInstruction *instr);
+	template<unsigned idx>
+	void lxs(ZydisDecodedInstruction *instr);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;

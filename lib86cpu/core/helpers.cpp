@@ -14,7 +14,7 @@ stack_push_helper(cpu_t *cpu, const uint32_t val, uint32_t size_mode, uint32_t &
 
 	switch ((size_mode << 1) | ((cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
-	case 0: { // sp, push 32
+	case (SIZE32 << 1) | 0: { // sp, push 32
 		uint16_t sp = addr & 0xFFFF;
 		sp -= 4;
 		mem_write<uint32_t>(cpu, sp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
@@ -22,7 +22,7 @@ stack_push_helper(cpu_t *cpu, const uint32_t val, uint32_t size_mode, uint32_t &
 	}
 	break;
 
-	case 1: { // esp, push 32
+	case (SIZE32 << 1) | 1: { // esp, push 32
 		uint32_t esp = addr;
 		esp -= 4;
 		mem_write<uint32_t>(cpu, esp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
@@ -30,7 +30,7 @@ stack_push_helper(cpu_t *cpu, const uint32_t val, uint32_t size_mode, uint32_t &
 	}
 	break;
 
-	case 2: { // sp, push 16
+	case (SIZE16 << 1) | 0: { // sp, push 16
 		uint16_t sp = addr & 0xFFFF;
 		sp -= 2;
 		mem_write<uint16_t>(cpu, sp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
@@ -38,7 +38,7 @@ stack_push_helper(cpu_t *cpu, const uint32_t val, uint32_t size_mode, uint32_t &
 	}
 	break;
 
-	case 3: { // esp, push 16
+	case (SIZE16 << 1) | 1: { // esp, push 16
 		uint16_t esp = addr;
 		esp -= 2;
 		mem_write<uint16_t>(cpu, esp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
@@ -60,28 +60,28 @@ stack_pop_helper(cpu_t *cpu, uint32_t size_mode, uint32_t &addr, uint32_t eip)
 
 	switch ((size_mode << 1) | ((cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
-	case 0: { // sp, pop 32
+	case (SIZE32 << 1) | 0: { // sp, pop 32
 		uint16_t sp = addr & 0xFFFF;
 		ret = mem_read<uint32_t>(cpu, sp + cpu->cpu_ctx.regs.ss_hidden.base, eip, 0);
 		addr = sp + 4;
 	}
 	break;
 
-	case 1: { // esp, pop 32
+	case (SIZE32 << 1) | 1: { // esp, pop 32
 		uint32_t esp = addr;
 		ret = mem_read<uint32_t>(cpu, esp + cpu->cpu_ctx.regs.ss_hidden.base, eip, 0);
 		addr = esp + 4;
 	}
 	break;
 
-	case 2: { // sp, pop 16
+	case (SIZE16 << 1) | 0: { // sp, pop 16
 		uint16_t sp = addr & 0xFFFF;
 		ret = mem_read<uint16_t>(cpu, sp + cpu->cpu_ctx.regs.ss_hidden.base, eip, 0);
 		addr = sp + 2;
 	}
 	break;
 
-	case 3: { // esp, pop 16
+	case (SIZE16 << 1) | 1: { // esp, pop 16
 		uint16_t esp = addr;
 		ret = mem_read<uint16_t>(cpu, esp + cpu->cpu_ctx.regs.ss_hidden.base, eip, 0);
 		addr = esp + 2;

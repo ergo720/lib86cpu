@@ -7,6 +7,7 @@
 #include "emitter_common.h"
 #include "instructions.h"
 #include "memory.h"
+#include "debugger.h"
 
 #define JIT_LOCAL_VARS_STACK_SIZE  0x30 // must be a multiple of 16
 #define JIT_REG_ARGS_STACK_SIZE    0x20
@@ -31,13 +32,18 @@ constexpr auto all_callable_funcs = std::make_tuple(
 	ljmp_pe_helper,
 	lcall_pe_helper,
 	lret_pe_helper<false>,
+	lldt_helper,
+	ltr_helper,
+	verrw_helper<true>,
+	verrw_helper<false>,
 	update_crN_helper,
 	mov_sel_pe_helper<SS_idx>,
 	mov_sel_pe_helper<DS_idx>,
 	mov_sel_pe_helper<ES_idx>,
 	mov_sel_pe_helper<FS_idx>,
 	mov_sel_pe_helper<GS_idx>,
-	cpu_runtime_abort
+	cpu_runtime_abort,
+	dbg_update_exp_hook
 );
 
 template<typename R, typename... Args>

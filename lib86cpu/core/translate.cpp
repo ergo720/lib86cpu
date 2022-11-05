@@ -704,7 +704,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			cpu->jit->add(&instr);
 			break;
 
-		case ZYDIS_MNEMONIC_AND: BAD;
+		case ZYDIS_MNEMONIC_AND:
+			cpu->jit->and_(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_ARPL: BAD;
 		case ZYDIS_MNEMONIC_BOUND: BAD;
 		case ZYDIS_MNEMONIC_BSF: BAD;
@@ -823,9 +826,18 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_LAR:         BAD;
 		case ZYDIS_MNEMONIC_LEA: BAD;
 		case ZYDIS_MNEMONIC_LEAVE: BAD;
-		case ZYDIS_MNEMONIC_LGDT: BAD;
-		case ZYDIS_MNEMONIC_LIDT: BAD;
-		case ZYDIS_MNEMONIC_LLDT: BAD;
+		case ZYDIS_MNEMONIC_LGDT:
+			cpu->jit->lgdt(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_LIDT:
+			cpu->jit->lidt(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_LLDT:
+			cpu->jit->lldt(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_LMSW:        BAD;
 		case ZYDIS_MNEMONIC_LODSB:
 		case ZYDIS_MNEMONIC_LODSD:
@@ -840,12 +852,30 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 		case ZYDIS_MNEMONIC_LSL:         BAD;
-		case ZYDIS_MNEMONIC_LDS:BAD;
-		case ZYDIS_MNEMONIC_LES:BAD;
-		case ZYDIS_MNEMONIC_LFS:BAD;
-		case ZYDIS_MNEMONIC_LGS:BAD;
-		case ZYDIS_MNEMONIC_LSS: BAD;
-		case ZYDIS_MNEMONIC_LTR: BAD;
+		case ZYDIS_MNEMONIC_LDS:
+			cpu->jit->lds(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_LES:
+			cpu->jit->les(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_LFS:
+			cpu->jit->lfs(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_LGS:
+			cpu->jit->lgs(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_LSS:
+			cpu->jit->lss(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_LTR:
+			cpu->jit->ltr(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_MOV:
 			cpu->jit->mov(&instr);
 			break;
@@ -864,9 +894,15 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 		case ZYDIS_MNEMONIC_NEG: BAD;
-		case ZYDIS_MNEMONIC_NOP:BAD;
+		case ZYDIS_MNEMONIC_NOP:
+			// nothing to do
+			break;
+
 		case ZYDIS_MNEMONIC_NOT: BAD;
-		case ZYDIS_MNEMONIC_OR: BAD;
+		case ZYDIS_MNEMONIC_OR:
+			cpu->jit->or_(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_OUT:
 			cpu->jit->out(&instr);
 			break;
@@ -875,13 +911,19 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_OUTSD:BAD;
 		case ZYDIS_MNEMONIC_OUTSW:BAD;
 		case ZYDIS_MNEMONIC_POP: BAD;
-		case ZYDIS_MNEMONIC_POPA:BAD;
-		case ZYDIS_MNEMONIC_POPAD: BAD;
+		case ZYDIS_MNEMONIC_POPA:
+		case ZYDIS_MNEMONIC_POPAD:
+			cpu->jit->popa(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_POPF:BAD;
 		case ZYDIS_MNEMONIC_POPFD: BAD;
 		case ZYDIS_MNEMONIC_PUSH: BAD;
-		case ZYDIS_MNEMONIC_PUSHA:BAD;
-		case ZYDIS_MNEMONIC_PUSHAD: BAD;
+		case ZYDIS_MNEMONIC_PUSHA:
+		case ZYDIS_MNEMONIC_PUSHAD:
+			cpu->jit->pusha(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_PUSHF:BAD;
 		case ZYDIS_MNEMONIC_PUSHFD: BAD;
 		case ZYDIS_MNEMONIC_RCL: BAD;
@@ -901,7 +943,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 		case ZYDIS_MNEMONIC_SAR: BAD;
-		case ZYDIS_MNEMONIC_SBB: BAD;
+		case ZYDIS_MNEMONIC_SBB:
+			cpu->jit->sbb(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_SCASB:
 		case ZYDIS_MNEMONIC_SCASD:
 		case ZYDIS_MNEMONIC_SCASW:
@@ -930,7 +975,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 		case ZYDIS_MNEMONIC_SHLD: BAD;
-		case ZYDIS_MNEMONIC_SHR: BAD;
+		case ZYDIS_MNEMONIC_SHR:
+			cpu->jit->shr(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_SHRD: BAD;
 		case ZYDIS_MNEMONIC_SIDT:        BAD;
 		case ZYDIS_MNEMONIC_SLDT:        BAD;
@@ -963,8 +1011,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 		case ZYDIS_MNEMONIC_UD1:         BAD;
 		case ZYDIS_MNEMONIC_UD2:         BAD;
-		case ZYDIS_MNEMONIC_VERR:BAD;
-		case ZYDIS_MNEMONIC_VERW: BAD;
+		case ZYDIS_MNEMONIC_VERR:
+			cpu->jit->verr(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_VERW:
+			cpu->jit->verw(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_WBINVD:      BAD;
 		case ZYDIS_MNEMONIC_WRMSR:       BAD;
 		case ZYDIS_MNEMONIC_XADD:        BAD;
@@ -1149,75 +1203,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			}
 
 			SET_FLG(sum2, sum_cout);
-		}
-		break;
-
-		case ZYDIS_MNEMONIC_AND: {
-			switch (instr.opcode)
-			{
-			case 0x20:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x21: {
-				Value *val, *reg, *rm;
-				reg = LD_REG_val(GET_REG(OPNUM_SRC));
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = AND(val, reg); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
-				val = AND(val, reg); ST_MEM(fn_idx[size_mode], rm, val););
-				SET_FLG(val, CONST32(0));
-			}
-			break;
-
-			case 0x22:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x23: {
-				Value *val, *reg, *rm;
-				reg = GET_OP(OPNUM_DST);
-				GET_RM(OPNUM_SRC, val = LD_REG_val(rm); val = AND(LD_REG_val(reg), val);, val = LD_MEM(fn_idx[size_mode], rm); val = AND(LD_REG_val(reg), val););
-				ST_REG_val(val, reg);
-				SET_FLG(val, CONST32(0));
-			}
-			break;
-
-			case 0x24:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x25: {
-				Value *val, *eax;
-				eax = GET_REG(OPNUM_DST);
-				val = AND(LD_REG_val(eax), GET_IMM());
-				ST_REG_val(val, eax);
-				SET_FLG(val, CONST32(0));
-			}
-			break;
-
-			case 0x80:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x81:
-			case 0x83: {
-				assert(instr.raw.modrm.reg == 4);
-
-				Value *val, *rm, *src;
-				if (instr.opcode == 0x83) {
-					src = size_mode == SIZE16 ? SEXT16(GET_IMM8()) : SEXT32(GET_IMM8());
-				}
-				else {
-					src = GET_IMM();
-				}
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = AND(val, src); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
-				val = AND(val, src); ST_MEM(fn_idx[size_mode], rm, val););
-				SET_FLG(val, CONST32(0));
-			}
-			break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
 		}
 		break;
 
@@ -2000,177 +1985,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_LGDT: {
-			assert(instr.raw.modrm.reg == 2);
-
-			Value *rm, *limit, *base;
-			GET_RM(OPNUM_SINGLE, assert(0);, limit = LD_MEM(MEM_LD16_idx, rm); rm = ADD(rm, CONST32(2)); base = LD_MEM(MEM_LD32_idx, rm););
-			if (size_mode == SIZE16) {
-				base = AND(base, CONST32(0x00FFFFFF));
-			}
-			ST_SEG_HIDDEN(base, GDTR_idx, SEG_BASE_idx);
-			ST_SEG_HIDDEN(ZEXT32(limit), GDTR_idx, SEG_LIMIT_idx);
-		}
-		break;
-
-		case ZYDIS_MNEMONIC_LIDT: {
-			assert(instr.raw.modrm.reg == 3);
-
-			Value *rm, *limit, *base;
-			GET_RM(OPNUM_SINGLE, assert(0);, limit = LD_MEM(MEM_LD16_idx, rm); rm = ADD(rm, CONST32(2)); base = LD_MEM(MEM_LD32_idx, rm););
-			if (size_mode == SIZE16) {
-				base = AND(base, CONST32(0x00FFFFFF));
-			}
-			ST_SEG_HIDDEN(base, IDTR_idx, SEG_BASE_idx);
-			ST_SEG_HIDDEN(ZEXT32(limit), IDTR_idx, SEG_LIMIT_idx);
-
-			if (cpu->cpu_flags & CPU_DBG_PRESENT) {
-				// hook the breakpoint exception handler so that the debugger can catch it
-				Function *fn = cast<Function>(cpu->mod->getOrInsertFunction("dbg_update_bp_hook", getVoidType(), cpu->ptr_cpu_ctx->getType()).getCallee());
-				CallInst::Create(fn, cpu->ptr_cpu_ctx, "", cpu->bb);
-			}
-		}
-		break;
-
-		case ZYDIS_MNEMONIC_LLDT: {
-			assert(instr.raw.modrm.reg == 2);
-
-			if (cpu_ctx->hflags & HFLG_CPL) {
-				RAISEin0(EXP_GP);
-				translate_next = 0;
-			}
-			else {
-				Value *sel, *rm;
-				GET_RM(OPNUM_SINGLE, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
-				Function *ltr_helper = cast<Function>(cpu->mod->getOrInsertFunction("lldt_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-					getIntegerType(16), getIntegerType(32)).getCallee());
-				CallInst *ci = CallInst::Create(ltr_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
-				BasicBlock *bb0 = getBB();
-				BasicBlock *bb1 = getBB();
-				BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
-				cpu->bb = bb0;
-				CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
-				ReturnInst::Create(CTX(), ci2, cpu->bb);
-				cpu->bb = bb1;
-			}
-		}
-		break;
-
 		case ZYDIS_MNEMONIC_LMSW:        BAD;
 		case ZYDIS_MNEMONIC_LSL:         BAD;
-		case ZYDIS_MNEMONIC_LDS:
-		case ZYDIS_MNEMONIC_LES:
-		case ZYDIS_MNEMONIC_LFS:
-		case ZYDIS_MNEMONIC_LGS:
-		case ZYDIS_MNEMONIC_LSS: {
-			Value *offset, *sel, *rm;
-			unsigned sel_idx;
-			GET_RM(OPNUM_SRC, assert(0);, offset = LD_MEM(fn_idx[size_mode], rm);
-			rm = size_mode == SIZE16 ? ADD(rm, CONST32(2)) : ADD(rm, CONST32(4));
-			sel = LD_MEM(MEM_LD16_idx, rm););
-
-			const char *mov_sel_pe_fn;
-			switch (instr.opcode)
-			{
-			case 0xB2:
-				sel_idx = SS_idx;
-				mov_sel_pe_fn = "mov_ss_pe_helper";
-				break;
-
-			case 0xB4:
-				sel_idx = FS_idx;
-				mov_sel_pe_fn = "mov_fs_pe_helper";
-				break;
-
-			case 0xB5:
-				sel_idx = GS_idx;
-				mov_sel_pe_fn = "mov_gs_pe_helper";
-				break;
-
-			case 0xC4:
-				sel_idx = ES_idx;
-				mov_sel_pe_fn = "mov_es_pe_helper";
-				break;
-
-			case 0xC5:
-				sel_idx = DS_idx;
-				mov_sel_pe_fn = "mov_ds_pe_helper";
-				break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-
-			if (cpu_ctx->hflags & HFLG_PE_MODE) {
-				if (sel_idx == SS_idx) {
-					Function *mov_ss_helper = cast<Function>(cpu->mod->getOrInsertFunction(mov_sel_pe_fn, getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-						getIntegerType(16), getIntegerType(32)).getCallee());
-					CallInst *ci = CallInst::Create(mov_ss_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
-					BasicBlock *bb0 = getBB();
-					BasicBlock *bb1 = getBB();
-					BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
-					cpu->bb = bb0;
-					CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
-					ReturnInst::Create(CTX(), ci2, cpu->bb);
-					cpu->bb = bb1;
-					ST(GEP_EIP(), ADD(cpu->instr_eip, CONST32(bytes)));
-					ST_REG_val(offset, GET_REG(OPNUM_DST));
-					if (((pc + bytes) & ~PAGE_MASK) == (pc & ~PAGE_MASK)) {
-						BasicBlock *bb2 = getBB();
-						BasicBlock *bb3 = getBB();
-						BR_COND(bb2, bb3, ICMP_EQ(CONST32(cpu->cpu_ctx.hflags & HFLG_SS32), AND(LD(cpu->ptr_hflags, getIntegerType(32)), CONST32(HFLG_SS32))));
-						cpu->bb = bb2;
-						link_dst_only_emit(cpu);
-						cpu->bb = bb3;
-						cpu->tc->flags |= TC_FLG_COND_DST_ONLY;
-					}
-					translate_next = 0;
-				}
-				else {
-					Function *mov_sel_helper = cast<Function>(cpu->mod->getOrInsertFunction(mov_sel_pe_fn, getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-						getIntegerType(16), getIntegerType(32)).getCallee());
-					CallInst *ci = CallInst::Create(mov_sel_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
-					BasicBlock *bb0 = getBB();
-					BasicBlock *bb1 = getBB();
-					BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
-					cpu->bb = bb0;
-					CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
-					ReturnInst::Create(CTX(), ci2, cpu->bb);
-					cpu->bb = bb1;
-					ST_REG_val(offset, GET_REG(OPNUM_DST));
-				}
-			}
-			else {
-				ST_SEG(sel, sel_idx);
-				ST_SEG_HIDDEN(SHL(ZEXT32(sel), CONST32(4)), sel_idx, SEG_BASE_idx);
-				ST_REG_val(offset, GET_REG(OPNUM_DST));
-			}
-		}
-		break;
-
-		case ZYDIS_MNEMONIC_LTR: {
-			assert(instr.raw.modrm.reg == 3);
-
-			if (cpu_ctx->hflags & HFLG_CPL) {
-				RAISEin0(EXP_GP);
-				translate_next = 0;
-			}
-			else {
-				Value *sel, *rm;
-				GET_RM(OPNUM_SINGLE, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
-				Function *ltr_helper = cast<Function>(cpu->mod->getOrInsertFunction("ltr_helper", getIntegerType(8), cpu->ptr_cpu_ctx->getType(),
-					getIntegerType(16), getIntegerType(32)).getCallee());
-				CallInst *ci = CallInst::Create(ltr_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
-				BasicBlock *bb0 = getBB();
-				BasicBlock *bb1 = getBB();
-				BR_COND(bb0, bb1, ICMP_NE(ci, CONST8(0)));
-				cpu->bb = bb0;
-				CallInst *ci2 = CallInst::Create(cpu->ptr_exp_fn, cpu->ptr_cpu_ctx, "", cpu->bb);
-				ReturnInst::Create(CTX(), ci2, cpu->bb);
-				cpu->bb = bb1;
-			}
-		}
-		break;
 
 		case ZYDIS_MNEMONIC_MOVD: {
 			if (cpu_ctx->hflags & HFLG_CR0_EM) {
@@ -2290,10 +2106,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_NOP:
-			// nothing to do
-			break;
-
 		case ZYDIS_MNEMONIC_NOT: {
 			switch (instr.opcode)
 			{
@@ -2307,79 +2119,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				Value *val, *rm;
 				GET_RM(OPNUM_SINGLE, val = LD_REG_val(rm); val = NOT(val); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
 				val = NOT(val); ST_MEM(fn_idx[size_mode], rm, val););
-			}
-			break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-		}
-		break;
-
-		case ZYDIS_MNEMONIC_OR: {
-			switch (instr.opcode)
-			{
-			case 0x08:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x09: {
-				Value *val, *rm, *src;
-				src = LD_REG_val(GET_REG(OPNUM_SRC));
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = OR(val, src); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
-				val = OR(val, src); ST_MEM(fn_idx[size_mode], rm, val););
-				SET_FLG(val, CONST32(0));
-			}
-			break;
-
-			case 0x0A:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x0B: {
-				Value *val, *rm, *reg = GET_REG(OPNUM_DST);
-				GET_RM(OPNUM_SRC, val = LD_REG_val(rm); val = OR(val, LD_REG_val(reg)); ST_REG_val(val, reg);,
-				val = LD_MEM(fn_idx[size_mode], rm); val = OR(val, LD_REG_val(reg)); ST_REG_val(val, reg););
-				SET_FLG(val, CONST32(0));
-			}
-			break;
-
-			case 0x0C:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x0D: {
-				Value *val, *eax;
-				val = GET_IMM();
-				eax = GET_REG(OPNUM_DST);
-				val = OR(LD_REG_val(eax), val);
-				ST_REG_val(val, eax);
-				SET_FLG(val, CONST32(0));
-			}
-			break;
-
-			case 0x80:
-			case 0x82:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x81: {
-				assert(instr.raw.modrm.reg == 1);
-
-				Value *val, *rm, *src = GET_IMM();
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = OR(val, src); ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm);
-				val = OR(val, src); ST_MEM(fn_idx[size_mode], rm, val););
-				SET_FLG(val, CONST32(0));
-			}
-			break;
-
-			case 0x83: {
-				assert(instr.raw.modrm.reg == 1);
-
-				Value *val, *rm, *src = size_mode == SIZE16 ? SEXT16(GET_IMM8()) : SEXT32(GET_IMM8());
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm); val = OR(val, src); ST_REG_val(val, rm);,
-				val = LD_MEM(fn_idx[size_mode], rm); val = OR(val, src); ST_MEM(fn_idx[size_mode], rm, val););
-				SET_FLG(val, CONST32(0));
 			}
 			break;
 
@@ -2617,68 +2356,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_POPA:
-		case ZYDIS_MNEMONIC_POPAD: {
-			switch ((size_mode << 1) | ((cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
-			{
-			case 0: {
-				Value *sp = LD_R16(ESP_idx);
-				for (int8_t reg_idx = EDI_idx; reg_idx >= EAX_idx; reg_idx--) {
-					if (reg_idx != ESP_idx) {
-						Value *reg = LD_MEM(MEM_LD32_idx, ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
-						ST_REG_idx(reg, reg_idx);
-					}
-					sp = ADD(sp, CONST16(4));
-				}
-				ST_REG_idx(sp, ESP_idx);
-			}
-			break;
-
-			case 1: {
-				Value *esp = LD_R32(ESP_idx);
-				for (int8_t reg_idx = EDI_idx; reg_idx >= EAX_idx; reg_idx--) {
-					if (reg_idx != ESP_idx) {
-						Value *reg = LD_MEM(MEM_LD32_idx, ADD(esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
-						ST_REG_idx(reg, reg_idx);
-					}
-					esp = ADD(esp, CONST32(4));
-				}
-				ST_REG_idx(esp, ESP_idx);
-			}
-			break;
-
-			case 2: {
-				Value *sp = LD_R16(ESP_idx);
-				for (int8_t reg_idx = EDI_idx; reg_idx >= EAX_idx; reg_idx--) {
-					if (reg_idx != ESP_idx) {
-						Value *reg = LD_MEM(MEM_LD16_idx, ADD(ZEXT32(sp), LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
-						ST_REG_idx(reg, reg_idx);
-					}
-					sp = ADD(sp, CONST16(2));
-				}
-				ST_REG_idx(sp, ESP_idx);
-			}
-			break;
-
-			case 3: {
-				Value *esp = LD_R32(ESP_idx);
-				for (int8_t reg_idx = EDI_idx; reg_idx >= EAX_idx; reg_idx--) {
-					if (reg_idx != ESP_idx) {
-						Value *reg = LD_MEM(MEM_LD16_idx, ADD(esp, LD_SEG_HIDDEN(SS_idx, SEG_BASE_idx)));
-						ST_REG_idx(reg, reg_idx);
-					}
-					esp = ADD(esp, CONST32(2));
-				}
-				ST_REG_idx(esp, ESP_idx);
-			}
-			break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-		}
-		break;
-
 		case ZYDIS_MNEMONIC_POPF:
 		case ZYDIS_MNEMONIC_POPFD: {
 			std::vector<Value *> vec = MEM_POP(1);
@@ -2781,35 +2458,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			default:
 				LIB86CPU_ABORT();
 			}
-		}
-		break;
-
-		case ZYDIS_MNEMONIC_PUSHA:
-		case ZYDIS_MNEMONIC_PUSHAD: {
-			std::vector<Value *> vec;
-
-			if (size_mode == SIZE16) {
-				vec.push_back(LD_R16(EAX_idx));
-				vec.push_back(LD_R16(ECX_idx));
-				vec.push_back(LD_R16(EDX_idx));
-				vec.push_back(LD_R16(EBX_idx));
-				vec.push_back(LD_R16(ESP_idx));
-				vec.push_back(LD_R16(EBP_idx));
-				vec.push_back(LD_R16(ESI_idx));
-				vec.push_back(LD_R16(EDI_idx));
-			}
-			else {
-				vec.push_back(LD_R32(EAX_idx));
-				vec.push_back(LD_R32(ECX_idx));
-				vec.push_back(LD_R32(EDX_idx));
-				vec.push_back(LD_R32(EBX_idx));
-				vec.push_back(LD_R32(ESP_idx));
-				vec.push_back(LD_R32(EBP_idx));
-				vec.push_back(LD_R32(ESI_idx));
-				vec.push_back(LD_R32(EDI_idx));
-			}
-
-			MEM_PUSH(vec);
 		}
 		break;
 
@@ -3294,124 +2942,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_SBB: {
-			Value *src, *sub, *sum, *dst, *rm, *cf, *sub_cout;
-			switch (instr.opcode)
-			{
-			case 0x1C:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x1D: {
-				switch (size_mode)
-				{
-				case SIZE8:
-					src = CONST8(instr.operands[OPNUM_SRC].imm.value.u);
-					rm = GEP_REG_idx(EAX_idx);
-					dst = LD(rm, getIntegerType(8));
-					break;
-
-				case SIZE16:
-					src = CONST16(instr.operands[OPNUM_SRC].imm.value.u);
-					rm = GEP_REG_idx(EAX_idx);
-					dst = LD(rm, getIntegerType(16));
-					break;
-
-				case SIZE32:
-					src = CONST32(instr.operands[OPNUM_SRC].imm.value.u);
-					rm = GEP_REG_idx(EAX_idx);
-					dst = LD(rm, getIntegerType(32));
-					break;
-
-				default:
-					LIB86CPU_ABORT();
-				}
-			}
-			break;
-
-			case 0x80:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x81:
-			case 0x83: {
-				assert(instr.raw.modrm.reg == 3);
-
-				if (instr.opcode == 0x83) {
-					src = (size_mode == SIZE16) ? SEXT16(CONST8(instr.operands[OPNUM_SRC].imm.value.u)) :
-						SEXT32(CONST8(instr.operands[OPNUM_SRC].imm.value.u));
-				}
-				else {
-					src = GET_IMM();
-				}
-
-				GET_RM(OPNUM_DST, dst = LD_REG_val(rm);, dst = LD_MEM(fn_idx[size_mode], rm););
-			}
-			break;
-
-			case 0x18:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x19: {
-				src = LD_REG_val(GET_REG(OPNUM_SRC));
-				GET_RM(OPNUM_DST, dst = LD_REG_val(rm);, dst = LD_MEM(fn_idx[size_mode], rm););
-			}
-			break;
-
-			case 0x1A:
-				size_mode = SIZE8;
-				[[fallthrough]];
-
-			case 0x1B: {
-				GET_RM(OPNUM_SRC, src = LD_REG_val(rm);, src = LD_MEM(fn_idx[size_mode], rm););
-				rm = GET_REG(OPNUM_DST);
-				dst = LD_REG_val(rm);
-			}
-			break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-
-			switch (size_mode)
-			{
-			case SIZE8:
-				cf = TRUNC8(SHR(LD_CF(), CONST32(31)));
-				sum = ADD(src, cf);
-				sub = SUB(dst, sum);
-				sub_cout = GEN_SUB_VEC8(dst, src, sub);
-				break;
-
-			case SIZE16:
-				cf = TRUNC16(SHR(LD_CF(), CONST32(31)));
-				sum = ADD(src, cf);
-				sub = SUB(dst, sum);
-				sub_cout = GEN_SUB_VEC16(dst, src, sub);
-				break;
-
-			case SIZE32:
-				cf = SHR(LD_CF(), CONST32(31));
-				sum = ADD(src, cf);
-				sub = SUB(dst, sum);
-				sub_cout = GEN_SUB_VEC32(dst, src, sub);
-				break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-
-			if (instr.operands[OPNUM_DST].type == ZYDIS_OPERAND_TYPE_REGISTER) {
-				ST_REG_val(sub, rm);
-			}
-			else {
-				ST_MEM(fn_idx[size_mode], rm, sub);
-			}
-
-			SET_FLG(sub, sub_cout);
-		}
-		break;
-
 		case ZYDIS_MNEMONIC_SETB:
 		case ZYDIS_MNEMONIC_SETBE:
 		case ZYDIS_MNEMONIC_SETL:
@@ -3577,80 +3107,6 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		break;
 
-		case ZYDIS_MNEMONIC_SHR: {
-			assert(instr.raw.modrm.reg == 5);
-
-			Value *count;
-			switch (instr.opcode)
-			{
-			case 0xD0:
-				count = CONST32(1);
-				size_mode = SIZE8;
-				break;
-
-			case 0xD2:
-				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
-				size_mode = SIZE8;
-				break;
-
-			case 0xC0:
-				count = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
-				size_mode = SIZE8;
-				break;
-
-			case 0xD1:
-				count = CONST32(1);
-				break;
-
-			case 0xD3:
-				count = ZEXT32(AND(LD_R8L(ECX_idx), CONST8(0x1F)));
-				break;
-
-			case 0xC1:
-				count = CONST32(instr.operands[OPNUM_SRC].imm.value.u & 0x1F);
-				break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-
-			std::vector<BasicBlock *>vec_bb = getBBs(2);
-			BR_COND(vec_bb[0], vec_bb[1], ICMP_EQ(count, CONST32(0)));
-			cpu->bb = vec_bb[1];
-			Value *val, *rm, *temp, *cf, *of, *of_mask, *cf_mask = SHL(CONST32(1), SUB(count, CONST32(1)));
-			switch (size_mode)
-			{
-			case SIZE8:
-				of_mask = CONST32(1 << 7);
-				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(7)); val = TRUNC8(SHR(val, count)); ST_REG_val(val, rm);,
-				temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(7));
-				val = TRUNC8(SHR(val, count)); ST_MEM(fn_idx[size_mode], rm, val););
-				break;
-
-			case SIZE16:
-				of_mask = CONST32(1 << 15);
-				GET_RM(OPNUM_DST, val = ZEXT32(LD_REG_val(rm)); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(15)); val = TRUNC16(SHR(val, count)); ST_REG_val(val, rm);,
-				temp = LD_MEM(fn_idx[size_mode], rm); val = ZEXT32(temp); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(15));
-				val = TRUNC16(SHR(val, count)); ST_MEM(fn_idx[size_mode], rm, val););
-				break;
-
-			case SIZE32:
-				of_mask = CONST32(1 << 31);
-				GET_RM(OPNUM_DST, val = LD_REG_val(rm); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(31)); val = SHR(val, count);
-				ST_REG_val(val, rm);, val = LD_MEM(fn_idx[size_mode], rm); cf = AND(val, cf_mask); of = SHR(AND(val, of_mask), CONST32(31));
-				val = SHR(val, count); ST_MEM(fn_idx[size_mode], rm, val););
-				break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-
-			SET_FLG(val, OR(SHL(cf, SUB(CONST32(32), count)), SHL(XOR(SHR(cf, SUB(count, CONST32(1))), of), CONST32(30))));
-			BR_UNCOND(vec_bb[0]);
-			cpu->bb = vec_bb[0];
-		}
-		break;
-
 		case ZYDIS_MNEMONIC_SHRD: {
 			Value *count;
 			switch (instr.opcode)
@@ -3743,28 +3199,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		case ZYDIS_MNEMONIC_STR:         BAD;
 		case ZYDIS_MNEMONIC_SYSENTER:    BAD;
 		case ZYDIS_MNEMONIC_SYSEXIT:     BAD;
-
 		case ZYDIS_MNEMONIC_UD1:         BAD;
 		case ZYDIS_MNEMONIC_UD2:         BAD;
-		case ZYDIS_MNEMONIC_VERR:
-		case ZYDIS_MNEMONIC_VERW: {
-			assert(instr.operands[OPNUM_SINGLE].size == 16);
-
-			Value *rm, *sel;
-			GET_RM(OPNUM_SINGLE, sel = LD_REG_val(rm);, sel = LD_MEM(MEM_LD16_idx, rm););
-			if (instr.mnemonic == ZYDIS_MNEMONIC_VERR) {
-				Function *verr_helper = cast<Function>(cpu->mod->getOrInsertFunction("verr_helper", getVoidType(), cpu->ptr_cpu_ctx->getType(),
-					getIntegerType(16), getIntegerType(32)).getCallee());
-				CallInst::Create(verr_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
-			}
-			else {
-				Function *verw_helper = cast<Function>(cpu->mod->getOrInsertFunction("verw_helper", getVoidType(), cpu->ptr_cpu_ctx->getType(),
-					getIntegerType(16), getIntegerType(32)).getCallee());
-				CallInst::Create(verw_helper, { cpu->ptr_cpu_ctx, sel, cpu->instr_eip }, "", cpu->bb);
-			}
-		}
-		break;
-
 		case ZYDIS_MNEMONIC_WBINVD:      BAD;
 		case ZYDIS_MNEMONIC_WRMSR:       BAD;
 		case ZYDIS_MNEMONIC_XADD:        BAD;
