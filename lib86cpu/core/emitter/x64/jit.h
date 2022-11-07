@@ -43,11 +43,15 @@ public:
 	void cli(ZydisDecodedInstruction *instr);
 	void cmp(ZydisDecodedInstruction *instr);
 	void cmps(ZydisDecodedInstruction *instr);
+	void dec(ZydisDecodedInstruction *instr);
 	void div(ZydisDecodedInstruction *instr);
 	void imul(ZydisDecodedInstruction *instr);
 	void inc(ZydisDecodedInstruction *instr);
+	void iret(ZydisDecodedInstruction *instr);
 	void jcc(ZydisDecodedInstruction *instr);
 	void jmp(ZydisDecodedInstruction *instr);
+	void lea(ZydisDecodedInstruction *instr);
+	void leave(ZydisDecodedInstruction *instr);
 	void lgdt(ZydisDecodedInstruction *instr);
 	void lidt(ZydisDecodedInstruction *instr);
 	void lldt(ZydisDecodedInstruction *instr);
@@ -64,10 +68,15 @@ public:
 	void mul(ZydisDecodedInstruction *instr);
 	void or_(ZydisDecodedInstruction *instr);
 	void out(ZydisDecodedInstruction *instr);
+	void pop(ZydisDecodedInstruction *instr);
 	void popa(ZydisDecodedInstruction *instr);
+	void popf(ZydisDecodedInstruction *instr);
+	void push(ZydisDecodedInstruction *instr);
 	void pusha(ZydisDecodedInstruction *instr);
+	void pushf(ZydisDecodedInstruction *instr);
 	void ret(ZydisDecodedInstruction *instr);
 	void sahf(ZydisDecodedInstruction *instr);
+	void sar(ZydisDecodedInstruction *instr);
 	void sbb(ZydisDecodedInstruction *instr);
 	void scas(ZydisDecodedInstruction *instr);
 	void shl(ZydisDecodedInstruction *instr);
@@ -94,6 +103,7 @@ private:
 private:
 	void start_new_session();
 	void gen_prologue_main();
+	template<bool set_ret = true>
 	void gen_epilogue_main();
 	void gen_tail_call(x86::Gp addr);
 	void gen_int_fn();
@@ -108,6 +118,7 @@ private:
 	void raise_exp_inline_emit(T1 fault_addr, T2 code, T3 idx, T4 eip);
 	template<bool terminates>
 	void raise_exp_inline_emit();
+	template<bool add_seg_base = true>
 	op_info get_operand(ZydisDecodedInstruction *instr, const unsigned opnum);
 	op_info get_register_op(ZydisDecodedInstruction *instr, const unsigned opnum);
 	uint32_t get_immediate_op(ZydisDecodedInstruction *instr, const unsigned opnum);

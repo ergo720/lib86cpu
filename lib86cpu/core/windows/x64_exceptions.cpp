@@ -39,7 +39,7 @@
 void
 lc86_jit::create_unwind_info()
 {
-	// The prolog of main() always uses push rdi and sub rsp, 0x20 + sizeof(stack args) + sizeof(local vars),
+	// The prolog of main() always uses push rbx and sub rsp, 0x20 + sizeof(stack args) + sizeof(local vars),
 	// so we can simplify the generation of the unwind table
 
 	uint16_t unwind_codes[4] = { 0 };
