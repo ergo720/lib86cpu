@@ -1261,6 +1261,7 @@ void lc86_jit::imm_to_rm_flags(ZydisDecodedInstruction *instr, Imm src_imm, T &&
 		{
 			auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
 			auto res_host_reg = SIZED_REG(x64::rbx, m_cpu->size_mode);
+			auto r8_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 			if constexpr (write_dst) {
 				MOV(EBX, EDX);
 				LD_MEM();
@@ -1270,17 +1271,19 @@ void lc86_jit::imm_to_rm_flags(ZydisDecodedInstruction *instr, Imm src_imm, T &&
 				MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), dst_host_reg);
 				ST_MEM(res_host_reg);
 				MOV(dst_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
+				MOV(r8_host_reg, res_host_reg);
 			}
 			else {
 				LD_MEM();
 				MOV(res_host_reg, dst_host_reg);
 				lambda(res_host_reg, src_imm);
+				MOV(r8_host_reg, res_host_reg);
 			}
 			if constexpr (is_sum) {
-				set_flags_sum(dst_host_reg, src_imm, res_host_reg);
+				set_flags_sum(dst_host_reg, src_imm, r8_host_reg);
 			}
 			else {
-				set_flags_sub(dst_host_reg, src_imm, res_host_reg);
+				set_flags_sub(dst_host_reg, src_imm, r8_host_reg);
 			}
 		});
 }
@@ -1380,7 +1383,7 @@ void lc86_jit::gen_sub_vec32(T b)
 template<typename T>
 void lc86_jit::set_flags_sum(x86::Gp a, T b, x86::Gp sum)
 {
-	// a: reg, b: edx/dx/dl or imm32/16/8, sum: reg
+	// a: reg, b: edx/dx/dl or imm32/16/8, sum: r8d/w/b
 
 	MOV(R10, RCX);
 
@@ -1415,7 +1418,7 @@ void lc86_jit::set_flags_sum(x86::Gp a, T b, x86::Gp sum)
 template<typename T>
 void lc86_jit::set_flags_sub(x86::Gp a, T b, x86::Gp sub)
 {
-	// a: reg, b: e(d|b)x/(d|b)x/(d|b)l or imm32/16/8, sub: reg
+	// a: reg, b: e(d|b)x/(d|b)x/(d|b)l or imm32/16/8, sub: r8d/w/b
 
 	MOV(R10, RCX);
 
@@ -1735,66 +1738,59 @@ void lc86_jit::rep(Label start_taken, Label end_taken)
 template<typename... Args>
 void lc86_jit::stack_push_emit(Args... pushed_args)
 {
-	// edx, ebx, eax are clobbered, pushed val is either a sized imm or sized reg -> same size of pushed val
+	// edx, ebx are clobbered, pushed val is either a sized imm or sized reg -> same size of pushed val
 
 	assert(m_cpu->size_mode != SIZE8);
 	static_assert(sizeof...(Args), "Cannot push zero values!");
 
-	LD_SEG_BASE(EAX, CPU_CTX_SS);
 	switch ((m_cpu->size_mode << 1) | ((m_cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
 	case (SIZE32 << 1) | 0: { // sp, push 32
-		MOVZX(EBX, MEMD16(RCX, CPU_CTX_ESP));
-		ADD(EBX, EAX);
+		LD_R16(BX, CPU_CTX_ESP);
 		([this, &pushed_args] {
-			SUB(EBX, 4);
-			MOV(EDX, EBX);
+			SUB(BX, 4);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			MOVZX(EBX, BX);
+			ADD(EDX, EBX);
 			ST_MEM(pushed_args);
 			}(), ...);
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		ST_R16(CPU_CTX_ESP, BX);
 	}
 	break;
 
 	case (SIZE32 << 1) | 1: { // esp, push 32
 		LD_R32(EBX, CPU_CTX_ESP);
-		ADD(EBX, EAX);
 		([this, &pushed_args] {
 			SUB(EBX, 4);
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			ADD(EDX, EBX);
 			ST_MEM(pushed_args);
 			}(), ...);
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		ST_R32(CPU_CTX_ESP, EBX);
 	}
 	break;
 
 	case (SIZE16 << 1) | 0: { // sp, push 16
-		MOVZX(EBX, MEMD16(RCX, CPU_CTX_ESP));
-		ADD(EBX, EAX);
+		LD_R16(BX, CPU_CTX_ESP);
 		([this, &pushed_args] {
-			SUB(EBX, 2);
-			MOV(EDX, EBX);
+			SUB(BX, 2);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			MOVZX(EBX, BX);
+			ADD(EDX, EBX);
 			ST_MEM(pushed_args);
 			}(), ...);
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		ST_R16(CPU_CTX_ESP, BX);
 	}
 	break;
 
 	case (SIZE16 << 1) | 1: { // esp, push 16
 		LD_R32(EBX, CPU_CTX_ESP);
-		ADD(EBX, EAX);
 		([this, &pushed_args] {
 			SUB(EBX, 2);
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			ADD(EDX, EBX);
 			ST_MEM(pushed_args);
 			}(), ...);
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		ST_R32(CPU_CTX_ESP, EBX);
 	}
 	break;
@@ -1813,23 +1809,21 @@ void lc86_jit::stack_pop_emit()
 	static_assert(num, "Cannot pop zero values!");
 	static_assert(num < 3, "Cannot pop more than two values!");
 
-	static constexpr x86::Gp reg_arr[] = { x86::r11, x86::r10 };
+	static constexpr x86::Gp reg_arr[] = { R11, R10 };
 	unsigned i = 0;
 
-	LD_SEG_BASE(EAX, CPU_CTX_SS);
 	switch ((m_cpu->size_mode << 1) | ((m_cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
 	case (SIZE32 << 1 ) | 0: // sp, pop 32
-		MOVZX(EBX, MEMD16(RCX, CPU_CTX_ESP));
-		ADD(EBX, EAX);
+		LD_R16(BX, CPU_CTX_ESP);
 		for (; i < num; ++i) {
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			MOVZX(EBX, BX);
+			ADD(EDX, EBX);
 			LD_MEM();
 			MOV(reg_arr[i].r32(), EAX);
-			ADD(EBX, 4);
+			ADD(BX, 4);
 		}
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		if constexpr (write_esp) {
 			ST_R16(CPU_CTX_ESP, BX);
 		}
@@ -1837,31 +1831,28 @@ void lc86_jit::stack_pop_emit()
 
 	case (SIZE32 << 1) | 1: // esp, pop 32
 		LD_R32(EBX, CPU_CTX_ESP);
-		ADD(EBX, EAX);
 		for (; i < num; ++i) {
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			ADD(EDX, EBX);
 			LD_MEM();
 			MOV(reg_arr[i].r32(), EAX);
 			ADD(EBX, 4);
 		}
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		if constexpr (write_esp) {
 			ST_R32(CPU_CTX_ESP, EBX);
 		}
 		break;
 
 	case (SIZE16 << 1) | 0: // sp, pop 16
-		MOVZX(EBX, MEMD16(RCX, CPU_CTX_ESP));
-		ADD(EBX, EAX);
+		LD_R16(BX, CPU_CTX_ESP);
 		for (; i < num; ++i) {
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			MOVZX(EBX, BX);
+			ADD(EDX, EBX);
 			LD_MEM();
 			MOV(reg_arr[i].r16(), AX);
-			ADD(EBX, 2);
+			ADD(BX, 2);
 		}
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		if constexpr (write_esp) {
 			ST_R16(CPU_CTX_ESP, BX);
 		}
@@ -1869,15 +1860,13 @@ void lc86_jit::stack_pop_emit()
 
 	case (SIZE16 << 1) | 1: // esp, pop 16
 		LD_R32(EBX, CPU_CTX_ESP);
-		ADD(EBX, EAX);
 		for (; i < num; ++i) {
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			ADD(EDX, EBX);
 			LD_MEM();
 			MOV(reg_arr[i].r16(), AX);
 			ADD(EBX, 2);
 		}
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		if constexpr (write_esp) {
 			ST_R32(CPU_CTX_ESP, EBX);
 		}
@@ -4522,7 +4511,9 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 			},
 			[this](const op_info rm)
 			{
+				MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
 				stack_pop_emit<1, false>();
+				MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
 				auto r11_host_reg = SIZED_REG(x64::r11, m_cpu->size_mode);
 				ST_MEM(r11_host_reg);
 				if (m_cpu->cpu_ctx.hflags & HFLG_SS32) {
@@ -4617,90 +4608,89 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 void
 lc86_jit::popa(ZydisDecodedInstruction *instr)
 {
-	LD_SEG_BASE(EAX, CPU_CTX_SS);
 	switch ((m_cpu->size_mode << 1) | ((m_cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
 	case (SIZE32 << 1) | 0: // sp, pop 32
-		MOVZX(EBX, MEMD16(RCX, CPU_CTX_ESP));
-		ADD(EBX, EAX);
+		LD_R16(BX, CPU_CTX_ESP);
 		for (int i = 6; i > 3; --i) {
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			MOVZX(EBX, BX);
+			ADD(EDX, EBX);
 			LD_MEM();
 			ST_R32(get_reg_offset(instr->operands[i].reg.value), EAX);
-			ADD(EBX, 4);
+			ADD(BX, 4);
 		}
-		ADD(EBX, 4);
+		ADD(BX, 4);
 		for (int i = 3; i >= 0; --i) {
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			MOVZX(EBX, BX);
+			ADD(EDX, EBX);
 			LD_MEM();
 			ST_R32(get_reg_offset(instr->operands[i].reg.value), EAX);
-			ADD(EBX, 4);
+			ADD(BX, 4);
 		}
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		ST_R16(CPU_CTX_ESP, BX);
 		break;
 
 	case (SIZE32 << 1) | 1: // esp, pop 32
 		LD_R32(EBX, CPU_CTX_ESP);
-		ADD(EBX, EAX);
 		for (int i = 6; i > 3; --i) {
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			ADD(EDX, EBX);
 			LD_MEM();
 			ST_R32(get_reg_offset(instr->operands[i].reg.value), EAX);
 			ADD(EBX, 4);
 		}
 		ADD(EBX, 4);
 		for (int i = 3; i >= 0; --i) {
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			ADD(EDX, EBX);
 			LD_MEM();
 			ST_R32(get_reg_offset(instr->operands[i].reg.value), EAX);
 			ADD(EBX, 4);
 		}
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		ST_R32(CPU_CTX_ESP, EBX);
 		break;
 
 	case (SIZE16 << 1) | 0: // sp, pop 16
-		MOVZX(EBX, MEMD16(RCX, CPU_CTX_ESP));
-		ADD(EBX, EAX);
+		LD_R16(BX, CPU_CTX_ESP);
 		for (int i = 6; i > 3; --i) {
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			MOVZX(EBX, BX);
+			ADD(EDX, EBX);
 			LD_MEM();
 			ST_R16(get_reg_offset(instr->operands[i].reg.value), AX);
-			ADD(EBX, 2);
+			ADD(BX, 2);
 		}
-		ADD(EBX, 2);
+		ADD(BX, 2);
 		for (int i = 3; i >= 0; --i) {
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			MOVZX(EBX, BX);
+			ADD(EDX, EBX);
 			LD_MEM();
 			ST_R16(get_reg_offset(instr->operands[i].reg.value), AX);
-			ADD(EBX, 2);
+			ADD(BX, 2);
 		}
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		ST_R16(CPU_CTX_ESP, BX);
 		break;
 
 	case (SIZE16 << 1) | 1: // esp, pop 16
 		LD_R32(EBX, CPU_CTX_ESP);
-		ADD(EBX, EAX);
 		for (int i = 6; i > 3; --i) {
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			ADD(EDX, EBX);
 			LD_MEM();
 			ST_R16(get_reg_offset(instr->operands[i].reg.value), AX);
 			ADD(EBX, 2);
 		}
-		ADD(EBX, 2);
+		ADD(EBX, 4);
 		for (int i = 3; i >= 0; --i) {
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			ADD(EDX, EBX);
 			LD_MEM();
 			ST_R16(get_reg_offset(instr->operands[i].reg.value), AX);
 			ADD(EBX, 2);
 		}
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		ST_R32(CPU_CTX_ESP, EBX);
 		break;
 
@@ -4860,65 +4850,58 @@ lc86_jit::push(ZydisDecodedInstruction *instr)
 void
 lc86_jit::pusha(ZydisDecodedInstruction *instr)
 {
-	LD_SEG_BASE(EAX, CPU_CTX_SS);
 	switch ((m_cpu->size_mode << 1) | ((m_cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
 	case (SIZE32 << 1) | 0: { // sp, push 32
-		MOVZX(EBX, MEMD16(RCX, CPU_CTX_ESP));
-		ADD(EBX, EAX);
+		LD_R16(BX, CPU_CTX_ESP);
 		for (unsigned i = 0; i < 8; ++i) {
-			SUB(EBX, 4);
-			MOV(EDX, EBX);
+			SUB(BX, 4);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			MOVZX(EBX, BX);
+			ADD(EDX, EBX);
 			LD_R32(EAX, get_reg_offset(instr->operands[i].reg.value));
 			ST_MEM(EAX);
 		}
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		ST_R16(CPU_CTX_ESP, BX);
 	}
 	break;
 
 	case (SIZE32 << 1) | 1: { // esp, push 32
 		LD_R32(EBX, CPU_CTX_ESP);
-		ADD(EBX, EAX);
 		for (unsigned i = 0; i < 8; ++i) {
 			SUB(EBX, 4);
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			ADD(EDX, EBX);
 			LD_R32(EAX, get_reg_offset(instr->operands[i].reg.value));
 			ST_MEM(EAX);
 		}
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		ST_R32(CPU_CTX_ESP, EBX);
 	}
 	break;
 
 	case (SIZE16 << 1) | 0: { // sp, push 16
-		MOVZX(EBX, MEMD16(RCX, CPU_CTX_ESP));
-		ADD(EBX, EAX);
+		LD_R16(BX, CPU_CTX_ESP);
 		for (unsigned i = 0; i < 8; ++i) {
-			SUB(EBX, 2);
-			MOV(EDX, EBX);
+			SUB(BX, 2);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			MOVZX(EBX, BX);
+			ADD(EDX, EBX);
 			LD_R16(AX, get_reg_offset(instr->operands[i].reg.value));
 			ST_MEM(AX);
 		}
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		ST_R16(CPU_CTX_ESP, BX);
 	}
 	break;
 
 	case (SIZE16 << 1) | 1: { // esp, push 16
 		LD_R32(EBX, CPU_CTX_ESP);
-		ADD(EBX, EAX);
 		for (unsigned i = 0; i < 8; ++i) {
 			SUB(EBX, 2);
-			MOV(EDX, EBX);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			ADD(EDX, EBX);
 			LD_R16(AX, get_reg_offset(instr->operands[i].reg.value));
 			ST_MEM(AX);
 		}
-		LD_SEG_BASE(EAX, CPU_CTX_SS);
-		SUB(EBX, EAX);
 		ST_R32(CPU_CTX_ESP, EBX);
 	}
 	break;
