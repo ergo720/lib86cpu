@@ -37,6 +37,8 @@ public:
 
 	void add(ZydisDecodedInstruction *instr);
 	void and_(ZydisDecodedInstruction *instr);
+	void bsf(ZydisDecodedInstruction *instr);
+	void bsr(ZydisDecodedInstruction *instr);
 	void call(ZydisDecodedInstruction *instr);
 	void clc(ZydisDecodedInstruction *instr);
 	void cld(ZydisDecodedInstruction *instr);
@@ -45,11 +47,13 @@ public:
 	void cmps(ZydisDecodedInstruction *instr);
 	void dec(ZydisDecodedInstruction *instr);
 	void div(ZydisDecodedInstruction *instr);
+	void hlt(ZydisDecodedInstruction *instr);
 	void imul(ZydisDecodedInstruction *instr);
 	void inc(ZydisDecodedInstruction *instr);
 	void iret(ZydisDecodedInstruction *instr);
 	void jcc(ZydisDecodedInstruction *instr);
 	void jmp(ZydisDecodedInstruction *instr);
+	void lahf(ZydisDecodedInstruction *instr);
 	void lea(ZydisDecodedInstruction *instr);
 	void leave(ZydisDecodedInstruction *instr);
 	void lgdt(ZydisDecodedInstruction *instr);
@@ -65,7 +69,11 @@ public:
 	void ltr(ZydisDecodedInstruction *instr);
 	void mov(ZydisDecodedInstruction *instr);
 	void movs(ZydisDecodedInstruction *instr);
+	void movsx(ZydisDecodedInstruction *instr);
+	void movzx(ZydisDecodedInstruction *instr);
 	void mul(ZydisDecodedInstruction *instr);
+	void neg(ZydisDecodedInstruction *instr);
+	void not_(ZydisDecodedInstruction *instr);
 	void or_(ZydisDecodedInstruction *instr);
 	void out(ZydisDecodedInstruction *instr);
 	void pop(ZydisDecodedInstruction *instr);
@@ -83,6 +91,7 @@ public:
 	void shr(ZydisDecodedInstruction *instr);
 	void stc(ZydisDecodedInstruction *instr);
 	void std(ZydisDecodedInstruction *instr);
+	void sti(ZydisDecodedInstruction *instr);
 	void stos(ZydisDecodedInstruction *instr);
 	void sub(ZydisDecodedInstruction *instr);
 	void test(ZydisDecodedInstruction *instr);
@@ -150,8 +159,8 @@ private:
 	void gen_sub_vec32(T b);
 	template<typename T>
 	void set_flags_sum(x86::Gp a, T b, x86::Gp sum);
-	template<typename T>
-	void set_flags_sub(x86::Gp a, T b, x86::Gp sub);
+	template<typename T1, typename T2>
+	void set_flags_sub(T1 a, T2 b, x86::Gp sub);
 	template<typename T1, typename T2>
 	void set_flags(T1 res, T2 aux, size_t res_size);
 	void ld_of(x86::Gp dst, x86::Gp aux);
