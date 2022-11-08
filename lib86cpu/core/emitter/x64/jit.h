@@ -37,8 +37,14 @@ public:
 
 	void add(ZydisDecodedInstruction *instr);
 	void and_(ZydisDecodedInstruction *instr);
+	void arpl(ZydisDecodedInstruction *instr);
+	void bound(ZydisDecodedInstruction *instr);
 	void bsf(ZydisDecodedInstruction *instr);
 	void bsr(ZydisDecodedInstruction *instr);
+	void bt(ZydisDecodedInstruction *instr);
+	void btc(ZydisDecodedInstruction *instr);
+	void btr(ZydisDecodedInstruction *instr);
+	void bts(ZydisDecodedInstruction *instr);
 	void call(ZydisDecodedInstruction *instr);
 	void clc(ZydisDecodedInstruction *instr);
 	void cld(ZydisDecodedInstruction *instr);
@@ -87,6 +93,7 @@ public:
 	void sar(ZydisDecodedInstruction *instr);
 	void sbb(ZydisDecodedInstruction *instr);
 	void scas(ZydisDecodedInstruction *instr);
+	void setcc(ZydisDecodedInstruction *instr);
 	void shl(ZydisDecodedInstruction *instr);
 	void shr(ZydisDecodedInstruction *instr);
 	void stc(ZydisDecodedInstruction *instr);
@@ -190,6 +197,8 @@ private:
 	void verx(ZydisDecodedInstruction *instr);
 	template<unsigned idx>
 	void lxs(ZydisDecodedInstruction *instr);
+	template<unsigned idx>
+	void bit(ZydisDecodedInstruction *instr);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;
