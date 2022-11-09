@@ -35,25 +35,39 @@ public:
 	void free_code_block(void *addr) { m_mem.release_sys_mem(addr); }
 	void destroy_all_code() { m_mem.destroy_all_blocks(); }
 
+	void aaa(ZydisDecodedInstruction *instr);
+	void aad(ZydisDecodedInstruction *instr);
+	void aam(ZydisDecodedInstruction *instr);
+	void aas(ZydisDecodedInstruction *instr);
+	void adc(ZydisDecodedInstruction *instr);
 	void add(ZydisDecodedInstruction *instr);
 	void and_(ZydisDecodedInstruction *instr);
 	void arpl(ZydisDecodedInstruction *instr);
 	void bound(ZydisDecodedInstruction *instr);
 	void bsf(ZydisDecodedInstruction *instr);
 	void bsr(ZydisDecodedInstruction *instr);
+	void bswap(ZydisDecodedInstruction *instr);
 	void bt(ZydisDecodedInstruction *instr);
 	void btc(ZydisDecodedInstruction *instr);
 	void btr(ZydisDecodedInstruction *instr);
 	void bts(ZydisDecodedInstruction *instr);
 	void call(ZydisDecodedInstruction *instr);
 	void clc(ZydisDecodedInstruction *instr);
+	void cbw(ZydisDecodedInstruction *instr);
+	void cdq(ZydisDecodedInstruction *instr);
 	void cld(ZydisDecodedInstruction *instr);
 	void cli(ZydisDecodedInstruction *instr);
+	void cmovcc(ZydisDecodedInstruction *instr);
 	void cmp(ZydisDecodedInstruction *instr);
 	void cmps(ZydisDecodedInstruction *instr);
+	void cwd(ZydisDecodedInstruction *instr);
+	void cwde(ZydisDecodedInstruction *instr);
+	void daa(ZydisDecodedInstruction *instr);
+	void das(ZydisDecodedInstruction *instr);
 	void dec(ZydisDecodedInstruction *instr);
 	void div(ZydisDecodedInstruction *instr);
 	void hlt(ZydisDecodedInstruction *instr);
+	void idiv(ZydisDecodedInstruction *instr);
 	void imul(ZydisDecodedInstruction *instr);
 	void inc(ZydisDecodedInstruction *instr);
 	void iret(ZydisDecodedInstruction *instr);
