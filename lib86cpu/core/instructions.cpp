@@ -873,6 +873,123 @@ msr_read_helper(cpu_ctx_t *cpu_ctx)
 	cpu_ctx->regs.eax = val;
 }
 
+uint8_t
+divd_helper(cpu_ctx_t *cpu_ctx, uint32_t d, uint32_t eip)
+{
+	uint64_t D = (static_cast<uint64_t>(cpu_ctx->regs.eax)) | (static_cast<uint64_t>(cpu_ctx->regs.edx) << 32);
+	if (d == 0) {
+		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
+	}
+	uint64_t q = (D / d);
+	uint64_t r = (D % d);
+	if (q > 0xFFFFFFFF) {
+		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
+	}
+	cpu_ctx->regs.eax = q;
+	cpu_ctx->regs.edx = r;
+
+	return 0;
+}
+
+uint8_t
+divw_helper(cpu_ctx_t *cpu_ctx, uint16_t d, uint32_t eip)
+{
+	uint32_t D = (cpu_ctx->regs.eax & 0xFFFF) | ((cpu_ctx->regs.edx & 0xFFFF) << 16);
+	if (d == 0) {
+		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
+	}
+	uint32_t q = (D / d);
+	uint32_t r = (D % d);
+	if (q > 0xFFFF) {
+		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
+	}
+	q &= 0xFFFF;
+	r &= 0xFFFF;
+	cpu_ctx->regs.eax = (cpu_ctx->regs.eax & ~0xFFFF) | q;
+	cpu_ctx->regs.edx = (cpu_ctx->regs.edx & ~0xFFFF) | r;
+
+	return 0;
+}
+
+uint8_t
+divb_helper(cpu_ctx_t *cpu_ctx, uint8_t d, uint32_t eip)
+{
+	uint16_t D = cpu_ctx->regs.eax & 0xFFFF;
+	if (d == 0) {
+		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
+	}
+	uint16_t q = (D / d);
+	uint16_t r = (D % d);
+	if (q > 0xFF) {
+		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
+	}
+	q &= 0xFF;
+	r &= 0xFF;
+	cpu_ctx->regs.eax = (cpu_ctx->regs.eax & ~0xFFFF) | (r << 8) | q;
+
+	return 0;
+}
+
+uint8_t
+idivd_helper(cpu_ctx_t *cpu_ctx, uint32_t d, uint32_t eip)
+{
+	int64_t D = static_cast<int64_t>((static_cast<uint64_t>(cpu_ctx->regs.eax)) | (static_cast<uint64_t>(cpu_ctx->regs.edx) << 32));
+	int32_t d0 = static_cast<int32_t>(d);
+	if (d0 == 0) {
+		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
+	}
+	int64_t q = (D / d);
+	int64_t r = (D % d);
+	if (q != static_cast<int32_t>(q)) {
+		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
+	}
+	cpu_ctx->regs.eax = q;
+	cpu_ctx->regs.edx = r;
+
+	return 0;
+}
+
+uint8_t
+idivw_helper(cpu_ctx_t *cpu_ctx, uint16_t d, uint32_t eip)
+{
+	int32_t D = static_cast<int32_t>((cpu_ctx->regs.eax & 0xFFFF) | ((cpu_ctx->regs.edx & 0xFFFF) << 16));
+	int16_t d0 = static_cast<int16_t>(d);
+	if (d0 == 0) {
+		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
+	}
+	int32_t q = (D / d);
+	int32_t r = (D % d);
+	if (q != static_cast<int16_t>(q)) {
+		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
+	}
+	q &= 0xFFFF;
+	r &= 0xFFFF;
+	cpu_ctx->regs.eax = (cpu_ctx->regs.eax & ~0xFFFF) | q;
+	cpu_ctx->regs.edx = (cpu_ctx->regs.edx & ~0xFFFF) | r;
+
+	return 0;
+}
+
+uint8_t
+idivb_helper(cpu_ctx_t *cpu_ctx, uint8_t d, uint32_t eip)
+{
+	int16_t D = static_cast<int16_t>(cpu_ctx->regs.eax & 0xFFFF);
+	int8_t d0 = static_cast<int8_t>(d);
+	if (d0 == 0) {
+		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
+	}
+	int16_t q = (D / d0);
+	int16_t r = (D % d0);
+	if (q != static_cast<int8_t>(q)) {
+		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
+	}
+	q &= 0xFF;
+	r &= 0xFF;
+	cpu_ctx->regs.eax = (cpu_ctx->regs.eax & ~0xFFFF) | (r << 8) | q;
+
+	return 0;
+}
+
 template uint8_t lret_pe_helper<true>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
 template uint8_t lret_pe_helper<false>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
 

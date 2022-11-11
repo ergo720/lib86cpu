@@ -69,7 +69,9 @@ public:
 	void hlt(ZydisDecodedInstruction *instr);
 	void idiv(ZydisDecodedInstruction *instr);
 	void imul(ZydisDecodedInstruction *instr);
+	void in(ZydisDecodedInstruction *instr);
 	void inc(ZydisDecodedInstruction *instr);
+	void int3(ZydisDecodedInstruction *instr);
 	void iret(ZydisDecodedInstruction *instr);
 	void jcc(ZydisDecodedInstruction *instr);
 	void jmp(ZydisDecodedInstruction *instr);
@@ -102,14 +104,21 @@ public:
 	void push(ZydisDecodedInstruction *instr);
 	void pusha(ZydisDecodedInstruction *instr);
 	void pushf(ZydisDecodedInstruction *instr);
+	void rcl(ZydisDecodedInstruction *instr);
+	void rcr(ZydisDecodedInstruction *instr);
+	void rdtsc(ZydisDecodedInstruction *instr);
 	void ret(ZydisDecodedInstruction *instr);
+	void rol(ZydisDecodedInstruction *instr);
+	void ror(ZydisDecodedInstruction *instr);
 	void sahf(ZydisDecodedInstruction *instr);
 	void sar(ZydisDecodedInstruction *instr);
 	void sbb(ZydisDecodedInstruction *instr);
 	void scas(ZydisDecodedInstruction *instr);
 	void setcc(ZydisDecodedInstruction *instr);
 	void shl(ZydisDecodedInstruction *instr);
+	void shld(ZydisDecodedInstruction *instr);
 	void shr(ZydisDecodedInstruction *instr);
+	void shrd(ZydisDecodedInstruction *instr);
 	void stc(ZydisDecodedInstruction *instr);
 	void std(ZydisDecodedInstruction *instr);
 	void sti(ZydisDecodedInstruction *instr);
@@ -193,6 +202,7 @@ private:
 	void load_mem(uint8_t size, uint8_t is_priv);
 	template<typename T>
 	void store_mem(T val, uint8_t size, uint8_t is_priv);
+	void load_io(uint8_t size_mode);
 	void store_io(uint8_t size_mode);
 	template<typename T>
 	bool check_io_priv_emit(T port);
@@ -205,6 +215,10 @@ private:
 	void stack_pop_emit();
 	template<unsigned idx>
 	void shift(ZydisDecodedInstruction *instr);
+	template<unsigned idx>
+	void double_shift(ZydisDecodedInstruction *instr);
+	template<unsigned idx>
+	void rotate(ZydisDecodedInstruction *instr);
 	template<unsigned idx>
 	void load_sys_seg_reg(ZydisDecodedInstruction *instr);
 	template<bool is_verr>
