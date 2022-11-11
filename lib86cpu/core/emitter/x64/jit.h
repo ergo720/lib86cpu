@@ -206,9 +206,9 @@ private:
 	void store_io(uint8_t size_mode);
 	template<typename T>
 	bool check_io_priv_emit(T port);
-	Label rep_start(Label end_taken);
+	Label rep_start(Label end);
 	template<unsigned rep_prfx>
-	void rep(Label start_taken, Label end_taken);
+	void rep(Label start, Label end);
 	template<typename... Args>
 	void stack_push_emit(Args... pushed_args);
 	template<unsigned num, bool write_esp = true>
