@@ -226,9 +226,9 @@ get_local_var_offset()
 #define IMUL3(dst, src, imm) m_a.imul(dst, src, imm)
 #define DIV(op) m_a.div(op)
 #define IDIV(op) m_a.idiv(op)
+#define XCHG(dst, src) m_a.xchg(dst, src);
 #define CALL(addr) m_a.call(addr)
 #define RET() m_a.ret()
-
 #define PUSH(dst) m_a.push(dst)
 #define POP(dst) m_a.pop(dst)
 
@@ -1152,14 +1152,14 @@ void lc86_jit::rm_to_r(ZydisDecodedInstruction *instr, T &&lambda)
 template<bool is_sum, bool write_dst, typename T>
 void lc86_jit::rm_to_r_flags(ZydisDecodedInstruction *instr, T &&lambda)
 {
-	const auto dst = GET_REG(OPNUM_DST);
-	auto dst_host_reg = SIZED_REG(x64::rbx, dst.bits);
-	LD_REG_val(dst_host_reg, dst.val, dst.bits);
 	get_rm<OPNUM_SRC>(instr,
-		[this, dst, dst_host_reg, &lambda](const op_info rm)
+		[this, instr, &lambda](const op_info rm)
 		{
-			auto src_host_reg = SIZED_REG(x64::rax, rm.bits);
+			auto dst = GET_REG(OPNUM_DST);
+			auto dst_host_reg = SIZED_REG(x64::rax, dst.bits);
+			auto src_host_reg = SIZED_REG(x64::rbx, rm.bits);
 			auto res_host_reg = SIZED_REG(x64::r8, rm.bits);
+			LD_REG_val(dst_host_reg, dst.val, dst.bits);
 			LD_REG_val(src_host_reg, rm.val, rm.bits);
 			MOV(res_host_reg, dst_host_reg);
 			lambda(res_host_reg, src_host_reg);
@@ -1173,11 +1173,16 @@ void lc86_jit::rm_to_r_flags(ZydisDecodedInstruction *instr, T &&lambda)
 				set_flags_sub(dst_host_reg, src_host_reg, res_host_reg);
 			}
 		},
-		[this, dst, dst_host_reg, &lambda](const op_info rm)
+		[this, instr, &lambda](const op_info rm)
 		{
-			auto src_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+			auto dst = GET_REG(OPNUM_DST);
+			auto dst_host_reg = SIZED_REG(x64::rbx, dst.bits);
+			auto src_host_reg = SIZED_REG(x64::rdx, m_cpu->size_mode);
 			auto res_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
+			auto rax_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
 			LD_MEM();
+			MOV(src_host_reg, rax_host_reg);
+			LD_REG_val(dst_host_reg, dst.val, dst.bits);
 			MOV(res_host_reg, dst_host_reg);
 			lambda(res_host_reg, src_host_reg);
 			if constexpr (write_dst) {
@@ -1318,6 +1323,12 @@ void lc86_jit::gen_sum_vec16_8(x86::Gp a, T b, x86::Gp sum)
 {
 	// a: cx/cl, b: (d|b)x/(d|b)l or imm16/8, sum: r8w/r8b
 
+	assert(a.id() == x86::Gp::kIdCx);
+	assert(sum.id() == x86::Gp::kIdR8);
+	if constexpr (!std::is_integral_v<T>) {
+		assert(b.id() == x86::Gp::kIdDx || b.id() == x86::Gp::kIdBx);
+	}
+
 	MOVZX(R9D, a);
 	if constexpr (std::is_integral_v<T>) {
 		MOV(EAX, b);
@@ -1349,6 +1360,10 @@ void lc86_jit::gen_sum_vec32(T b)
 {
 	// a: ecx, b: e(d|b)x or imm32, sum: r8d
 
+	if constexpr (!std::is_integral_v<T>) {
+		assert(b.id() == x86::Gp::kIdDx || b.id() == x86::Gp::kIdBx);
+	}
+
 	MOV(EAX, ECX);
 	NOT(R8D);
 	OR(EAX, b);
@@ -1362,6 +1377,12 @@ template<unsigned size, typename T>
 void lc86_jit::gen_sub_vec16_8(x86::Gp a, T b, x86::Gp sub)
 {
 	// a: cx/cl, b: (d|b)x/(d|b)l or imm16/8, sub: r8w/r8b
+
+	assert(a.id() == x86::Gp::kIdCx);
+	assert(sub.id() == x86::Gp::kIdR8);
+	if constexpr (!std::is_integral_v<T>) {
+		assert(b.id() == x86::Gp::kIdDx || b.id() == x86::Gp::kIdBx);
+	}
 
 	MOVZX(R9D, a);
 	if constexpr (std::is_integral_v<T>) {
@@ -1395,6 +1416,10 @@ void lc86_jit::gen_sub_vec32(T b)
 {
 	// a: ecx, b: e(d|b)x or imm32, sub: r8d
 
+	if constexpr (!std::is_integral_v<T>) {
+		assert(b.id() == x86::Gp::kIdDx || b.id() == x86::Gp::kIdBx);
+	}
+
 	MOV(EAX, ECX);
 	NOT(ECX);
 	XOR(EAX, b);
@@ -1408,25 +1433,31 @@ void lc86_jit::gen_sub_vec32(T b)
 template<typename T>
 void lc86_jit::set_flags_sum(x86::Gp a, T b, x86::Gp sum)
 {
-	// a: reg, b: edx/dx/dl or imm32/16/8, sum: r8d/w/b
+	// a: reg, b: e(d|b)x/(d|b)x/(d|b)l or imm32/16/8, sum: r8d/w/b
 
-	MOV(R10, RCX);
+	assert(sum.id() == x86::Gp::kIdR8);
+	if constexpr (!std::is_integral_v<T>) {
+		assert(b.id() == x86::Gp::kIdDx || b.id() == x86::Gp::kIdBx);
+	}
 
 	switch (m_cpu->size_mode)
 	{
 	case SIZE8:
+		MOVSX(R8D, sum);
+		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), R8D);
 		MOV(CL, a);
 		gen_sum_vec16_8<SIZE8>(CL, b, sum);
-		MOVSX(R8D, sum);
 		break;
 
 	case SIZE16:
+		MOVSX(R8D, sum);
+		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), R8D);
 		MOV(CX, a);
 		gen_sum_vec16_8<SIZE16>(CX, b, sum);
-		MOVSX(R8D, sum);
 		break;
 
 	case SIZE32:
+		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), R8D);
 		MOV(ECX, a);
 		gen_sum_vec32(b);
 		break;
@@ -1435,9 +1466,8 @@ void lc86_jit::set_flags_sum(x86::Gp a, T b, x86::Gp sum)
 		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s", m_cpu->size_mode, __func__);
 	}
 
-	MOV(MEMD32(R10, CPU_CTX_EFLAGS_RES), R8D);
-	MOV(MEMD32(R10, CPU_CTX_EFLAGS_AUX), EAX);
-	MOV(RCX, R10);
+	MOV(RCX, &m_cpu->cpu_ctx);
+	MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EAX);
 }
 
 template<typename T1, typename T2>
@@ -1445,23 +1475,29 @@ void lc86_jit::set_flags_sub(T1 a, T2 b, x86::Gp sub)
 {
 	// a: reg or imm32/16/8, b: e(d|b)x/(d|b)x/(d|b)l or imm32/16/8, sub: r8d/w/b
 
-	MOV(R10, RCX);
+	assert(sub.id() == x86::Gp::kIdR8);
+	if constexpr (!std::is_integral_v<T2>) {
+		assert(b.id() == x86::Gp::kIdDx || b.id() == x86::Gp::kIdBx);
+	}
 
 	switch (m_cpu->size_mode)
 	{
 	case SIZE8:
+		MOVSX(R8D, sub);
+		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), R8D);
 		MOV(CL, a);
 		gen_sub_vec16_8<SIZE8>(CL, b, sub);
-		MOVSX(R8D, sub);
 		break;
 
 	case SIZE16:
+		MOVSX(R8D, sub);
+		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), R8D);
 		MOV(CX, a);
 		gen_sub_vec16_8<SIZE16>(CX, b, sub);
-		MOVSX(R8D, sub);
 		break;
 
 	case SIZE32:
+		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), R8D);
 		MOV(ECX, a);
 		gen_sub_vec32(b);
 		break;
@@ -1470,9 +1506,8 @@ void lc86_jit::set_flags_sub(T1 a, T2 b, x86::Gp sub)
 		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s", m_cpu->size_mode, __func__);
 	}
 
-	MOV(MEMD32(R10, CPU_CTX_EFLAGS_RES), R8D);
-	MOV(MEMD32(R10, CPU_CTX_EFLAGS_AUX), EAX);
-	MOV(RCX, R10);
+	MOV(RCX, &m_cpu->cpu_ctx);
+	MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EAX);
 }
 
 template<typename T1, typename T2>
@@ -4185,8 +4220,6 @@ lc86_jit::idiv(ZydisDecodedInstruction *instr)
 	case 0xF7: {
 		assert(instr->raw.modrm.reg == 7);
 
-		Label ok_taken = m_a.newLabel();
-
 		switch (m_cpu->size_mode)
 		{
 		case SIZE8:
@@ -4242,7 +4275,7 @@ lc86_jit::idiv(ZydisDecodedInstruction *instr)
 		CMP(AL, 0);
 		BR_EQ(ok);
 		RAISEin_no_param_f();
-		m_a.bind(ok_taken);
+		m_a.bind(ok);
 	}
 	break;
 
@@ -4276,6 +4309,7 @@ lc86_jit::imul(ZydisDecodedInstruction *instr)
 				{
 					LD_MEM();
 					LD_REG_val(BL, CPU_CTX_EAX, SIZE8);
+					XCHG(AL, BL);
 				});
 			IMUL1(BL);
 			ST_R16(CPU_CTX_EAX, AX);
@@ -4292,6 +4326,7 @@ lc86_jit::imul(ZydisDecodedInstruction *instr)
 				{
 					LD_MEM();
 					LD_REG_val(BX, CPU_CTX_EAX, SIZE16);
+					XCHG(AX, BX);
 				});
 			IMUL1(BX);
 			ST_R16(CPU_CTX_EAX, AX);
@@ -4309,6 +4344,7 @@ lc86_jit::imul(ZydisDecodedInstruction *instr)
 				{
 					LD_MEM();
 					LD_REG_val(EBX, CPU_CTX_EAX, SIZE32);
+					XCHG(EAX, EBX);
 				});
 			IMUL1(EBX);
 			ST_R32(CPU_CTX_EAX, EAX);
@@ -4324,16 +4360,20 @@ lc86_jit::imul(ZydisDecodedInstruction *instr)
 	case 0xAF: {
 		auto dst = GET_REG(OPNUM_DST);
 		auto dst_host_reg = SIZED_REG(x64::rbx, dst.bits);
-		auto src_host_reg = SIZED_REG(x64::rax, dst.bits);
-		get_rm<OPNUM_SRC>(instr,
-			[this, src_host_reg](const op_info rm)
+		auto src_host_reg = get_rm<OPNUM_SRC>(instr,
+			[this](const op_info rm)
 			{
+				auto src_host_reg = SIZED_REG(x64::rax, rm.bits);
 				LD_REG_val(src_host_reg, rm.val, rm.bits);
+				return src_host_reg;
 			},
 			[this](const op_info rm)
 			{
+				auto src_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
 				LD_MEM();
+				return src_host_reg;
 			});
+		LD_REG_val(dst_host_reg, dst.val, dst.bits);
 		IMUL2(dst_host_reg, src_host_reg);
 		ST_REG_val(dst_host_reg, dst.val, dst.bits);
 	}
@@ -4343,19 +4383,22 @@ lc86_jit::imul(ZydisDecodedInstruction *instr)
 	case 0x69: {
 		auto dst = GET_REG(OPNUM_DST);
 		auto dst_host_reg = SIZED_REG(x64::rbx, dst.bits);
-		auto src_host_reg = SIZED_REG(x64::rax, dst.bits);
-		get_rm<OPNUM_SRC>(instr,
-			[this, src_host_reg](const op_info rm)
+		auto src_host_reg = get_rm<OPNUM_SRC>(instr,
+			[this](const op_info rm)
 			{
+				auto src_host_reg = SIZED_REG(x64::rax, rm.bits);
 				LD_REG_val(src_host_reg, rm.val, rm.bits);
+				return src_host_reg;
 			},
 			[this](const op_info rm)
 			{
+				auto src_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
 				LD_MEM();
+				return src_host_reg;
 			});
 		if (instr->opcode == 0x6B) {
-			IMUL3(dst_host_reg, src_host_reg, m_cpu->size_mode == SIZE16 ? static_cast<int16_t>(instr->operands[OPNUM_THIRD].imm.value.u) :
-				static_cast<int32_t>(instr->operands[OPNUM_THIRD].imm.value.u));
+			IMUL3(dst_host_reg, src_host_reg, m_cpu->size_mode == SIZE16 ? static_cast<int16_t>(static_cast<int8_t>(instr->operands[OPNUM_THIRD].imm.value.u)) :
+				static_cast<int32_t>(static_cast<int8_t>(instr->operands[OPNUM_THIRD].imm.value.u)));
 		}
 		else {
 			IMUL3(dst_host_reg, src_host_reg, instr->operands[OPNUM_THIRD].imm.value.u);
@@ -5827,13 +5870,13 @@ lc86_jit::neg(ZydisDecodedInstruction *instr)
 		get_rm<OPNUM_SINGLE>(instr,
 			[this](const op_info rm)
 			{
-				auto rax_host_reg = SIZED_REG(x64::rax, rm.bits);
+				auto rbx_host_reg = SIZED_REG(x64::rbx, rm.bits);
 				auto res_host_reg = SIZED_REG(x64::r8, rm.bits);
-				LD_REG_val(rax_host_reg, rm.val, rm.bits);
-				MOV(res_host_reg, rax_host_reg);
+				LD_REG_val(rbx_host_reg, rm.val, rm.bits);
+				MOV(res_host_reg, rbx_host_reg);
 				NEG(res_host_reg);
 				ST_REG_val(res_host_reg, rm.val, rm.bits);
-				set_flags_sub(0, rax_host_reg, res_host_reg);
+				set_flags_sub(0, rbx_host_reg, res_host_reg);
 			},
 			[this](const op_info rm)
 			{
@@ -6809,10 +6852,11 @@ lc86_jit::scas(ZydisDecodedInstruction *instr)
 		auto edx_host_reg = SIZED_REG(x64::rdx, m_cpu->size_mode);
 		auto r8_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 		LD_MEM();
-		LD_REG_val(r8_host_reg, CPU_CTX_EAX, m_cpu->size_mode);
-		MOV(edx_host_reg, r8_host_reg);
-		SUB(r8_host_reg, eax_host_reg);
-		set_flags_sub(edx_host_reg, eax_host_reg, r8_host_reg);
+		MOV(edx_host_reg, eax_host_reg);
+		LD_REG_val(eax_host_reg, CPU_CTX_EAX, m_cpu->size_mode);
+		MOV(r8_host_reg, eax_host_reg);
+		SUB(r8_host_reg, edx_host_reg);
+		set_flags_sub(eax_host_reg, edx_host_reg, r8_host_reg);
 
 		Label sub = m_a.newLabel();
 		uint32_t k = 1 << m_cpu->size_mode;
