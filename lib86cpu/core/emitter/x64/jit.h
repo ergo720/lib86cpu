@@ -211,7 +211,7 @@ private:
 	void rep(Label start, Label end);
 	template<typename... Args>
 	void stack_push_emit(Args... pushed_args);
-	template<unsigned num, bool write_esp = true>
+	template<unsigned num, unsigned store_at = 0, bool write_esp = true>
 	void stack_pop_emit();
 	template<unsigned idx>
 	void shift(ZydisDecodedInstruction *instr);

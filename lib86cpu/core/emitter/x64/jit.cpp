@@ -139,9 +139,8 @@ static const std::unordered_map<x64, x86::Gp> reg_to_sized_reg = {
 	{ x64::r11 | SIZE32,  R11D },
 };
 
-template<size_t idx>
 size_t
-get_local_var_offset()
+get_local_var_offset(size_t idx)
 {
 	if (idx > (get_jit_local_vars_size() / 8 - 1)) {
 		LIB86CPU_ABORT_msg("Attempted to use a local variable for which not enough stack was allocated for");
@@ -149,6 +148,13 @@ get_local_var_offset()
 	else {
 		return idx * 8 + get_jit_reg_args_size() + get_jit_stack_args_size();
 	}
+}
+
+template<size_t idx>
+size_t
+get_local_var_offset()
+{
+	return get_local_var_offset(idx);
 }
 
 #define LOCAL_VARS_off(idx) get_local_var_offset<idx>()
@@ -1889,28 +1895,31 @@ void lc86_jit::stack_push_emit(Args... pushed_args)
 	}
 }
 
-template<unsigned num, bool write_esp>
+template<unsigned num, unsigned store_at, bool write_esp>
 void lc86_jit::stack_pop_emit()
 {
-	// edx, ebx, eax are clobbered, popped vals are at r11d/w (esp + 0) and r10d/w (esp + 4/2)
+	// edx, ebx, eax are clobbered, popped vals are at r11d/w (esp + 0) and on the stack (any after the first)
 
 	assert(m_cpu->size_mode != SIZE8);
 	static_assert(num, "Cannot pop zero values!");
-	static_assert(num < 3, "Cannot pop more than two values!");
 
-	static constexpr x86::Gp reg_arr[] = { R11, R10 };
-	unsigned i = 0;
+	unsigned i = 0, stack_idx = store_at;
 
 	switch ((m_cpu->size_mode << 1) | ((m_cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
 	case (SIZE32 << 1 ) | 0: // sp, pop 32
 		LD_R16(BX, CPU_CTX_ESP);
-		for (; i < num; ++i) {
+		for (; i < num; ++i, ++stack_idx) {
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			MOVZX(EBX, BX);
 			ADD(EDX, EBX);
 			LD_MEM();
-			MOV(reg_arr[i].r32(), EAX);
+			if constexpr (num == 1) {
+				MOV(R11D, EAX);
+			}
+			else {
+				MOV(MEMD32(RSP, get_local_var_offset(stack_idx)), EAX);
+			}
 			ADD(BX, 4);
 		}
 		if constexpr (write_esp) {
@@ -1920,11 +1929,16 @@ void lc86_jit::stack_pop_emit()
 
 	case (SIZE32 << 1) | 1: // esp, pop 32
 		LD_R32(EBX, CPU_CTX_ESP);
-		for (; i < num; ++i) {
+		for (; i < num; ++i, ++stack_idx) {
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			ADD(EDX, EBX);
 			LD_MEM();
-			MOV(reg_arr[i].r32(), EAX);
+			if constexpr (num == 1) {
+				MOV(R11D, EAX);
+			}
+			else {
+				MOV(MEMD32(RSP, get_local_var_offset(stack_idx)), EAX);
+			}
 			ADD(EBX, 4);
 		}
 		if constexpr (write_esp) {
@@ -1934,12 +1948,17 @@ void lc86_jit::stack_pop_emit()
 
 	case (SIZE16 << 1) | 0: // sp, pop 16
 		LD_R16(BX, CPU_CTX_ESP);
-		for (; i < num; ++i) {
+		for (; i < num; ++i, ++stack_idx) {
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			MOVZX(EBX, BX);
 			ADD(EDX, EBX);
 			LD_MEM();
-			MOV(reg_arr[i].r16(), AX);
+			if constexpr (num == 1) {
+				MOV(R11W, AX);
+			}
+			else {
+				MOV(MEMD16(RSP, get_local_var_offset(stack_idx)), AX);
+			}
 			ADD(BX, 2);
 		}
 		if constexpr (write_esp) {
@@ -1949,11 +1968,16 @@ void lc86_jit::stack_pop_emit()
 
 	case (SIZE16 << 1) | 1: // esp, pop 16
 		LD_R32(EBX, CPU_CTX_ESP);
-		for (; i < num; ++i) {
+		for (; i < num; ++i, ++stack_idx) {
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			ADD(EDX, EBX);
 			LD_MEM();
-			MOV(reg_arr[i].r16(), AX);
+			if constexpr (num == 1) {
+				MOV(R11W, AX);
+			}
+			else {
+				MOV(MEMD16(RSP, get_local_var_offset(stack_idx)), AX);
+			}
 			ADD(EBX, 2);
 		}
 		if constexpr (write_esp) {
@@ -6158,7 +6182,7 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 			[this](const op_info rm)
 			{
 				MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
-				stack_pop_emit<1, false>();
+				stack_pop_emit<1, 0, false>();
 				MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
 				auto r11_host_reg = SIZED_REG(x64::r11, m_cpu->size_mode);
 				ST_MEM(r11_host_reg);
@@ -6178,7 +6202,7 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 	case 0xA1:
 	case 0xA9: {
 		const auto sel = get_reg_pair(instr->operands[OPNUM_SINGLE].reg.value);
-		stack_pop_emit<1, false>();
+		stack_pop_emit<1, 0, false>();
 
 		if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
 			MOV(R8D, m_cpu->instr_eip);
@@ -6688,8 +6712,13 @@ lc86_jit::ret(ZydisDecodedInstruction *instr)
 		else {
 			stack_pop_emit<2>();
 			if (m_cpu->size_mode == SIZE16) {
+				MOV(R11W, MEMD16(RSP, LOCAL_VARS_off(0)));
 				MOVZX(R11D, R11W);
 			}
+			else {
+				MOV(R11D, MEMD32(RSP, LOCAL_VARS_off(0)));
+			}
+			MOV(R10W, MEMD16(RSP, LOCAL_VARS_off(1)));
 			ST_R32(CPU_CTX_EIP, R11D);
 			ST_SEG(CPU_CTX_CS, R10W);
 			MOVZX(EAX, R10W);
