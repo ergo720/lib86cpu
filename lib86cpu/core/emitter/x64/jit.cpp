@@ -227,6 +227,8 @@ get_local_var_offset()
 #define DIV(op) m_a.div(op)
 #define IDIV(op) m_a.idiv(op)
 #define XCHG(dst, src) m_a.xchg(dst, src);
+#define CLC() m_a.clc()
+#define STC() m_a.stc()
 #define CALL(addr) m_a.call(addr)
 #define RET() m_a.ret()
 #define PUSH(dst) m_a.push(dst)
@@ -1329,28 +1331,27 @@ void lc86_jit::gen_sum_vec16_8(x86::Gp a, T b, x86::Gp sum)
 		assert(b.id() == x86::Gp::kIdDx || b.id() == x86::Gp::kIdBx);
 	}
 
-	MOVZX(R9D, a);
-	if constexpr (std::is_integral_v<T>) {
-		MOV(EAX, b);
+	x86::Gp temp;
+	size_t shift;
+
+	if constexpr (size == SIZE16) {
+		temp = AX;
+		shift = 16;
 	}
 	else {
-		MOVZX(EAX, b);
+		temp = AL;
+		shift = 24;
 	}
-	OR(R9D, EAX);
-	MOVZX(ECX, a);
-	MOVZX(EAX, sum);
-	NOT(EAX);
-	AND(R9D, EAX);
-	if constexpr (std::is_integral_v<T>) {
-		MOV(EAX, b);
-	}
-	else {
-		MOVZX(EAX, b);
-	}
-	AND(ECX, EAX);
-	OR(R9D, ECX);
-	MOV(EAX, R9D);
-	SHL(EAX, size == SIZE16 ? 16 : 24);
+
+	MOV(temp, a);
+	AND(a, b);
+	OR(temp, b);
+	NOT(sum);
+	AND(temp, sum);
+	OR(a, temp);
+	MOVZX(EAX, a);
+	MOV(R9D, EAX);
+	SHL(EAX, shift);
 	OR(EAX, R9D);
 	AND(EAX, 0xC0000008);
 }
@@ -1384,29 +1385,28 @@ void lc86_jit::gen_sub_vec16_8(x86::Gp a, T b, x86::Gp sub)
 		assert(b.id() == x86::Gp::kIdDx || b.id() == x86::Gp::kIdBx);
 	}
 
-	MOVZX(R9D, a);
-	if constexpr (std::is_integral_v<T>) {
-		MOV(EAX, b);
+	x86::Gp temp;
+	size_t shift;
+
+	if constexpr (size == SIZE16) {
+		temp = AX;
+		shift = 16;
 	}
 	else {
-		MOVZX(EAX, b);
+		temp = AL;
+		shift = 24;
 	}
-	XOR(R9D, EAX);
-	MOVZX(ECX, a);
-	NOT(R9D);
-	MOVZX(EAX, sub);
-	AND(R9D, EAX);
-	NOT(ECX);
-	if constexpr (std::is_integral_v<T>) {
-		MOV(EAX, b);
-	}
-	else {
-		MOVZX(EAX, b);
-	}
-	AND(ECX, EAX);
-	OR(R9D, ECX);
-	MOV(EAX, R9D);
-	SHL(EAX, size == SIZE16 ? 16 : 24);
+
+	MOV(temp, a);
+	NOT(a);
+	AND(a, b);
+	XOR(temp, b);
+	NOT(temp);
+	AND(temp, sub);
+	OR(a, temp);
+	MOVZX(EAX, a);
+	MOV(R9D, EAX);
+	SHL(EAX, shift);
 	OR(EAX, R9D);
 	AND(EAX, 0xC0000008);
 }
@@ -1980,6 +1980,7 @@ void lc86_jit::shift(ZydisDecodedInstruction *instr)
 
 	case 0xD3:
 		LD_R8L(R9B, CPU_CTX_ECX);
+		AND(R9B, 0x1F);
 		break;
 
 	case 0xD0:
@@ -1995,7 +1996,7 @@ void lc86_jit::shift(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0xC1:
-		imm_count = instr->operands[OPNUM_SRC].imm.value.u;
+		imm_count = instr->operands[OPNUM_SRC].imm.value.u & 0x1F;
 		break;
 
 	default:
@@ -2010,13 +2011,13 @@ void lc86_jit::shift(ZydisDecodedInstruction *instr)
 					auto dst_host_reg = SIZED_REG(x64::rax, rm.bits);
 					LD_REG_val(dst_host_reg, rm.val, rm.bits);
 					if constexpr (idx == 0) {
-						SHL(dst_host_reg, *imm_count);
+						SHL(dst_host_reg, (*imm_count) & 0x1F);
 					}
 					else if constexpr (idx == 1) {
-						SHR(dst_host_reg, *imm_count);
+						SHR(dst_host_reg, (*imm_count) & 0x1F);
 					}
 					else if constexpr (idx == 2) {
-						SAR(dst_host_reg, *imm_count);
+						SAR(dst_host_reg, (*imm_count) & 0x1F);
 					}
 					else {
 						LIB86CPU_ABORT_msg("Unknown shift operation specified with index of %u", idx);
@@ -2026,7 +2027,7 @@ void lc86_jit::shift(ZydisDecodedInstruction *instr)
 					MOVZX(EBX, BL);
 					MOVZX(EDX, DL);
 					XOR(EDX, EBX);
-					SHL(EBX, 1);
+					ADD(EBX, EBX);
 					OR(EBX, EDX);
 					SHL(EBX, 0x1E);
 					ST_REG_val(dst_host_reg, rm.val, rm.bits);
@@ -2038,13 +2039,13 @@ void lc86_jit::shift(ZydisDecodedInstruction *instr)
 					MOV(EBX, EDX);
 					LD_MEM();
 					if constexpr (idx == 0) {
-						SHL(dst_host_reg, *imm_count);
+						SHL(dst_host_reg, (*imm_count) & 0x1F);
 					}
 					else if constexpr (idx == 1) {
-						SHR(dst_host_reg, *imm_count);
+						SHR(dst_host_reg, (*imm_count) & 0x1F);
 					}
 					else if constexpr (idx == 2) {
-						SAR(dst_host_reg, *imm_count);
+						SAR(dst_host_reg, (*imm_count) & 0x1F);
 					}
 					else {
 						LIB86CPU_ABORT_msg("Unknown shift operation specified with index of %u", idx);
@@ -2058,7 +2059,7 @@ void lc86_jit::shift(ZydisDecodedInstruction *instr)
 					MOVZX(EBX, BL);
 					MOVZX(EAX, AL);
 					XOR(EAX, EBX);
-					SHL(EBX, 1);
+					ADD(EBX, EBX);
 					OR(EBX, EAX);
 					SHL(EBX, 0x1E);
 					ST_MEM(dst2_host_reg);
@@ -2095,7 +2096,7 @@ void lc86_jit::shift(ZydisDecodedInstruction *instr)
 				MOVZX(EBX, BL);
 				MOVZX(EDX, DL);
 				XOR(EDX, EBX);
-				SHL(EBX, 1);
+				ADD(EBX, EBX);
 				OR(EBX, EDX);
 				SHL(EBX, 0x1E);
 				ST_REG_val(dst_host_reg, rm.val, rm.bits);
@@ -2130,7 +2131,7 @@ void lc86_jit::shift(ZydisDecodedInstruction *instr)
 				MOVZX(EBX, BL);
 				MOVZX(EAX, AL);
 				XOR(EAX, EBX);
-				SHL(EBX, 1);
+				ADD(EBX, EBX);
 				OR(EBX, EAX);
 				SHL(EBX, 0x1E);
 				ST_MEM(dst2_host_reg);
@@ -2151,12 +2152,13 @@ void lc86_jit::double_shift(ZydisDecodedInstruction *instr)
 	{
 	case 0xA4:
 	case 0xAC:
-		imm_count = instr->operands[OPNUM_THIRD].imm.value.u;
+		imm_count = instr->operands[OPNUM_THIRD].imm.value.u & 0x1F;
 		break;
 
 	case 0xA5:
 	case 0xAD:
 		LD_R8L(R9B, CPU_CTX_ECX);
+		AND(R9B, 0x1F);
 		break;
 
 	default:
@@ -2187,7 +2189,7 @@ void lc86_jit::double_shift(ZydisDecodedInstruction *instr)
 					MOVZX(EBX, BL);
 					MOVZX(EDX, DL);
 					XOR(EDX, EBX);
-					SHL(EBX, 1);
+					ADD(EBX, EBX);
 					OR(EBX, EDX);
 					SHL(EBX, 0x1E);
 					ST_REG_val(dst_host_reg, rm.val, rm.bits);
@@ -2218,7 +2220,7 @@ void lc86_jit::double_shift(ZydisDecodedInstruction *instr)
 					MOVZX(EBX, BL);
 					MOVZX(EAX, AL);
 					XOR(EAX, EBX);
-					SHL(EBX, 1);
+					ADD(EBX, EBX);
 					OR(EBX, EAX);
 					SHL(EBX, 0x1E);
 					ST_MEM(dst2_host_reg);
@@ -2254,7 +2256,7 @@ void lc86_jit::double_shift(ZydisDecodedInstruction *instr)
 				MOVZX(EBX, BL);
 				MOVZX(EDX, DL);
 				XOR(EDX, EBX);
-				SHL(EBX, 1);
+				ADD(EBX, EBX);
 				OR(EBX, EDX);
 				SHL(EBX, 0x1E);
 				ST_REG_val(dst_host_reg, rm.val, rm.bits);
@@ -2288,7 +2290,7 @@ void lc86_jit::double_shift(ZydisDecodedInstruction *instr)
 				MOVZX(EBX, BL);
 				MOVZX(EAX, AL);
 				XOR(EAX, EBX);
-				SHL(EBX, 1);
+				ADD(EBX, EBX);
 				OR(EBX, EAX);
 				SHL(EBX, 0x1E);
 				ST_MEM(dst2_host_reg);
@@ -2313,6 +2315,7 @@ void lc86_jit::rotate(ZydisDecodedInstruction *instr)
 
 	case 0xD3:
 		LD_R8L(R9B, CPU_CTX_ECX);
+		AND(R9B, 0x1F);
 		break;
 
 	case 0xD0:
@@ -2328,7 +2331,7 @@ void lc86_jit::rotate(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0xC1:
-		imm_count = instr->operands[OPNUM_SRC].imm.value.u;
+		imm_count = instr->operands[OPNUM_SRC].imm.value.u & 0x1F;
 		break;
 
 	default:
@@ -2342,11 +2345,23 @@ void lc86_jit::rotate(ZydisDecodedInstruction *instr)
 				{
 					auto dst_host_reg = SIZED_REG(x64::rax, rm.bits);
 					LD_REG_val(dst_host_reg, rm.val, rm.bits);
-					if constexpr (idx == 0) {
-						RCL(dst_host_reg, *imm_count);
-					}
-					else if constexpr (idx == 1) {
-						RCR(dst_host_reg, *imm_count);
+					if constexpr ((idx == 0) || (idx == 1)) {
+						Label clear_cf = m_a.newLabel();
+						Label rot = m_a.newLabel();
+						LD_CF(EDX);
+						TEST(EDX, EDX);
+						BR_EQ(clear_cf);
+						STC();
+						BR_UNCOND(rot);
+						m_a.bind(clear_cf);
+						CLC();
+						m_a.bind(rot);
+						if constexpr (idx == 0) {
+							RCL(dst_host_reg, *imm_count);
+						}
+						else {
+							RCR(dst_host_reg, *imm_count);
+						}
 					}
 					else if constexpr (idx == 2) {
 						ROL(dst_host_reg, *imm_count);
@@ -2362,7 +2377,7 @@ void lc86_jit::rotate(ZydisDecodedInstruction *instr)
 					MOVZX(EBX, BL);
 					MOVZX(EDX, DL);
 					XOR(EDX, EBX);
-					SHL(EBX, 1);
+					ADD(EBX, EBX);
 					OR(EBX, EDX);
 					SHL(EBX, 0x1E);
 					ST_REG_val(dst_host_reg, rm.val, rm.bits);
@@ -2376,11 +2391,23 @@ void lc86_jit::rotate(ZydisDecodedInstruction *instr)
 					auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
 					MOV(EBX, EDX);
 					LD_MEM();
-					if constexpr (idx == 0) {
-						RCL(dst_host_reg, *imm_count);
-					}
-					else if constexpr (idx == 1) {
-						RCR(dst_host_reg, *imm_count);
+					if constexpr ((idx == 0) || (idx == 1)) {
+						Label clear_cf = m_a.newLabel();
+						Label rot = m_a.newLabel();
+						LD_CF(EDX);
+						TEST(EDX, EDX);
+						BR_EQ(clear_cf);
+						STC();
+						BR_UNCOND(rot);
+						m_a.bind(clear_cf);
+						CLC();
+						m_a.bind(rot);
+						if constexpr (idx == 0) {
+							RCL(dst_host_reg, *imm_count);
+						}
+						else {
+							RCR(dst_host_reg, *imm_count);
+						}
 					}
 					else if constexpr (idx == 2) {
 						ROL(dst_host_reg, *imm_count);
@@ -2399,7 +2426,7 @@ void lc86_jit::rotate(ZydisDecodedInstruction *instr)
 					MOVZX(EBX, BL);
 					MOVZX(EAX, AL);
 					XOR(EAX, EBX);
-					SHL(EBX, 1);
+					ADD(EBX, EBX);
 					OR(EBX, EAX);
 					SHL(EBX, 0x1E);
 					ST_MEM(dst2_host_reg);
@@ -2419,17 +2446,31 @@ void lc86_jit::rotate(ZydisDecodedInstruction *instr)
 			{
 				auto dst_host_reg = SIZED_REG(x64::rax, rm.bits);
 				LD_REG_val(dst_host_reg, rm.val, rm.bits);
-				MOV(CL, R9B);
-				if constexpr (idx == 0) {
-					RCL(dst_host_reg, CL);
-				}
-				else if constexpr (idx == 1) {
-					RCR(dst_host_reg, CL);
+				if constexpr ((idx == 0) || (idx == 1)) {
+					Label clear_cf = m_a.newLabel();
+					Label rot = m_a.newLabel();
+					LD_CF(EDX);
+					TEST(EDX, EDX);
+					BR_EQ(clear_cf);
+					STC();
+					BR_UNCOND(rot);
+					m_a.bind(clear_cf);
+					CLC();
+					m_a.bind(rot);
+					MOV(CL, R9B);
+					if constexpr (idx == 0) {
+						RCL(dst_host_reg, CL);
+					}
+					else {
+						RCR(dst_host_reg, CL);
+					}
 				}
 				else if constexpr (idx == 2) {
+					MOV(CL, R9B);
 					ROL(dst_host_reg, CL);
 				}
 				else if constexpr (idx == 3) {
+					MOV(CL, R9B);
 					ROR(dst_host_reg, CL);
 				}
 				else {
@@ -2441,7 +2482,7 @@ void lc86_jit::rotate(ZydisDecodedInstruction *instr)
 				MOVZX(EBX, BL);
 				MOVZX(EDX, DL);
 				XOR(EDX, EBX);
-				SHL(EBX, 1);
+				ADD(EBX, EBX);
 				OR(EBX, EDX);
 				SHL(EBX, 0x1E);
 				ST_REG_val(dst_host_reg, rm.val, rm.bits);
@@ -2456,17 +2497,31 @@ void lc86_jit::rotate(ZydisDecodedInstruction *instr)
 				MOV(EBX, EDX);
 				MOV(MEMD8(RSP, LOCAL_VARS_off(0)), R9B);
 				LD_MEM();
-				MOV(CL, MEMD8(RSP, LOCAL_VARS_off(0)));
-				if constexpr (idx == 0) {
-					RCL(dst_host_reg, CL);
-				}
-				else if constexpr (idx == 1) {
-					RCR(dst_host_reg, CL);
+				if constexpr ((idx == 0) || (idx == 1)) {
+					Label clear_cf = m_a.newLabel();
+					Label rot = m_a.newLabel();
+					LD_CF(EDX);
+					TEST(EDX, EDX);
+					BR_EQ(clear_cf);
+					STC();
+					BR_UNCOND(rot);
+					m_a.bind(clear_cf);
+					CLC();
+					m_a.bind(rot);
+					MOV(CL, MEMD8(RSP, LOCAL_VARS_off(0)));
+					if constexpr (idx == 0) {
+						RCL(dst_host_reg, CL);
+					}
+					else {
+						RCR(dst_host_reg, CL);
+					}
 				}
 				else if constexpr (idx == 2) {
+					MOV(CL, MEMD8(RSP, LOCAL_VARS_off(0)));
 					ROL(dst_host_reg, CL);
 				}
 				else if constexpr (idx == 3) {
+					MOV(CL, MEMD8(RSP, LOCAL_VARS_off(0)));
 					ROR(dst_host_reg, CL);
 				}
 				else {
@@ -2481,7 +2536,7 @@ void lc86_jit::rotate(ZydisDecodedInstruction *instr)
 				MOVZX(EBX, BL);
 				MOVZX(EAX, AL);
 				XOR(EAX, EBX);
-				SHL(EBX, 1);
+				ADD(EBX, EBX);
 				OR(EBX, EAX);
 				SHL(EBX, 0x1E);
 				ST_MEM(dst2_host_reg);
@@ -3962,12 +4017,13 @@ lc86_jit::daa(ZydisDecodedInstruction *instr)
 	BR_EQ(jmp2);
 
 	m_a.bind(jmp1);
+	MOV(RDX, RCX);
 	MOV(CL, R10B);
 	MOV(R8B, R10B);
 	ADD(R8B, 6);
+	MOV(MEMD8(RDX, CPU_CTX_EAX), R8B);
 	gen_sum_vec16_8<SIZE8>(CL, 6, R8B);
 	MOV(RCX, &m_cpu->cpu_ctx);
-	ST_R8L(CPU_CTX_EAX, R8B);
 	AND(EAX, 0x80000000);
 	OR(EAX, R11D);
 	OR(EAX, 8);
@@ -4022,12 +4078,13 @@ lc86_jit::das(ZydisDecodedInstruction *instr)
 	BR_EQ(jmp2);
 
 	m_a.bind(jmp1);
+	MOV(RDX, RCX);
 	MOV(CL, R10B);
 	MOV(R8B, R10B);
 	SUB(R8B, 6);
+	MOV(MEMD8(RDX, CPU_CTX_EAX), R8B);
 	gen_sub_vec16_8<SIZE8>(CL, 6, R8B);
 	MOV(RCX, &m_cpu->cpu_ctx);
-	ST_R8L(CPU_CTX_EAX, R8B);
 	AND(EAX, 0x80000000);
 	OR(EAX, R11D);
 	OR(EAX, 8);
@@ -4415,6 +4472,7 @@ lc86_jit::imul(ZydisDecodedInstruction *instr)
 	SETO(DL);
 	MOVZX(EBX, BL);
 	MOVZX(EDX, DL);
+	XOR(EDX, EBX);
 	ADD(EBX, EBX);
 	OR(EBX, EDX);
 	SHL(EBX, 0x1E);
@@ -5848,6 +5906,7 @@ lc86_jit::mul(ZydisDecodedInstruction *instr)
 	SETO(DL);
 	MOVZX(EBX, BL);
 	MOVZX(EDX, DL);
+	XOR(EDX, EBX);
 	ADD(EBX, EBX);
 	OR(EBX, EDX);
 	SHL(EBX, 0x1E);

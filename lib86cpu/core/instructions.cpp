@@ -938,8 +938,8 @@ idivd_helper(cpu_ctx_t *cpu_ctx, uint32_t d, uint32_t eip)
 	if (d0 == 0) {
 		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
 	}
-	int64_t q = (D / d);
-	int64_t r = (D % d);
+	int64_t q = (D / d0);
+	int64_t r = (D % d0);
 	if (q != static_cast<int32_t>(q)) {
 		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
 	}
@@ -957,8 +957,8 @@ idivw_helper(cpu_ctx_t *cpu_ctx, uint16_t d, uint32_t eip)
 	if (d0 == 0) {
 		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
 	}
-	int32_t q = (D / d);
-	int32_t r = (D % d);
+	int32_t q = (D / d0);
+	int32_t r = (D % d0);
 	if (q != static_cast<int16_t>(q)) {
 		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE, eip);
 	}
