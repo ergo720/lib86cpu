@@ -1,7 +1,7 @@
 /*
  * x86-64 emitter class
  *
- * ergo720                Copyright (c) 2020
+ * ergo720                Copyright (c) 2022
  */
 
 #pragma once
@@ -231,7 +231,6 @@ private:
 	cpu_t *m_cpu;
 	CodeHolder m_code;
 	x86::Assembler m_a;
-	size_t m_prolog_patch_offset;
 	bool m_needs_epilogue;
 	mem_manager m_mem;
 };
