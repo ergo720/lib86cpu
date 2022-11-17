@@ -2104,7 +2104,11 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			disas_ctx.virt_pc = virt_pc;
 			disas_ctx.pc = pc;
 
-			if constexpr (!is_trap) {
+			if constexpr (is_trap) {
+				// don't take hooks if we are executing a trapped instr. Otherwise, if the trapped instr is also hooked, we will take the hook instead of executing it
+				cpu_translate(cpu, &disas_ctx);
+			}
+			else {
 				const auto it = cpu->hook_map.find(disas_ctx.virt_pc);
 				bool take_hook;
 				if constexpr (is_tramp) {
@@ -2116,17 +2120,12 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 
 				if (take_hook) {
 					cpu->instr_eip = disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base;
-					//hook_emit(cpu, it->second.get());
+					cpu->jit->hook_emit(it->second);
 				}
 				else {
 					// start guest code translation
 					cpu_translate(cpu, &disas_ctx);
 				}
-			}
-			else {
-				// don't take hooks if we are executing a trapped instr. Otherwise, if the trapped instr is also hooked, we will take the hook instead of executing it
-				cpu_translate(cpu, &disas_ctx);
-				//raise_exp_inline_emit(cpu, CONST32(0), CONST16(0), CONST16(EXP_DB), LD_R32(EIP_idx));
 			}
 
 			cpu->jit->gen_tc_epilogue();
@@ -2177,7 +2176,6 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 				break;
 
 			case TC_FLG_DST_ONLY:
-			case TC_FLG_COND_DST_ONLY:
 				tc_link_dst_only(prev_tc, ptr_tc);
 				break;
 

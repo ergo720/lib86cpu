@@ -189,7 +189,7 @@ gen_hook_test()
 {
 	size_t ramsize = 5 * 4096;
 
-	if (!LIB86CPU_CHECK_SUCCESS(cpu_new(ramsize, cpu))) {
+	if (!LC86_SUCCESS(cpu_new(ramsize, cpu))) {
 		std::printf("Failed to initialize lib86cpu!\n");
 		return false;
 	}
@@ -197,27 +197,27 @@ gen_hook_test()
 	uint8_t *ram = get_ram_ptr(cpu);
 	std::memcpy(ram, hook_binary, sizeof(hook_binary));
 
-	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
 		std::printf("Failed to initialize ram memory for hook test!\n");
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x17, std::unique_ptr<hook>(new hook({ {}, {}, "test_fastcall", &test_fastcall }))))) {
+	if (!LC86_SUCCESS(hook_add(cpu, 0x17, &test_fastcall))) {
 		std::printf("Failed to install test_fastcall hook!\n");
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x4a, std::unique_ptr<hook>(new hook({ {}, {}, "test_stdcall", &test_stdcall }))))) {
+	if (!LC86_SUCCESS(hook_add(cpu, 0x4a, &test_stdcall))) {
 		std::printf("Failed to install test_stdcall hook!\n");
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x7a, std::unique_ptr<hook>(new hook({ {}, {}, "test_cdecl", &test_cdecl }))))) {
+	if (!LC86_SUCCESS(hook_add(cpu, 0x7a, &test_cdecl))) {
 		std::printf("Failed to install test_cdecl hook!\n");
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x96, std::unique_ptr<hook>(new hook({ {}, {}, "test_double_ptr", &test_double_ptr }))))) {
+	if (!LC86_SUCCESS(hook_add(cpu, 0x96, &test_double_ptr))) {
 		std::printf("Failed to install test_double_ptr hook!\n");
 		return false;
 	}

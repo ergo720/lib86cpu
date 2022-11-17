@@ -70,8 +70,7 @@ template<bool is_int = false> translated_code_t *cpu_raise_exception(cpu_ctx_t *
 #define TC_FLG_JMP_TAKEN       (3 << 4)
 #define TC_FLG_RET             (1 << 6)
 #define TC_FLG_DST_ONLY        (1 << 7)  // jump(dest_pc)
-#define TC_FLG_COND_DST_ONLY   (1 << 8)  // if [runtime] (cond) jump(dst_pc)
-#define TC_FLG_LINK_MASK  (TC_FLG_INDIRECT | TC_FLG_DIRECT | TC_FLG_RET | TC_FLG_DST_ONLY | TC_FLG_COND_DST_ONLY)
+#define TC_FLG_LINK_MASK  (TC_FLG_INDIRECT | TC_FLG_DIRECT | TC_FLG_RET | TC_FLG_DST_ONLY)
 #define TC_JMP_INT_OFFSET 2
 
 // segment descriptor flags

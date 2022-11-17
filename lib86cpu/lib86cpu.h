@@ -16,10 +16,9 @@
 
 // lib86cpu error flags
 enum class lc86_status : int32_t {
-	internal_error = -7,
+	internal_error = -6,
 	no_memory,
 	invalid_parameter,
-	already_exist,
 	not_found,
 	guest_exp,
 	too_many,
@@ -35,27 +34,7 @@ enum class log_level {
 
 using logfn_t = void(*)(log_level, const unsigned, const char *, ...);
 
-// argument types used by the host function that hooks a guest function, its return type must be void
-enum class arg_types {
-	i8,
-	i16,
-	i32,
-	i64,
-	ptr,
-};
-
-// args_t: argument types of the host function that is called instead of the original guest function
-// args_val: values to pass as arguments to the host function, their number must match the number of argument types specified in args_t
-// name: the name of the host function to call
-// addr: the address of the host function to call
-struct hook {
-	std::vector<arg_types> args_t;
-	std::vector<uint64_t> args_val;
-	std::string name;
-	void *addr;
-};
-
-#define LIB86CPU_CHECK_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::success)
+#define LC86_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::success)
 
 #define CPU_INTEL_SYNTAX        (1 << 1)
 #define CPU_DBG_PRESENT         (1 << 11)
@@ -99,7 +78,7 @@ API_FUNC void io_write_32(cpu_t *cpu, port_t port, uint32_t value);
 API_FUNC void tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end);
 
 // hook api
-API_FUNC lc86_status hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj);
+API_FUNC lc86_status hook_add(cpu_t *cpu, addr_t addr, void *hook_addr);
 API_FUNC lc86_status hook_remove(cpu_t *cpu, addr_t addr);
 API_FUNC void trampoline_call(cpu_t *cpu, const uint32_t ret_eip);
 

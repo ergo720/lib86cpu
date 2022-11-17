@@ -31,6 +31,7 @@ public:
 	void gen_code_block();
 	void gen_tc_prologue() { start_new_session(); gen_prologue_main(); }
 	void gen_tc_epilogue();
+	void hook_emit(void *hook_addr);
 	void raise_exp_inline_emit(uint32_t fault_addr, uint16_t code, uint16_t idx, uint32_t eip);
 	void free_code_block(void *addr) { m_mem.release_sys_mem(addr); }
 	void destroy_all_code() { m_mem.destroy_all_blocks(); }

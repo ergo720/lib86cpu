@@ -239,6 +239,7 @@ get_local_var_offset()
 #define RET() m_a.ret()
 #define PUSH(dst) m_a.push(dst)
 #define POP(dst) m_a.pop(dst)
+#define INT3() m_a.int3()
 
 #define BR_UNCOND(dst) m_a.jmp(dst)
 #define BR_EQ(label) m_a.je(label)
@@ -528,12 +529,18 @@ lc86_jit::gen_tc_epilogue()
 	if (m_cpu->translate_next == 1) {
 		assert((DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR) != 0);
 		MOV(MEMD32(RCX, CPU_CTX_EIP), m_cpu->virt_pc - m_cpu->cpu_ctx.regs.cs_hidden.base);
+
+		if (m_cpu->cpu_ctx.hflags & HFLG_DBG_TRAP) {
+			raise_exp_inline_emit(0, 0, EXP_DB, m_cpu->virt_pc - m_cpu->cpu_ctx.regs.cs_hidden.base);
+			return;
+		}
 	}
 
-	// TC_FLG_INDIRECT, TC_FLG_DIRECT and TC_FLG_DST_ONLY already check for rf/single step, so we only need to check them here with
-	// TC_FLG_COND_DST_ONLY or if no linking code was emitted
-	if ((m_cpu->tc->flags & TC_FLG_COND_DST_ONLY) || ((m_cpu->tc->flags & TC_FLG_LINK_MASK) == 0)) {
-		check_rf_single_step_emit();
+	// TC_FLG_INDIRECT, TC_FLG_DIRECT and TC_FLG_DST_ONLY already check for rf/single step, so we only need to check them here if no linking code was emitted
+	if ((m_cpu->tc->flags & TC_FLG_LINK_MASK) == 0) {
+		if (check_rf_single_step_emit()) {
+			return;
+		}
 	}
 
 	if (m_needs_epilogue) {
@@ -569,6 +576,16 @@ void lc86_jit::raise_exp_inline_emit()
 	MOV(RAX, &cpu_raise_exception<>);
 	CALL(RAX);
 	gen_epilogue_main<false>();
+}
+
+void
+lc86_jit::hook_emit(void *hook_addr)
+{
+	MOV(RAX, reinterpret_cast<uintptr_t>(hook_addr));
+	CALL(RAX);
+	MOV(RCX, &m_cpu->cpu_ctx);
+
+	link_ret_emit();
 }
 
 void
@@ -628,6 +645,12 @@ void lc86_jit::link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_pc)
 	// and only emit the taken code path. If it's in a reg, it should not be eax, edx or ebx
 
 	m_needs_epilogue = false;
+
+	if (m_cpu->cpu_ctx.hflags & HFLG_DBG_TRAP) {
+		LD_R32(EAX, CPU_CTX_EIP);
+		raise_exp_inline_emit<true>(0, 0, EXP_DB, EAX);
+		return;
+	}
 
 	if (check_rf_single_step_emit()) {
 		return;
@@ -778,6 +801,12 @@ lc86_jit::link_dst_only_emit()
 {
 	m_needs_epilogue = false;
 
+	if (m_cpu->cpu_ctx.hflags & HFLG_DBG_TRAP) {
+		LD_R32(EAX, CPU_CTX_EIP);
+		raise_exp_inline_emit<true>(0, 0, EXP_DB, EAX);
+		return;
+	}
+
 	if (check_rf_single_step_emit()) {
 		return;
 	}
@@ -796,6 +825,12 @@ void
 lc86_jit::link_indirect_emit()
 {
 	m_needs_epilogue = false;
+
+	if (m_cpu->cpu_ctx.hflags & HFLG_DBG_TRAP) {
+		LD_R32(EAX, CPU_CTX_EIP);
+		raise_exp_inline_emit<true>(0, 0, EXP_DB, EAX);
+		return;
+	}
 
 	if (check_rf_single_step_emit()) {
 		return;
@@ -2599,7 +2634,6 @@ void lc86_jit::load_sys_seg_reg(ZydisDecodedInstruction *instr)
 
 	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
 		RAISEin0_t(EXP_GP);
-		m_cpu->translate_next = 0;
 	}
 	else {
 		if constexpr ((idx == GDTR_idx) || (idx == IDTR_idx)) {
@@ -5450,8 +5484,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 					MOV(EAX, R8D);
 					SHR(EAX, DR7_TYPE_SHIFT + idx * 4);
 					AND(EAX, 3);
-					OR(EAX, R9D);
-					CMP(EAX, DR7_TYPE_IO_RW | CR4_DE_MASK); // check if it is a mem or io watchpoint
+					CMP(EAX, DR7_TYPE_IO_RW); // check if it is a mem or io watchpoint
 					BR_EQ(io);
 					LEA(RBX, MEMD64(RCX, CPU_CTX_TLB));
 					MOV(EDX, R8D);
@@ -5472,10 +5505,13 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 					MOV(MEMS32(RBX, RAX, 2), EDX); // remove disabled watchpoint
 					BR_UNCOND(exit);
 					m_a.bind(io);
+					TEST(R9D, R9D);
+					BR_EQ(exit);
 					// we don't support io watchpoints yet so for now we just abort
 					MOV(RCX, abort_msg);
 					MOV(RAX, &cpu_runtime_abort); // won't return
 					CALL(RAX);
+					INT3();
 					m_a.bind(exit);
 				}
 			}

@@ -307,10 +307,8 @@ dbg_add_exp_hook(cpu_ctx_t *cpu_ctx)
 		return;
 	}
 
-	hook_add(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr, std::unique_ptr<hook>(new hook({ std::vector<arg_types> { arg_types::ptr },
-	std::vector<uint64_t> { reinterpret_cast<uintptr_t>(cpu_ctx) }, "dbg_exp_handler", &dbg_exp_handler })));
-	hook_add(cpu_ctx->cpu, cpu_ctx->cpu->db_addr, std::unique_ptr<hook>(new hook({ std::vector<arg_types> { arg_types::ptr },
-	std::vector<uint64_t> { reinterpret_cast<uintptr_t>(cpu_ctx) }, "dbg_exp_handler", &dbg_exp_handler })));
+	hook_add(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr, &dbg_exp_handler);
+	hook_add(cpu_ctx->cpu, cpu_ctx->cpu->db_addr, &dbg_exp_handler);
 }
 
 static std::vector<std::pair<addr_t, std::string>>
@@ -381,7 +379,7 @@ void
 dbg_ram_read(cpu_t *cpu, uint8_t *buff)
 {
 	size_t actual_size;
-	if (!LIB86CPU_CHECK_SUCCESS(mem_read_block(cpu, mem_pc, PAGE_SIZE, buff, &actual_size))) {
+	if (!LC86_SUCCESS(mem_read_block(cpu, mem_pc, PAGE_SIZE, buff, &actual_size))) {
 		std::memset(&buff[actual_size], 0, PAGE_SIZE - actual_size);
 	}
 }
@@ -461,13 +459,13 @@ dbg_single_step_handler(cpu_ctx_t *cpu_ctx)
 		try {
 			// execute an iret instruction so that we can correctly return to the interrupted code
 			if	(cpu_ctx->hflags & HFLG_PE_MODE) {
-				if (lret_pe_helper<true>(cpu_ctx, ((cpu_ctx->hflags & HFLG_CS32) >> CS32_SHIFT) ^ 1, cpu_ctx->regs.eip)) {
+				if (lret_pe_helper<true>(cpu_ctx, (cpu_ctx->hflags & HFLG_CS32) ? SIZE32 : SIZE16, cpu_ctx->regs.eip)) {
 					// we can't handle an exception here, so abort
 					LIB86CPU_ABORT_msg("Unhandled exception while returning from a single step");
 				}
 			}
 			else {
-				iret_real_helper(cpu_ctx, ((cpu_ctx->hflags & HFLG_CS32) >> CS32_SHIFT) ^ 1, cpu_ctx->regs.eip);
+				iret_real_helper(cpu_ctx, (cpu_ctx->hflags & HFLG_CS32) ? SIZE32 : SIZE16, cpu_ctx->regs.eip);
 			}
 		}
 		catch (host_exp_t type) {
@@ -503,13 +501,13 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 		try {
 			// execute an iret instruction so that we can correctly return to the interrupted code
 			if (cpu_ctx->hflags & HFLG_PE_MODE) {
-				if (lret_pe_helper<true>(cpu_ctx, ((cpu_ctx->hflags & HFLG_CS32) >> CS32_SHIFT) ^ 1, cpu_ctx->regs.eip)) {
+				if (lret_pe_helper<true>(cpu_ctx, (cpu_ctx->hflags & HFLG_CS32) ? SIZE32 : SIZE16, cpu_ctx->regs.eip)) {
 					// we can't handle an exception here, so abort
 					LIB86CPU_ABORT_msg("Unhandled exception while returning from a breakpoint");
 				}
 			}
 			else {
-				iret_real_helper(cpu_ctx, ((cpu_ctx->hflags & HFLG_CS32) >> CS32_SHIFT) ^ 1, cpu_ctx->regs.eip);
+				iret_real_helper(cpu_ctx, (cpu_ctx->hflags & HFLG_CS32) ? SIZE32 : SIZE16, cpu_ctx->regs.eip);
 			}
 			cpu_ctx->regs.eip = ret_eip - 1;
 		}

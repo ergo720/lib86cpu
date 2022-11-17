@@ -142,7 +142,7 @@ int_handler_printer()
 		break;
 
 	default:
-		std::printf("got unexpected eip with value 0x%X", eip);
+		std::printf("got unexpected eip with value 0x%X\n", eip);
 	}
 
 	regs->eip = ret_eip;
@@ -154,7 +154,7 @@ gen_dbg_test()
 {
 	size_t ramsize = 1024 * 1024;
 
-	if (!LIB86CPU_CHECK_SUCCESS(cpu_new(ramsize, cpu))) {
+	if (!LC86_SUCCESS(cpu_new(ramsize, cpu))) {
 		printf("Failed to initialize lib86cpu!\n");
 		return false;
 	}
@@ -162,17 +162,17 @@ gen_dbg_test()
 	uint8_t *ram = get_ram_ptr(cpu);
 	std::memcpy(ram + 0x1000, dbg_binary, sizeof(dbg_binary));
 
-	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
 		std::printf("Failed to initialize ram memory!\n");
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_io(cpu, DBG_POST_PORT - 3, 4, true, nullptr, dbg_write_handler, nullptr, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_io(cpu, DBG_POST_PORT - 3, 4, true, nullptr, dbg_write_handler, nullptr, 1))) {
 		std::printf("Failed to initialize post i/o port for debug test!\n");
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(hook_add(cpu, 0x110C, std::unique_ptr<hook>(new hook({ {}, {}, "int_handler_printer", int_handler_printer }))))) {
+	if (!LC86_SUCCESS(hook_add(cpu, 0x110C, &int_handler_printer))) {
 		std::printf("Failed to install hook!\n");
 		return false;
 	}
@@ -251,7 +251,7 @@ gen_dbg_test()
 
 	regs->cr0 = 0x80000001; // protected, paging
 	regs->cr3 = 0x000FF000;
-	regs->cr4 = 0x8; // debug extensions
+	regs->cr4 = 0x0; // don't enable debug extensions because io watchpoints are not supported yet
 
 	return true;
 }

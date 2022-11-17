@@ -19,7 +19,6 @@ Value *floor_division_emit(cpu_t *cpu, Value *D, Value *d, size_t q_bits);
 void raise_exp_inline_isInt_emit(cpu_t *cpu, Value *fault_addr, Value *code, Value *idx, Value *eip);
 void update_fpu_state_after_mmx_emit(cpu_t *cpu, int idx, Value *tag, bool is_write);
 void write_eflags(cpu_t *cpu, Value *eflags, Value *mask);
-void hook_emit(cpu_t *cpu, hook *obj);
 
 
 #define CTX() (*cpu->ctx)

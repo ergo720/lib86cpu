@@ -849,33 +849,19 @@ tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end)
 }
 
 /*
-* hook_add -> adds a hook to intercept a guest function and redirect it to a host function. Only call this from a hook
+* hook_add -> adds a hook to intercept a guest function and redirect it to a host function. Only call this from a hook or before the emulation starts
 * cpu: a valid cpu instance
 * addr: the virtual address of the first instruction of the guest function to intercept
-* obj: an object that holds additional data on the hook
+* hook_addr: the address of the host function to call
 * ret: the status of the operation
 */
 lc86_status
-hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
+hook_add(cpu_t *cpu, addr_t addr, void *hook_addr)
 {
 	// adds a host function that is called in place of the original guest function when pc reaches addr. The client is responsible for fetching the guest arguments
-	// (if they need them) and fixing the guest stack/register before the host function returns
+	// (if they need them) and fixing the guest stack/registers before the host function returns
 	// NOTE: this hooks will only work when addr points to the first instruction of the hooked function (because we only check for hooks at the start
 	// of the translation of a new code block)
-
-	if (cpu->hook_map.contains(addr)) {
-		return set_last_error(lc86_status::already_exist);
-	}
-
-	if (obj.get() == nullptr) {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
-
-	if (obj->args_t.size() != obj->args_val.size()) {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
-
-	cpu->hook_map.emplace(addr, std::move(obj));
 
 	try {
 		uint8_t is_code;
@@ -885,6 +871,8 @@ hook_add(cpu_t *cpu, addr_t addr, std::unique_ptr<hook> obj)
 	catch (host_exp_t type) {
 		return set_last_error(lc86_status::guest_exp);
 	}
+
+	cpu->hook_map.insert_or_assign(addr, hook_addr);
 
 	return lc86_status::success;
 }

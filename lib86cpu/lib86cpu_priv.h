@@ -169,7 +169,7 @@ struct cpu_t {
 	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
 	std::unordered_map<addr_t, translated_code_t *> ibtc;
 	std::vector<std::unique_ptr<uint8_t[]>> vec_rom;
-	std::unordered_map<addr_t, std::unique_ptr<hook>> hook_map;
+	std::unordered_map<addr_t, void *> hook_map;
 	std::vector<cached_io_region> io_regions;
 	std::vector<cached_rom_region> rom_regions;
 	std::vector<cached_mmio_region> mmio_regions;

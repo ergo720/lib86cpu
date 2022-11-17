@@ -215,22 +215,22 @@ gen_cxbxrkrnl_test(const std::string &executable)
 	}
 
 	// Init lib86cpu
-	if (!LIB86CPU_CHECK_SUCCESS(cpu_new(ramsize, cpu, "cxbxrkrnl"))) {
+	if (!LC86_SUCCESS(cpu_new(ramsize, cpu, "cxbxrkrnl"))) {
 		std::printf("Failed to create cpu!\n");
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
 		std::printf("Failed to initialize ram memory!\n");
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_alias(cpu, CONTIGUOUS_MEMORY_BASE, 0, ramsize, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_alias(cpu, CONTIGUOUS_MEMORY_BASE, 0, ramsize, 1))) {
 		std::printf("Failed to initialize contiguous memory!\n");
 		return false;
 	}
 
-	if (!LIB86CPU_CHECK_SUCCESS(mem_init_region_io(cpu, DBG_STR_PORT, 8, true, host_read_handler, host_write_handler, cpu, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_io(cpu, DBG_STR_PORT, 8, true, host_read_handler, host_write_handler, cpu, 1))) {
 		std::printf("Failed to initialize host communication i/o ports!\n");
 		return false;
 	}

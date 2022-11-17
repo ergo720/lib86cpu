@@ -43,9 +43,6 @@ lc86status_to_str(lc86_status status)
 	case lc86_status::invalid_parameter:
 		return "An invalid parameter was specified";
 
-	case lc86_status::already_exist:
-		return "The specified object already exists";
-
 	case lc86_status::not_found:
 		return "The specified object could not be found";
 
