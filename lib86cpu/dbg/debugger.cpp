@@ -5,7 +5,6 @@
  */
 
 #include "memory.h"
-#include "frontend.h"
 #include "debugger.h"
 #include "instructions.h"
 #include <fstream>

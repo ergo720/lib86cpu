@@ -6,7 +6,6 @@
 
 #include "instructions.h"
 #include "debugger.h"
-#include "frontend.h"
 
 
 template<unsigned reg>

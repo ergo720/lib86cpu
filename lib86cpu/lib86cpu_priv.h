@@ -23,17 +23,6 @@
 #define P6(n) P4(n), P4(n ^ 1), P4(n ^ 1), P4(n)
 #define GEN_TABLE P6(0), P6(1), P6(1), P6(0)
 
-
-namespace llvm {
-	class BasicBlock;
-	class Function;
-	class Type;
-	class PointerType;
-	class StructType;
-	class Value;
-	class GlobalVariable;
-}
-
  // memory region type
 enum class mem_type {
 	unmapped,
@@ -133,6 +122,9 @@ struct regs_layout_t {
 	const char *name;
 };
 
+// the lazy eflags idea comes from reading these two papers:
+// How Bochs Works Under the Hood (2nd edition) http://bochs.sourceforge.net/How%20the%20Bochs%20works%20under%20the%20hood%202nd%20edition.pdf
+// A Proposal for Hardware-Assisted Arithmetic Overflow Detection for Array and Bitfield Operations http://www.emulators.com/docs/LazyOverflowDetect_Final.pdf
 struct lazy_eflags_t {
 	uint32_t result;
 	uint32_t auxbits;
@@ -161,6 +153,7 @@ struct cpu_t {
 	const regs_layout_t *regs_layout;
 	cpu_ctx_t cpu_ctx;
 	translated_code_t *tc; // tc for which we are currently generating code
+	std::unique_ptr<lc86_jit> jit;
 	std::unique_ptr<interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>> memory_space_tree;
 	std::unique_ptr<interval_tree<port_t, std::unique_ptr<memory_region_t<port_t>>>> io_space_tree;
 	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<addr_t>>>, sort_by_priority<addr_t>> memory_out;
@@ -193,29 +186,10 @@ struct cpu_t {
 	std::string dbg_name;
 	addr_t bp_addr;
 	addr_t db_addr;
-
-	// llvm specific variables
-	std::unique_ptr<lc86_jit> jit;
-	llvm::Value *ptr_cpu_ctx;
-	llvm::Value *ptr_regs;
-	llvm::Value *ptr_eflags;
-	llvm::Value *ptr_hflags;
-	llvm::Value *ptr_tlb;
-	llvm::Value *ptr_tlb_region_idx;
-	llvm::Value *ptr_iotlb;
-	llvm::Value *ptr_ram;
 	addr_t instr_eip;
 	addr_t virt_pc;
 	size_t instr_bytes;
 	uint8_t size_mode;
 	uint8_t addr_mode;
 	uint8_t translate_next;
-	llvm::BasicBlock *bb; // bb to which we are currently adding llvm instructions
-	llvm::Function *ptr_mem_ldfn[7];
-	llvm::Function *ptr_mem_stfn[7];
-	llvm::Function *ptr_exp_fn;
-	llvm::Function *ptr_abort_fn;
-	llvm::StructType *cpu_ctx_type;
-	llvm::Type *reg_ty;
-	llvm::Type *eflags_ty;
 };
