@@ -12,6 +12,10 @@ set(LIB86CPU_ROOT_DIR ${CMAKE_CURRENT_LIST_DIR})
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_STANDARD 20)
 
+option(LIB86CPU_BUILD_SHARED_LIB
+    "Build shared library"
+    OFF)
+
 if (WIN32 AND MSVC)
 message("Building for Windows")
 include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows)
@@ -43,7 +47,7 @@ message("   LIB86CPU_BUILD_TEST=${LIB86CPU_BUILD_TEST}")
 
 message("Building lib86cpu")
 include(BuildConfigH.cmake)
-add_definitions(-DLIB86CPU_BUILD_CORE -DASMJIT_STATIC)
+add_definitions(-DASMJIT_STATIC)
 include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu ${LIB86CPU_ROOT_DIR}/lib86cpu/core ${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter ${LIB86CPU_ROOT_DIR}/import/glfw/include/GLFW
  ${LIB86CPU_ROOT_DIR}/import/imgui ${LIB86CPU_ROOT_DIR}/import/imgui/backends ${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad ${LIB86CPU_ROOT_DIR}/lib86cpu/dbg
  ${LIB86CPU_ROOT_DIR}/import/asmjit/src)
@@ -128,11 +132,15 @@ add_definitions(-wd4146)
 add_definitions(-wd4800)
 add_definitions(-wd4355)
 add_definitions(-wd4624)
-else ()
-message(FATAL_ERROR "Only msvc is supported for now")
 endif()
 
-add_library(cpu SHARED ${HEADERS} ${SOURCES})
+if (${LIB86CPU_BUILD_SHARED_LIB})
+ add_definitions(-DLIB86CPU_BUILD_SHARED_LIB -DLIB86CPU_BUILD_CORE)
+ add_library(cpu SHARED ${HEADERS} ${SOURCES})
+else ()
+ add_library(cpu STATIC ${HEADERS} ${SOURCES})
+endif()
+
 target_link_libraries(cpu PRIVATE asmjit Zydis glfw imgui)
 
 if (${LIB86CPU_BUILD_TEST})

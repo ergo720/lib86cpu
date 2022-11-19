@@ -11,7 +11,7 @@
 #  endif /* defined(_MSC_VER) */
 #endif /* defined(_WIN32) */
 
-#if HAVE_DECLSPEC_DLLEXPORT
+#if defined LIB86CPU_BUILD_SHARED_LIB && defined HAVE_DECLSPEC_DLLEXPORT
 #  ifdef LIB86CPU_BUILD_CORE
 #    define API_FUNC __declspec(dllexport)
 #  else
