@@ -22,3 +22,9 @@ Only Windows builds are supported for now.
 4. Build the resulting solution file lib86cpu.sln with Visual Studio
 
 **NOTE:** use `-DLIB86CPU_BUILD_TEST=ON` if you want to also build the test app.
+
+## Support
+
+You can show your appreciation to this project to the below addresses:
+- Bitcoin `1NnaFQoj6MMFZWFk8ETmKE4qUKpzhZxZ2g`
+- Ether   `0x340aeB056C1Cf9107FAc476371D2b2d0544b50cf`
