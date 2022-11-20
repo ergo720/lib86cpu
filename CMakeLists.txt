@@ -48,7 +48,7 @@ message("   LIB86CPU_BUILD_TEST=${LIB86CPU_BUILD_TEST}")
 message("Building lib86cpu")
 include(BuildConfigH.cmake)
 add_definitions(-DASMJIT_STATIC)
-include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu ${LIB86CPU_ROOT_DIR}/lib86cpu/core ${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter ${LIB86CPU_ROOT_DIR}/import/glfw/include/GLFW
+include_directories(${LIB86CPU_ROOT_DIR}/include ${LIB86CPU_ROOT_DIR}/lib86cpu ${LIB86CPU_ROOT_DIR}/lib86cpu/core ${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter ${LIB86CPU_ROOT_DIR}/import/glfw/include/GLFW
  ${LIB86CPU_ROOT_DIR}/import/imgui ${LIB86CPU_ROOT_DIR}/import/imgui/backends ${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad ${LIB86CPU_ROOT_DIR}/lib86cpu/dbg
  ${LIB86CPU_ROOT_DIR}/import/asmjit/src)
 
@@ -73,14 +73,14 @@ endif()
 add_subdirectory("import/asmjit")
 
 set(HEADERS
- "${LIB86CPU_ROOT_DIR}/lib86cpu/config.h"
+ "${LIB86CPU_ROOT_DIR}/include/config.h"
+ "${LIB86CPU_ROOT_DIR}/include/lib86cpu.h"
+ "${LIB86CPU_ROOT_DIR}/include/platform.h"
+ "${LIB86CPU_ROOT_DIR}/include/types.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/endianness.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/interval_tree.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/lib86cpu.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/lib86cpu_priv.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/platform.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/support.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/types.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/debugger.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/imgui_memory_editor.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/imgui_wnd.h"
