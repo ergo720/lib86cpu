@@ -39,27 +39,24 @@ struct memory_region_t {
 	T end;
 	mem_type type;
 	int priority;
-	fp_read read_handler;
-	fp_write write_handler;
+	io_handlers_t handlers;
 	void *opaque;
 	addr_t alias_offset;
 	memory_region_t<T> *aliased_region;
 	int rom_idx;
-	memory_region_t() : start(0), end(0), alias_offset(0), type(mem_type::unmapped), priority(0), read_handler(nullptr), write_handler(nullptr),
+	memory_region_t() : start(0), end(0), alias_offset(0), type(mem_type::unmapped), priority(0), handlers{},
 		opaque(nullptr), aliased_region(nullptr), rom_idx(-1) {};
 };
 
 struct cached_io_region {
 	memory_region_t<port_t> *io;
-	fp_read read_handler;
-	fp_write write_handler;
+	io_handlers_t handlers;
 	void *opaque;
 };
 
 struct cached_mmio_region {
 	memory_region_t<addr_t> *mmio;
-	fp_read read_handler;
-	fp_write write_handler;
+	io_handlers_t handlers;
 	void *opaque;
 };
 

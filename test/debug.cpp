@@ -49,19 +49,13 @@ static regs_t *regs = nullptr;
 
 
 static void
-dbg_write_handler(addr_t addr, size_t size, const uint64_t value, void *opaque)
+dbg_write_handler(addr_t addr, const uint8_t value, void *opaque)
 {
 	switch (addr)
 	{
-	case DBG_POST_PORT: {
-		if (size == 1) {
-			std::printf("Test number is 0x%X\n", static_cast<const uint8_t>(value));
-		}
-		else {
-			std::printf("Unhandled i/o port size at port %d\n", DBG_POST_PORT);
-		}
-	}
-	break;
+	case DBG_POST_PORT:
+		std::printf("Test number is 0x%X\n", static_cast<const uint8_t>(value));
+		break;
 
 	default:
 		std::printf("Unhandled i/o write at port %d\n", addr);
@@ -167,7 +161,7 @@ gen_dbg_test()
 		return false;
 	}
 
-	if (!LC86_SUCCESS(mem_init_region_io(cpu, DBG_POST_PORT - 3, 4, true, nullptr, dbg_write_handler, nullptr, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_io(cpu, DBG_POST_PORT - 3, 4, true, io_handlers_t{ .fnw8 = dbg_write_handler }, nullptr, 1))) {
 		std::printf("Failed to initialize post i/o port for debug test!\n");
 		return false;
 	}

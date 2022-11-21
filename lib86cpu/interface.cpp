@@ -14,30 +14,95 @@
 #include <fstream>
 
 
-static void
-default_mmio_write_handler(addr_t addr, size_t size, const uint64_t value, void *opaque)
+static uint8_t
+default_mmio_read_handler8(addr_t addr, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled MMIO write at address %#010x with size %d", addr, size);
+	LOG(log_level::warn, "Unhandled MMIO read at address %#010x", addr);
+	return std::numeric_limits<uint8_t>::max();
+}
+
+static uint16_t
+default_mmio_read_handler16(addr_t addr, void *opaque)
+{
+	LOG(log_level::warn, "Unhandled MMIO read at address %#010x", addr);
+	return std::numeric_limits<uint16_t>::max();
+}
+
+static uint32_t
+default_mmio_read_handler32(addr_t addr, void *opaque)
+{
+	LOG(log_level::warn, "Unhandled MMIO read at address %#010x", addr);
+	return std::numeric_limits<uint32_t>::max();
 }
 
 static uint64_t
-default_mmio_read_handler(addr_t addr, size_t size, void *opaque)
+default_mmio_read_handler64(addr_t addr, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled MMIO read at address %#010x with size %d", addr, size);
+	LOG(log_level::warn, "Unhandled MMIO read at address %#010x", addr);
 	return std::numeric_limits<uint64_t>::max();
 }
 
 static void
-default_pmio_write_handler(addr_t addr, size_t size, const uint64_t value, void *opaque)
+default_mmio_write_handler8(addr_t addr, const uint8_t value, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled PMIO write at port %#06x with size %d", addr, size);
+	LOG(log_level::warn, "Unhandled MMIO write at address %#010x", addr);
 }
 
-static uint64_t
-default_pmio_read_handler(addr_t addr, size_t size, void *opaque)
+static void
+default_mmio_write_handler16(addr_t addr, const uint16_t value, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled PMIO read at port %#06x with size %d", addr, size);
-	return std::numeric_limits<uint64_t>::max();
+	LOG(log_level::warn, "Unhandled MMIO write at address %#010x", addr);
+}
+
+static void
+default_mmio_write_handler32(addr_t addr, const uint32_t value, void *opaque)
+{
+	LOG(log_level::warn, "Unhandled MMIO write at address %#010x", addr);
+}
+
+static void
+default_mmio_write_handler64(addr_t addr, const uint64_t value, void *opaque)
+{
+	LOG(log_level::warn, "Unhandled MMIO write at address %#010x", addr);
+}
+
+static uint8_t
+default_pmio_read_handler8(addr_t addr, void *opaque)
+{
+	LOG(log_level::warn, "Unhandled PMIO read at port %#06x", addr);
+	return std::numeric_limits<uint8_t>::max();
+}
+
+static uint16_t
+default_pmio_read_handler16(addr_t addr, void *opaque)
+{
+	LOG(log_level::warn, "Unhandled PMIO read at port %#06x", addr);
+	return std::numeric_limits<uint16_t>::max();
+}
+
+static uint32_t
+default_pmio_read_handler32(addr_t addr, void *opaque)
+{
+	LOG(log_level::warn, "Unhandled PMIO read at port %#06x", addr);
+	return std::numeric_limits<uint32_t>::max();
+}
+
+static void
+default_pmio_write_handler8(addr_t addr, const uint8_t value, void *opaque)
+{
+	LOG(log_level::warn, "Unhandled PMIO write at port %#06x", addr);
+}
+
+static void
+default_pmio_write_handler16(addr_t addr, const uint16_t value, void *opaque)
+{
+	LOG(log_level::warn, "Unhandled PMIO write at port %#06x", addr);
+}
+
+static void
+default_pmio_write_handler32(addr_t addr, const uint32_t value, void *opaque)
+{
+	LOG(log_level::warn, "Unhandled PMIO write at port %#06x", addr);
 }
 
 /*
@@ -84,8 +149,9 @@ cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee)
 	cpu->io_space_tree = interval_tree<port_t, std::unique_ptr<memory_region_t<port_t>>>::create();
 	io_region->start = 0;
 	io_region->end = UINT16_MAX;
-	io_region->read_handler = default_pmio_read_handler;
-	io_region->write_handler = default_pmio_write_handler;
+	io_region->handlers.fnr8 = default_pmio_read_handler8;
+	io_region->handlers.fnr16 = default_pmio_read_handler16;
+	io_region->handlers.fnr32 = default_pmio_read_handler32;
 	cpu->io_space_tree->insert(io_region->start, io_region->end, std::move(io_region));
 
 	try {
@@ -305,7 +371,7 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
 * ret: the status of the operation
 */
 lc86_status
-mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read read_func, fp_write write_func, void *opaque, int priority)
+mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, io_handlers_t handlers, void *opaque, int priority)
 {
 	if (size == 0) {
 		return set_last_error(lc86_status::invalid_parameter);
@@ -340,18 +406,12 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 		io->end = end;
 		io->type = mem_type::pmio;
 		io->priority = priority;
-		if (read_func) {
-			io->read_handler = read_func;
-		}
-		else {
-			io->read_handler = default_pmio_read_handler;
-		}
-		if (write_func) {
-			io->write_handler = write_func;
-		}
-		else {
-			io->write_handler = default_pmio_write_handler;
-		}
+		io->handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_pmio_read_handler8;
+		io->handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_pmio_read_handler16;
+		io->handlers.fnr32 = handlers.fnr32 ? handlers.fnr32 : default_pmio_read_handler32;
+		io->handlers.fnw8 = handlers.fnw8 ? handlers.fnw8 : default_pmio_write_handler8;
+		io->handlers.fnw16 = handlers.fnw16 ? handlers.fnw16 : default_pmio_write_handler16;
+		io->handlers.fnw32 = handlers.fnw32 ? handlers.fnw32 : default_pmio_write_handler32;
 		if (opaque) {
 			io->opaque = opaque;
 		}
@@ -385,18 +445,14 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read
 		mmio->end = end;
 		mmio->type = mem_type::mmio;
 		mmio->priority = priority;
-		if (read_func) {
-			mmio->read_handler = read_func;
-		}
-		else {
-			mmio->read_handler = default_mmio_read_handler;
-		}
-		if (write_func) {
-			mmio->write_handler = write_func;
-		}
-		else {
-			mmio->write_handler = default_mmio_write_handler;
-		}
+		mmio->handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_mmio_read_handler8;
+		mmio->handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_mmio_read_handler16;
+		mmio->handlers.fnr32 = handlers.fnr32 ? handlers.fnr32 : default_mmio_read_handler32;
+		mmio->handlers.fnr64 = handlers.fnr64 ? handlers.fnr64 : default_mmio_read_handler64;
+		mmio->handlers.fnw8 = handlers.fnw8 ? handlers.fnw8 : default_mmio_write_handler8;
+		mmio->handlers.fnw16 = handlers.fnw16 ? handlers.fnw16 : default_mmio_write_handler16;
+		mmio->handlers.fnw32 = handlers.fnw32 ? handlers.fnw32 : default_mmio_write_handler32;
+		mmio->handlers.fnw64 = handlers.fnw64 ? handlers.fnw64 : default_mmio_write_handler64;
 		if (opaque) {
 			mmio->opaque = opaque;
 		}

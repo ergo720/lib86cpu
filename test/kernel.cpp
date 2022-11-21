@@ -118,19 +118,14 @@ typedef struct _IMAGE_SECTION_HEADER {
 } IMAGE_SECTION_HEADER, *PIMAGE_SECTION_HEADER;
 
 
-static uint64_t
-host_read_handler(addr_t addr, size_t size, void *opaque)
+static uint32_t
+host_read_handler(addr_t addr, void *opaque)
 {
-	if (size != 4) {
-		std::printf("%s: unexpected i/o read at port %d with size %d\n", __func__, addr, static_cast<uint32_t>(size));
-		return std::numeric_limits<uint64_t>::max();
-	}
-
 	switch (addr)
 	{
 	case SYS_TYPE_PORT:
 		// For now, we always want an xbox system. 0: xbox, 1: chihiro, 2: devkit
-		return 0ULL;
+		return 0;
 
 	default:
 		std::printf("%s: unexpected i/o read at port %d\n", __func__, addr);
@@ -140,13 +135,8 @@ host_read_handler(addr_t addr, size_t size, void *opaque)
 }
 
 static void
-host_write_handler(addr_t addr, size_t size, const uint64_t value, void* opaque)
+host_write_handler(addr_t addr, const uint32_t value, void* opaque)
 {
-	if (size != 4) {
-		std::printf("%s: unexpected i/o write at port %d with size %d\n", __func__, addr, static_cast<uint32_t>(size));
-		return;
-	}
-
 	switch (addr)
 	{
 	case DBG_STR_PORT:
@@ -230,7 +220,7 @@ gen_cxbxrkrnl_test(const std::string &executable)
 		return false;
 	}
 
-	if (!LC86_SUCCESS(mem_init_region_io(cpu, DBG_STR_PORT, 8, true, host_read_handler, host_write_handler, cpu, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_io(cpu, DBG_STR_PORT, 8, true, io_handlers_t{ .fnr32 = host_read_handler, .fnw32 = host_write_handler }, cpu, 1))) {
 		std::printf("Failed to initialize host communication i/o ports!\n");
 		return false;
 	}

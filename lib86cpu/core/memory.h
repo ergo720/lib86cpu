@@ -73,7 +73,21 @@ T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, memory_region_t<addr_t> *regi
 			return ram_read<T>(cpu, get_rom_host_ptr(cpu, region, addr));
 
 		case mem_type::mmio:
-			return static_cast<T>(region->read_handler(addr, sizeof(T), region->opaque));
+			if constexpr (sizeof(T) == 1) {
+				return region->handlers.fnr8(addr, region->opaque);
+			}
+			else if constexpr (sizeof(T) == 2) {
+				return region->handlers.fnr16(addr, region->opaque);
+			}
+			else if constexpr (sizeof(T) == 4) {
+				return region->handlers.fnr32(addr, region->opaque);
+			}
+			else if constexpr (sizeof(T) == 8) {
+				return region->handlers.fnr64(addr, region->opaque);
+			}
+			else {
+				LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+			}
 
 		case mem_type::alias: {
 			memory_region_t<addr_t> *alias = region;
@@ -110,7 +124,21 @@ void as_memory_dispatch_write(cpu_t *cpu, addr_t addr, T value, memory_region_t<
 			break;
 
 		case mem_type::mmio:
-			region->write_handler(addr, sizeof(T), value, region->opaque);
+			if constexpr (sizeof(T) == 1) {
+				region->handlers.fnw8(addr, value, region->opaque);
+			}
+			else if constexpr (sizeof(T) == 2) {
+				region->handlers.fnw16(addr, value, region->opaque);
+			}
+			else if constexpr (sizeof(T) == 4) {
+				region->handlers.fnw32(addr, value, region->opaque);
+			}
+			else if constexpr (sizeof(T) == 8) {
+				region->handlers.fnw64(addr, value, region->opaque);
+			}
+			else {
+				LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+			}
 			break;
 
 		case mem_type::alias: {
@@ -141,7 +169,18 @@ T as_io_dispatch_read(cpu_t *cpu, port_t port, memory_region_t<port_t> *region)
 		{
 		case mem_type::pmio:
 		case mem_type::unmapped:
-			return static_cast<T>(region->read_handler(port, sizeof(T), region->opaque));
+			if constexpr (sizeof(T) == 1) {
+				return region->handlers.fnr8(port, region->opaque);
+			}
+			else if constexpr (sizeof(T) == 2) {
+				return region->handlers.fnr16(port, region->opaque);
+			}
+			else if constexpr (sizeof(T) == 4) {
+				return region->handlers.fnr32(port, region->opaque);
+			}
+			else {
+				LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+			}
 
 		default:
 			LIB86CPU_ABORT();
@@ -161,7 +200,18 @@ void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, memory_region_t<port
 		{
 		case mem_type::pmio:
 		case mem_type::unmapped:
-			region->write_handler(port, sizeof(T), value, region->opaque);
+			if constexpr (sizeof(T) == 1) {
+				region->handlers.fnw8(port, value, region->opaque);
+			}
+			else if constexpr (sizeof(T) == 2) {
+				region->handlers.fnw16(port, value, region->opaque);
+			}
+			else if constexpr (sizeof(T) == 4) {
+				region->handlers.fnw32(port, value, region->opaque);
+			}
+			else {
+				LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+			}
 			break;
 
 		default:

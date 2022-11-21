@@ -48,7 +48,7 @@ iotlb_fill(cpu_t *cpu, port_t port, memory_region_t<port_t> *io)
 
 	if (it == cpu->io_regions.end()) {
 		// note that emplace_back can invalidate all iterators/pointers, but not the element indices, so we don't need to flush the iotlb
-		cpu->io_regions.emplace_back(io, io->read_handler, io->write_handler, io->opaque);
+		cpu->io_regions.emplace_back(io, io->handlers, io->opaque);
 		it = std::prev(cpu->io_regions.end(), 1);
 	}
 
@@ -144,7 +144,7 @@ tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 
 		if (it == cpu->mmio_regions.end()) {
 			// note that emplace_back can invalidate all iterators/pointers, but not the element indices, so we don't need to flush the iotlb
-			cpu->mmio_regions.emplace_back(region, region->read_handler, region->write_handler, region->opaque);
+			cpu->mmio_regions.emplace_back(region, region->handlers, region->opaque);
 			it = std::prev(cpu->mmio_regions.end(), 1);
 		}
 
@@ -545,7 +545,21 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv
 		case TLB_MMIO: {
 			// it's mmio, invoke the handler directly
 			cached_mmio_region *mmio = &cpu_ctx->cpu->mmio_regions[cpu_ctx->tlb_region_idx[tlb_idx1]];
-			return mmio->read_handler(phys_addr, sizeof(T), mmio->opaque);
+			if constexpr (sizeof(T) == 1) {
+				return mmio->handlers.fnr8(phys_addr, mmio->opaque);
+			}
+			else if constexpr (sizeof(T) == 2) {
+				return mmio->handlers.fnr16(phys_addr, mmio->opaque);
+			}
+			else if constexpr (sizeof(T) == 4) {
+				return mmio->handlers.fnr32(phys_addr, mmio->opaque);
+			}
+			else if constexpr (sizeof(T) == 8) {
+				return mmio->handlers.fnr64(phys_addr, mmio->opaque);
+			}
+			else {
+				LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+			}
 		}
 
 		default:
@@ -592,7 +606,21 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint
 		case TLB_MMIO: {
 			// it's mmio, invoke the handler directly
 			cached_mmio_region *mmio = &cpu_ctx->cpu->mmio_regions[cpu_ctx->tlb_region_idx[tlb_idx1]];
-			mmio->write_handler(phys_addr, sizeof(T), val, mmio->opaque);
+			if constexpr (sizeof(T) == 1) {
+				mmio->handlers.fnw8(phys_addr, val, mmio->opaque);
+			}
+			else if constexpr (sizeof(T) == 2) {
+				mmio->handlers.fnw16(phys_addr, val, mmio->opaque);
+			}
+			else if constexpr (sizeof(T) == 4) {
+				mmio->handlers.fnw32(phys_addr, val, mmio->opaque);
+			}
+			else if constexpr (sizeof(T) == 8) {
+				mmio->handlers.fnw64(phys_addr, val, mmio->opaque);
+			}
+			else {
+				LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+			}
 			return;
 		}
 
@@ -622,7 +650,18 @@ T io_read_helper(cpu_ctx_t *cpu_ctx, port_t port)
 	if ((((iotlb_entry & (IOTLB_VALID | IOTLB_WATCH)) | (iotlb_idx1 << IO_SHIFT)) ^ ((iotlb_idx2 << IO_SHIFT) | IOTLB_VALID)) == 0) {
 		// iotlb hit
 		cached_io_region *io = &cpu_ctx->cpu->io_regions[cpu_ctx->iotlb[iotlb_idx1] >> IO_SHIFT];
-		return io->read_handler(port, sizeof(T), io->opaque);
+		if constexpr (sizeof(T) == 1) {
+			return io->handlers.fnr8(port, io->opaque);
+		}
+		else if constexpr (sizeof(T) == 2) {
+			return io->handlers.fnr16(port, io->opaque);
+		}
+		else if constexpr (sizeof(T) == 4) {
+			return io->handlers.fnr32(port, io->opaque);
+		}
+		else {
+			LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+		}
 	}
 
 	// iotlb miss
@@ -643,7 +682,18 @@ void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, T val)
 	if ((((iotlb_entry & (IOTLB_VALID | IOTLB_WATCH)) | (iotlb_idx1 << IO_SHIFT)) ^ ((iotlb_idx2 << IO_SHIFT) | IOTLB_VALID)) == 0) {
 		// iotlb hit
 		cached_io_region *io = &cpu_ctx->cpu->io_regions[cpu_ctx->iotlb[iotlb_idx1] >> IO_SHIFT];
-		io->write_handler(port, sizeof(T), val, io->opaque);
+		if constexpr (sizeof(T) == 1) {
+			io->handlers.fnw8(port, val, io->opaque);
+		}
+		else if constexpr (sizeof(T) == 2) {
+			io->handlers.fnw16(port, val, io->opaque);
+		}
+		else if constexpr (sizeof(T) == 4) {
+			io->handlers.fnw32(port, val, io->opaque);
+		}
+		else {
+			LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+		}
 		return;
 	}
 

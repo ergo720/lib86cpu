@@ -40,8 +40,25 @@ using logfn_t = void(*)(log_level, const unsigned, const char *, ...);
 #define CPU_DBG_PRESENT         (1 << 11)
 
 // mmio/pmio access handlers
-using fp_read = uint64_t (*)(addr_t addr, size_t size, void *opaque);
-using fp_write = void (*)(addr_t addr, size_t size, const uint64_t value, void *opaque);
+using fp_read8 = uint8_t (*)(addr_t addr, void *opaque);
+using fp_read16 = uint16_t(*)(addr_t addr, void *opaque);
+using fp_read32 = uint32_t(*)(addr_t addr, void *opaque);
+using fp_read64 = uint64_t(*)(addr_t addr, void *opaque);
+using fp_write8 = void (*)(addr_t addr, const uint8_t value, void *opaque);
+using fp_write16 = void (*)(addr_t addr, const uint16_t value, void *opaque);
+using fp_write32 = void (*)(addr_t addr, const uint32_t value, void *opaque);
+using fp_write64 = void (*)(addr_t addr, const uint64_t value, void *opaque);
+
+struct io_handlers_t {
+	fp_read8 fnr8;
+	fp_read16 fnr16;
+	fp_read32 fnr32;
+	fp_read64 fnr64;
+	fp_write8 fnw8;
+	fp_write16 fnw16;
+	fp_write32 fnw32;
+	fp_write64 fnw64;
+};
 
 // forward declare
 struct cpu_t;
@@ -62,7 +79,7 @@ API_FUNC void write_eflags(cpu_t *cpu, uint32_t value, bool reg32 = true);
 API_FUNC uint8_t *get_ram_ptr(cpu_t *cpu);
 API_FUNC uint8_t* get_host_ptr(cpu_t *cpu, addr_t addr);
 API_FUNC lc86_status mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority);
-API_FUNC lc86_status mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, fp_read read_func, fp_write write_func, void *opaque, int priority);
+API_FUNC lc86_status mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, io_handlers_t handlers, void *opaque, int priority);
 API_FUNC lc86_status mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority);
 API_FUNC lc86_status mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, int priority, std::unique_ptr<uint8_t[]> buffer);
 API_FUNC lc86_status mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space);

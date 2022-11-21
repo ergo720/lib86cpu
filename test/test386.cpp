@@ -12,33 +12,22 @@
 
 
 static void
-test386_write_handler(addr_t addr, size_t size, const uint64_t value, void *opaque)
+test386_write_handler(addr_t addr, const uint8_t value, void *opaque)
 {
 	switch (addr)
 	{
-	case TEST386_POST_PORT: {
-		if (size == 1) {
-			printf("Test number is 0x%X\n", static_cast<const uint8_t>(value));
-		}
-		else {
-			printf("Unhandled i/o port size at port %d\n", TEST386_POST_PORT);
-		}
-	}
-	break;
+	case TEST386_POST_PORT:
+		printf("Test number is 0x%X\n", static_cast<const uint8_t>(value));
+		break;
 
 	case TEST386_EE_PORT: {
 		static std::string str = "";
-		if (size == 1) {
-			if (static_cast<const char>(value) == '\n') {
-				printf("%s", (str + '\n').c_str());
-				str.clear();
-			}
-			else {
-				str += static_cast<const char>(value);
-			}
+		if (static_cast<const char>(value) == '\n') {
+			printf("%s", (str + '\n').c_str());
+			str.clear();
 		}
 		else {
-			printf("Unhandled i/o port size at port %d\n", TEST386_EE_PORT);
+			str += static_cast<const char>(value);
 		}
 	}
 	break;
@@ -93,12 +82,12 @@ gen_test386asm_test(const std::string &executable)
 		return false;
 	}
 
-	if (!LC86_SUCCESS(mem_init_region_io(cpu, TEST386_POST_PORT, 4, true, nullptr, test386_write_handler, nullptr, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_io(cpu, TEST386_POST_PORT, 4, true, io_handlers_t{ .fnw8 = test386_write_handler }, nullptr, 1))) {
 		printf("Failed to initialize post i/o port for test386.asm!\n");
 		return false;
 	}
 
-	if (!LC86_SUCCESS(mem_init_region_io(cpu, TEST386_EE_PORT - 1, 4, true, nullptr, test386_write_handler, nullptr, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_io(cpu, TEST386_EE_PORT - 1, 4, true, io_handlers_t{ .fnw8 = test386_write_handler }, nullptr, 1))) {
 		printf("Failed to initialize i/o port used by test 0xEE for test386.asm!\n");
 		return false;
 	}
