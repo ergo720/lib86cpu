@@ -206,31 +206,22 @@ template<bool is_int = false> translated_code_t *cpu_raise_exception(cpu_ctx_t *
 #define PAGE_MASK_LARGE   (PAGE_SIZE_LARGE - 1)
 
 // tlb macros
-#define TLB_SUP_READ    (1 << 0)
-#define TLB_SUP_WRITE   (1 << 1)
-#define TLB_USER_READ   (1 << 2)
-#define TLB_USER_WRITE  (1 << 3)
-#define TLB_CODE        (1 << 4)
-#define TLB_RAM         (1 << 5)
-#define TLB_ROM         (1 << 6)
-#define TLB_MMIO        (1 << 7)
-#define TLB_GLOBAL      (1 << 8)
-#define TLB_DIRTY       (1 << 9)
-#define TLB_WATCH       (1 << 10)
+#define TLB_SUP_READ    (1 << 0)  // page access type allowed: supervisor read
+#define TLB_SUP_WRITE   (1 << 1)  // page access type allowed: supervisor write
+#define TLB_USER_READ   (1 << 2)  // page access type allowed: user read
+#define TLB_USER_WRITE  (1 << 3)  // page access type allowed: user write
+#define TLB_CODE        (1 << 4)  // page contains at least one code block
+#define TLB_RAM         (1 << 5)  // page is backed by ram
+#define TLB_ROM         (1 << 6)  // page is backed by rom
+#define TLB_MMIO        (1 << 7)  // page is backed by mmio
+#define TLB_GLOBAL      (1 << 8)  // page has global flag in its pte
+#define TLB_DIRTY       (1 << 9)  // page was written to at least once
+#define TLB_WATCH       (1 << 10) // page has at least one debug watchpoint
+#define TLB_SUBPAGE     (1 << 11) // page is backed by different memory regions
+#define TLB_VALID       (TLB_SUP_READ | TLB_SUP_WRITE | TLB_USER_READ | TLB_USER_WRITE) // entry is valid
 #define TLB_zero        0
 #define TLB_keep_cw     1
 #define TLB_no_g        2
-#define TLB_rom         3
-#define TLB_mmio        4
-
-// io macros
-#define IO_SHIFT        2
-#define IO_SIZE         4
-#define IO_MAX_PORT     65536
-
-// iotlb macros
-#define IOTLB_VALID    (1 << 0)
-#define IOTLB_WATCH    (1 << 1)
 
 // control register flags
 #define CR0_PG_MASK (1 << 31)
@@ -287,5 +278,3 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define IA32_MTRR_PHYSMASK(n) (MTRR_PHYSMASK_base + (n * 2))
 
 #define X86_MAX_INSTR_LENGTH 15
-#define ROM_MAX_NUM ((1 << 16) - 1)
-#define MMIO_MAX_NUM ROM_MAX_NUM

@@ -831,6 +831,69 @@ update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip
 }
 
 void
+update_drN_helper(cpu_ctx_t *cpu_ctx, uint8_t dr_idx, uint32_t new_dr)
+{
+	switch (dr_idx)
+	{
+	case DR0_idx:
+	case DR1_idx:
+	case DR2_idx:
+	case DR3_idx: {
+		// flush the old tlb/iotable entry, so mem accesses there will call the mem helpers and check for possible watchpoints on the same page
+		// as the old one from the other dr regs, then set the new watchpoint in all dr regs if enabled
+		if (cpu_get_watchpoint_type(cpu_ctx->cpu, dr_idx - DR_offset) == DR7_TYPE_IO_RW) {
+			if (cpu_ctx->regs.cr4 & CR4_DE_MASK) {
+				uint32_t dr = cpu_ctx->regs.dr[dr_idx - DR_offset];
+				size_t wp_len = cpu_get_watchpoint_lenght(cpu_ctx->cpu, dr_idx - DR_offset);
+				for (size_t idx = 0; idx < wp_len; ++idx) {
+					cpu_ctx->cpu->iotable.reset(dr & 0xFFFF);
+					++dr;
+				}
+				cpu_ctx->regs.dr[dr_idx - DR_offset] = new_dr;
+				for (int idx = 0; idx < 4; ++idx) {
+					if (cpu_check_watchpoint_enabled(cpu_ctx->cpu, idx)) {
+						wp_len = cpu_get_watchpoint_lenght(cpu_ctx->cpu, idx);
+						for (size_t idx = 0; idx < wp_len; ++idx) {
+							cpu_ctx->cpu->iotable.set(cpu_ctx->regs.dr[idx] & 0xFFFF);
+							++dr;
+						}
+					}
+				}
+			}
+		}
+		else {
+			uint32_t dr = cpu_ctx->regs.dr[dr_idx - DR_offset];
+			size_t wp_len = cpu_get_watchpoint_lenght(cpu_ctx->cpu, dr_idx - DR_offset);
+			uint32_t tlb_idx1 = dr >> PAGE_SHIFT;
+			uint32_t tlb_idx2 = (dr + wp_len - 1) >> PAGE_SHIFT;
+			cpu_ctx->tlb[tlb_idx1] &= ~TLB_WATCH;
+			if (tlb_idx1 != tlb_idx2) {
+				cpu_ctx->tlb[tlb_idx2] &= ~TLB_WATCH;
+			}
+			cpu_ctx->regs.dr[dr_idx - DR_offset] = new_dr;
+			for (int idx = 0; idx < 4; ++idx) {
+				if (cpu_check_watchpoint_enabled(cpu_ctx->cpu, idx)) {
+					wp_len = cpu_get_watchpoint_lenght(cpu_ctx->cpu, idx);
+					dr = cpu_ctx->regs.dr[idx];
+					tlb_idx1 = dr >> PAGE_SHIFT;
+					tlb_idx2 = (dr + wp_len - 1) >> PAGE_SHIFT;
+					cpu_ctx->tlb[tlb_idx1] |= TLB_WATCH;
+					if (tlb_idx1 != tlb_idx2) {
+						cpu_ctx->tlb[tlb_idx2] |= TLB_WATCH;
+					}
+				}
+			}
+		}
+	}
+	break;
+
+	default:
+		// the other dr regs are handled by the jit for now
+		LIB86CPU_ABORT();
+	}
+}
+
+void
 msr_read_helper(cpu_ctx_t *cpu_ctx)
 {
 	uint64_t val;

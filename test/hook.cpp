@@ -197,7 +197,7 @@ gen_hook_test()
 	uint8_t *ram = get_ram_ptr(cpu);
 	std::memcpy(ram, hook_binary, sizeof(hook_binary));
 
-	if (!LC86_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_ram(cpu, 0, ramsize))) {
 		std::printf("Failed to initialize ram memory for hook test!\n");
 		return false;
 	}

@@ -291,7 +291,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 			cpu_ctx->regs.cr2 = fault_addr;
 		}
 		if (idx == EXP_DB) {
-			cpu_ctx->regs.dr7 &= ~DR7_GD_MASK;
+			cpu_ctx->regs.dr[7] &= ~DR7_GD_MASK;
 		}
 		cpu_ctx->exp_info.old_exp = EXP_INVALID;
 	}
@@ -323,7 +323,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		// always clear HFLG_DBG_TRAP
 		cpu_ctx->hflags &= ~HFLG_DBG_TRAP;
 		if (idx == EXP_DB) {
-			cpu_ctx->regs.dr7 &= ~DR7_GD_MASK;
+			cpu_ctx->regs.dr[7] &= ~DR7_GD_MASK;
 		}
 		cpu_ctx->exp_info.old_exp = EXP_INVALID;
 	}

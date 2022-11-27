@@ -56,14 +56,7 @@ struct regs_t {
 	DEFINE_REG32(cr4);
 
 	/* Debug registers */
-	DEFINE_REG32(dr0);
-	DEFINE_REG32(dr1);
-	DEFINE_REG32(dr2);
-	DEFINE_REG32(dr3);
-	DEFINE_REG32(dr4);
-	DEFINE_REG32(dr5);
-	DEFINE_REG32(dr6);
-	DEFINE_REG32(dr7);
+	uint32_t dr[8];
 
 	DEFINE_REG32(eflags);
 	DEFINE_REG32(eip);

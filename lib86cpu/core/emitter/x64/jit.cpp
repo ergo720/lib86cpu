@@ -5399,50 +5399,10 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			case DR1_idx:
 			case DR2_idx:
 			case DR3_idx: {
-				Label io = m_a.newLabel();
-				Label disabled = m_a.newLabel();
-				// flush the old tlb entry, so mem accesses there will call the mem helpers and check for possible watchpoints on the same page
-				// as the old one from the other dr regs, then set the new watchpoint if enabled
-				LD_R32(EAX, CPU_CTX_DR7);
-				LD_R32(EDX, CPU_CTX_CR4);
-				MOV(R9D, EAX);
-				SHR(EAX, DR7_TYPE_SHIFT + (dr_idx - DR_offset) * 4);
-				AND(EAX, 3);
-				AND(EDX, CR4_DE_MASK);
-				OR(EAX, EDX);
-				CMP(EAX, DR7_TYPE_IO_RW | CR4_DE_MASK); // check if it is a mem or io watchpoint
-				BR_EQ(io);
-				LEA(RBX, MEMD64(RCX, CPU_CTX_TLB));
-				LD_R32(EAX, dr_offset);
-				SHR(EAX, PAGE_SHIFT);
-				MOV(EDX, MEMS32(RBX, RAX, 2));
-				AND(EDX, (TLB_CODE | TLB_GLOBAL | TLB_DIRTY | TLB_WATCH));
-				MOV(MEMS32(RBX, RAX, 2), EDX); // flush old tlb entry
-				SHR(R9D, (dr_idx - DR_offset) * 2);
-				AND(R9D, 3);
-				BR_EQ(disabled); // check if new watchpoint is enabled
-				MOV(EAX, R8D);
-				SHR(EAX, PAGE_SHIFT);
-				MOV(EDX, MEMS32(RBX, RAX, 2));
-				OR(EDX, TLB_WATCH);
-				MOV(MEMS32(RBX, RAX, 2), EDX); // set new enabled watchpoint
-				BR_UNCOND(disabled);
-				m_a.bind(io);
-				LEA(RBX, MEMD64(RCX, CPU_CTX_IOTLB));
-				LD_R32(EAX, dr_offset);
-				SHR(EAX, IO_SHIFT);
-				MOV(DX, MEMS16(RBX, RAX, 1));
-				AND(DX, IOTLB_WATCH);
-				MOV(MEMS16(RBX, RAX, 1), DX); // flush old iotlb entry
-				SHR(R9D, (dr_idx - DR_offset) * 2);
-				AND(R9D, 3);
-				BR_EQ(disabled); // check if new io watchpoint is enabled
-				MOV(EAX, R8D);
-				SHR(EAX, IO_SHIFT);
-				MOV(DX, MEMS16(RBX, RAX, 1));
-				OR(DX, IOTLB_WATCH);
-				MOV(MEMS16(RBX, RAX, 1), DX); // set new enabled io watchpoint
-				m_a.bind(disabled);
+				MOV(DL, dr_idx);
+				MOV(RAX, &update_drN_helper);
+				CALL(RAX);
+				MOV(RCX, &m_cpu->cpu_ctx);
 			}
 			break;
 
@@ -5521,7 +5481,9 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				LIB86CPU_ABORT();
 			}
 
-			ST_R32(dr_offset, R8D);
+			if ((dr_idx != DR0_idx) && (dr_idx != DR1_idx) && (dr_idx != DR2_idx) && (dr_idx != DR3_idx)) {
+				ST_R32(dr_offset, R8D);
+			}
 			ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
 			// instr breakpoint are checked at compile time, so we cannot jump to the next tc if we are writing to anything but dr6
 			if ((((m_cpu->virt_pc + m_cpu->instr_bytes) & ~PAGE_MASK) == (m_cpu->virt_pc & ~PAGE_MASK)) && (dr_idx == DR6_idx)) {

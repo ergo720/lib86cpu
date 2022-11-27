@@ -43,6 +43,7 @@ constexpr auto all_callable_funcs = std::make_tuple(
 	verrw_helper<true>,
 	verrw_helper<false>,
 	update_crN_helper,
+	update_drN_helper,
 	mov_sel_pe_helper<SS_idx>,
 	mov_sel_pe_helper<DS_idx>,
 	mov_sel_pe_helper<ES_idx>,

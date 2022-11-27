@@ -123,7 +123,7 @@ cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee)
 		return set_last_error(lc86_status::no_memory);
 	}
 
-	if ((ramsize % PAGE_SIZE) != 0) {
+	if (ramsize == 0) {
 		cpu_free(cpu);
 		return set_last_error(lc86_status::invalid_parameter);
 	}
@@ -140,19 +140,9 @@ cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee)
 	set_instr_format(cpu);
 	cpu->dbg_name = debuggee ? debuggee : "";
 
-	std::unique_ptr<memory_region_t<addr_t>> mem_region(new memory_region_t<addr_t>);
-	cpu->memory_space_tree = interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>::create();
-	mem_region->start = 0;
-	mem_region->end = UINT32_MAX;
-	cpu->memory_space_tree->insert(mem_region->start, mem_region->end, std::move(mem_region));
-	std::unique_ptr<memory_region_t<port_t>> io_region(new memory_region_t<port_t>);
-	cpu->io_space_tree = interval_tree<port_t, std::unique_ptr<memory_region_t<port_t>>>::create();
-	io_region->start = 0;
-	io_region->end = UINT16_MAX;
-	io_region->handlers.fnr8 = default_pmio_read_handler8;
-	io_region->handlers.fnr16 = default_pmio_read_handler16;
-	io_region->handlers.fnr32 = default_pmio_read_handler32;
-	cpu->io_space_tree->insert(io_region->start, io_region->end, std::move(io_region));
+	cpu->memory_space_tree = address_space<addr_t>::create();
+	cpu->io_space_tree = address_space<port_t>::create();
+	cpu->cached_regions.push_back(nullptr);
 
 	try {
 		cpu->jit = std::make_unique<lc86_jit>(cpu);
@@ -294,12 +284,12 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 {
 	try {
 		addr_t phys_addr = get_read_addr(cpu, addr, 0, 0);
-		memory_region_t<addr_t>* region = as_memory_search_addr<uint8_t>(cpu, phys_addr);
+		const memory_region_t<addr_t>* region = as_memory_search_addr(cpu, phys_addr);
 
 		switch (region->type)
 		{
 		case mem_type::ram:
-			return static_cast<uint8_t *>(get_ram_host_ptr(cpu, region, phys_addr));
+			return static_cast<uint8_t *>(get_ram_host_ptr(cpu, phys_addr));
 
 		case mem_type::rom:
 			return static_cast<uint8_t *>(get_rom_host_ptr(cpu, region, phys_addr));
@@ -315,97 +305,61 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 	}
 }
 
+// NOTE: the maximum number of regions the system can have is 65536 - 1, because their indices are cached in the cached_region_idx vector of subpage_t, which is
+// implemented with uint16_t, and there's always a nullptr cached at index zero. Additionally, the number of unmapped regions is variable, and depends of the number
+// of merging and splitting events that involve unmapped regions in the address_space object. These are currently not tracked, which is why the memory APIs below
+// don't track the number of regions currently added to the system
+
 /*
 * mem_init_region_ram -> creates a ram region. Only call this before cpu_run
 * cpu: a valid cpu instance
-* start: the guest physical address where the ram starts. Must be 4k aligned
-* size: size in bytes of ram. Must be a multiple of 4096
-* priority: the priority of the region. Overlapping higher prority regions will take precedence over regions with lower priority
+* start: the guest physical address where the ram starts
+* size: size in bytes of ram
 * ret: the status of the operation
 */
 lc86_status
-mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, int priority)
+mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size)
 {
-	std::unique_ptr<memory_region_t<addr_t>> ram(new memory_region_t<addr_t>);
-
 	if (size == 0) {
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 
-	if ((start % PAGE_SIZE) != 0 || ((size % PAGE_SIZE) != 0)) {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
-
-	addr_t end = start + size - 1;
-	cpu->memory_space_tree->search(start, end, cpu->memory_out);
-
-	for (auto &region : cpu->memory_out) {
-		if (region.get()->priority == priority) {
-			return set_last_error(lc86_status::invalid_parameter);
-		}
-	}
-
+	std::unique_ptr<memory_region_t<addr_t>> ram(new memory_region_t<addr_t>);
 	ram->start = start;
-	ram->end = end;
+	ram->end = start + size - 1;
 	ram->type = mem_type::ram;
-	ram->priority = priority;
+	cpu->memory_space_tree->insert(std::move(ram));
 
-	if (cpu->memory_space_tree->insert(start, end, std::move(ram))) {
-		return lc86_status::success;
-	}
-	else {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
+	return lc86_status::success;
 }
 
 /*
 * mem_init_region_io -> creates an mmio or pmio region. Only call this before cpu_run
 * cpu: a valid cpu instance
-* start: where the region starts. A 4K aligned guest physical address for mmio, and a 4 byte aligned port for pmio
-* size: size of the region. For mmio, it must be a multiple of 4096, while for pmio, it must be a multiple of 4
+* start: where the region starts
+* size: size of the region
 * io_space: true for pmio, and false for mmio
 * read_func: the function to call when this region is read from the guest
 * write_func: the function to call when this region is written to from the guest
 * opaque: an arbitrary host pointer which is passed to the registered r/w function for the region
-* priority: the priority of the region. Overlapping higher prority regions will take precedence over regions with lower priority
 * ret: the status of the operation
 */
 lc86_status
-mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, io_handlers_t handlers, void *opaque, int priority)
+mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, io_handlers_t handlers, void *opaque)
 {
 	if (size == 0) {
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	if (io_space) {
+		if ((start > 65535) || ((start + size) > 65536)) {
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+
 		std::unique_ptr<memory_region_t<port_t>> io(new memory_region_t<port_t>);
-
-		if (cpu->num_io_regions == ((IO_MAX_PORT / IO_SIZE) - 1)) {
-			return set_last_error(lc86_status::too_many);
-		}
-
-		if (start > (IO_MAX_PORT - 1) || (start + size) > IO_MAX_PORT) {
-			return set_last_error(lc86_status::invalid_parameter);
-		}
-
-		if ((start % IO_SIZE) != 0 || ((size % IO_SIZE) != 0)) {
-			return set_last_error(lc86_status::invalid_parameter);
-		}
-
-		port_t start_io = static_cast<port_t>(start);
-		port_t end = start_io + size - 1;
-		cpu->io_space_tree->search(start_io, end, cpu->io_out);
-
-		for (auto &region : cpu->io_out) {
-			if (region.get()->priority == priority) {
-				return set_last_error(lc86_status::invalid_parameter);
-			}
-		}
-
-		io->start = start_io;
-		io->end = end;
+		io->start = static_cast<port_t>(start);
+		io->end = static_cast<port_t>(start) + size - 1;
 		io->type = mem_type::pmio;
-		io->priority = priority;
 		io->handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_pmio_read_handler8;
 		io->handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_pmio_read_handler16;
 		io->handlers.fnr32 = handlers.fnr32 ? handlers.fnr32 : default_pmio_read_handler32;
@@ -416,35 +370,13 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, io_hand
 			io->opaque = opaque;
 		}
 
-		if (cpu->io_space_tree->insert(start_io, end, std::move(io))) {
-			cpu->num_io_regions++;
-			return lc86_status::success;
-		}
+		cpu->io_space_tree->insert(std::move(io));
 	}
 	else {
 		std::unique_ptr<memory_region_t<addr_t>> mmio(new memory_region_t<addr_t>);
-
-		if ((start % PAGE_SIZE) != 0 || ((size % PAGE_SIZE) != 0)) {
-			return set_last_error(lc86_status::invalid_parameter);
-		}
-
-		if (cpu->num_mmio_regions == MMIO_MAX_NUM) {
-			return set_last_error(lc86_status::too_many);
-		}
-
-		addr_t end = start + size - 1;
-		cpu->memory_space_tree->search(start, end, cpu->memory_out);
-
-		for (auto &region : cpu->memory_out) {
-			if (region.get()->priority == priority) {
-				return set_last_error(lc86_status::invalid_parameter);
-			}
-		}
-
 		mmio->start = start;
-		mmio->end = end;
+		mmio->end = start + size - 1;
 		mmio->type = mem_type::mmio;
-		mmio->priority = priority;
 		mmio->handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_mmio_read_handler8;
 		mmio->handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_mmio_read_handler16;
 		mmio->handlers.fnr32 = handlers.fnr32 ? handlers.fnr32 : default_mmio_read_handler32;
@@ -457,136 +389,76 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, io_hand
 			mmio->opaque = opaque;
 		}
 
-		if (cpu->memory_space_tree->insert(start, end, std::move(mmio))) {
-			cpu->num_mmio_regions++;
-			return lc86_status::success;
-		}
+		cpu->memory_space_tree->insert(std::move(mmio));
+	}
+
+	return lc86_status::success;
+}
+
+/*
+* mem_init_region_alias -> creates a region that points to another region (which must not be pmio). Only call this before cpu_run
+* cpu: a valid cpu instance
+* alias_start: the guest physical address where the alias starts
+* ori_start: the guest physical address where the original region starts
+* ori_size: size in bytes of alias
+* ret: the status of the operation
+*/
+lc86_status
+mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size)
+{
+	if (ori_size == 0) {
+		return set_last_error(lc86_status::invalid_parameter);
+	}
+
+	auto aliased_region = const_cast<memory_region_t<addr_t> *>(cpu->memory_space_tree->search(ori_start));
+	if ((aliased_region->start <= ori_start) && (aliased_region->end >= (ori_start + ori_size - 1)) && (aliased_region->type != mem_type::unmapped)) {
+		std::unique_ptr<memory_region_t<addr_t>> alias(new memory_region_t<addr_t>);
+		alias->start = alias_start;
+		alias->end = alias_start + ori_size - 1;
+		alias->alias_offset = ori_start - aliased_region->start;
+		alias->type = mem_type::alias;
+		alias->aliased_region = aliased_region;
+		cpu->memory_space_tree->insert(std::move(alias));
+
+		return lc86_status::success;
 	}
 
 	return set_last_error(lc86_status::invalid_parameter);
 }
 
 /*
-* mem_init_region_alias -> creates a region that points to another region (which must not be pmio). Only call this before cpu_run
-* cpu: a valid cpu instance
-* alias_start: the guest physical address where the alias starts. Must be 4k aligned
-* ori_start: the guest physical address where the original region starts. Must be 4k aligned
-* ori_size: size in bytes of alias. Must be a multiple of 4096
-* priority: the priority of the region. Overlapping higher prority regions will take precedence over regions with lower priority
-* ret: the status of the operation
-*/
-lc86_status
-mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, int priority)
-{
-	std::unique_ptr<memory_region_t<addr_t>> alias(new memory_region_t<addr_t>);
-
-	if (ori_size == 0) {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
-
-	if ((alias_start % PAGE_SIZE) != 0 || (ori_start % PAGE_SIZE) != 0 || ((ori_size % PAGE_SIZE) != 0)) {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
-
-	memory_region_t<addr_t> *aliased_region = nullptr;
-	addr_t end = ori_start + ori_size - 1;
-	cpu->memory_space_tree->search(ori_start, end, cpu->memory_out);
-
-	for (auto &region : cpu->memory_out) {
-		if ((region.get()->start <= ori_start) && (region.get()->end >= end)) {
-			if (region.get()->type != mem_type::unmapped) {
-				aliased_region = region.get().get();
-				break;
-			}
-		}
-	}
-
-	if (!aliased_region) {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
-
-	end = alias_start + ori_size - 1;
-	cpu->memory_space_tree->search(alias_start, end, cpu->memory_out);
-
-	for (auto &region : cpu->memory_out) {
-		if (region.get()->priority == priority) {
-			return set_last_error(lc86_status::invalid_parameter);
-		}
-	}
-
-	alias->start = alias_start;
-	alias->end = end;
-	alias->alias_offset = ori_start - aliased_region->start;
-	alias->type = mem_type::alias;
-	alias->priority = priority;
-	alias->aliased_region = aliased_region;
-
-	if (cpu->memory_space_tree->insert(alias_start, end, std::move(alias))) {
-		return lc86_status::success;
-	}
-	else {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
-}
-
-/*
 * mem_init_region_rom -> creates a rom region. Only call this before cpu_run
 * cpu: a valid cpu instance
-* start: the guest physical address where the rom starts. Must be 4k aligned
-* size: size in bytes of rom. Must be a multiple of 4096
-* priority: the priority of the region. Overlapping higher prority regions will take precedence over regions with lower priority
+* start: the guest physical address where the rom starts
+* size: size in bytes of rom
 * buffer: a buffer that holds the rom that the region refers to
 * ret: the status of the operation
 */
 lc86_status
-mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, int priority, std::unique_ptr<uint8_t[]> buffer)
+mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, std::unique_ptr<uint8_t[]> buffer)
 {
+	if ((size == 0) || !(buffer)) {
+		return set_last_error(lc86_status::invalid_parameter);
+	}
+
 	std::unique_ptr<memory_region_t<addr_t>> rom(new memory_region_t<addr_t>);
-
-	if (!buffer) {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
-
-	if ((start % PAGE_SIZE) != 0 || ((size % PAGE_SIZE) != 0)) {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
-
-	if (cpu->num_rom_regions == ROM_MAX_NUM) {
-		return set_last_error(lc86_status::too_many);
-	}
-
-	addr_t end = start + size - 1;
-	cpu->memory_space_tree->search(start, end, cpu->memory_out);
-
-	for (auto &region : cpu->memory_out) {
-		if (region.get()->priority == priority) {
-			return set_last_error(lc86_status::invalid_parameter);
-		}
-	}
-
 	rom->start = start;
-	rom->end = end;
+	rom->end = start + size - 1;
 	rom->type = mem_type::rom;
-	rom->priority = priority;
-	rom->rom_idx = cpu->vec_rom.size();
+	rom->rom_idx = cpu->vec_rom.size() - 1;
 
-	if (cpu->memory_space_tree->insert(start, end, std::move(rom))) {
-		cpu->vec_rom.push_back(std::move(buffer));
-		cpu->num_rom_regions++;
-		return lc86_status::success;
-	}
-	else {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
+	cpu->memory_space_tree->insert(std::move(rom));
+	cpu->vec_rom.push_back(std::move(buffer));
+	return lc86_status::success;
 }
 
 /*
-* mem_destroy_region -> destroys a region. At the moemnt, this is only safe for pmio, mmio, alias and rom
+* mem_destroy_region -> marks a range of addresses as unmapped
 * cpu: a valid cpu instance
-* start: the guest physical address where the region starts
-* size: size in bytes of region
-* io_space: true for pmio, and false for mmio
-* ret: the status of the operation
+* start: the guest physical address where to start the unmapping
+* size: size in bytes to unmap
+* io_space: true for pmio, false for mmio and ignored for the other regions
+* ret: always success
 */
 lc86_status
 mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
@@ -594,64 +466,18 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space)
 	if (io_space) {
 		port_t start_io = static_cast<port_t>(start);
 		port_t end_io = start + size - 1;
-		cpu->io_space_tree->search(start_io, end_io, cpu->io_out);
-		const auto region = cpu->io_out.begin()->get().get();
-		if ((region->type == mem_type::pmio) && (region->start == start_io) && (region->end == end_io)) {
-			// if the above conditions are satisfied, then the erase below is going to succeed, so we can flush the iotlb and avoid needless flushes
-			iotlb_flush(cpu, region);
-			[[maybe_unused]] bool deleted = cpu->io_space_tree->erase(start_io, end_io);
-			assert(deleted);
-			cpu->num_io_regions--;
-			return lc86_status::success;
-		}
-
-		return set_last_error(lc86_status::invalid_parameter);
+		cpu->io_space_tree->erase(start_io, end_io);
 	}
 	else {
-		addr_t end = start + size - 1;
-		cpu->memory_space_tree->search(start, end, cpu->memory_out);
-		auto region = cpu->memory_out.begin()->get().get();
-
-		if (region->type == mem_type::alias) {
-			AS_RESOLVE_ALIAS();
-		}
-
-		if (region->type == mem_type::rom) {
-			if ((region->start == start) && (region->end == end)) {
-				// if the above conditions are satisfied, then the erase below is going to succeed, so we can flush the tlb and avoid needless flushes
-				// we must also flush the code cache because code can exist in a rom region
-				rom_flush_cached(cpu, region);
-				cpu->vec_rom.erase(cpu->vec_rom.begin() + region->rom_idx);
-				tc_cache_clear(cpu);
-				[[maybe_unused]] bool deleted = cpu->memory_space_tree->erase(start, end);
-				assert(deleted);
-				cpu->num_rom_regions--;
-				return lc86_status::success;
-			}
-			else {
-				return set_last_error(lc86_status::invalid_parameter);
-			}
-		}
-		else if (region->type == mem_type::mmio) {
-			if ((region->start == start) && (region->end == end)) {
-				// if the above conditions are satisfied, then the erase below is going to succeed, so we can flush the tlb and avoid needless flushes
-				mmio_flush_cached(cpu, region);
-				[[maybe_unused]] bool deleted = cpu->memory_space_tree->erase(start, end);
-				assert(deleted);
-				cpu->num_mmio_regions--;
-				return lc86_status::success;
-			}
-			else {
-				return set_last_error(lc86_status::invalid_parameter);
-			}
-		}
-		else if (cpu->memory_space_tree->erase(start, end)) {
-			return lc86_status::success;
-		}
-		else {
-			return set_last_error(lc86_status::invalid_parameter);
-		}
+		// TODO: what if this destroys the region of the code block the cpu is currently executing? In that case, this should throw an
+		// exception to stop execution and return to the translator
+		tc_cache_clear(cpu);
+		tlb_flush(cpu, TLB_zero);
+		cpu->cached_regions.clear();
+		cpu->cached_regions.push_back(nullptr);
+		cpu->memory_space_tree->erase(start, start + size - 1);
 	}
+	return lc86_status::success;
 }
 
 /*
@@ -675,13 +501,13 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out, size_t *actua
 			size_t bytes_to_read = std::min(PAGE_SIZE - page_offset, size_left);
 			addr_t phys_addr = get_read_addr(cpu, addr, 0, 0);
 
-			memory_region_t<addr_t> *region = as_memory_search_addr<uint8_t>(cpu, phys_addr);
+			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
 			retry:
 			if ((phys_addr >= region->start) && ((phys_addr + bytes_to_read - 1) <= region->end)) {
 				switch (region->type)
 				{
 				case mem_type::ram:
-					std::memcpy(out + vec_offset, get_ram_host_ptr(cpu, region, phys_addr), bytes_to_read);
+					std::memcpy(out + vec_offset, get_ram_host_ptr(cpu, phys_addr), bytes_to_read);
 					break;
 
 				case mem_type::rom:
@@ -689,7 +515,7 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out, size_t *actua
 					break;
 
 				case mem_type::alias: {
-					memory_region_t<addr_t> *alias = region;
+					const memory_region_t<addr_t> *alias = region;
 					AS_RESOLVE_ALIAS();
 					phys_addr = region->start + alias_offset + (phys_addr - alias->start);
 					goto retry;
@@ -748,17 +574,17 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *
 				tc_invalidate(&cpu->cpu_ctx, phys_addr, bytes_to_write, cpu->cpu_ctx.regs.eip);
 			}
 
-			memory_region_t<addr_t> *region = as_memory_search_addr<uint8_t>(cpu, phys_addr);
+			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
 			retry:
 			if ((phys_addr >= region->start) && ((phys_addr + bytes_to_write - 1) <= region->end)) {
 				switch (region->type)
 				{
 				case mem_type::ram:
 					if constexpr (fill) {
-						std::memset(get_ram_host_ptr(cpu, region, phys_addr), val, bytes_to_write);
+						std::memset(get_ram_host_ptr(cpu, phys_addr), val, bytes_to_write);
 					}
 					else {
-						std::memcpy(get_ram_host_ptr(cpu, region, phys_addr), buffer, bytes_to_write);
+						std::memcpy(get_ram_host_ptr(cpu, phys_addr), buffer, bytes_to_write);
 					}
 					break;
 
@@ -766,7 +592,7 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *
 					break;
 
 				case mem_type::alias: {
-					memory_region_t<addr_t> *alias = region;
+					const memory_region_t<addr_t> *alias = region;
 					AS_RESOLVE_ALIAS();
 					phys_addr = region->start + alias_offset + (phys_addr - alias->start);
 					goto retry;
@@ -900,7 +726,7 @@ void
 tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end)
 {
 	for (uint32_t tlb_idx_s = addr_start >> PAGE_SHIFT, tlb_idx_e = addr_end >> PAGE_SHIFT; tlb_idx_s <= tlb_idx_e; tlb_idx_s++) {
-		cpu->cpu_ctx.tlb[tlb_idx_s] = (cpu->cpu_ctx.tlb[tlb_idx_s] & (TLB_RAM | TLB_CODE));
+		cpu->cpu_ctx.tlb[tlb_idx_s] = (cpu->cpu_ctx.tlb[tlb_idx_s] & ~TLB_VALID);
 	}
 }
 

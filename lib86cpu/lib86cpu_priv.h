@@ -7,13 +7,13 @@
 #pragma once
 
 #include <forward_list>
-#include "interval_tree.h"
 #include <unordered_set>
+#include <bitset>
 #include "lib86cpu.h"
+
 
 #define CODE_CACHE_MAX_SIZE (1 << 15)
 #define TLB_MAX_SIZE (1 << 20)
-#define IOTLB_MAX_SIZE (1 << 14)
 
  // used to generate the parity table
  // borrowed from Bit Twiddling Hacks by Sean Eron Anderson (public domain)
@@ -38,40 +38,27 @@ struct memory_region_t {
 	T start;
 	T end;
 	mem_type type;
-	int priority;
 	io_handlers_t handlers;
 	void *opaque;
 	addr_t alias_offset;
 	memory_region_t<T> *aliased_region;
 	int rom_idx;
-	memory_region_t() : start(0), end(0), alias_offset(0), type(mem_type::unmapped), priority(0), handlers{},
+	memory_region_t() : start(0), end(0), alias_offset(0), type(mem_type::unmapped), handlers{},
 		opaque(nullptr), aliased_region(nullptr), rom_idx(-1) {};
 };
 
-struct cached_io_region {
-	memory_region_t<port_t> *io;
-	io_handlers_t handlers;
-	void *opaque;
-};
+#include "as.h"
 
-struct cached_mmio_region {
-	memory_region_t<addr_t> *mmio;
-	io_handlers_t handlers;
-	void *opaque;
-};
-
-struct cached_rom_region {
-	memory_region_t<addr_t> *rom;
-	uint8_t *buffer;
-};
-
-template<typename T>
-struct sort_by_priority
-{
-	bool operator() (const std::reference_wrapper<std::unique_ptr<memory_region_t<T>>> &lhs, const std::reference_wrapper<std::unique_ptr<memory_region_t<T>>> &rhs) const
-	{
-		return lhs.get()->priority > rhs.get()->priority;
-	}
+// the meaning of this struct depends on whether (1) or not (2) a single region covers an entire page
+// 1.ram/unmapped: not used
+// 1.rom: holds the phys addr of the page and points to the rom that backs it
+// 1.mmio: holds the phys addr of the page and points to the mmio that backs it
+// 2: holds the phys addr of the page and points to a PAGE_SIZE array of indices used to find the region addr refers to
+struct subpage_t {
+	addr_t phys_addr;
+	uint16_t *cached_region_idx;
+	subpage_t() : phys_addr(0), cached_region_idx(nullptr) {}
+	~subpage_t() { delete[] cached_region_idx; }
 };
 
 struct exp_data_t {
@@ -129,15 +116,13 @@ struct lazy_eflags_t {
 	uint8_t parity[256] = { GEN_TABLE };
 };
 
-// this struct should contain all cpu variables which need to be visible from the llvm generated code
+// this struct should contain all cpu variables which need to be visible from the jitted code
 struct cpu_ctx_t {
 	cpu_t *cpu;
 	regs_t regs;
 	lazy_eflags_t lazy_eflags;
 	uint32_t hflags;
 	uint32_t tlb[TLB_MAX_SIZE];
-	uint16_t tlb_region_idx[TLB_MAX_SIZE];
-	uint16_t iotlb[IOTLB_MAX_SIZE];
 	uint8_t *ram;
 	exp_info_t exp_info;
 	uint8_t int_pending;
@@ -151,21 +136,16 @@ struct cpu_t {
 	cpu_ctx_t cpu_ctx;
 	translated_code_t *tc; // tc for which we are currently generating code
 	std::unique_ptr<lc86_jit> jit;
-	std::unique_ptr<interval_tree<addr_t, std::unique_ptr<memory_region_t<addr_t>>>> memory_space_tree;
-	std::unique_ptr<interval_tree<port_t, std::unique_ptr<memory_region_t<port_t>>>> io_space_tree;
-	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<addr_t>>>, sort_by_priority<addr_t>> memory_out;
-	std::set<std::reference_wrapper<std::unique_ptr<memory_region_t<port_t>>>, sort_by_priority<port_t>> io_out;
+	std::unique_ptr<address_space<addr_t>> memory_space_tree;
+	std::unique_ptr<address_space<port_t>> io_space_tree;
 	std::list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
 	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
 	std::unordered_map<addr_t, translated_code_t *> ibtc;
-	std::vector<std::unique_ptr<uint8_t[]>> vec_rom;
 	std::unordered_map<addr_t, void *> hook_map;
-	std::vector<cached_io_region> io_regions;
-	std::vector<cached_rom_region> rom_regions;
-	std::vector<cached_mmio_region> mmio_regions;
-	uint16_t num_io_regions;
-	uint16_t num_mmio_regions;
-	uint16_t num_rom_regions;
+	std::vector<std::unique_ptr<uint8_t[]>> vec_rom;
+	std::vector<subpage_t> subpages;
+	std::vector<const memory_region_t<addr_t> *> cached_regions;
+	std::bitset<std::numeric_limits<port_t>::max() + 1> iotable;
 	uint16_t num_tc;
 	struct {
 		uint64_t tsc;

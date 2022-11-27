@@ -8,54 +8,31 @@
 #include "breakpoint.h"
 
 
-static bool
+bool
 cpu_check_watchpoint_enabled(cpu_t *cpu, int idx)
 {
 	// we don't support task switches, so local and global enable flags are the same for now
-	return (cpu->cpu_ctx.regs.dr7 >> (idx * 2)) & 3;
+	return (cpu->cpu_ctx.regs.dr[7] >> (idx * 2)) & 3;
 }
 
-static int
+int
 cpu_get_watchpoint_type(cpu_t *cpu, int idx)
 {
-	return (cpu->cpu_ctx.regs.dr7 >> (DR7_TYPE_SHIFT + idx * 4)) & 3;
+	return (cpu->cpu_ctx.regs.dr[7] >> (DR7_TYPE_SHIFT + idx * 4)) & 3;
 }
 
-static size_t
+size_t
 cpu_get_watchpoint_lenght(cpu_t *cpu, int idx)
 {
-	size_t len = ((cpu->cpu_ctx.regs.dr7 >> (DR7_LEN_SHIFT + idx * 4)) & 3);
+	size_t len = ((cpu->cpu_ctx.regs.dr[7] >> (DR7_LEN_SHIFT + idx * 4)) & 3);
 	return (len == 2) ? 8 : len + 1;
 }
 
 static bool
 cpu_check_watchpoint_overlap(cpu_t *cpu, addr_t addr, size_t size, int idx)
 {
-	uint32_t dr;
-	switch (idx)
-	{
-	case 0:
-		dr = cpu->cpu_ctx.regs.dr0;
-		break;
-
-	case 1:
-		dr = cpu->cpu_ctx.regs.dr1;
-		break;
-
-	case 2:
-		dr = cpu->cpu_ctx.regs.dr2;
-		break;
-
-	case 3:
-		dr = cpu->cpu_ctx.regs.dr3;
-		break;
-
-	default:
-		LIB86CPU_ABORT();
-	}
-
 	size_t watch_len = cpu_get_watchpoint_lenght(cpu, idx);
-	addr_t watch_addr = dr & ~(watch_len - 1);
+	addr_t watch_addr = cpu->cpu_ctx.regs.dr[idx] & ~(watch_len - 1);
 	addr_t watch_end = watch_addr + watch_len - 1;
 	addr_t end = addr + size - 1;
 
@@ -90,7 +67,7 @@ cpu_check_watchpoints(cpu_t *cpu, addr_t addr, size_t size, int type, uint32_t e
 	}
 
 	if (match) {
-		cpu->cpu_ctx.regs.dr6 |= (1 << dr_idx);
+		cpu->cpu_ctx.regs.dr[6] |= (1 << dr_idx);
 		cpu->cpu_ctx.exp_info.exp_data.fault_addr = addr;
 		cpu->cpu_ctx.exp_info.exp_data.code = 0;
 		cpu->cpu_ctx.exp_info.exp_data.idx = EXP_DB;

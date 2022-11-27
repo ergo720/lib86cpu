@@ -11,6 +11,7 @@
 #include "debugger.h"
 #include "internal.h"
 #include <charconv>
+#include <algorithm>
 
 #define DISAS_INSTR_NUM_FACTOR 5
 
@@ -267,14 +268,14 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 				cpu->cpu_ctx.regs.cr4
 			);
 			ImGui::Text("dr0: 0x%08X  dr1: 0x%08X  dr2: 0x%08X  dr3: 0x%08X  dr4: 0x%08X  dr5: 0x%08X  dr6: 0x%08X  dr7: 0x%08X",
-				cpu->cpu_ctx.regs.dr0,
-				cpu->cpu_ctx.regs.dr1,
-				cpu->cpu_ctx.regs.dr2,
-				cpu->cpu_ctx.regs.dr3,
-				cpu->cpu_ctx.regs.dr4,
-				cpu->cpu_ctx.regs.dr5,
-				cpu->cpu_ctx.regs.dr6,
-				cpu->cpu_ctx.regs.dr7
+				cpu->cpu_ctx.regs.dr[0],
+				cpu->cpu_ctx.regs.dr[1],
+				cpu->cpu_ctx.regs.dr[2],
+				cpu->cpu_ctx.regs.dr[3],
+				cpu->cpu_ctx.regs.dr[4],
+				cpu->cpu_ctx.regs.dr[5],
+				cpu->cpu_ctx.regs.dr[6],
+				cpu->cpu_ctx.regs.dr[7]
 			);
 			ImGui::Text("r0.h: 0x%04hX  r0.l: 0x%016llX  r1.h: 0x%04hX  r1.l: 0x%016llX  r2.h: 0x%04hX  r2.l: 0x%016llX  r3.h: 0x%04hX  r3.l: 0x%016llX",
 				cpu->cpu_ctx.regs.r0.high,

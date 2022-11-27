@@ -397,13 +397,13 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 	try {
 		uint8_t is_code;
 		addr_t phys_addr = get_write_addr(g_cpu, addr, 2, addr - g_cpu->cpu_ctx.regs.cs_hidden.base, &is_code);
-		memory_region_t<addr_t> *region = as_memory_search_addr<uint8_t>(g_cpu, phys_addr);
+		const memory_region_t<addr_t> *region = as_memory_search_addr(g_cpu, phys_addr);
 
 		retry:
 		switch (region->type)
 		{
 		case mem_type::ram:
-			ram_write<uint8_t>(g_cpu, get_ram_host_ptr(g_cpu, region, phys_addr), val);
+			ram_write<uint8_t>(g_cpu, get_ram_host_ptr(g_cpu, phys_addr), val);
 			if (is_code) {
 				tc_invalidate(&g_cpu->cpu_ctx, addr, 1, g_cpu->cpu_ctx.regs.eip);
 			}
@@ -415,7 +415,7 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 			break;
 
 		case mem_type::alias: {
-			memory_region_t<addr_t> *alias = region;
+			const memory_region_t<addr_t> *alias = region;
 			AS_RESOLVE_ALIAS();
 			phys_addr = region->start + alias_offset + (phys_addr - alias->start);
 			goto retry;
@@ -453,7 +453,7 @@ dbg_single_step_handler(cpu_ctx_t *cpu_ctx)
 		guest_running.notify_one();
 		guest_running.wait(false);
 
-		cpu_ctx->regs.dr6 &= ~DR6_BS_MASK;
+		cpu_ctx->regs.dr[6] &= ~DR6_BS_MASK;
 
 		try {
 			// execute an iret instruction so that we can correctly return to the interrupted code
@@ -525,7 +525,7 @@ void
 dbg_exp_handler(cpu_ctx_t *cpu_ctx)
 {
 	// NOTE: the guest could be using the same exception handler for both DB and BP exceptions, so we distinguish them by looking at dr6
-	if (cpu_ctx->regs.dr6 & DR6_BS_MASK) {
+	if (cpu_ctx->regs.dr[6] & DR6_BS_MASK) {
 		dbg_single_step_handler(cpu_ctx);
 	}
 	else {

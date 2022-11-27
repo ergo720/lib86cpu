@@ -54,7 +54,7 @@ dbg_write_handler(addr_t addr, const uint8_t value, void *opaque)
 	switch (addr)
 	{
 	case DBG_POST_PORT:
-		std::printf("Test number is 0x%X\n", static_cast<const uint8_t>(value));
+		std::printf("Test number is 0x%X\n", value);
 		break;
 
 	default:
@@ -104,12 +104,12 @@ int_handler_printer()
 		break;
 
 	case 0x107D:
-		val = regs->dr6;
+		val = regs->dr[6];
 		std::printf("general detect read at 0x%X: dr6 should have bd flag set, it actually was %d\n", eip, (val >> 13) & 1);
 		break;
 
 	case 0x1088:
-		val = regs->dr6;
+		val = regs->dr[6];
 		std::printf("general detect write at 0x%X: dr6 should have bd flag set, it actually was %d\n", eip, (val >> 13) & 1);
 		break;
 
@@ -156,12 +156,12 @@ gen_dbg_test()
 	uint8_t *ram = get_ram_ptr(cpu);
 	std::memcpy(ram + 0x1000, dbg_binary, sizeof(dbg_binary));
 
-	if (!LC86_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_ram(cpu, 0, ramsize))) {
 		std::printf("Failed to initialize ram memory!\n");
 		return false;
 	}
 
-	if (!LC86_SUCCESS(mem_init_region_io(cpu, DBG_POST_PORT - 3, 4, true, io_handlers_t{ .fnw8 = dbg_write_handler }, nullptr, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_io(cpu, DBG_POST_PORT, 1, true, io_handlers_t{ .fnw8 = dbg_write_handler }, nullptr))) {
 		std::printf("Failed to initialize post i/o port for debug test!\n");
 		return false;
 	}

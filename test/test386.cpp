@@ -72,22 +72,22 @@ gen_test386asm_test(const std::string &executable)
 	ifs.read((char *)&ram[code_start], length);
 	ifs.close();
 
-	if (!LC86_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_ram(cpu, 0, ramsize))) {
 		printf("Failed to initialize ram memory for test386.asm!\n");
 		return false;
 	}
 
-	if (!LC86_SUCCESS(mem_init_region_alias(cpu, 0xFFFF0000, 0xF0000, 0x10000, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_alias(cpu, 0xFFFF0000, 0xF0000, 0x10000))) {
 		printf("Failed to initialize aliased ram memory for test386.asm!\n");
 		return false;
 	}
 
-	if (!LC86_SUCCESS(mem_init_region_io(cpu, TEST386_POST_PORT, 4, true, io_handlers_t{ .fnw8 = test386_write_handler }, nullptr, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_io(cpu, TEST386_POST_PORT, 1, true, io_handlers_t{ .fnw8 = test386_write_handler }, nullptr))) {
 		printf("Failed to initialize post i/o port for test386.asm!\n");
 		return false;
 	}
 
-	if (!LC86_SUCCESS(mem_init_region_io(cpu, TEST386_EE_PORT - 1, 4, true, io_handlers_t{ .fnw8 = test386_write_handler }, nullptr, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_io(cpu, TEST386_EE_PORT, 1, true, io_handlers_t{ .fnw8 = test386_write_handler }, nullptr))) {
 		printf("Failed to initialize i/o port used by test 0xEE for test386.asm!\n");
 		return false;
 	}

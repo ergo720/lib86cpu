@@ -210,17 +210,17 @@ gen_cxbxrkrnl_test(const std::string &executable)
 		return false;
 	}
 
-	if (!LC86_SUCCESS(mem_init_region_ram(cpu, 0, ramsize, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_ram(cpu, 0, ramsize))) {
 		std::printf("Failed to initialize ram memory!\n");
 		return false;
 	}
 
-	if (!LC86_SUCCESS(mem_init_region_alias(cpu, CONTIGUOUS_MEMORY_BASE, 0, ramsize, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_alias(cpu, CONTIGUOUS_MEMORY_BASE, 0, ramsize))) {
 		std::printf("Failed to initialize contiguous memory!\n");
 		return false;
 	}
 
-	if (!LC86_SUCCESS(mem_init_region_io(cpu, DBG_STR_PORT, 8, true, io_handlers_t{ .fnr32 = host_read_handler, .fnw32 = host_write_handler }, cpu, 1))) {
+	if (!LC86_SUCCESS(mem_init_region_io(cpu, DBG_STR_PORT, 8, true, io_handlers_t{ .fnr32 = host_read_handler, .fnw32 = host_write_handler }, cpu))) {
 		std::printf("Failed to initialize host communication i/o ports!\n");
 		return false;
 	}
