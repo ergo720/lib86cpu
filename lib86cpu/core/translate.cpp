@@ -497,6 +497,26 @@ tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc)
 	cpu->code_cache[tc_hash(pc)].push_front(std::move(tc));
 }
 
+bool
+tc_should_clear_cache_and_tlb(cpu_t *cpu, addr_t start, addr_t end, bool should_throw)
+{
+	if (should_throw) {
+		should_throw = false;
+		for (uint32_t tlb_idx_s = start >> PAGE_SHIFT, tlb_idx_e = end >> PAGE_SHIFT; tlb_idx_s <= tlb_idx_e; ++tlb_idx_s) {
+			if (cpu->cpu_ctx.tlb[tlb_idx_s] & TLB_CODE) {
+				should_throw = true;
+				break;
+			}
+		}
+	}
+
+	tlb_flush(cpu, TLB_zero);
+	cpu->cached_regions.clear();
+	cpu->cached_regions.push_back(nullptr);
+
+	return should_throw;
+}
+
 void
 tc_cache_clear(cpu_t *cpu)
 {
@@ -1406,6 +1426,7 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 		}
 
 		case host_exp_t::cpu_mode_changed:
+		case host_exp_t::region_changed:
 			tc_cache_purge(cpu_ctx->cpu);
 			[[fallthrough]];
 

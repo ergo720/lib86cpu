@@ -15,6 +15,7 @@ template<bool remove_hook = false>
 void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size = 0, [[maybe_unused]] uint32_t eip = 0);
 extern template void tc_invalidate<true>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
 extern template void tc_invalidate<false>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
+bool tc_should_clear_cache_and_tlb(cpu_t *cpu, addr_t start, addr_t end, bool should_throw);
 void tc_cache_clear(cpu_t *cpu);
 void tc_cache_purge(cpu_t *cpu);
 void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);

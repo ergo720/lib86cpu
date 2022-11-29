@@ -31,6 +31,14 @@ enum class log_level {
 	error,
 };
 
+enum class host_exp_t : int {
+	pf_exp,
+	de_exp,
+	cpu_mode_changed,
+	halt_tc,
+	region_changed,
+};
+
 using logfn_t = void(*)(log_level, const unsigned, const char *, ...);
 
 #define LC86_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::success)
@@ -77,11 +85,11 @@ API_FUNC void write_eflags(cpu_t *cpu, uint32_t value, bool reg32 = true);
 // memory api
 API_FUNC uint8_t *get_ram_ptr(cpu_t *cpu);
 API_FUNC uint8_t* get_host_ptr(cpu_t *cpu, addr_t addr);
-API_FUNC lc86_status mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size);
-API_FUNC lc86_status mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, io_handlers_t handlers, void *opaque);
-API_FUNC lc86_status mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size);
-API_FUNC lc86_status mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint8_t *buffer);
-API_FUNC lc86_status mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space);
+API_FUNC lc86_status mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, bool should_throw = false);
+API_FUNC lc86_status mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, io_handlers_t handlers, void *opaque, bool should_throw = false);
+API_FUNC lc86_status mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, bool should_throw = false);
+API_FUNC lc86_status mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint8_t *buffer, bool should_throw = false);
+API_FUNC lc86_status mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space, bool should_throw = false);
 API_FUNC lc86_status mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out, size_t *actual_size = nullptr);
 API_FUNC lc86_status mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer, size_t *actual_size = nullptr);
 API_FUNC lc86_status mem_fill_block(cpu_t *cpu, addr_t addr, size_t size, int val, size_t *actual_size = nullptr);

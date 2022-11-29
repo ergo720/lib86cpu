@@ -43,13 +43,6 @@ private:
     lc86_status status;
 };
 
-enum class host_exp_t : int {
-    pf_exp,
-    de_exp,
-    cpu_mode_changed,
-    halt_tc,
-};
-
 void cpu_init(cpu_t *cpu);
 lc86_status cpu_start(cpu_t *cpu);
 [[noreturn]] void cpu_runtime_abort(const char *msg);
