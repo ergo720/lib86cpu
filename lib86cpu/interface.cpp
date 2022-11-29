@@ -431,11 +431,11 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 * cpu: a valid cpu instance
 * start: the guest physical address where the rom starts
 * size: size in bytes of rom
-* buffer: a buffer that holds the rom that the region refers to
+* buffer: a pointer to a client-allocated buffer that holds the rom the region refers to
 * ret: the status of the operation
 */
 lc86_status
-mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, std::unique_ptr<uint8_t[]> buffer)
+mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint8_t *buffer)
 {
 	if ((size == 0) || !(buffer)) {
 		return set_last_error(lc86_status::invalid_parameter);
@@ -448,7 +448,7 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, std::unique_ptr<uint8
 	rom->rom_idx = cpu->vec_rom.size() - 1;
 
 	cpu->memory_space_tree->insert(std::move(rom));
-	cpu->vec_rom.push_back(std::move(buffer));
+	cpu->vec_rom.push_back(buffer);
 	return lc86_status::success;
 }
 

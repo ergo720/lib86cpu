@@ -142,7 +142,7 @@ struct cpu_t {
 	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
 	std::unordered_map<addr_t, translated_code_t *> ibtc;
 	std::unordered_map<addr_t, void *> hook_map;
-	std::vector<std::unique_ptr<uint8_t[]>> vec_rom;
+	std::vector<uint8_t *> vec_rom;
 	std::vector<subpage_t> subpages;
 	std::vector<const memory_region_t<addr_t> *> cached_regions;
 	std::bitset<std::numeric_limits<port_t>::max() + 1> iotable;
