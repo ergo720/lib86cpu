@@ -9,6 +9,7 @@
 #include "main_wnd.h"
 #include "debugger.h"
 #include "helpers.h"
+#include "clock.h"
 
 #ifdef LIB86CPU_X64_EMITTER
 #include "x64/jit.h"
@@ -16,6 +17,34 @@
 
 #define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(disas_ctx->virt_pc - cpu->instr_bytes, &instr).c_str())
 
+
+void
+cpu_reset(cpu_t *cpu)
+{
+	std::memset(&cpu->cpu_ctx.regs, 0, sizeof(regs_t));
+	cpu->cpu_ctx.regs.eip = 0x0000FFF0;
+	cpu->cpu_ctx.regs.edx = 0x0000068A;
+	cpu->cpu_ctx.regs.cs = 0xF000;
+	cpu->cpu_ctx.regs.cs_hidden.base = 0xFFFF0000;
+	cpu->cpu_ctx.regs.es_hidden.limit = cpu->cpu_ctx.regs.cs_hidden.limit = cpu->cpu_ctx.regs.ss_hidden.limit =
+	cpu->cpu_ctx.regs.ds_hidden.limit = cpu->cpu_ctx.regs.fs_hidden.limit = cpu->cpu_ctx.regs.gs_hidden.limit = 0xFFFF;
+	cpu->cpu_ctx.regs.cs_hidden.flags = ((1 << 15) | (1 << 12) | (1 << 11) | (1 << 9) | (1 << 8)); // present, code, readable, accessed
+	cpu->cpu_ctx.regs.es_hidden.flags = cpu->cpu_ctx.regs.ss_hidden.flags = cpu->cpu_ctx.regs.ds_hidden.flags =
+	cpu->cpu_ctx.regs.fs_hidden.flags = cpu->cpu_ctx.regs.gs_hidden.flags = ((1 << 15) | (1 << 12) | (1 << 9) | (1 << 8)); // present, data, writable, accessed
+	cpu->cpu_ctx.regs.eflags = 0x2;
+	cpu->cpu_ctx.regs.cr0 = 0x60000010;
+	cpu->cpu_ctx.regs.dr[6] = DR6_RES_MASK;
+	cpu->cpu_ctx.regs.dr[7] = DR7_RES_MASK;
+	cpu->cpu_ctx.regs.idtr_hidden.limit = cpu->cpu_ctx.regs.gdtr_hidden.limit = cpu->cpu_ctx.regs.ldtr_hidden.limit =
+	cpu->cpu_ctx.regs.tr_hidden.limit = 0xFFFF;
+	cpu->cpu_ctx.regs.ldtr_hidden.flags = ((1 << 15) | (2 << 8)); // present, ldt
+	cpu->cpu_ctx.regs.tr_hidden.flags = ((1 << 15) | (11 << 8)); // present, 32bit tss busy
+	cpu->cpu_ctx.regs.tag = 0x5555;
+	cpu->a20_mask = 0xFFEFFFFF; // gate open
+	cpu->cpu_ctx.exp_info.old_exp = EXP_INVALID;
+	cpu->clock.tsc = 0;
+	tsc_init(cpu);
+}
 
 static void
 check_dbl_exp(cpu_ctx_t *cpu_ctx)

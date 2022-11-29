@@ -26,7 +26,6 @@
 		uint16_t high; \
 	} _reg;)
 
-// These registers must have the same order they have in cpu->regs_layout
 struct regs_t {
 	/* General registers */
 	DEFINE_REG32(eax);

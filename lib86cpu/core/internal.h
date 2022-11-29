@@ -95,7 +95,6 @@ template<bool is_int = false> translated_code_t *cpu_raise_exception(cpu_ctx_t *
 #define SEG_HIDDEN_DB      (1 << 22)  // default size
 #define SEG_HIDDEN_TSS_TY  (1 << 11)  // 16/32 tss type
 
-// reg indexes in cpu->regs_layout
 #define EAX_idx     0
 #define ECX_idx     1
 #define EDX_idx     2

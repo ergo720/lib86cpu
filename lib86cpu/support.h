@@ -43,7 +43,7 @@ private:
     lc86_status status;
 };
 
-void cpu_init(cpu_t *cpu);
+void cpu_reset(cpu_t *cpu);
 lc86_status cpu_start(cpu_t *cpu);
 [[noreturn]] void cpu_runtime_abort(const char *msg);
 [[noreturn]] void cpu_abort(int32_t code, const char *msg, ...);

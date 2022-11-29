@@ -7,7 +7,6 @@
 
 #include "internal.h"
 #include "memory.h"
-#include "clock.h"
 #ifdef LIB86CPU_X64_EMITTER
 #include "x64/jit.h"
 #endif
@@ -134,8 +133,8 @@ cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee)
 		return set_last_error(lc86_status::no_memory);
 	}
 
-	cpu_init(cpu);
-	tsc_init(cpu);
+	cpu->cpu_name = "Intel Pentium III";
+	cpu_reset(cpu);
 	// XXX: eventually, the user should be able to set the instruction formatting
 	set_instr_format(cpu);
 	cpu->dbg_name = debuggee ? debuggee : "";

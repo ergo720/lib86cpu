@@ -100,12 +100,6 @@ struct disas_ctx_t {
 	exp_data_t exp_data;
 };
 
-struct regs_layout_t {
-	const unsigned bits_size;
-	const unsigned idx;
-	const char *name;
-};
-
 // the lazy eflags idea comes from reading these two papers:
 // How Bochs Works Under the Hood (2nd edition) http://bochs.sourceforge.net/How%20the%20Bochs%20works%20under%20the%20hood%202nd%20edition.pdf
 // A Proposal for Hardware-Assisted Arithmetic Overflow Detection for Array and Bitfield Operations http://www.emulators.com/docs/LazyOverflowDetect_Final.pdf
@@ -132,7 +126,6 @@ class lc86_jit;
 struct cpu_t {
 	uint32_t cpu_flags;
 	const char *cpu_name;
-	const regs_layout_t *regs_layout;
 	cpu_ctx_t cpu_ctx;
 	translated_code_t *tc; // tc for which we are currently generating code
 	std::unique_ptr<lc86_jit> jit;

@@ -111,7 +111,6 @@ set(SOURCES
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/breakpoint.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/decode.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/helpers.cpp"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/init.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/instructions.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/memory.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/translate.cpp"
