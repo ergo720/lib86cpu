@@ -133,4 +133,5 @@ cpu_init(cpu_t *cpu)
 	cpu->cpu_ctx.regs.idtr_hidden.limit = cpu->cpu_ctx.regs.gdtr_hidden.limit = cpu->cpu_ctx.regs.ldtr_hidden.limit =
 		cpu->cpu_ctx.regs.tr_hidden.limit = 0xFFFF;
 	cpu->cpu_ctx.regs.tag = 0x5555;
+	cpu->a20_mask = 0xFFEFFFFF; // gate open
 }

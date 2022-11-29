@@ -169,4 +169,5 @@ struct cpu_t {
 	uint8_t size_mode;
 	uint8_t addr_mode;
 	uint8_t translate_next;
+	uint32_t a20_mask;
 };

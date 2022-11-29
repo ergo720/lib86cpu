@@ -34,18 +34,27 @@ tlb_gen_access_mask(cpu_t *cpu, uint8_t user, uint8_t is_write)
 }
 
 static addr_t
-correct_phys_addr(addr_t phys_addr, const memory_region_t<addr_t> *&region)
+correct_phys_addr(cpu_t *cpu, addr_t phys_addr, const memory_region_t<addr_t> *&region)
 {
-	uint32_t offset = 0;
+	// this function applies three corrections to the physical address:
+	// 1. if region is alias, it resolves it and calculates the final addr the aliased addr is pointing to
+	// 2. if region is ram or rom, it subtracts the region start, so that phys_addr can be used to index the ram/rom buffer
+	// 3. it masks the address with the current state of the a20 gate
+
 	if (region->type == mem_type::alias) {
+		uint32_t offset = 0;
 		while (region->aliased_region) {
 			offset += (region->start - (region->alias_offset + region->aliased_region->start));
 			region = region->aliased_region;
 		}
+		phys_addr -= offset;
 	}
 
-	phys_addr -= (offset - region->start);
-	return phys_addr;
+	if ((region->type == mem_type::ram) || (region->type == mem_type::rom)) {
+		phys_addr -= region->start;
+	}
+
+	return phys_addr & cpu->a20_mask;
 }
 
 static addr_t
@@ -55,7 +64,7 @@ tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 
 	unsigned tlb_idx = addr >> PAGE_SHIFT;
 	const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
-	phys_addr = correct_phys_addr(phys_addr, region);
+	phys_addr = correct_phys_addr(cpu, phys_addr, region);
 	addr_t start_page = phys_addr & ~PAGE_MASK;
 	addr_t end_page = ((static_cast<uint64_t>(phys_addr) + PAGE_SIZE) & ~PAGE_MASK) - 1; // the cast avoids overflow on the last page at 0xFFFFF000
 
@@ -297,7 +306,7 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, 
 		uint8_t cpu_lv = cpl_to_page_priv[cpu->cpu_ctx.hflags & HFLG_CPL];
 		addr_t pde_addr = (cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK) | (addr >> PAGE_SHIFT_LARGE) * 4;
 		const memory_region_t<addr_t> *pde_region = as_memory_search_addr(cpu, pde_addr);
-		pde_addr = correct_phys_addr(pde_addr, pde_region);
+		pde_addr = correct_phys_addr(cpu, pde_addr, pde_region);
 		uint32_t pde = as_memory_dispatch_read<uint32_t>(cpu, pde_addr, pde_region);
 
 		if (!(pde & PTE_PRESENT)) {
@@ -327,7 +336,7 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint8_t flags, uint32_t eip, 
 
 		addr_t pte_addr = (pde & PTE_ADDR_4K) | ((addr >> PAGE_SHIFT) & 0x3FF) * 4;
 		const memory_region_t<addr_t> *pte_region = as_memory_search_addr(cpu, pte_addr);
-		pte_addr = correct_phys_addr(pte_addr, pte_region);
+		pte_addr = correct_phys_addr(cpu, pte_addr, pte_region);
 		uint32_t pte = as_memory_dispatch_read<uint32_t>(cpu, pte_addr, pte_region);
 
 		if (!(pte & PTE_PRESENT)) {

@@ -1427,6 +1427,7 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 
 		case host_exp_t::cpu_mode_changed:
 		case host_exp_t::region_changed:
+		case host_exp_t::a20_changed:
 			tc_cache_purge(cpu_ctx->cpu);
 			[[fallthrough]];
 

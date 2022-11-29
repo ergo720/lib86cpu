@@ -234,6 +234,29 @@ cpu_set_flags(cpu_t *cpu, uint32_t flags)
 	return lc86_status::success;
 }
 
+// NOTE: this functions will throw a host_exp_t::a20_changed exception when the gate status changes. See the memory API exception NOTE2 for more details.
+
+/*
+* cpu_set_a20 -> open or close the a20 gate of the cpu (can throw an exception)
+* cpu: a valid cpu instance
+* closed: new gate status. If true then addresses are masked with 0xFFFFFFFF (gate closed), otherwise they are masked with 0xFFEFFFFF (gate open)
+* ret: nothing
+*/
+void
+cpu_set_a20(cpu_t *cpu, bool closed, bool should_throw)
+{
+	uint32_t old_a20_mask = cpu->a20_mask;
+	cpu->a20_mask = 0xFFFFFFFF ^ (!closed << 20);
+	if (old_a20_mask != cpu->a20_mask) {
+		tlb_flush(cpu, TLB_zero);
+		cpu->cached_regions.clear();
+		cpu->cached_regions.push_back(nullptr);
+		if (should_throw) {
+			throw host_exp_t::a20_changed;
+		}
+	}
+}
+
 /*
 * register_log_func -> registers a log function to receive log events from lib86cpu
 * logger: the function to call
