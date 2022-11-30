@@ -104,6 +104,9 @@ default_pmio_write_handler32(addr_t addr, const uint32_t value, void *opaque)
 	LOG(log_level::warn, "Unhandled PMIO write at port %#06x", addr);
 }
 
+// NOTE: lib86cpu runs entirely on the single thread that calls cpu_run, so calling the below functions from other threads is not safe. Only call them
+// from the hook, mmio or pmio callbacks or before the emulation starts.
+
 /*
 * cpu_new -> creates a new cpu instance. Only a single instance should exist at a time
 * ramsize: size in bytes of ram buffer internally created (must be a multiple of 4096)
@@ -180,7 +183,7 @@ cpu_free(cpu_t *cpu)
 /*
 * cpu_run -> starts the emulation. Only returns when there is an error in lib86cpu
 * cpu: a valid cpu instance
-* ret: nothing
+* ret: the exit reason
 */
 lc86_status
 cpu_run(cpu_t *cpu)
@@ -239,6 +242,7 @@ cpu_set_flags(cpu_t *cpu, uint32_t flags)
 * cpu_set_a20 -> open or close the a20 gate of the cpu (can throw an exception)
 * cpu: a valid cpu instance
 * closed: new gate status. If true then addresses are masked with 0xFFFFFFFF (gate closed), otherwise they are masked with 0xFFEFFFFF (gate open)
+* should_throw: suppresses the exception when false, otherwise can throw
 * ret: nothing
 */
 void
@@ -285,7 +289,7 @@ get_last_error()
 }
 
 /*
-* get_ram_ptr -> returns a pointer to the internally allocated ram buffer. Do not modify its contents directly, but instead use the memory api
+* get_ram_ptr -> returns a pointer to the internally allocated ram buffer
 * cpu: a valid cpu instance
 * ret: a pointer to the ram buffer
 */
@@ -340,6 +344,7 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 * cpu: a valid cpu instance
 * start: the guest physical address where the ram starts
 * size: size in bytes of ram
+* should_throw: suppresses the exception when false, otherwise can throw
 * ret: the status of the operation
 */
 lc86_status
@@ -368,9 +373,9 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, bool should_throw)
 * start: where the region starts
 * size: size of the region
 * io_space: true for pmio, and false for mmio
-* read_func: the function to call when this region is read from the guest
-* write_func: the function to call when this region is written to from the guest
+* handlers: a struct of function pointers to call back when the region is accessed from the guest
 * opaque: an arbitrary host pointer which is passed to the registered r/w function for the region
+* should_throw: suppresses the exception when false, otherwise can throw
 * ret: the status of the operation
 */
 lc86_status
@@ -433,6 +438,7 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, io_hand
 * alias_start: the guest physical address where the alias starts
 * ori_start: the guest physical address where the original region starts
 * ori_size: size in bytes of alias
+* should_throw: suppresses the exception when false, otherwise can throw
 * ret: the status of the operation
 */
 lc86_status
@@ -468,6 +474,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 * start: the guest physical address where the rom starts
 * size: size in bytes of rom
 * buffer: a pointer to a client-allocated buffer that holds the rom the region refers to
+* should_throw: suppresses the exception when false, otherwise can throw
 * ret: the status of the operation
 */
 lc86_status
@@ -498,6 +505,7 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint8_t *buffer, bool
 * start: the guest physical address where to start the unmapping
 * size: size in bytes to unmap
 * io_space: true for pmio, false for mmio and ignored for the other regions
+* should_throw: suppresses the exception when false, otherwise can throw
 * ret: always success
 */
 lc86_status
@@ -518,7 +526,7 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space, bool sh
 }
 
 /*
-* mem_read_block -> reads a block of memory from ram/rom. Only call this from an mmio/pmio/hook callback
+* mem_read_block -> reads a block of memory from ram/rom
 * cpu: a valid cpu instance
 * addr: the guest virtual address to read from
 * size: number of bytes to read
@@ -674,7 +682,7 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *
 }
 
 /*
-* mem_write_block -> writes a block of memory to ram/rom. Only call this from a hook
+* mem_write_block -> writes a block of memory to ram/rom
 * cpu: a valid cpu instance
 * addr: the guest virtual address to write to
 * size: number of bytes to write
@@ -689,7 +697,7 @@ mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer, size_t
 }
 
 /*
-* mem_fill_block -> fills ram/rom with a value. Only call this from an mmio/pmio/hook callback
+* mem_fill_block -> fills ram/rom with a value
 * cpu: a valid cpu instance
 * addr: the guest virtual address to write to
 * size: number of bytes to write
@@ -704,7 +712,7 @@ mem_fill_block(cpu_t *cpu, addr_t addr, size_t size, int val, size_t *actual_siz
 }
 
 /*
-* io_read_8/16/32 -> reads 8/16/32 bits from a pmio port. Only call this from an mmio/pmio/hook callback
+* io_read_8/16/32 -> reads 8/16/32 bits from a pmio port
 * cpu: a valid cpu instance
 * port: the port to read from
 * ret: the read value
@@ -728,7 +736,7 @@ io_read_32(cpu_t *cpu, port_t port)
 }
 
 /*
-* io_write_8/16/32 -> writes 8/16/32 bits to a pmio port. Only call this from an mmio/pmio/hook callback
+* io_write_8/16/32 -> writes 8/16/32 bits to a pmio port
 * cpu: a valid cpu instance
 * port: the port to write to
 * value: the value to write
@@ -753,7 +761,7 @@ io_write_32(cpu_t *cpu, port_t port, uint32_t value)
 }
 
 /*
-* tlb_invalidate -> flushes tlb entries in the specified range. Only call this from an mmio/pmio/hook callback
+* tlb_invalidate -> flushes tlb entries in the specified range
 * cpu: a valid cpu instance
 * addr_start: a guest virtual address where the flush starts
 * addr_end: a guest virtual address where the flush end
@@ -768,7 +776,7 @@ tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end)
 }
 
 /*
-* hook_add -> adds a hook to intercept a guest function and redirect it to a host function. Only call this from a hook or before the emulation starts
+* hook_add -> adds a hook to intercept a guest function and redirect it to a host function
 * cpu: a valid cpu instance
 * addr: the virtual address of the first instruction of the guest function to intercept
 * hook_addr: the address of the host function to call
@@ -797,7 +805,7 @@ hook_add(cpu_t *cpu, addr_t addr, void *hook_addr)
 }
 
 /*
-* hook_remove -> removes a hook. Only call this from a hook. If called from the same hook which is being removed, it won't return and it will throw an exception instead
+* hook_remove -> removes a hook
 * cpu: a valid cpu instance
 * addr: the virtual address of the first instruction of the guest function to intercept
 * ret: the status of the operation
@@ -824,7 +832,7 @@ hook_remove(cpu_t *cpu, addr_t addr)
 }
 
 /*
-* trampoline_call -> calls the original intercepted guest function. Only call this from a hook
+* trampoline_call -> calls the original intercepted guest function
 * cpu: a valid cpu instance
 * ret_eip: the virtual address to which the original guest function returns to after if finishes execution
 * ret: nothing
