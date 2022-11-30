@@ -167,8 +167,10 @@ tlb_flush(cpu_t *cpu, int n)
 	{
 	case TLB_zero: {
 		uint32_t tlb_watch_idx[8], tlb_watch[8] = { 0 };
+		bool mem_watch[4];
 		for (int idx = 0; idx < 4; ++idx) {
-			if (cpu_get_watchpoint_type(cpu, idx) != DR7_TYPE_IO_RW) {
+			mem_watch[idx] = cpu_get_watchpoint_type(cpu, idx) != DR7_TYPE_IO_RW;
+			if (mem_watch[idx]) {
 				size_t wp_len = cpu_get_watchpoint_lenght(cpu, idx);
 				uint32_t dr = cpu->cpu_ctx.regs.dr[idx];
 				tlb_watch_idx[idx * 2] = dr >> PAGE_SHIFT;
@@ -183,7 +185,7 @@ tlb_flush(cpu_t *cpu, int n)
 			tlb_entry = 0;
 		}
 		for (int idx = 0; idx < 4; ++idx) {
-			if (cpu_get_watchpoint_type(cpu, idx) != DR7_TYPE_IO_RW) {
+			if (mem_watch[idx]) {
 				cpu->cpu_ctx.tlb[tlb_watch_idx[idx * 2]] = tlb_watch[idx * 2];
 				cpu->cpu_ctx.tlb[tlb_watch_idx[idx * 2 + 1]] = tlb_watch[idx * 2 + 1];
 			}
