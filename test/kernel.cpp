@@ -210,8 +210,6 @@ gen_cxbxrkrnl_test(const std::string &executable)
 		return false;
 	}
 
-	cpu_set_a20(cpu, true);
-
 	if (!LC86_SUCCESS(mem_init_region_ram(cpu, 0, ramsize))) {
 		std::printf("Failed to initialize ram memory!\n");
 		return false;

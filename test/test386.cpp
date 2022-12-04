@@ -68,7 +68,6 @@ gen_test386asm_test(const std::string &executable)
 		return false;
 	}
 
-	cpu_set_a20(cpu, true);
 	uint8_t *ram = get_ram_ptr(cpu);
 
 	ifs.read((char *)&ram[code_start], length);

@@ -153,7 +153,6 @@ gen_dbg_test()
 		return false;
 	}
 
-	cpu_set_a20(cpu, true);
 	uint8_t *ram = get_ram_ptr(cpu);
 	std::memcpy(ram + 0x1000, dbg_binary, sizeof(dbg_binary));
 

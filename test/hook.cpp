@@ -194,7 +194,6 @@ gen_hook_test()
 		return false;
 	}
 
-	cpu_set_a20(cpu, true);
 	uint8_t *ram = get_ram_ptr(cpu);
 	std::memcpy(ram, hook_binary, sizeof(hook_binary));
 
