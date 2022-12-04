@@ -481,7 +481,7 @@ as_ram_dispatch_read(cpu_t *cpu, addr_t addr, size_t size, const memory_region_t
 		break;
 
 	case mem_type::rom:
-		std::memcpy(buffer, get_rom_host_ptr(cpu, region, addr), bytes_to_read);
+		std::memcpy(buffer, get_rom_host_ptr(region, addr), bytes_to_read);
 		break;
 
 	case mem_type::alias: {
@@ -564,7 +564,7 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv
 			const subpage_t *subpage = &cpu_ctx->cpu->subpages[tlb_entry >> PAGE_SHIFT];
 			addr_t phys_addr = subpage->phys_addr | (addr & PAGE_MASK);
 			const memory_region_t<addr_t> *rom = cpu_ctx->cpu->cached_regions[subpage->cached_region_idx[0]];
-			T ret = *reinterpret_cast<T *>(&cpu_ctx->cpu->vec_rom[rom->rom_idx][phys_addr]);
+			T ret = *reinterpret_cast<T *>(&rom->rom_ptr[phys_addr]);
 			if constexpr (is_big_endian) {
 				swap_byte_order<T>(ret);
 			}

@@ -31,15 +31,6 @@ enum class log_level {
 	error,
 };
 
-enum class host_exp_t : int {
-	pf_exp,
-	de_exp,
-	cpu_mode_changed,
-	halt_tc,
-	region_changed,
-	a20_changed,
-};
-
 using logfn_t = void(*)(log_level, const unsigned, const char *, ...);
 
 #define LC86_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::success)
@@ -77,7 +68,7 @@ API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC lc86_status cpu_run(cpu_t *cpu);
 API_FUNC void cpu_sync_state(cpu_t *cpu);
 API_FUNC lc86_status cpu_set_flags(cpu_t *cpu, uint32_t flags);
-API_FUNC void cpu_set_a20(cpu_t *cpu, bool closed, bool should_throw = false);
+API_FUNC void cpu_set_a20(cpu_t *cpu, bool closed, bool should_int = false);
 
 // register api
 API_FUNC regs_t *get_regs_ptr(cpu_t *cpu);

@@ -526,24 +526,21 @@ tc_cache_insert(cpu_t *cpu, addr_t pc, std::unique_ptr<translated_code_t> &&tc)
 	cpu->code_cache[tc_hash(pc)].push_front(std::move(tc));
 }
 
-bool
-tc_should_clear_cache_and_tlb(cpu_t *cpu, addr_t start, addr_t end, bool should_throw)
+template<bool should_flush_tlb>
+void tc_should_clear_cache_and_tlb(cpu_t *cpu, addr_t start, addr_t end)
 {
-	if (should_throw) {
-		should_throw = false;
-		for (uint32_t tlb_idx_s = start >> PAGE_SHIFT, tlb_idx_e = end >> PAGE_SHIFT; tlb_idx_s <= tlb_idx_e; ++tlb_idx_s) {
-			if (cpu->cpu_ctx.tlb[tlb_idx_s] & TLB_CODE) {
-				should_throw = true;
-				break;
-			}
+	for (uint32_t tlb_idx_s = start >> PAGE_SHIFT, tlb_idx_e = end >> PAGE_SHIFT; tlb_idx_s <= tlb_idx_e; ++tlb_idx_s) {
+		if (cpu->cpu_ctx.tlb[tlb_idx_s] & TLB_CODE) {
+			tc_cache_clear(cpu);
+			break;
 		}
 	}
 
-	tlb_flush(cpu, TLB_zero);
-	cpu->cached_regions.clear();
-	cpu->cached_regions.push_back(nullptr);
-
-	return should_throw;
+	if constexpr (should_flush_tlb) {
+		tlb_flush(cpu, TLB_zero);
+		cpu->cached_regions.clear();
+		cpu->cached_regions.push_back(nullptr);
+	}
 }
 
 void
@@ -1233,18 +1230,62 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	} while ((cpu->translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR))) == 1);
 }
 
-static translated_code_t *
-cpu_dbg_int(cpu_ctx_t *cpu_ctx)
+translated_code_t *
+cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 {
-	// this is called when the user closes the debugger window
-	throw lc86_exp_abort("The debugger was closed", lc86_status::success);
-}
+	if (int_flg & CPU_DBG_INT) {
+		// this happens when the user closes the debugger window
+		throw lc86_exp_abort("The debugger was closed", lc86_status::success);
+	}
 
-static translated_code_t *
-cpu_do_int(cpu_ctx_t *cpu_ctx)
-{
-	// hw interrupts not implemented yet
-	throw lc86_exp_abort("Hardware interrupts are not implemented yet", lc86_status::internal_error);
+	if (int_flg & (CPU_A20_INT | CPU_REGION_INT)) {
+		cpu_t *cpu = cpu_ctx->cpu;
+		if (int_flg & CPU_A20_INT) {
+			cpu->a20_mask = cpu->new_a20;
+			tlb_flush(cpu, TLB_zero);
+			cpu->cached_regions.clear();
+			cpu->cached_regions.push_back(nullptr);
+			tc_cache_clear(cpu);
+			if (int_flg & CPU_REGION_INT) {
+				// the a20 interrupt has already flushed the tlb and the code cache, so just update the as object
+				std::for_each(cpu->regions_changed.begin(), cpu->regions_changed.end(), [cpu](auto &pair) {
+					if (pair.first) {
+						cpu->memory_space_tree->insert(std::move(pair.second));
+					}
+					else {
+						cpu->memory_space_tree->erase(pair.second->start, pair.second->end);
+					}
+					});
+				cpu->regions_changed.clear();
+			}
+		}
+		else {
+			std::for_each(cpu->regions_changed.begin(), cpu->regions_changed.end(), [cpu](auto &pair) {
+				addr_t start = pair.second->start, end = pair.second->end;
+				if (pair.first) {
+					cpu->memory_space_tree->insert(std::move(pair.second));
+				}
+				else {
+					cpu->memory_space_tree->erase(start, end);
+				}
+				// avoid flushing the tlb and subpages for every region, but instead only do it once outside the loop
+				tc_should_clear_cache_and_tlb<false>(cpu, start, end);
+			});
+			tlb_flush(cpu, TLB_zero);
+			cpu->cached_regions.clear();
+			cpu->cached_regions.push_back(nullptr);
+			cpu->regions_changed.clear();
+		}
+	}
+
+	if (int_flg & CPU_HW_INT) {
+		// hw interrupts not implemented yet
+		throw lc86_exp_abort("Hardware interrupts are not implemented yet", lc86_status::internal_error);
+	}
+
+	cpu_ctx->cpu->clear_int_fn(cpu_ctx);
+
+	return nullptr;
 }
 
 // forward declare for cpu_main_loop
@@ -1351,8 +1392,6 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			cpu->tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
 			cpu->tc->cpu_flags = (cpu->cpu_ctx.hflags & HFLG_CONST) | (cpu->cpu_ctx.regs.eflags & EFLAGS_CONST);
 			cpu->jit->gen_code_block();
-			cpu->tc->jmp_offset[3] = &cpu_dbg_int;
-			cpu->tc->jmp_offset[4] = &cpu_do_int;
 
 			// we are done with code generation for this block, so we null the tc and bb pointers to prevent accidental usage
 			ptr_tc = cpu->tc;
@@ -1455,8 +1494,6 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 		}
 
 		case host_exp_t::cpu_mode_changed:
-		case host_exp_t::region_changed:
-		case host_exp_t::a20_changed:
 			tc_cache_purge(cpu_ctx->cpu);
 			[[fallthrough]];
 
@@ -1511,3 +1548,4 @@ cpu_exec_trampoline(cpu_t *cpu, const uint32_t ret_eip)
 
 template translated_code_t *cpu_raise_exception<true>(cpu_ctx_t *cpu_ctx);
 template translated_code_t *cpu_raise_exception<false>(cpu_ctx_t *cpu_ctx);
+template void tc_should_clear_cache_and_tlb<true>(cpu_t *cpu, addr_t start, addr_t end);

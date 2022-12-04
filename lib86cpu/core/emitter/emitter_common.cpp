@@ -20,6 +20,7 @@
 constexpr auto all_callable_funcs = std::make_tuple(
 	cpu_raise_exception<true>,
 	cpu_raise_exception<false>,
+	cpu_do_int,
 	link_indirect_handler,
 	mem_read_helper<uint32_t>,
 	mem_read_helper<uint16_t>,

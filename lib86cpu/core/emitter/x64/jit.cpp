@@ -322,7 +322,8 @@ lc86_jit::lc86_jit(cpu_t *cpu)
 	m_cpu = cpu;
 	_environment = Environment::host();
 	_environment.setObjectFormat(ObjectFormat::kJIT);
-	gen_int_fn();
+	gen_int_fn(false);
+	gen_int_fn(true);
 }
 
 void
@@ -426,13 +427,19 @@ lc86_jit::gen_code_block()
 }
 
 void
-lc86_jit::gen_int_fn()
+lc86_jit::gen_int_fn(bool is_raise)
 {
-	// The interrupt function is a leaf function, so it doesn't need an exception table on WIN64
+	// The interrupt functions are leaf functions, so they don't need an exception table on WIN64
 
 	start_new_session();
 
-	MOV(MEMD8(RCX, CPU_CTX_INT), DL);
+	if (is_raise) {
+		m_a.lock().or_(MEMD32(RCX, CPU_CTX_INT), EDX);
+	}
+	else {
+		XOR(EAX, EAX);
+		XCHG(MEMD32(RCX, CPU_CTX_INT), EAX);
+	}
 	RET();
 
 	if (auto err = m_code.flatten()) {
@@ -474,7 +481,12 @@ lc86_jit::gen_int_fn()
 
 	m_mem.protect_sys_mem(block, MEM_READ | MEM_EXEC);
 
-	m_cpu->int_fn = reinterpret_cast<raise_int_t>(static_cast<uint8_t *>(block.addr) + offset);
+	if (is_raise) {
+		m_cpu->raise_int_fn = reinterpret_cast<raise_int_t>(static_cast<uint8_t *>(block.addr) + offset);
+	}
+	else {
+		m_cpu->clear_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset);
+	}
 }
 
 void
@@ -597,13 +609,14 @@ lc86_jit::raise_exp_inline_emit(uint32_t fault_addr, uint16_t code, uint16_t idx
 void
 lc86_jit::check_int_emit()
 {
-	MOV(DL, MEMD8(RCX, CPU_CTX_INT));
-	MOVZX(EAX, DL);
-	MOV(RBX, &m_cpu->tc->jmp_offset[TC_JMP_INT_OFFSET]);
-	LEA(RDX, MEMS64(RBX, RAX, 3));
-	MOV(RAX, MEM64(RDX));
+	Label no_int = m_a.newLabel();
+	MOV(EDX, MEMD32(RCX, CPU_CTX_INT));
+	TEST(EDX, EDX);
+	BR_EQ(no_int);
+	MOV(RAX, &cpu_do_int);
 	CALL(RAX);
-	MOV(RCX, &m_cpu->cpu_ctx);
+	gen_epilogue_main<false>();
+	m_a.bind(no_int);
 }
 
 bool

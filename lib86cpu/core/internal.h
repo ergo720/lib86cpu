@@ -15,13 +15,15 @@ template<bool remove_hook = false>
 void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size = 0, [[maybe_unused]] uint32_t eip = 0);
 extern template void tc_invalidate<true>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
 extern template void tc_invalidate<false>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
-bool tc_should_clear_cache_and_tlb(cpu_t *cpu, addr_t start, addr_t end, bool should_throw);
+template<bool should_flush_tlb>
+void tc_should_clear_cache_and_tlb(cpu_t *cpu, addr_t start, addr_t end);
 void tc_cache_clear(cpu_t *cpu);
 void tc_cache_purge(cpu_t *cpu);
 void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);
 void msr_read_helper(cpu_ctx_t *cpu_ctx);
 addr_t get_pc(cpu_ctx_t *cpu_ctx);
 template<bool is_int = false> translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx);
+translated_code_t *cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 
 // cpu hidden flags (assumed to be constant during exec of a tc, together with a flag subset of eflags)
 // HFLG_CPL: cpl of cpu
@@ -48,9 +50,10 @@ template<bool is_int = false> translated_code_t *cpu_raise_exception(cpu_ctx_t *
 #define HFLG_CONST      (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP)
 
 // cpu interrupt flags
-#define CPU_NO_INT   0
-#define CPU_DBG_INT  1
-#define CPU_HW_INT   2
+#define CPU_HW_INT      (1 << 0)
+#define CPU_DBG_INT     (1 << 1)
+#define CPU_A20_INT     (1 << 2)
+#define CPU_REGION_INT  (1 << 3)
 
 // disassembly context flags
 #define DISAS_FLG_CS32         (1 << 0)
@@ -70,7 +73,6 @@ template<bool is_int = false> translated_code_t *cpu_raise_exception(cpu_ctx_t *
 #define TC_FLG_RET             (1 << 6)
 #define TC_FLG_DST_ONLY        (1 << 7)  // jump(dest_pc)
 #define TC_FLG_LINK_MASK  (TC_FLG_INDIRECT | TC_FLG_DIRECT | TC_FLG_RET | TC_FLG_DST_ONLY)
-#define TC_JMP_INT_OFFSET 2
 
 // segment descriptor flags
 #define SEG_DESC_TY   (15ULL << 40) // type

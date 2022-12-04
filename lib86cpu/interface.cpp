@@ -236,26 +236,29 @@ cpu_set_flags(cpu_t *cpu, uint32_t flags)
 	return lc86_status::success;
 }
 
-// NOTE: this functions will throw a host_exp_t::a20_changed exception when the gate status changes. See the memory API exception NOTE2 for more details.
+// NOTE: this function uses should_int in the same manner as the memory APIs when when the gate status changes.
 
 /*
-* cpu_set_a20 -> open or close the a20 gate of the cpu (can throw an exception)
+* cpu_set_a20 -> open or close the a20 gate of the cpu
 * cpu: a valid cpu instance
 * closed: new gate status. If true then addresses are masked with 0xFFFFFFFF (gate closed), otherwise they are masked with 0xFFEFFFFF (gate open)
-* should_throw: suppresses the exception when false, otherwise can throw
+* should_int: raises a guest interrupt when true, otherwise the change takes effect immediately
 * ret: nothing
 */
 void
-cpu_set_a20(cpu_t *cpu, bool closed, bool should_throw)
+cpu_set_a20(cpu_t *cpu, bool closed, bool should_int)
 {
 	uint32_t old_a20_mask = cpu->a20_mask;
-	cpu->a20_mask = 0xFFFFFFFF ^ (!closed << 20);
-	if (old_a20_mask != cpu->a20_mask) {
-		tlb_flush(cpu, TLB_zero);
-		cpu->cached_regions.clear();
-		cpu->cached_regions.push_back(nullptr);
-		if (should_throw) {
-			throw host_exp_t::a20_changed;
+	cpu->new_a20 = 0xFFFFFFFF ^ (!closed << 20);
+	if (old_a20_mask != cpu->new_a20) {
+		if (should_int) {
+			cpu->raise_int_fn(&cpu->cpu_ctx, CPU_A20_INT);
+		}
+		else {
+			cpu->a20_mask = cpu->new_a20;
+			tlb_flush(cpu, TLB_zero);
+			cpu->cached_regions.clear();
+			cpu->cached_regions.push_back(nullptr);
 		}
 	}
 }
@@ -318,7 +321,7 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 			return static_cast<uint8_t *>(get_ram_host_ptr(cpu, phys_addr));
 
 		case mem_type::rom:
-			return static_cast<uint8_t *>(get_rom_host_ptr(cpu, region, phys_addr));
+			return static_cast<uint8_t *>(get_rom_host_ptr(region, phys_addr));
 		}
 
 		set_last_error(lc86_status::invalid_parameter);
@@ -335,20 +338,19 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 // implemented with uint16_t, and there's always a nullptr cached at index zero. Additionally, the number of unmapped regions is variable, and depends of the number
 // of merging and splitting events that involve unmapped regions in the address_space object. These are currently not tracked, which is why the memory APIs below
 // don't track the number of regions currently added to the system.
-// NOTE2: these functions will throw a host_exp_t::region_changed exception when they detect the need to flush the code cache, so only call them last. If you still need
-// to do more work after them, then you can catch the exception, do your work in the catch block, and then re-throw the exception. You can suppress the exception by
-// passing should_throw=true. This is useful before you have called cpu_run to start the emulation, since at that point no code has been generated yet.
+// NOTE2: these functions will raise a guest interrupt when they detect the need to flush the code cache. You can suppress the interrupt and make them have effect
+// immediately by passing should_int=false. This is only safe before you have called cpu_run to start the emulation, since at that point no code has been generated yet.
 
 /*
-* mem_init_region_ram -> creates a ram region (can throw an exception)
+* mem_init_region_ram -> creates a ram region
 * cpu: a valid cpu instance
 * start: the guest physical address where the ram starts
 * size: size in bytes of ram
-* should_throw: suppresses the exception when false, otherwise can throw
+* should_int: raises a guest interrupt when true, otherwise the change takes effect immediately
 * ret: the status of the operation
 */
 lc86_status
-mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, bool should_throw)
+mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, bool should_int)
 {
 	if (size == 0) {
 		return set_last_error(lc86_status::invalid_parameter);
@@ -358,28 +360,32 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, bool should_throw)
 	ram->start = start;
 	ram->end = start + size - 1;
 	ram->type = mem_type::ram;
-	cpu->memory_space_tree->insert(std::move(ram));
 
-	if (tc_should_clear_cache_and_tlb(cpu, start, start + size - 1, should_throw)) {
-		throw host_exp_t::region_changed;
+	if (should_int) {
+		cpu->regions_changed.push_back(std::make_pair(true, std::move(ram)));
+		cpu->raise_int_fn(&cpu->cpu_ctx, CPU_REGION_INT);
+	}
+	else {
+		cpu->memory_space_tree->insert(std::move(ram));
+		tc_should_clear_cache_and_tlb<true>(cpu, start, start + size - 1);
 	}
 
 	return lc86_status::success;
 }
 
 /*
-* mem_init_region_io -> creates an mmio or pmio region (can throw an exception for mmio only)
+* mem_init_region_io -> creates an mmio or pmio region
 * cpu: a valid cpu instance
 * start: where the region starts
 * size: size of the region
 * io_space: true for pmio, and false for mmio
 * handlers: a struct of function pointers to call back when the region is accessed from the guest
 * opaque: an arbitrary host pointer which is passed to the registered r/w function for the region
-* should_throw: suppresses the exception when false, otherwise can throw
+* should_int: raises a guest interrupt when true, otherwise the change takes effect immediately
 * ret: the status of the operation
 */
 lc86_status
-mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, io_handlers_t handlers, void *opaque, bool should_throw)
+mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, io_handlers_t handlers, void *opaque, bool should_int)
 {
 	if (size == 0) {
 		return set_last_error(lc86_status::invalid_parameter);
@@ -400,9 +406,7 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, io_hand
 		io->handlers.fnw8 = handlers.fnw8 ? handlers.fnw8 : default_pmio_write_handler8;
 		io->handlers.fnw16 = handlers.fnw16 ? handlers.fnw16 : default_pmio_write_handler16;
 		io->handlers.fnw32 = handlers.fnw32 ? handlers.fnw32 : default_pmio_write_handler32;
-		if (opaque) {
-			io->opaque = opaque;
-		}
+		io->opaque = opaque;
 
 		cpu->io_space_tree->insert(std::move(io));
 	}
@@ -419,13 +423,15 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, io_hand
 		mmio->handlers.fnw16 = handlers.fnw16 ? handlers.fnw16 : default_mmio_write_handler16;
 		mmio->handlers.fnw32 = handlers.fnw32 ? handlers.fnw32 : default_mmio_write_handler32;
 		mmio->handlers.fnw64 = handlers.fnw64 ? handlers.fnw64 : default_mmio_write_handler64;
-		if (opaque) {
-			mmio->opaque = opaque;
-		}
-		cpu->memory_space_tree->insert(std::move(mmio));
+		mmio->opaque = opaque;
 
-		if (tc_should_clear_cache_and_tlb(cpu, start, start + size - 1, should_throw)) {
-			throw host_exp_t::region_changed;
+		if (should_int) {
+			cpu->regions_changed.push_back(std::make_pair(true, std::move(mmio)));
+			cpu->raise_int_fn(&cpu->cpu_ctx, CPU_REGION_INT);
+		}
+		else {
+			cpu->memory_space_tree->insert(std::move(mmio));
+			tc_should_clear_cache_and_tlb<true>(cpu, start, start + size - 1);
 		}
 	}
 
@@ -433,16 +439,16 @@ mem_init_region_io(cpu_t *cpu, addr_t start, size_t size, bool io_space, io_hand
 }
 
 /*
-* mem_init_region_alias -> creates a region that points to another region (which must not be pmio; can throw an exception)
+* mem_init_region_alias -> creates a region that points to another region
 * cpu: a valid cpu instance
 * alias_start: the guest physical address where the alias starts
 * ori_start: the guest physical address where the original region starts
 * ori_size: size in bytes of alias
-* should_throw: suppresses the exception when false, otherwise can throw
+* should_int: raises a guest interrupt when true, otherwise the change takes effect immediately
 * ret: the status of the operation
 */
 lc86_status
-mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, bool should_throw)
+mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t ori_size, bool should_int)
 {
 	if (ori_size == 0) {
 		return set_last_error(lc86_status::invalid_parameter);
@@ -456,10 +462,14 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 		alias->alias_offset = ori_start - aliased_region->start;
 		alias->type = mem_type::alias;
 		alias->aliased_region = aliased_region;
-		cpu->memory_space_tree->insert(std::move(alias));
 
-		if (tc_should_clear_cache_and_tlb(cpu, alias_start, alias_start + ori_size - 1, should_throw)) {
-			throw host_exp_t::region_changed;
+		if (should_int) {
+			cpu->regions_changed.push_back(std::make_pair(true, std::move(alias)));
+			cpu->raise_int_fn(&cpu->cpu_ctx, CPU_REGION_INT);
+		}
+		else {
+			cpu->memory_space_tree->insert(std::move(alias));
+			tc_should_clear_cache_and_tlb<true>(cpu, alias_start, alias_start + ori_size - 1);
 		}
 
 		return lc86_status::success;
@@ -469,16 +479,16 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, size_t o
 }
 
 /*
-* mem_init_region_rom -> creates a rom region (can throw an exception)
+* mem_init_region_rom -> creates a rom region
 * cpu: a valid cpu instance
 * start: the guest physical address where the rom starts
 * size: size in bytes of rom
 * buffer: a pointer to a client-allocated buffer that holds the rom the region refers to
-* should_throw: suppresses the exception when false, otherwise can throw
+* should_int: raises a guest interrupt when true, otherwise the change takes effect immediately
 * ret: the status of the operation
 */
 lc86_status
-mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint8_t *buffer, bool should_throw)
+mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint8_t *buffer, bool should_int)
 {
 	if ((size == 0) || !(buffer)) {
 		return set_last_error(lc86_status::invalid_parameter);
@@ -488,28 +498,31 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, size_t size, uint8_t *buffer, bool
 	rom->start = start;
 	rom->end = start + size - 1;
 	rom->type = mem_type::rom;
-	rom->rom_idx = cpu->vec_rom.size() - 1;
-	cpu->memory_space_tree->insert(std::move(rom));
-	cpu->vec_rom.push_back(buffer);
+	rom->rom_ptr = buffer;
 
-	if (tc_should_clear_cache_and_tlb(cpu, start, start + size - 1, should_throw)) {
-		throw host_exp_t::region_changed;
+	if (should_int) {
+		cpu->regions_changed.push_back(std::make_pair(true, std::move(rom)));
+		cpu->raise_int_fn(&cpu->cpu_ctx, CPU_REGION_INT);
+	}
+	else {
+		cpu->memory_space_tree->insert(std::move(rom));
+		tc_should_clear_cache_and_tlb<true>(cpu, start, start + size - 1);
 	}
 
 	return lc86_status::success;
 }
 
 /*
-* mem_destroy_region -> marks a range of addresses as unmapped (can throw an exception for any region but pmio)
+* mem_destroy_region -> marks a range of addresses as unmapped
 * cpu: a valid cpu instance
 * start: the guest physical address where to start the unmapping
 * size: size in bytes to unmap
 * io_space: true for pmio, false for mmio and ignored for the other regions
-* should_throw: suppresses the exception when false, otherwise can throw
+* should_int: raises a guest interrupt when true, otherwise the change takes effect immediately
 * ret: always success
 */
 lc86_status
-mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space, bool should_throw)
+mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space, bool should_int)
 {
 	if (io_space) {
 		port_t start_io = static_cast<port_t>(start);
@@ -517,9 +530,14 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space, bool sh
 		cpu->io_space_tree->erase(start_io, end_io);
 	}
 	else {
-		cpu->memory_space_tree->erase(start, start + size - 1);
-		if (tc_should_clear_cache_and_tlb(cpu, start, start + size - 1, should_throw)) {
-			throw host_exp_t::region_changed;
+		addr_t end = start + size - 1;
+		if (should_int) {
+			cpu->regions_changed.push_back(std::make_pair(false, std::make_unique<memory_region_t<addr_t>>(start, end)));
+			cpu->raise_int_fn(&cpu->cpu_ctx, CPU_REGION_INT);
+		}
+		else {
+			cpu->memory_space_tree->erase(start, end);
+			tc_should_clear_cache_and_tlb<true>(cpu, start, end);
 		}
 	}
 	return lc86_status::success;
@@ -556,7 +574,7 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out, size_t *actua
 					break;
 
 				case mem_type::rom:
-					std::memcpy(out + vec_offset, get_rom_host_ptr(cpu, region, phys_addr), bytes_to_read);
+					std::memcpy(out + vec_offset, get_rom_host_ptr(region, phys_addr), bytes_to_read);
 					break;
 
 				case mem_type::alias: {

@@ -17,7 +17,7 @@ while (region->aliased_region) { \
 }
 
 void tlb_flush(cpu_t *cpu, int n);
-inline void *get_rom_host_ptr(cpu_t *cpu, const memory_region_t<addr_t> *rom, addr_t addr);
+inline void *get_rom_host_ptr(const memory_region_t<addr_t> *rom, addr_t addr);
 inline void *get_ram_host_ptr(cpu_t *cpu, addr_t addr);
 addr_t get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip);
 addr_t get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, uint8_t *is_code);
@@ -63,7 +63,7 @@ T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, const memory_region_t<addr_t>
 			return ram_read<T>(cpu, get_ram_host_ptr(cpu, addr));
 
 		case mem_type::rom:
-			return ram_read<T>(cpu, get_rom_host_ptr(cpu, region, addr));
+			return ram_read<T>(cpu, get_rom_host_ptr(region, addr));
 
 		case mem_type::mmio:
 			if constexpr (sizeof(T) == 1) {
@@ -256,9 +256,9 @@ void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, const memory_region_
  * ram/rom specific accessors
  */
 void *
-get_rom_host_ptr(cpu_t *cpu, const memory_region_t<addr_t> *rom, addr_t addr)
+get_rom_host_ptr(const memory_region_t<addr_t> *rom, addr_t addr)
 {
-	return &cpu->vec_rom[rom->rom_idx][addr];
+	return &rom->rom_ptr[addr];
 }
 
 void *
