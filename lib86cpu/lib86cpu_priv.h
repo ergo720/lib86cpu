@@ -150,6 +150,7 @@ struct cpu_t {
 	std::vector<std::pair<bool, std::unique_ptr<memory_region_t<addr_t>>>> regions_changed;
 	std::vector<const memory_region_t<addr_t> *> cached_regions;
 	std::bitset<std::numeric_limits<port_t>::max() + 1> iotable;
+	std::atomic_flag suspend_flg;
 	uint16_t num_tc;
 	struct {
 		uint64_t tsc;

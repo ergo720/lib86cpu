@@ -1278,6 +1278,12 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 		}
 	}
 
+	if (int_flg & CPU_PAUSE_INT) {
+		cpu_ctx->cpu->suspend_flg.test_and_set();
+		cpu_ctx->cpu->suspend_flg.notify_all();
+		cpu_ctx->cpu->suspend_flg.wait(true);
+	}
+
 	if (int_flg & CPU_HW_INT) {
 		// hw interrupts not implemented yet
 		throw lc86_exp_abort("Hardware interrupts are not implemented yet", lc86_status::internal_error);

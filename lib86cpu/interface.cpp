@@ -264,6 +264,44 @@ cpu_set_a20(cpu_t *cpu, bool closed, bool should_int)
 }
 
 /*
+* cpu_pause -> submit to the cpu a request to stop (this function is multi-thread safe)
+* cpu: a valid cpu instance
+* should_wait: if true, the function won't return until the cpu is actually stopped, otherwise it returns immediately
+* ret: nothing
+*/
+void
+cpu_pause(cpu_t *cpu, bool should_wait)
+{
+	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_PAUSE_INT);
+	if (should_wait) {
+		cpu_wait_for_pause(cpu);
+	}
+}
+
+/*
+* cpu_wait_for_pause -> blocks until the cpu is stopped (this function is multi-thread safe)
+* cpu: a valid cpu instance
+* ret: nothing
+*/
+void
+cpu_wait_for_pause(cpu_t *cpu)
+{
+	cpu->suspend_flg.wait(false);
+}
+
+/*
+* cpu_resume -> submit to the cpu a request to resume execution (this function is multi-thread safe)
+* cpu: a valid cpu instance
+* ret: nothing
+*/
+void
+cpu_resume(cpu_t *cpu)
+{
+	cpu->suspend_flg.clear();
+	cpu->suspend_flg.notify_all();
+}
+
+/*
 * register_log_func -> registers a log function to receive log events from lib86cpu
 * logger: the function to call
 * ret: nothing
