@@ -69,6 +69,7 @@ struct cpu_t;
 API_FUNC lc86_status cpu_new(size_t ramsize, cpu_t *&out, fp_int int_fn = nullptr, const char *debuggee = nullptr);
 API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC lc86_status cpu_run(cpu_t *cpu);
+API_FUNC void cpu_exit(cpu_t *cpu);
 API_FUNC void cpu_sync_state(cpu_t *cpu);
 API_FUNC lc86_status cpu_set_flags(cpu_t *cpu, uint32_t flags);
 API_FUNC void cpu_set_a20(cpu_t *cpu, bool closed, bool should_int = false);

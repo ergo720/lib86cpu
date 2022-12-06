@@ -202,6 +202,17 @@ cpu_run(cpu_t *cpu)
 }
 
 /*
+* cpu_exit -> submit to the cpu a request to terminate the emulation (this function is multi-thread safe)
+* cpu: a valid cpu instance
+* ret: nothing
+*/
+void
+cpu_exit(cpu_t *cpu)
+{
+	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_ABORT_INT);
+}
+
+/*
 * cpu_sync_state -> synchronizes internal cpu flags with the current cpu state. Only call this before cpu_run
 * cpu: a valid cpu instance
 * ret: nothing

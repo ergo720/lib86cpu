@@ -51,7 +51,7 @@ translated_code_t *cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 
 // cpu interrupt flags
 #define CPU_HW_INT      (1 << 0)
-#define CPU_DBG_INT     (1 << 1)
+#define CPU_ABORT_INT   (1 << 1)
 #define CPU_A20_INT     (1 << 2)
 #define CPU_REGION_INT  (1 << 3)
 #define CPU_PAUSE_INT   (1 << 4)

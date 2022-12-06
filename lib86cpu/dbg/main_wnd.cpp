@@ -108,8 +108,8 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		glfwWaitEventsTimeout(0.5);
 	}
 
-	// raise a debug interrupt and wait until the guest stops execution
-	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_DBG_INT);
+	// raise an abort interrupt and wait until the guest stops execution
+	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_ABORT_INT);
 	guest_running.wait(true);
 
 	// set guest_running in the case the guest is waiting in dbg_sw_breakpoint_handler
