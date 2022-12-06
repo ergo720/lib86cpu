@@ -613,6 +613,11 @@ lc86_jit::check_int_emit()
 	MOV(EDX, MEMD32(RCX, CPU_CTX_INT));
 	TEST(EDX, EDX);
 	BR_EQ(no_int);
+	MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS));
+	AND(EAX, IF_MASK);
+	OR(EAX, EDX);
+	CMP(EAX, 1); // hw int set but if=0
+	BR_EQ(no_int);
 	MOV(RAX, &cpu_do_int);
 	CALL(RAX);
 	gen_epilogue_main<false>();

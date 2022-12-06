@@ -1233,6 +1233,8 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 translated_code_t *
 cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 {
+	cpu_ctx->cpu->clear_int_fn(cpu_ctx);
+
 	if (int_flg & CPU_DBG_INT) {
 		// this happens when the user closes the debugger window
 		throw lc86_exp_abort("The debugger was closed", lc86_status::success);
@@ -1285,11 +1287,12 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 	}
 
 	if (int_flg & CPU_HW_INT) {
-		// hw interrupts not implemented yet
-		throw lc86_exp_abort("Hardware interrupts are not implemented yet", lc86_status::internal_error);
+		cpu_ctx->exp_info.exp_data.fault_addr = 0;
+		cpu_ctx->exp_info.exp_data.code = 0;
+		cpu_ctx->exp_info.exp_data.idx = cpu_ctx->cpu->get_int_vec();
+		cpu_ctx->exp_info.exp_data.eip = cpu_ctx->regs.eip;
+		cpu_raise_exception(cpu_ctx);
 	}
-
-	cpu_ctx->cpu->clear_int_fn(cpu_ctx);
 
 	return nullptr;
 }

@@ -39,14 +39,17 @@ using logfn_t = void(*)(log_level, const unsigned, const char *, ...);
 #define CPU_DBG_PRESENT         (1 << 11)
 
 // mmio/pmio access handlers
-using fp_read8 = uint8_t (*)(addr_t addr, void *opaque);
+using fp_read8 = uint8_t(*)(addr_t addr, void *opaque);
 using fp_read16 = uint16_t(*)(addr_t addr, void *opaque);
 using fp_read32 = uint32_t(*)(addr_t addr, void *opaque);
 using fp_read64 = uint64_t(*)(addr_t addr, void *opaque);
-using fp_write8 = void (*)(addr_t addr, const uint8_t value, void *opaque);
-using fp_write16 = void (*)(addr_t addr, const uint16_t value, void *opaque);
-using fp_write32 = void (*)(addr_t addr, const uint32_t value, void *opaque);
-using fp_write64 = void (*)(addr_t addr, const uint64_t value, void *opaque);
+using fp_write8 = void(*)(addr_t addr, const uint8_t value, void *opaque);
+using fp_write16 = void(*)(addr_t addr, const uint16_t value, void *opaque);
+using fp_write32 = void(*)(addr_t addr, const uint32_t value, void *opaque);
+using fp_write64 = void(*)(addr_t addr, const uint64_t value, void *opaque);
+
+// hw interrupt callback, used to get the interrupt vector
+using fp_int = uint16_t(*)();
 
 struct io_handlers_t {
 	fp_read8 fnr8;
@@ -63,7 +66,7 @@ struct io_handlers_t {
 struct cpu_t;
 
 // cpu api
-API_FUNC lc86_status cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee = nullptr);
+API_FUNC lc86_status cpu_new(size_t ramsize, cpu_t *&out, fp_int int_fn = nullptr, const char *debuggee = nullptr);
 API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC lc86_status cpu_run(cpu_t *cpu);
 API_FUNC void cpu_sync_state(cpu_t *cpu);
@@ -72,6 +75,7 @@ API_FUNC void cpu_set_a20(cpu_t *cpu, bool closed, bool should_int = false);
 API_FUNC void cpu_pause(cpu_t *cpu, bool should_wait);
 API_FUNC void cpu_wait_for_pause(cpu_t *cpu);
 API_FUNC void cpu_resume(cpu_t *cpu);
+API_FUNC void cpu_raise_hw_int(cpu_t *cpu);
 
 // register api
 API_FUNC regs_t *get_regs_ptr(cpu_t *cpu);

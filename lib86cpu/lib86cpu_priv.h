@@ -166,6 +166,7 @@ struct cpu_t {
 	} mtrr;
 	clear_int_t clear_int_fn;
 	raise_int_t raise_int_fn;
+	fp_int get_int_vec;
 	std::string dbg_name;
 	addr_t bp_addr;
 	addr_t db_addr;

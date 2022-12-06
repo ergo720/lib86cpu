@@ -205,7 +205,7 @@ gen_cxbxrkrnl_test(const std::string &executable)
 	}
 
 	// Init lib86cpu
-	if (!LC86_SUCCESS(cpu_new(ramsize, cpu, "cxbxrkrnl"))) {
+	if (!LC86_SUCCESS(cpu_new(ramsize, cpu, nullptr, "cxbxrkrnl"))) {
 		std::printf("Failed to create cpu!\n");
 		return false;
 	}

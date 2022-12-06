@@ -104,6 +104,13 @@ default_pmio_write_handler32(addr_t addr, const uint32_t value, void *opaque)
 	LOG(log_level::warn, "Unhandled PMIO write at port %#06x", addr);
 }
 
+static uint16_t
+default_get_int_vec()
+{
+	LOG(log_level::warn, "Unexpected hardware interrupt");
+	return EXP_INVALID;
+}
+
 // NOTE: lib86cpu runs entirely on the single thread that calls cpu_run, so calling the below functions from other threads is not safe. Only call them
 // from the hook, mmio or pmio callbacks or before the emulation starts.
 
@@ -111,11 +118,12 @@ default_pmio_write_handler32(addr_t addr, const uint32_t value, void *opaque)
 * cpu_new -> creates a new cpu instance. Only a single instance should exist at a time
 * ramsize: size in bytes of ram buffer internally created (must be a multiple of 4096)
 * out: returned cpu instance
+* (optional) int_fn: function that returns the vector number when a hw interrupt is serviced. Not necessary if you never generate hw interrupts
 * (optional) debuggee: name of the debuggee program to run
 * ret: the status of the operation
 */
 lc86_status
-cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee)
+cpu_new(size_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 {
 	LOG(log_level::info, "Creating new cpu...");
 
@@ -141,6 +149,7 @@ cpu_new(size_t ramsize, cpu_t *&out, const char *debuggee)
 	// XXX: eventually, the user should be able to set the instruction formatting
 	set_instr_format(cpu);
 	cpu->dbg_name = debuggee ? debuggee : "";
+	cpu->get_int_vec = int_fn ? int_fn : default_get_int_vec;
 
 	cpu->memory_space_tree = address_space<addr_t>::create();
 	cpu->io_space_tree = address_space<port_t>::create();
@@ -299,6 +308,17 @@ cpu_resume(cpu_t *cpu)
 {
 	cpu->suspend_flg.clear();
 	cpu->suspend_flg.notify_all();
+}
+
+/*
+* cpu_raise_hw_int -> raises a hardware interrupt (this function is multi-thread safe)
+* cpu: a valid cpu instance
+* ret: nothing
+*/
+void
+cpu_raise_hw_int(cpu_t *cpu)
+{
+	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_HW_INT);
 }
 
 /*
