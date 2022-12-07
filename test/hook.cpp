@@ -50,7 +50,7 @@ test_fastcall()
 	uint32_t edx = regs->edx;
 	uint32_t ecx = b;
 	uint8_t args[16];
-	mem_read_block(cpu, esp, sizeof(args), args);
+	mem_read_block_virt(cpu, esp, sizeof(args), args);
 	std::memcpy(&ret_eip, &args[0], 4);
 	std::memcpy(&a_l, &args[4], 4);
 	std::memcpy(&a_h, &args[8], 4);
@@ -60,8 +60,8 @@ test_fastcall()
 	std::printf("test_fastcall called with args: %llu, %hu, %u, %u\n", a, b, c, d);
 
 	std::vector<uint8_t> vec(0x3800, 0xAA);
-	mem_write_block(cpu, 0x2800, 0x2000, vec.data());
-	mem_read_block(cpu, 0, 0x3800, vec.data());
+	mem_write_block_virt(cpu, 0x2800, 0x2000, vec.data());
+	mem_read_block_virt(cpu, 0, 0x3800, vec.data());
 	// should print 0x6A, uninitialzed value, 0xAA
 	std::printf("vec[0x0] = 0x%X, vec[0x27FF] = 0x%X, vec[0x2800] = 0x%X\n", vec[0x0], vec[0x27FF], vec[0x2800]);
 
@@ -70,7 +70,7 @@ test_fastcall()
 
 	// to call the trampoline again, we must restore the previous cpu state
 	// restore stack arguments and return eip
-	mem_write_block(cpu, esp, 16, args);
+	mem_write_block_virt(cpu, esp, 16, args);
 	// restore gpr (esi, edi and ebx are not touched by fastcall functions)
 	regs->eax = eax;
 	regs->ecx = ecx;
@@ -106,7 +106,7 @@ test_stdcall()
 	uint32_t d;
 	uint32_t ret_eip, temp;
 	uint8_t args[24];
-	mem_read_block(cpu, regs->esp, sizeof(args), args);
+	mem_read_block_virt(cpu, regs->esp, sizeof(args), args);
 	std::memcpy(&ret_eip, &args[0], 4);
 	std::memcpy(&a_l, &args[4], 4);
 	std::memcpy(&a_h, &args[8], 4);
@@ -145,7 +145,7 @@ test_cdecl()
 	uint32_t d_h, d_l;
 	uint32_t ret_eip, temp;
 	uint8_t args[24];
-	mem_read_block(cpu, regs->esp, sizeof(args), args);
+	mem_read_block_virt(cpu, regs->esp, sizeof(args), args);
 	std::memcpy(&ret_eip, &args[0], 4);
 	std::memcpy(&temp, &args[4], 4);
 	a = temp;
@@ -175,7 +175,7 @@ test_double_ptr()
 
 	uint32_t a, b, ret_eip;
 	uint8_t args[12];
-	mem_read_block(cpu, regs->esp, sizeof(args), args);
+	mem_read_block_virt(cpu, regs->esp, sizeof(args), args);
 	std::memcpy(&ret_eip, &args[0], 4);
 	std::memcpy(&a, &args[4], 4);
 	std::memcpy(&b, &args[8], 4);

@@ -238,20 +238,20 @@ gen_cxbxrkrnl_test(const std::string &executable)
 		}
 	}
 
-	mem_fill_block(cpu, 0xF000, 0x1000, 0);
+	mem_fill_block_virt(cpu, 0xF000, 0x1000, 0);
 	uint32_t pde = 0xE3; // large, dirty, accessed, r/w, present
-	mem_write_block(cpu, 0xFF000, 4, &pde);
+	mem_write_block_virt(cpu, 0xFF000, 4, &pde);
 	for (int i = 0; i < 16; ++i) {
-		mem_write_block(cpu, 0xF000 + (i * 4), 4, &pde); // this identity maps all physical memory
+		mem_write_block_virt(cpu, 0xF000 + (i * 4), 4, &pde); // this identity maps all physical memory
 		pde += 0x400000;
 	}
 	pde = 0x800000E3;
 	for (int i = 0; i < 16; ++i) {
-		mem_write_block(cpu, 0xF800 + (i * 4), 4, &pde); // this identity maps all contiguous memory
+		mem_write_block_virt(cpu, 0xF800 + (i * 4), 4, &pde); // this identity maps all contiguous memory
 		pde += 0x400000;
 	}
 	pde = 0x0000F063; // dirty, accessed, r/w, present
-	mem_write_block(cpu, 0xFC00, 4, &pde); // this maps the pd at 0xC0000000
+	mem_write_block_virt(cpu, 0xFC00, 4, &pde); // this maps the pd at 0xC0000000
 
 	regs_t *regs = get_regs_ptr(cpu);
 	regs->cs_hidden.base = 0;
@@ -277,7 +277,7 @@ gen_cxbxrkrnl_test(const std::string &executable)
 	regs->eip = peHeader->OptionalHeader.ImageBase + peHeader->OptionalHeader.AddressOfEntryPoint;
 
 	// Pass eeprom and certificate keys on the stack (we use dummy all-zero keys)
-	mem_fill_block(cpu, 0x80400000, 16 * 2, 0);
+	mem_fill_block_virt(cpu, 0x80400000, 16 * 2, 0);
 
 	return true;
 }

@@ -612,17 +612,8 @@ mem_destroy_region(cpu_t *cpu, addr_t start, size_t size, bool io_space, bool sh
 	return lc86_status::success;
 }
 
-/*
-* mem_read_block -> reads a block of memory from ram/rom
-* cpu: a valid cpu instance
-* addr: the guest virtual address to read from
-* size: number of bytes to read
-* out: pointer where the read contents are stored to
-* actual_size: number of bytes actually read
-* ret: the status of the operation
-*/
-lc86_status
-mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out, size_t *actual_size)
+template<bool is_virt>
+lc86_status mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out, size_t *actual_size)
 {
 	size_t vec_offset = 0;
 	size_t page_offset = addr & PAGE_MASK;
@@ -630,8 +621,14 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out, size_t *actua
 
 	try {
 		while (size_left > 0) {
+			addr_t phys_addr;
 			size_t bytes_to_read = std::min(PAGE_SIZE - page_offset, size_left);
-			addr_t phys_addr = get_read_addr(cpu, addr, 0, 0);
+			if constexpr (is_virt) {
+				phys_addr = get_read_addr(cpu, addr, 0, 0);
+			}
+			else {
+				phys_addr = addr;
+			}
 
 			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
 			retry:
@@ -690,7 +687,28 @@ mem_read_block(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out, size_t *actua
 	}
 }
 
-template<bool fill>
+/*
+* mem_read_block -> reads a block of memory from ram/rom. Addr is either a virtual (_virt) or physical (_phys) guest address
+* cpu: a valid cpu instance
+* addr: the guest address to read from
+* size: number of bytes to read
+* out: pointer where the read contents are stored to
+* actual_size: number of bytes actually read
+* ret: the status of the operation
+*/
+lc86_status
+mem_read_block_virt(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out, size_t *actual_size)
+{
+	return mem_read_block<true>(cpu, addr, size, out, actual_size);
+}
+
+lc86_status
+mem_read_block_phys(cpu_t *cpu, addr_t addr, size_t size, uint8_t *out, size_t *actual_size)
+{
+	return mem_read_block<false>(cpu, addr, size, out, actual_size);
+}
+
+template<bool fill, bool is_virt>
 lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *buffer, int val, size_t *actual_size)
 {
 	size_t size_tot = 0;
@@ -700,10 +718,17 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *
 	try {
 		while (size_left > 0) {
 			uint8_t is_code;
+			addr_t phys_addr;
 			size_t bytes_to_write = std::min(PAGE_SIZE - page_offset, size_left);
-			addr_t phys_addr = get_write_addr(cpu, addr, 0, 0, &is_code);
-			if (is_code) {
-				tc_invalidate(&cpu->cpu_ctx, phys_addr, bytes_to_write, cpu->cpu_ctx.regs.eip);
+			if constexpr (is_virt) {
+				phys_addr = get_write_addr(cpu, addr, 0, 0, &is_code);
+				if (is_code) {
+					tc_invalidate<false, false>(&cpu->cpu_ctx, phys_addr, bytes_to_write, cpu->cpu_ctx.regs.eip);
+				}
+			}
+			else {
+				phys_addr = addr;
+				tc_invalidate<false, false>(&cpu->cpu_ctx, phys_addr, bytes_to_write, cpu->cpu_ctx.regs.eip);
 			}
 
 			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
@@ -769,7 +794,7 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *
 }
 
 /*
-* mem_write_block -> writes a block of memory to ram/rom
+* mem_write_block -> writes a block of memory to ram/rom. Addr is either a virtual (_virt) or physical (_phys) guest address
 * cpu: a valid cpu instance
 * addr: the guest virtual address to write to
 * size: number of bytes to write
@@ -778,24 +803,36 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, size_t size, const void *
 * ret: the status of the operation
 */
 lc86_status
-mem_write_block(cpu_t *cpu, addr_t addr, size_t size, const void *buffer, size_t *actual_size)
+mem_write_block_virt(cpu_t *cpu, addr_t addr, size_t size, const void *buffer, size_t *actual_size)
 {
-	return mem_write_handler<false>(cpu, addr, size, buffer, 0, actual_size);
+	return mem_write_handler<false, true>(cpu, addr, size, buffer, 0, actual_size);
+}
+
+lc86_status
+mem_write_block_phys(cpu_t *cpu, addr_t addr, size_t size, const void *buffer, size_t *actual_size)
+{
+	return mem_write_handler<false, false>(cpu, addr, size, buffer, 0, actual_size);
 }
 
 /*
-* mem_fill_block -> fills ram/rom with a value
+* mem_fill_block -> fills ram/rom with a value. Addr is either a virtual (_virt) or physical (_phys) guest address
 * cpu: a valid cpu instance
-* addr: the guest virtual address to write to
+* addr: the guest address to write to
 * size: number of bytes to write
 * val: the value to write
 * actual_size: number of bytes actually written
 * ret: the status of the operation
 */
 lc86_status
-mem_fill_block(cpu_t *cpu, addr_t addr, size_t size, int val, size_t *actual_size)
+mem_fill_block_virt(cpu_t *cpu, addr_t addr, size_t size, int val, size_t *actual_size)
 {
-	return mem_write_handler<true>(cpu, addr, size, nullptr, val, actual_size);
+	return mem_write_handler<true, true>(cpu, addr, size, nullptr, val, actual_size);
+}
+
+lc86_status
+mem_fill_block_phys(cpu_t *cpu, addr_t addr, size_t size, int val, size_t *actual_size)
+{
+	return mem_write_handler<true, false>(cpu, addr, size, nullptr, val, actual_size);
 }
 
 /*
@@ -909,7 +946,7 @@ hook_remove(cpu_t *cpu, addr_t addr)
 		uint8_t is_code;
 		volatile addr_t phys_addr = get_write_addr(cpu, addr, 2, cpu->cpu_ctx.regs.eip, &is_code);
 		cpu->hook_map.erase(it);
-		tc_invalidate<true>(&cpu->cpu_ctx, addr);
+		tc_invalidate<true, false>(&cpu->cpu_ctx, addr);
 	}
 	catch (host_exp_t type) {
 		return set_last_error(lc86_status::guest_exp);

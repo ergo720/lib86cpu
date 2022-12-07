@@ -67,39 +67,39 @@ int_handler_printer()
 {
 	uint32_t val, eip, ret_eip;
 	uint8_t args[8];
-	mem_read_block(cpu, regs->esp, sizeof(args), args);
+	mem_read_block_virt(cpu, regs->esp, sizeof(args), args);
 	std::memcpy(&ret_eip, &args[0], 4);
 	std::memcpy(&eip, &args[4], 4);
 
 	switch (eip)
 	{
 	case 0x1043:
-		mem_read_block(cpu, 0x2000, 4, reinterpret_cast<uint8_t *>(&val));
+		mem_read_block_virt(cpu, 0x2000, 4, reinterpret_cast<uint8_t *>(&val));
 		std::printf("instr breakpoint at 0x%X: mem at 0x2000 should be 0x11223344, it actually was 0x%08X\n", eip, val);
 		break;
 
 	case 0x104E:
-		mem_read_block(cpu, 0x2000, 4, reinterpret_cast<uint8_t *>(&val));
+		mem_read_block_virt(cpu, 0x2000, 4, reinterpret_cast<uint8_t *>(&val));
 		std::printf("data w breakpoint of 2 bytes at 0x%X: mem at 0x2000 should be 0xDEADBEEF, it actually was 0x%08X\n", eip, val);
 		break;
 
 	case 0x1058:
-		mem_read_block(cpu, 0x2000, 4, reinterpret_cast<uint8_t *>(&val));
+		mem_read_block_virt(cpu, 0x2000, 4, reinterpret_cast<uint8_t *>(&val));
 		std::printf("data w breakpoint of 2 bytes at 0x%X: mem at 0x2000 should be 0x0000BEEF, it actually was 0x%08X\n", eip, val);
 		break;
 
 	case 0x1063:
-		mem_read_block(cpu, 0x2000, 4, reinterpret_cast<uint8_t *>(&val));
+		mem_read_block_virt(cpu, 0x2000, 4, reinterpret_cast<uint8_t *>(&val));
 		std::printf("data w breakpoint of 2 bytes at 0x%X: mem at 0x2000 should be 0x000000EF, it actually was 0x%08X\n", eip, val);
 		break;
 
 	case 0x106A:
-		mem_read_block(cpu, 0x2004, 4, reinterpret_cast<uint8_t *>(&val));
+		mem_read_block_virt(cpu, 0x2004, 4, reinterpret_cast<uint8_t *>(&val));
 		std::printf("data r breakpoint of 4 bytes at 0x%X: mem at 0x2004 should be 0x55667700, it actually was 0x%08X\n", eip, val);
 		break;
 
 	case 0x1075:
-		mem_read_block(cpu, 0x2004, 4, reinterpret_cast<uint8_t *>(&val));
+		mem_read_block_virt(cpu, 0x2004, 4, reinterpret_cast<uint8_t *>(&val));
 		std::printf("data w breakpoint of 4 bytes at 0x%X: mem at 0x2004 should be 0xDEADBEEF, it actually was 0x%08X\n", eip, val);
 		break;
 
@@ -114,7 +114,7 @@ int_handler_printer()
 		break;
 
 	case 0x108B:
-		mem_read_block(cpu, 0x108B, 4, reinterpret_cast<uint8_t *>(&val));
+		mem_read_block_virt(cpu, 0x108B, 4, reinterpret_cast<uint8_t *>(&val));
 		std::printf("undefined opcode exception at 0x%X: bytes of the faulting opcode should be 0xB0E0230F, it actually was 0x%X\n", eip, val);
 		break;
 
@@ -171,39 +171,39 @@ gen_dbg_test()
 		return false;
 	}
 
-	mem_fill_block(cpu, 0xFE000, 0x2000, 0);
+	mem_fill_block_virt(cpu, 0xFE000, 0x2000, 0);
 	uint32_t pde = 0xFE007, pte = 0x7;
-	mem_write_block(cpu, 0xFF000, 4, &pde);
+	mem_write_block_virt(cpu, 0xFF000, 4, &pde);
 	for (int i = 0; i < 256; ++i) {
-		mem_write_block(cpu, 0xFE000 + (i * 4), 4, &pte); // this identity maps all physical memory
+		mem_write_block_virt(cpu, 0xFE000 + (i * 4), 4, &pte); // this identity maps all physical memory
 		pte += 0x1000;
 	}
 
 	// create the no access pages for the stack
 	pte = 0;
-	mem_write_block(cpu, 0xFE3EC, 4, &pte);
-	mem_write_block(cpu, 0xFE3F4, 4, &pte);
+	mem_write_block_virt(cpu, 0xFE3EC, 4, &pte);
+	mem_write_block_virt(cpu, 0xFE3F4, 4, &pte);
 
 	// create the IDT
 	// point all unhandled exp handlers to the hlt instr
 	uint64_t desc = 0x8F00000810C7;
 	for (int i = 0; i < 32; ++i) {
-		mem_write_block(cpu, i * 8, 8, &desc);
+		mem_write_block_virt(cpu, i * 8, 8, &desc);
 	}
 
 	// point DB and UD exp handlers to their corresponding handlers in the code
 	desc = 0x8F00000810CC;
-	mem_write_block(cpu, 1 * 8, 8, &desc); // DB
+	mem_write_block_virt(cpu, 1 * 8, 8, &desc); // DB
 	desc = 0x8F00000810FB;
-	mem_write_block(cpu, 6 * 8, 8, &desc); // UD
+	mem_write_block_virt(cpu, 6 * 8, 8, &desc); // UD
 
 	// create the GDT
 	desc = 0;
-	mem_write_block(cpu, 0x100, 8, &desc); // first entry is always a null segment descriptor
+	mem_write_block_virt(cpu, 0x100, 8, &desc); // first entry is always a null segment descriptor
 	desc = 0xCF9F000000FFFF;
-	mem_write_block(cpu, 0x108, 8, &desc); // 32bit code segment, conforming, rx, present
+	mem_write_block_virt(cpu, 0x108, 8, &desc); // 32bit code segment, conforming, rx, present
 	desc = 0xCF97000000FFFF;
-	mem_write_block(cpu, 0x110, 8, &desc); // 32bit data segment, expand-down, rw, present
+	mem_write_block_virt(cpu, 0x110, 8, &desc); // 32bit data segment, expand-down, rw, present
 
 	regs = get_regs_ptr(cpu);
 	regs->cs = 0x8;

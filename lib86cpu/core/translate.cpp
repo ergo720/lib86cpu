@@ -379,7 +379,7 @@ tc_hash(addr_t pc)
 	return pc & (CODE_CACHE_MAX_SIZE - 1);
 }
 
-template<bool remove_hook>
+template<bool remove_hook, bool is_virt>
 void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip)
 {
 	bool halt_tc = false;
@@ -387,19 +387,29 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t siz
 	uint8_t is_code;
 
 	if constexpr (remove_hook) {
-		phys_addr = get_write_addr(cpu_ctx->cpu, addr, 2, cpu_ctx->regs.eip, &is_code);
+		if constexpr (is_virt) {
+			phys_addr = get_write_addr(cpu_ctx->cpu, addr, 2, cpu_ctx->regs.eip, &is_code);
+		}
+		else {
+			phys_addr = addr;
+		}
 	}
 	else {
 		if (cpu_ctx->cpu->cpu_flags & CPU_ALLOW_CODE_WRITE) {
 			return;
 		}
 
-		try {
-			phys_addr = get_write_addr(cpu_ctx->cpu, addr, 2, eip, &is_code);
+		if constexpr (is_virt) {
+			try {
+				phys_addr = get_write_addr(cpu_ctx->cpu, addr, 2, eip, &is_code);
+			}
+			catch (host_exp_t type) {
+				// because all callers of this function translate the address already, this should never happen
+				LIB86CPU_ABORT_msg("Unexpected page fault in %s", __func__);
+			}
 		}
-		catch (host_exp_t type) {
-			// because all callers of this function translate the address already, this should never happen
-			LIB86CPU_ABORT_msg("Unexpected page fault in %s", __func__);
+		else {
+			phys_addr = addr;
 		}
 	}
 
@@ -496,8 +506,10 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t siz
 	}
 }
 
-template void tc_invalidate<true>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
-template void tc_invalidate<false>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
+template void tc_invalidate<true, true>(cpu_ctx_t * cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
+template void tc_invalidate<true, false>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
+template void tc_invalidate<false, true>(cpu_ctx_t * cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
+template void tc_invalidate<false, false>(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
 
 static translated_code_t *
 tc_cache_search(cpu_t *cpu, addr_t pc)
