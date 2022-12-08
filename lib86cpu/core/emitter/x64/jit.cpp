@@ -3842,13 +3842,7 @@ lc86_jit::cmovcc(ZydisDecodedInstruction *instr)
 		LIB86CPU_ABORT();
 	}
 
-	// NOTE: with the following optimization, we check if the condition is false, and skip the move if it is. This allows to avoid a needless memory access in that
-	// case, but the Intel docs say that CMOV always load the destination operand in a temporary register first, even when the condition is false, so this might
-	// cause issues in some circumstances
-
-	Label no_move = m_a.newLabel();
-	CMP(R8B, 0);
-	BR_EQ(no_move);
+	MOVZX(EBX, R8B);
 
 	size_t size = get_rm<OPNUM_SRC>(instr,
 		[this](const op_info rm)
@@ -3863,10 +3857,13 @@ lc86_jit::cmovcc(ZydisDecodedInstruction *instr)
 			return static_cast<size_t>(m_cpu->size_mode);
 		});
 
-	auto src_host_reg = SIZED_REG(x64::rax, size);
 	auto dst = GET_REG(OPNUM_DST);
-	ST_REG_val(src_host_reg, dst.val, dst.bits);
-	m_a.bind(no_move);
+	auto dst_host_reg = SIZED_REG(x64::rdx, dst.bits);
+	auto src_host_reg = SIZED_REG(x64::rax, size);
+	TEST(EBX, EBX);
+	LD_REG_val(dst_host_reg, dst.val, dst.bits);
+	CMOV_NE(dst_host_reg, src_host_reg);
+	ST_REG_val(dst_host_reg, dst.val, dst.bits);
 }
 
 void
