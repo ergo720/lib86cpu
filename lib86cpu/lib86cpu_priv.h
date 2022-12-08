@@ -64,9 +64,7 @@ struct memory_region_t {
 // 2: holds the phys addr of the page and points to a PAGE_SIZE array of indices used to find the region addr refers to
 struct subpage_t {
 	addr_t phys_addr;
-	uint16_t *cached_region_idx;
-	subpage_t() : phys_addr(0), cached_region_idx(nullptr) {}
-	~subpage_t() { delete[] cached_region_idx; }
+	std::unique_ptr<uint16_t[]> cached_region_idx;
 };
 
 struct exp_data_t {

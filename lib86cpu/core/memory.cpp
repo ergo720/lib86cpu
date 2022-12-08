@@ -82,7 +82,7 @@ tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 			}
 			else {
 				subpage = &cpu->subpages.emplace_back(subpage_t{});
-				subpage->cached_region_idx = new uint16_t[1];
+				subpage->cached_region_idx = std::unique_ptr<uint16_t[]>{ new uint16_t[1]() };
 				subpage_idx = cpu->subpages.size() - 1;
 			}
 
@@ -123,7 +123,7 @@ tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 		}
 		else {
 			subpage = &cpu->subpages.emplace_back(subpage_t{});
-			subpage->cached_region_idx = new uint16_t[PAGE_SIZE]();
+			subpage->cached_region_idx = std::unique_ptr<uint16_t[]>{ new uint16_t[PAGE_SIZE]() };
 			subpage_idx = cpu->subpages.size() - 1;
 		}
 
