@@ -36,10 +36,9 @@ tlb_gen_access_mask(cpu_t *cpu, uint8_t user, uint8_t is_write)
 static addr_t
 correct_phys_addr(cpu_t *cpu, addr_t phys_addr, const memory_region_t<addr_t> *&region)
 {
-	// this function applies three corrections to the physical address:
+	// this function applies two corrections to the physical address:
 	// 1. if region is alias, it resolves it and calculates the final addr the aliased addr is pointing to
-	// 2. if region is ram or rom, it subtracts the region start, so that phys_addr can be used to index the ram/rom buffer
-	// 3. it masks the address with the current state of the a20 gate
+	// 2. it masks the address with the current state of the a20 gate
 
 	if (region->type == mem_type::alias) {
 		uint32_t offset = 0;
@@ -48,10 +47,6 @@ correct_phys_addr(cpu_t *cpu, addr_t phys_addr, const memory_region_t<addr_t> *&
 			region = region->aliased_region;
 		}
 		phys_addr -= offset;
-	}
-
-	if ((region->type == mem_type::ram) || (region->type == mem_type::rom)) {
-		phys_addr -= region->start;
 	}
 
 	return phys_addr & cpu->a20_mask;
@@ -552,7 +547,7 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv
 		case TLB_RAM: {
 			// it's ram, tlb holds the physical address
 			addr_t phys_addr = (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
-			T ret = *reinterpret_cast<T *>(&cpu_ctx->ram[phys_addr]);
+			T ret = *reinterpret_cast<T *>(&cpu_ctx->ram[phys_addr - cpu_ctx->cpu->ram_start]);
 			if constexpr (is_big_endian) {
 				swap_byte_order<T>(ret);
 			}
@@ -564,7 +559,7 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv
 			const subpage_t *subpage = &cpu_ctx->cpu->subpages[tlb_entry >> PAGE_SHIFT];
 			addr_t phys_addr = subpage->phys_addr | (addr & PAGE_MASK);
 			const memory_region_t<addr_t> *rom = cpu_ctx->cpu->cached_regions[subpage->cached_region_idx[0]];
-			T ret = *reinterpret_cast<T *>(&rom->rom_ptr[phys_addr]);
+			T ret = *reinterpret_cast<T *>(&rom->rom_ptr[phys_addr - rom->start]);
 			if constexpr (is_big_endian) {
 				swap_byte_order<T>(ret);
 			}
@@ -641,7 +636,7 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint
 				swap_byte_order<T>(val);
 			}
 			addr_t phys_addr = (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
-			*reinterpret_cast<T *>(&cpu_ctx->ram[phys_addr]) = val;
+			*reinterpret_cast<T *>(&cpu_ctx->ram[phys_addr - cpu_ctx->cpu->ram_start]) = val;
 			return;
 		}
 

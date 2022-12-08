@@ -172,6 +172,7 @@ struct cpu_t {
 	addr_t db_addr;
 	addr_t instr_eip;
 	addr_t virt_pc;
+	addr_t ram_start;
 	size_t instr_bytes;
 	uint8_t size_mode;
 	uint8_t addr_mode;

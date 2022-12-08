@@ -411,7 +411,7 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 // immediately by passing should_int=false. This is only safe before you have called cpu_run to start the emulation, since at that point no code has been generated yet.
 
 /*
-* mem_init_region_ram -> creates a ram region
+* mem_init_region_ram -> creates a ram region. If more than one is added, the address range of the existing one is erased
 * cpu: a valid cpu instance
 * start: the guest physical address where the ram starts
 * size: size in bytes of ram
@@ -435,6 +435,10 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, size_t size, bool should_int)
 		cpu->raise_int_fn(&cpu->cpu_ctx, CPU_REGION_INT);
 	}
 	else {
+		if (auto ram = as_memory_search_addr(cpu, cpu->ram_start); ram->type == mem_type::ram) {
+			cpu->memory_space_tree->erase(ram->start, ram->end);
+		}
+		cpu->ram_start = start;
 		cpu->memory_space_tree->insert(std::move(ram));
 		tc_should_clear_cache_and_tlb<true>(cpu, start, start + size - 1);
 	}

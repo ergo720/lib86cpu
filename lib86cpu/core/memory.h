@@ -258,13 +258,13 @@ void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, const memory_region_
 void *
 get_rom_host_ptr(const memory_region_t<addr_t> *rom, addr_t addr)
 {
-	return &rom->rom_ptr[addr];
+	return &rom->rom_ptr[addr - rom->start];
 }
 
 void *
 get_ram_host_ptr(cpu_t *cpu, addr_t addr)
 {
-	return &cpu->cpu_ctx.ram[addr];
+	return &cpu->cpu_ctx.ram[addr - cpu->ram_start];
 }
 
 template<typename T>

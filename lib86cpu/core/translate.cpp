@@ -1264,6 +1264,12 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 				// the a20 interrupt has already flushed the tlb and the code cache, so just update the as object
 				std::for_each(cpu->regions_changed.begin(), cpu->regions_changed.end(), [cpu](auto &pair) {
 					if (pair.first) {
+						if (pair.second->type == mem_type::ram) {
+							if (auto ram = as_memory_search_addr(cpu, cpu->ram_start); ram->type == mem_type::ram) {
+								cpu->memory_space_tree->erase(ram->start, ram->end);
+							}
+							cpu->ram_start = pair.second->start;
+						}
 						cpu->memory_space_tree->insert(std::move(pair.second));
 					}
 					else {
@@ -1277,6 +1283,12 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 			std::for_each(cpu->regions_changed.begin(), cpu->regions_changed.end(), [cpu](auto &pair) {
 				addr_t start = pair.second->start, end = pair.second->end;
 				if (pair.first) {
+					if (pair.second->type == mem_type::ram) {
+						if (auto ram = as_memory_search_addr(cpu, cpu->ram_start); ram->type == mem_type::ram) {
+							cpu->memory_space_tree->erase(ram->start, ram->end);
+						}
+						cpu->ram_start = pair.second->start;
+					}
 					cpu->memory_space_tree->insert(std::move(pair.second));
 				}
 				else {
