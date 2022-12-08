@@ -1310,7 +1310,7 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 		cpu_ctx->cpu->suspend_flg.wait(true);
 	}
 
-	if (int_flg & CPU_HW_INT) {
+	if (((int_flg & CPU_HW_INT) | (cpu_ctx->regs.eflags & IF_MASK)) == (IF_MASK | CPU_HW_INT)) {
 		cpu_ctx->exp_info.exp_data.fault_addr = 0;
 		cpu_ctx->exp_info.exp_data.code = 0;
 		cpu_ctx->exp_info.exp_data.idx = cpu_ctx->cpu->get_int_vec();
