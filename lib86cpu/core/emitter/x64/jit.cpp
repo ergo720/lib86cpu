@@ -322,8 +322,7 @@ lc86_jit::lc86_jit(cpu_t *cpu)
 	m_cpu = cpu;
 	_environment = Environment::host();
 	_environment.setObjectFormat(ObjectFormat::kJIT);
-	gen_int_fn(false);
-	gen_int_fn(true);
+	gen_int_fn();
 }
 
 void
@@ -558,6 +557,13 @@ lc86_jit::gen_tc_epilogue()
 	if (m_needs_epilogue) {
 		gen_epilogue_main();
 	}
+}
+
+void
+lc86_jit::gen_int_fn()
+{
+	gen_int_fn(false);
+	gen_int_fn(true);
 }
 
 template<bool terminates, typename T1, typename T2, typename T3, typename T4>
