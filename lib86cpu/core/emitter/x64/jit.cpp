@@ -4064,6 +4064,14 @@ lc86_jit::cmps(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::cpuid(ZydisDecodedInstruction *instr)
+{
+	MOV(RAX, &cpuid_helper);
+	CALL(RAX);
+	MOV(RCX, &m_cpu->cpu_ctx);
+}
+
+void
 lc86_jit::cwd(ZydisDecodedInstruction *instr)
 {
 	MOVSX(EDX, MEMD16(RCX, CPU_CTX_EAX));

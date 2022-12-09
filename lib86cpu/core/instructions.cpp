@@ -1052,6 +1052,35 @@ idivb_helper(cpu_ctx_t *cpu_ctx, uint8_t d, uint32_t eip)
 	return 0;
 }
 
+void
+cpuid_helper(cpu_ctx_t *cpu_ctx)
+{
+	switch (cpu_ctx->regs.eax)
+	{
+	default:
+	case 2:
+		cpu_ctx->regs.eax = 0x03020101;
+		cpu_ctx->regs.ebx = 0;
+		cpu_ctx->regs.edx = 0x0C040841;
+		cpu_ctx->regs.ecx = 0;
+		break;
+
+	case 1:
+		cpu_ctx->regs.eax = 0x0000068A;
+		cpu_ctx->regs.ebx = 0;
+		cpu_ctx->regs.edx = 0x0383F9FF; // fpu, vme, de, pse, tsc, msr, pae, mce, cx8, sep, mtrr, pge, mca, cmov, pat, pse-36, mmx, fxsr, sse
+		cpu_ctx->regs.ecx = 0;
+		break;
+
+	case 0:
+		cpu_ctx->regs.eax = 2;
+		cpu_ctx->regs.ebx = 0x756E6547; // "Genu"
+		cpu_ctx->regs.edx = 0x49656E69; // "ineI"
+		cpu_ctx->regs.ecx = 0x6C65746E; // "ntel"
+		break;
+	}
+}
+
 template uint8_t lret_pe_helper<true>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
 template uint8_t lret_pe_helper<false>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
 

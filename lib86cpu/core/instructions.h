@@ -23,3 +23,4 @@ uint8_t divb_helper(cpu_ctx_t *cpu_ctx, uint8_t d, uint32_t eip);
 uint8_t idivd_helper(cpu_ctx_t *cpu_ctx, uint32_t d, uint32_t eip);
 uint8_t idivw_helper(cpu_ctx_t *cpu_ctx, uint16_t d, uint32_t eip);
 uint8_t idivb_helper(cpu_ctx_t *cpu_ctx, uint8_t d, uint32_t eip);
+void cpuid_helper(cpu_ctx_t *cpu_ctx);
