@@ -78,3 +78,14 @@ struct regs_t {
 	DEFINE_REG16(status);
 	DEFINE_REG16(tag);
 };
+
+struct msr_t {
+	struct {
+		struct {
+			uint64_t base;
+			uint64_t mask;
+		} phys_var[8];
+		uint64_t phys_fixed[11];
+		uint64_t def_type;
+	} mtrr;
+};

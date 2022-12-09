@@ -893,7 +893,7 @@ update_drN_helper(cpu_ctx_t *cpu_ctx, uint8_t dr_idx, uint32_t new_dr)
 	}
 }
 
-void
+uint8_t
 msr_read_helper(cpu_ctx_t *cpu_ctx)
 {
 	uint64_t val;
@@ -901,8 +901,11 @@ msr_read_helper(cpu_ctx_t *cpu_ctx)
 	switch (cpu_ctx->regs.ecx)
 	{
 	case IA32_APIC_BASE:
-		// hardcoded value for now
-		val = 0xFEE00000 | (1 << 11) | (1 << 8);
+		val = MSR_IA32_APICBASE_BSP;
+		break;
+
+	case IA32_MTRRCAP:
+		val = (MSR_MTRRcap_VCNT | MSR_MTRRcap_FIX | MSR_MTRRcap_WC);
 		break;
 
 	case IA32_MTRR_PHYSBASE(0):
@@ -913,7 +916,7 @@ msr_read_helper(cpu_ctx_t *cpu_ctx)
 	case IA32_MTRR_PHYSBASE(5):
 	case IA32_MTRR_PHYSBASE(6):
 	case IA32_MTRR_PHYSBASE(7):
-		val = cpu_ctx->cpu->mtrr.phys_var[(cpu_ctx->regs.ecx - MTRR_PHYSBASE_base) / 2].base;
+		val = cpu_ctx->cpu->msr.mtrr.phys_var[(cpu_ctx->regs.ecx - IA32_MTRR_PHYSBASE_base) / 2].base;
 		break;
 
 	case IA32_MTRR_PHYSMASK(0):
@@ -924,7 +927,31 @@ msr_read_helper(cpu_ctx_t *cpu_ctx)
 	case IA32_MTRR_PHYSMASK(5):
 	case IA32_MTRR_PHYSMASK(6):
 	case IA32_MTRR_PHYSMASK(7):
-		val = cpu_ctx->cpu->mtrr.phys_var[(cpu_ctx->regs.ecx - MTRR_PHYSMASK_base) / 2].mask;
+		val = cpu_ctx->cpu->msr.mtrr.phys_var[(cpu_ctx->regs.ecx - IA32_MTRR_PHYSMASK_base) / 2].mask;
+		break;
+
+	case IA32_MTRR_FIX64K_00000:
+		val = cpu_ctx->cpu->msr.mtrr.phys_fixed[0];
+		break;
+
+	case IA32_MTRR_FIX16K_80000:
+	case IA32_MTRR_FIX16K_A0000:
+		val = cpu_ctx->cpu->msr.mtrr.phys_fixed[cpu_ctx->regs.ecx - IA32_MTRR_FIX16K_80000 + 1];
+		break;
+
+	case IA32_MTRR_FIX4K_C0000:
+	case IA32_MTRR_FIX4K_C8000:
+	case IA32_MTRR_FIX4K_D0000:
+	case IA32_MTRR_FIX4K_D8000:
+	case IA32_MTRR_FIX4K_E0000:
+	case IA32_MTRR_FIX4K_E8000:
+	case IA32_MTRR_FIX4K_F0000:
+	case IA32_MTRR_FIX4K_F8000:
+		val = cpu_ctx->cpu->msr.mtrr.phys_fixed[cpu_ctx->regs.ecx - IA32_MTRR_FIX4K_C0000 + 3];
+		break;
+
+	case IA32_MTRR_DEF_TYPE:
+		val = cpu_ctx->cpu->msr.mtrr.def_type;
 		break;
 
 	default:
@@ -933,6 +960,8 @@ msr_read_helper(cpu_ctx_t *cpu_ctx)
 
 	cpu_ctx->regs.edx = (val >> 32);
 	cpu_ctx->regs.eax = val;
+
+	return 0;
 }
 
 uint8_t

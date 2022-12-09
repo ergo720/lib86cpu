@@ -109,6 +109,7 @@ public:
 	void pushf(ZydisDecodedInstruction *instr);
 	void rcl(ZydisDecodedInstruction *instr);
 	void rcr(ZydisDecodedInstruction *instr);
+	void rdmsr(ZydisDecodedInstruction *instr);
 	void rdtsc(ZydisDecodedInstruction *instr);
 	void ret(ZydisDecodedInstruction *instr);
 	void rol(ZydisDecodedInstruction *instr);

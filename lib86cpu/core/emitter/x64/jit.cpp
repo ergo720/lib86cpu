@@ -6680,6 +6680,24 @@ lc86_jit::rcr(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::rdmsr(ZydisDecodedInstruction *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
+		RAISEin0_t(EXP_GP);
+	}
+	else {
+		Label ok = m_a.newLabel();
+		MOV(RAX, &msr_read_helper);
+		CALL(RAX);
+		MOV(RCX, &m_cpu->cpu_ctx);
+		CMP(AL, 0);
+		BR_EQ(ok);
+		RAISEin0_f(EXP_GP);
+		m_a.bind(ok);
+	}
+}
+
+void
 lc86_jit::rdtsc(ZydisDecodedInstruction *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {

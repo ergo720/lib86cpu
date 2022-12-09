@@ -156,12 +156,7 @@ struct cpu_t {
 		uint64_t last_host_ticks;
 		uint64_t host_freq;
 	} clock;
-	struct {
-		struct {
-			uint64_t base;
-			uint64_t mask;
-		} phys_var[8];
-	} mtrr;
+	msr_t msr;
 	clear_int_t clear_int_fn;
 	raise_int_t raise_int_fn;
 	fp_int get_int_vec;

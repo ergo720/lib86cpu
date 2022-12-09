@@ -42,6 +42,9 @@ cpu_reset(cpu_t *cpu)
 	cpu->cpu_ctx.regs.tag = 0x5555;
 	cpu->a20_mask = 0xFFFFFFFF; // gate closed
 	cpu->cpu_ctx.exp_info.old_exp = EXP_INVALID;
+	cpu->msr.mtrr.def_type = 0;
+	std::memset(cpu->msr.mtrr.phys_var, 0, sizeof(cpu->msr.mtrr.phys_var));
+	std::memset(cpu->msr.mtrr.phys_fixed, 0, sizeof(cpu->msr.mtrr.phys_fixed));
 	cpu->clock.tsc = 0;
 	tsc_init(cpu);
 }
@@ -1109,7 +1112,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			cpu->jit->rcr(&instr);
 			break;
 
-		case ZYDIS_MNEMONIC_RDMSR: BAD;
+		case ZYDIS_MNEMONIC_RDMSR:
+			cpu->jit->rdmsr(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_RDPMC:       BAD;
 		case ZYDIS_MNEMONIC_RDTSC:
 			cpu->jit->rdtsc(&instr);

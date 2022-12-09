@@ -17,8 +17,6 @@ template<bool should_flush_tlb>
 void tc_should_clear_cache_and_tlb(cpu_t *cpu, addr_t start, addr_t end);
 void tc_cache_clear(cpu_t *cpu);
 void tc_cache_purge(cpu_t *cpu);
-void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);
-void msr_read_helper(cpu_ctx_t *cpu_ctx);
 addr_t get_pc(cpu_ctx_t *cpu_ctx);
 template<bool is_int = false> translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx);
 translated_code_t *cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
@@ -272,10 +270,29 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define ST_TOP_MASK (3 << 11)
 
 // msr register addresses
-#define MTRR_PHYSBASE_base    0x200
-#define MTRR_PHYSMASK_base    0x201
-#define IA32_APIC_BASE        0x1B
-#define IA32_MTRR_PHYSBASE(n) (MTRR_PHYSBASE_base + (n * 2))
-#define IA32_MTRR_PHYSMASK(n) (MTRR_PHYSMASK_base + (n * 2))
+#define IA32_APIC_BASE             0x1B
+#define IA32_MTRRCAP               0xFE
+#define IA32_MTRR_PHYSBASE_base    0x200
+#define IA32_MTRR_PHYSMASK_base    0x201
+#define IA32_MTRR_FIX64K_00000     0x250
+#define IA32_MTRR_FIX16K_80000     0x258
+#define IA32_MTRR_FIX16K_A0000     0x259
+#define IA32_MTRR_FIX4K_C0000      0x268
+#define IA32_MTRR_FIX4K_C8000      0x269
+#define IA32_MTRR_FIX4K_D0000      0x26A
+#define IA32_MTRR_FIX4K_D8000      0x26B
+#define IA32_MTRR_FIX4K_E0000      0x26C
+#define IA32_MTRR_FIX4K_E8000      0x26D
+#define IA32_MTRR_FIX4K_F0000      0x26E
+#define IA32_MTRR_FIX4K_F8000      0x26F
+#define IA32_MTRR_DEF_TYPE         0x2FF
+#define IA32_MTRR_PHYSBASE(n)      (IA32_MTRR_PHYSBASE_base + (n * 2))
+#define IA32_MTRR_PHYSMASK(n)      (IA32_MTRR_PHYSMASK_base + (n * 2))
+
+// msr macros
+#define MSR_IA32_APICBASE_BSP (1 << 8)
+#define MSR_MTRRcap_VCNT      8
+#define MSR_MTRRcap_FIX       (1 << 8)
+#define MSR_MTRRcap_WC        (1 << 10)
 
 #define X86_MAX_INSTR_LENGTH 15
