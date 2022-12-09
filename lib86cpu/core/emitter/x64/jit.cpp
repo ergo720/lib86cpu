@@ -316,6 +316,8 @@ get_local_var_offset()
 #define GET_OP(op) get_operand(instr, op)
 #define GET_IMM() get_immediate_op(instr, OPNUM_SRC)
 
+#define RELOAD_RCX_CTX() MOV(RCX, &m_cpu->cpu_ctx)
+
 
 lc86_jit::lc86_jit(cpu_t *cpu)
 {
@@ -601,7 +603,7 @@ lc86_jit::hook_emit(void *hook_addr)
 {
 	MOV(RAX, reinterpret_cast<uintptr_t>(hook_addr));
 	CALL(RAX);
-	MOV(RCX, &m_cpu->cpu_ctx);
+	RELOAD_RCX_CTX();
 
 	link_ret_emit();
 }
@@ -866,7 +868,7 @@ lc86_jit::link_indirect_emit()
 	MOV(RDX, m_cpu->tc);
 	MOV(RAX, &link_indirect_handler);
 	CALL(RAX);
-	MOV(RCX, &m_cpu->cpu_ctx);
+	RELOAD_RCX_CTX();
 	gen_tail_call(RAX);
 }
 
@@ -1530,7 +1532,7 @@ void lc86_jit::set_flags_sum(x86::Gp a, T b, x86::Gp sum)
 		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s", m_cpu->size_mode, __func__);
 	}
 
-	MOV(RCX, &m_cpu->cpu_ctx);
+	RELOAD_RCX_CTX();
 	MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EAX);
 }
 
@@ -1570,7 +1572,7 @@ void lc86_jit::set_flags_sub(T1 a, T2 b, x86::Gp sub)
 		LIB86CPU_ABORT_msg("Invalid size_mode \"%c\" used in %s", m_cpu->size_mode, __func__);
 	}
 
-	MOV(RCX, &m_cpu->cpu_ctx);
+	RELOAD_RCX_CTX();
 	MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EAX);
 }
 
@@ -1693,7 +1695,7 @@ lc86_jit::load_mem(uint8_t size, uint8_t is_priv)
 	}
 
 	CALL(RAX);
-	MOV(RCX, &m_cpu->cpu_ctx);
+	RELOAD_RCX_CTX();
 }
 
 template<typename T>
@@ -1726,7 +1728,7 @@ void lc86_jit::store_mem(T val, uint8_t size, uint8_t is_priv)
 	}
 
 	CALL(RAX);
-	MOV(RCX, &m_cpu->cpu_ctx);
+	RELOAD_RCX_CTX();
 }
 
 void
@@ -1753,7 +1755,7 @@ lc86_jit::load_io(uint8_t size_mode)
 	}
 
 	CALL(RAX);
-	MOV(RCX, &m_cpu->cpu_ctx);
+	RELOAD_RCX_CTX();
 }
 
 void
@@ -1784,7 +1786,7 @@ lc86_jit::store_io(uint8_t size_mode)
 	}
 
 	CALL(RAX);
-	MOV(RCX, &m_cpu->cpu_ctx);
+	RELOAD_RCX_CTX();
 }
 
 template<typename T>
@@ -1829,7 +1831,7 @@ bool lc86_jit::check_io_priv_emit(T port)
 			AND(EDX, 7);
 			MOV(ECX, EDX);
 			SHR(EAX, CL);
-			MOV(RCX, &m_cpu->cpu_ctx);
+			RELOAD_RCX_CTX();
 		}
 		AND(EAX, (1 << op_size_to_mem_size[m_cpu->size_mode]) - 1);
 		BR_NE(exp);
@@ -2172,7 +2174,7 @@ void lc86_jit::shift(ZydisDecodedInstruction *instr)
 				else {
 					LIB86CPU_ABORT_msg("Unknown shift operation specified with index of %u", idx);
 				}
-				MOV(RCX, &m_cpu->cpu_ctx);
+				RELOAD_RCX_CTX();
 				SETC(BL);
 				SETO(DL);
 				MOVZX(EBX, BL);
@@ -2207,7 +2209,7 @@ void lc86_jit::shift(ZydisDecodedInstruction *instr)
 				auto dst2_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
 				MOV(dst2_host_reg, dst_host_reg);
 				MOV(EDX, EBX);
-				MOV(RCX, &m_cpu->cpu_ctx);
+				RELOAD_RCX_CTX();
 				SETC(BL);
 				SETO(AL);
 				MOVZX(EBX, BL);
@@ -2332,7 +2334,7 @@ void lc86_jit::double_shift(ZydisDecodedInstruction *instr)
 				else {
 					LIB86CPU_ABORT_msg("Unknown double shift operation specified with index of %u", idx);
 				}
-				MOV(RCX, &m_cpu->cpu_ctx);
+				RELOAD_RCX_CTX();
 				SETC(BL);
 				SETO(DL);
 				MOVZX(EBX, BL);
@@ -2366,7 +2368,7 @@ void lc86_jit::double_shift(ZydisDecodedInstruction *instr)
 				MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), dst_host_reg);
 				auto dst2_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
 				MOV(dst2_host_reg, dst_host_reg);
-				MOV(RCX, &m_cpu->cpu_ctx);
+				RELOAD_RCX_CTX();
 				SETC(BL);
 				SETO(AL);
 				MOVZX(EBX, BL);
@@ -2558,7 +2560,7 @@ void lc86_jit::rotate(ZydisDecodedInstruction *instr)
 				else {
 					LIB86CPU_ABORT_msg("Unknown rotate operation specified with index of %u", idx);
 				}
-				MOV(RCX, &m_cpu->cpu_ctx);
+				RELOAD_RCX_CTX();
 				SETC(BL);
 				SETO(DL);
 				MOVZX(EBX, BL);
@@ -2612,7 +2614,7 @@ void lc86_jit::rotate(ZydisDecodedInstruction *instr)
 				auto dst2_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
 				MOV(dst2_host_reg, dst_host_reg);
 				MOV(EDX, EBX);
-				MOV(RCX, &m_cpu->cpu_ctx);
+				RELOAD_RCX_CTX();
 				SETC(BL);
 				SETO(AL);
 				MOVZX(EBX, BL);
@@ -2688,7 +2690,7 @@ void lc86_jit::load_sys_seg_reg(ZydisDecodedInstruction *instr)
 					// hook the breakpoint exception handler so that the debugger can catch it
 					MOV(RAX, &dbg_update_exp_hook);
 					CALL(RAX);
-					MOV(RCX, &m_cpu->cpu_ctx);
+					RELOAD_RCX_CTX();
 				}
 			}
 			else {
@@ -2717,7 +2719,7 @@ void lc86_jit::load_sys_seg_reg(ZydisDecodedInstruction *instr)
 				MOV(RAX, &ltr_helper);
 			}
 			CALL(RAX);
-			MOV(RCX, &m_cpu->cpu_ctx);
+			RELOAD_RCX_CTX();
 			CMP(AL, 0);
 			BR_EQ(ok);
 			RAISEin_no_param_f();
@@ -2750,7 +2752,7 @@ void lc86_jit::verx(ZydisDecodedInstruction *instr)
 		MOV(RAX, &verrw_helper<false>);
 	}
 	CALL(RAX);
-	MOV(RCX, &m_cpu->cpu_ctx);
+	RELOAD_RCX_CTX();
 }
 
 template<unsigned idx>
@@ -2806,7 +2808,7 @@ void lc86_jit::lxs(ZydisDecodedInstruction *instr)
 
 		Label ok = m_a.newLabel();
 		CALL(RAX);
-		MOV(RCX, &m_cpu->cpu_ctx);
+		RELOAD_RCX_CTX();
 		CMP(AL, 0);
 		BR_EQ(ok);
 		RAISEin_no_param_f();
@@ -3510,7 +3512,7 @@ lc86_jit::call(ZydisDecodedInstruction *instr)
 			MOV(EDX, new_sel);
 			MOV(RAX, &lcall_pe_helper);
 			CALL(RAX);
-			MOV(RCX, &m_cpu->cpu_ctx);
+			RELOAD_RCX_CTX();
 			CMP(AL, 0);
 			BR_NE(exp);
 			link_indirect_emit();
@@ -3595,7 +3597,7 @@ lc86_jit::call(ZydisDecodedInstruction *instr)
 				MOV(EDX, EAX);
 				MOV(RAX, &lcall_pe_helper);
 				CALL(RAX);
-				MOV(RCX, &m_cpu->cpu_ctx);
+				RELOAD_RCX_CTX();
 				CMP(AL, 0);
 				BR_NE(exp);
 				link_indirect_emit();
@@ -4068,7 +4070,7 @@ lc86_jit::cpuid(ZydisDecodedInstruction *instr)
 {
 	MOV(RAX, &cpuid_helper);
 	CALL(RAX);
-	MOV(RCX, &m_cpu->cpu_ctx);
+	RELOAD_RCX_CTX();
 }
 
 void
@@ -4113,7 +4115,7 @@ lc86_jit::daa(ZydisDecodedInstruction *instr)
 	ADD(R8B, 6);
 	MOV(MEMD8(RDX, CPU_CTX_EAX), R8B);
 	gen_sum_vec16_8<SIZE8>(CL, 6, R8B);
-	MOV(RCX, &m_cpu->cpu_ctx);
+	RELOAD_RCX_CTX();
 	AND(EAX, 0x80000000);
 	OR(EAX, R11D);
 	OR(EAX, 8);
@@ -4174,7 +4176,7 @@ lc86_jit::das(ZydisDecodedInstruction *instr)
 	SUB(R8B, 6);
 	MOV(MEMD8(RDX, CPU_CTX_EAX), R8B);
 	gen_sub_vec16_8<SIZE8>(CL, 6, R8B);
-	MOV(RCX, &m_cpu->cpu_ctx);
+	RELOAD_RCX_CTX();
 	AND(EAX, 0x80000000);
 	OR(EAX, R11D);
 	OR(EAX, 8);
@@ -4330,7 +4332,7 @@ lc86_jit::div(ZydisDecodedInstruction *instr)
 		Label ok = m_a.newLabel();
 		MOV(R8D, m_cpu->instr_eip);
 		CALL(RAX);
-		MOV(RCX, &m_cpu->cpu_ctx);
+		RELOAD_RCX_CTX();
 		CMP(AL, 0);
 		BR_EQ(ok);
 		RAISEin_no_param_f();
@@ -4418,7 +4420,7 @@ lc86_jit::idiv(ZydisDecodedInstruction *instr)
 		Label ok = m_a.newLabel();
 		MOV(R8D, m_cpu->instr_eip);
 		CALL(RAX);
-		MOV(RCX, &m_cpu->cpu_ctx);
+		RELOAD_RCX_CTX();
 		CMP(AL, 0);
 		BR_EQ(ok);
 		RAISEin_no_param_f();
@@ -4699,7 +4701,7 @@ lc86_jit::iret(ZydisDecodedInstruction *instr)
 		MOV(DL, m_cpu->size_mode);
 		MOV(RAX, &lret_pe_helper<true>);
 		CALL(RAX);
-		MOV(RCX, &m_cpu->cpu_ctx);
+		RELOAD_RCX_CTX();
 		CMP(AL, 0);
 		BR_NE(exp);
 		link_ret_emit();
@@ -4711,7 +4713,7 @@ lc86_jit::iret(ZydisDecodedInstruction *instr)
 		MOV(DL, m_cpu->size_mode);
 		MOV(RAX, &iret_real_helper);
 		CALL(RAX);
-		MOV(RCX, &m_cpu->cpu_ctx);
+		RELOAD_RCX_CTX();
 		link_ret_emit();
 	}
 
@@ -4996,7 +4998,7 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 			MOV(DX, new_sel);
 			MOV(RAX, &ljmp_pe_helper);
 			CALL(RAX);
-			MOV(RCX, &m_cpu->cpu_ctx);
+			RELOAD_RCX_CTX();
 			CMP(AL, 0);
 			BR_NE(exp);
 			link_indirect_emit();
@@ -5385,7 +5387,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				MOV(R8D, cr_idx - CR_offset);
 				MOV(RAX, &update_crN_helper);
 				CALL(RAX);
-				MOV(RCX, &m_cpu->cpu_ctx);
+				RELOAD_RCX_CTX();
 				CMP(AL, 0);
 				BR_EQ(ok);
 				RAISEin0_f(EXP_GP);
@@ -5431,7 +5433,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				MOV(DL, dr_idx);
 				MOV(RAX, &update_drN_helper);
 				CALL(RAX);
-				MOV(RCX, &m_cpu->cpu_ctx);
+				RELOAD_RCX_CTX();
 			}
 			break;
 
@@ -5597,7 +5599,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				MOV(DX, AX);
 				MOV(RAX, &mov_sel_pe_helper<SS_idx>);
 				CALL(RAX);
-				MOV(RCX, &m_cpu->cpu_ctx);
+				RELOAD_RCX_CTX();
 				CMP(AL, 0);
 				BR_EQ(ok);
 				RAISEin_no_param_f();
@@ -5636,7 +5638,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 
 				Label ok = m_a.newLabel();
 				CALL(RAX);
-				MOV(RCX, &m_cpu->cpu_ctx);
+				RELOAD_RCX_CTX();
 				CMP(AL, 0);
 				BR_EQ(ok);
 				RAISEin_no_param_f();
@@ -6268,7 +6270,7 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 
 			Label ok = m_a.newLabel();
 			CALL(RAX);
-			MOV(RCX, &m_cpu->cpu_ctx);
+			RELOAD_RCX_CTX();
 			CMP(AL, 0);
 			BR_EQ(ok);
 			RAISEin_no_param_f();
@@ -6689,7 +6691,7 @@ lc86_jit::rdmsr(ZydisDecodedInstruction *instr)
 		Label ok = m_a.newLabel();
 		MOV(RAX, &msr_read_helper);
 		CALL(RAX);
-		MOV(RCX, &m_cpu->cpu_ctx);
+		RELOAD_RCX_CTX();
 		CMP(AL, 0);
 		BR_EQ(ok);
 		RAISEin0_f(EXP_GP);
@@ -6712,7 +6714,7 @@ lc86_jit::rdtsc(ZydisDecodedInstruction *instr)
 
 	MOV(RAX, &cpu_rdtsc_handler);
 	CALL(RAX);
-	MOV(RCX, &m_cpu->cpu_ctx);
+	RELOAD_RCX_CTX();
 }
 
 void
@@ -6757,7 +6759,7 @@ lc86_jit::ret(ZydisDecodedInstruction *instr)
 			MOV(DL, m_cpu->size_mode);
 			MOV(RAX, &lret_pe_helper<false>);
 			CALL(RAX);
-			MOV(RCX, &m_cpu->cpu_ctx);
+			RELOAD_RCX_CTX();
 			CMP(AL, 0);
 			BR_EQ(ok);
 			RAISEin_no_param_f();
