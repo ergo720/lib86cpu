@@ -965,6 +965,84 @@ msr_read_helper(cpu_ctx_t *cpu_ctx)
 }
 
 uint8_t
+msr_write_helper(cpu_ctx_t *cpu_ctx)
+{
+	uint64_t val = (static_cast<uint64_t>(cpu_ctx->regs.edx) << 32) | cpu_ctx->regs.eax;
+
+	switch (cpu_ctx->regs.ecx)
+	{
+	case IA32_APIC_BASE:
+		if (val & MSR_IA32_APIC_BASE_RES) {
+			return 1;
+		}
+		break;
+
+	case IA32_MTRRCAP:
+		return 1;
+
+	case IA32_MTRR_PHYSBASE(0):
+	case IA32_MTRR_PHYSBASE(1):
+	case IA32_MTRR_PHYSBASE(2):
+	case IA32_MTRR_PHYSBASE(3):
+	case IA32_MTRR_PHYSBASE(4):
+	case IA32_MTRR_PHYSBASE(5):
+	case IA32_MTRR_PHYSBASE(6):
+	case IA32_MTRR_PHYSBASE(7):
+		if (val & MSR_MTRR_PHYSBASE_RES) {
+			return 1;
+		}
+		cpu_ctx->cpu->msr.mtrr.phys_var[(cpu_ctx->regs.ecx - IA32_MTRR_PHYSBASE_base) / 2].base = val;
+		break;
+
+	case IA32_MTRR_PHYSMASK(0):
+	case IA32_MTRR_PHYSMASK(1):
+	case IA32_MTRR_PHYSMASK(2):
+	case IA32_MTRR_PHYSMASK(3):
+	case IA32_MTRR_PHYSMASK(4):
+	case IA32_MTRR_PHYSMASK(5):
+	case IA32_MTRR_PHYSMASK(6):
+	case IA32_MTRR_PHYSMASK(7):
+		if (val & MSR_MTRR_PHYSMASK_RES) {
+			return 1;
+		}
+		cpu_ctx->cpu->msr.mtrr.phys_var[(cpu_ctx->regs.ecx - IA32_MTRR_PHYSMASK_base) / 2].mask = val;
+		break;
+
+	case IA32_MTRR_FIX64K_00000:
+		cpu_ctx->cpu->msr.mtrr.phys_fixed[0] = val;
+		break;
+
+	case IA32_MTRR_FIX16K_80000:
+	case IA32_MTRR_FIX16K_A0000:
+		cpu_ctx->cpu->msr.mtrr.phys_fixed[cpu_ctx->regs.ecx - IA32_MTRR_FIX16K_80000 + 1] = val;
+		break;
+
+	case IA32_MTRR_FIX4K_C0000:
+	case IA32_MTRR_FIX4K_C8000:
+	case IA32_MTRR_FIX4K_D0000:
+	case IA32_MTRR_FIX4K_D8000:
+	case IA32_MTRR_FIX4K_E0000:
+	case IA32_MTRR_FIX4K_E8000:
+	case IA32_MTRR_FIX4K_F0000:
+	case IA32_MTRR_FIX4K_F8000:
+		cpu_ctx->cpu->msr.mtrr.phys_fixed[cpu_ctx->regs.ecx - IA32_MTRR_FIX4K_C0000 + 3] = val;
+		break;
+
+	case IA32_MTRR_DEF_TYPE:
+		if (val & MSR_MTRR_DEF_TYPE_RES) {
+			return 1;
+		}
+		cpu_ctx->cpu->msr.mtrr.def_type = val;
+		break;
+
+	default:
+		LIB86CPU_ABORT_msg("Unhandled msr write to register at address 0x%X", cpu_ctx->regs.ecx);
+	}
+
+	return 0;
+}
+
+uint8_t
 divd_helper(cpu_ctx_t *cpu_ctx, uint32_t d, uint32_t eip)
 {
 	uint64_t D = (static_cast<uint64_t>(cpu_ctx->regs.eax)) | (static_cast<uint64_t>(cpu_ctx->regs.edx) << 32);

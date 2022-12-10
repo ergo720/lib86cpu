@@ -290,9 +290,13 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define IA32_MTRR_PHYSMASK(n)      (IA32_MTRR_PHYSMASK_base + (n * 2))
 
 // msr macros
-#define MSR_IA32_APICBASE_BSP (1 << 8)
-#define MSR_MTRRcap_VCNT      8
-#define MSR_MTRRcap_FIX       (1 << 8)
-#define MSR_MTRRcap_WC        (1 << 10)
+#define MSR_IA32_APICBASE_BSP      (1 << 8)
+#define MSR_MTRRcap_VCNT           8
+#define MSR_MTRRcap_FIX            (1 << 8)
+#define MSR_MTRRcap_WC             (1 << 10)
+#define MSR_IA32_APIC_BASE_RES     0xFFFFFFF0000006FF
+#define MSR_MTRR_PHYSBASE_RES      0xFFFFFFF000000F00
+#define MSR_MTRR_PHYSMASK_RES      0xFFFFFFF0000007FF
+#define MSR_MTRR_DEF_TYPE_RES      0xFFFFFFFFFFFFF300
 
 #define X86_MAX_INSTR_LENGTH 15

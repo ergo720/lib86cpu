@@ -1231,7 +1231,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 		case ZYDIS_MNEMONIC_WBINVD:      BAD;
-		case ZYDIS_MNEMONIC_WRMSR:       BAD;
+		case ZYDIS_MNEMONIC_WRMSR:
+			cpu->jit->wrmsr(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_XADD:        BAD;
 		case ZYDIS_MNEMONIC_XCHG:
 			cpu->jit->xchg(&instr);

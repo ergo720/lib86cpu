@@ -52,6 +52,7 @@ constexpr auto all_callable_funcs = std::make_tuple(
 	mov_sel_pe_helper<GS_idx>,
 	cpu_rdtsc_handler,
 	msr_read_helper,
+	msr_write_helper,
 	divd_helper,
 	divw_helper,
 	divb_helper,
