@@ -7538,6 +7538,16 @@ lc86_jit::verw(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::wbinvd(ZydisDecodedInstruction *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
+		RAISEin0_t(EXP_GP);
+	}
+
+	// don't bother, we don't emulate the processor's caches. So, other than checking for a possible exception, this is a nop
+}
+
+void
 lc86_jit::wrmsr(ZydisDecodedInstruction *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {

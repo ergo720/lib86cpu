@@ -131,6 +131,7 @@ public:
 	void test(ZydisDecodedInstruction *instr);
 	void verr(ZydisDecodedInstruction *instr);
 	void verw(ZydisDecodedInstruction *instr);
+	void wbinvd(ZydisDecodedInstruction *instr);
 	void wrmsr(ZydisDecodedInstruction *instr);
 	void xchg(ZydisDecodedInstruction *instr);
 	void xor_(ZydisDecodedInstruction *instr);
