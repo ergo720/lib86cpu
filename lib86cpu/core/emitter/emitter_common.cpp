@@ -18,8 +18,10 @@
 // NOTE1: the jitted main() and exit() are also called during code linking, but those only use register args
 // NOTE2: this assumes the Windows x64 calling convention
 constexpr auto all_callable_funcs = std::make_tuple(
-	cpu_raise_exception<true>,
-	cpu_raise_exception<false>,
+	cpu_raise_exception<true, true>,
+	cpu_raise_exception<true, false>,
+	cpu_raise_exception<false, true>,
+	cpu_raise_exception<false, false>,
 	cpu_do_int,
 	link_indirect_handler,
 	mem_read_helper<uint32_t>,

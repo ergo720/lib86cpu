@@ -75,7 +75,7 @@ check_dbl_exp(cpu_ctx_t *cpu_ctx)
 	cpu_ctx->exp_info.exp_data.idx = idx;
 }
 
-template<bool is_int>
+template<bool is_int, bool is_hw>
 translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 {
 	check_dbl_exp(cpu_ctx);
@@ -90,8 +90,10 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 	if (cpu_ctx->hflags & HFLG_PE_MODE) {
 		// protected mode
 
+		constexpr uint16_t ext_flg = is_int ? 0 : 1; // EXT flag clear for INT instructions, set otherwise
+
 		if (idx * 8 + 7 > cpu_ctx->regs.idtr_hidden.limit) {
-			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2;
+			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2 + ext_flg;
 			cpu_ctx->exp_info.exp_data.idx = EXP_GP;
 			return cpu_raise_exception(cpu_ctx);
 		}
@@ -118,28 +120,28 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 			break;
 
 		default:
-			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2;
+			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2 + ext_flg;
 			cpu_ctx->exp_info.exp_data.idx = EXP_GP;
 			return cpu_raise_exception(cpu_ctx);
 		}
 
 		uint32_t dpl = (desc & SEG_DESC_DPL) >> 45;
 		uint32_t cpl = cpu_ctx->hflags & HFLG_CPL;
-		if (is_int && (dpl < cpl)) {
+		if (is_int && (dpl < cpl)) { // only INT instructions check the dpl of the gate in the idt
 			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2;
 			cpu_ctx->exp_info.exp_data.idx = EXP_GP;
 			return cpu_raise_exception(cpu_ctx);
 		}
 
 		if ((desc & SEG_DESC_P) == 0) {
-			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2;
+			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2 + ext_flg;
 			cpu_ctx->exp_info.exp_data.idx = EXP_NP;
 			return cpu_raise_exception(cpu_ctx);
 		}
 
 		uint16_t sel = (desc & 0xFFFF0000) >> 16;
 		if ((sel >> 2) == 0) {
-			cpu_ctx->exp_info.exp_data.code = 0;
+			cpu_ctx->exp_info.exp_data.code = ext_flg;
 			cpu_ctx->exp_info.exp_data.idx = EXP_GP;
 			return cpu_raise_exception(cpu_ctx);
 		}
@@ -147,18 +149,19 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		addr_t code_desc_addr;
 		uint64_t code_desc;
 		if (read_seg_desc_helper(cpu, sel, code_desc_addr, code_desc, eip)) {
+			cpu_ctx->exp_info.exp_data.code += ext_flg;
 			return cpu_raise_exception(cpu_ctx);
 		}
 
 		dpl = (code_desc & SEG_DESC_DPL) >> 45;
 		if (dpl > cpl) {
-			cpu_ctx->exp_info.exp_data.code = sel & 0xFFFC;
+			cpu_ctx->exp_info.exp_data.code = (sel & 0xFFFC) + ext_flg;
 			cpu_ctx->exp_info.exp_data.idx = EXP_GP;
 			return cpu_raise_exception(cpu_ctx);
 		}
 
 		if ((code_desc & SEG_DESC_P) == 0) {
-			cpu_ctx->exp_info.exp_data.code = sel & 0xFFFC;
+			cpu_ctx->exp_info.exp_data.code = (sel & 0xFFFC) + ext_flg;
 			cpu_ctx->exp_info.exp_data.idx = EXP_NP;
 			return cpu_raise_exception(cpu_ctx);
 		}
@@ -182,17 +185,18 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 			// more privileged
 
 			if (read_stack_ptr_from_tss_helper(cpu, dpl, new_esp, new_ss, eip)) {
+				cpu_ctx->exp_info.exp_data.code += ext_flg;
 				return cpu_raise_exception(cpu_ctx);
 			}
 
 			if ((new_ss >> 2) == 0) {
-				cpu_ctx->exp_info.exp_data.code = new_ss & 0xFFFC;
+				cpu_ctx->exp_info.exp_data.code = ext_flg;
 				cpu_ctx->exp_info.exp_data.idx = EXP_TS;
 				return cpu_raise_exception(cpu_ctx);
 			}
 
 			if (read_seg_desc_helper(cpu, new_ss, ss_desc_addr, ss_desc, eip)) {
-				// code already written by read_seg_desc_helper
+				cpu_ctx->exp_info.exp_data.code += ext_flg;
 				cpu_ctx->exp_info.exp_data.idx = EXP_TS;
 				return cpu_raise_exception(cpu_ctx);
 			}
@@ -204,7 +208,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 			uint32_t ss_dpl = (ss_desc & SEG_DESC_DPL) >> 42;
 			uint32_t ss_rpl = (new_ss & 3) << 5;
 			if ((s | d | w | ss_dpl | ss_rpl | p) ^ ((0x85 | (dpl << 3)) | (dpl << 5))) {
-				cpu_ctx->exp_info.exp_data.code = new_ss & 0xFFFC;
+				cpu_ctx->exp_info.exp_data.code = (new_ss & 0xFFFC) + ext_flg;
 				cpu_ctx->exp_info.exp_data.idx = EXP_TS;
 				return cpu_raise_exception(cpu_ctx);
 			}
@@ -224,20 +228,26 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		}
 
 		uint8_t has_code;
-		switch (idx)
-		{
-		case EXP_DF:
-		case EXP_TS:
-		case EXP_NP:
-		case EXP_SS:
-		case EXP_GP:
-		case EXP_PF:
-		case EXP_AC:
-			has_code = 1;
-			break;
-
-		default:
+		if constexpr (is_int || is_hw) {
+			// INT instructions and hw interrupts don't push error codes
 			has_code = 0;
+		}
+		else {
+			switch (idx)
+			{
+			case EXP_DF:
+			case EXP_TS:
+			case EXP_NP:
+			case EXP_SS:
+			case EXP_GP:
+			case EXP_PF:
+			case EXP_AC:
+				has_code = 1;
+				break;
+
+			default:
+				has_code = 0;
+			}
 		}
 
 		type >>= 3;
@@ -933,7 +943,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			cpu->jit->int3(&instr);
 			break;
 
-		case ZYDIS_MNEMONIC_INT:         BAD;
+		case ZYDIS_MNEMONIC_INT:
+			cpu->jit->intn(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_INTO:        BAD;
 		case ZYDIS_MNEMONIC_INVD:        BAD;
 		case ZYDIS_MNEMONIC_INVLPG:      BAD;
@@ -1331,7 +1344,7 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 		cpu_ctx->exp_info.exp_data.code = 0;
 		cpu_ctx->exp_info.exp_data.idx = cpu_ctx->cpu->get_int_vec();
 		cpu_ctx->exp_info.exp_data.eip = cpu_ctx->regs.eip;
-		cpu_raise_exception(cpu_ctx);
+		cpu_raise_exception<false, true>(cpu_ctx);
 	}
 
 	return nullptr;
@@ -1595,6 +1608,8 @@ cpu_exec_trampoline(cpu_t *cpu, const uint32_t ret_eip)
 	cpu_main_loop<true, false>(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
 }
 
-template translated_code_t *cpu_raise_exception<true>(cpu_ctx_t *cpu_ctx);
-template translated_code_t *cpu_raise_exception<false>(cpu_ctx_t *cpu_ctx);
+template translated_code_t *cpu_raise_exception<true, true>(cpu_ctx_t *cpu_ctx);
+template translated_code_t *cpu_raise_exception<true, false>(cpu_ctx_t *cpu_ctx);
+template translated_code_t *cpu_raise_exception<false, true>(cpu_ctx_t *cpu_ctx);
+template translated_code_t *cpu_raise_exception<false, false>(cpu_ctx_t *cpu_ctx);
 template void tc_should_clear_cache_and_tlb<true>(cpu_t *cpu, addr_t start, addr_t end);

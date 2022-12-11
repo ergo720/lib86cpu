@@ -75,6 +75,7 @@ public:
 	void in(ZydisDecodedInstruction *instr);
 	void inc(ZydisDecodedInstruction *instr);
 	void int3(ZydisDecodedInstruction *instr);
+	void intn(ZydisDecodedInstruction *instr);
 	void iret(ZydisDecodedInstruction *instr);
 	void jcc(ZydisDecodedInstruction *instr);
 	void jmp(ZydisDecodedInstruction *instr);
@@ -233,6 +234,8 @@ private:
 	void lxs(ZydisDecodedInstruction *instr);
 	template<unsigned idx>
 	void bit(ZydisDecodedInstruction *instr);
+	template<unsigned idx>
+	void int_(ZydisDecodedInstruction *instr);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;

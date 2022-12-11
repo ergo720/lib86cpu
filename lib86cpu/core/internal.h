@@ -18,7 +18,7 @@ void tc_should_clear_cache_and_tlb(cpu_t *cpu, addr_t start, addr_t end);
 void tc_cache_clear(cpu_t *cpu);
 void tc_cache_purge(cpu_t *cpu);
 addr_t get_pc(cpu_ctx_t *cpu_ctx);
-template<bool is_int = false> translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx);
+template<bool is_int = false, bool is_hw = false> translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx);
 translated_code_t *cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 
 // cpu hidden flags (assumed to be constant during exec of a tc, together with a flag subset of eflags)

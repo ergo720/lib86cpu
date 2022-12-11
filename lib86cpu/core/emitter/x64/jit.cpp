@@ -2914,6 +2914,32 @@ void lc86_jit::bit(ZydisDecodedInstruction *instr)
 	MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EBX);
 }
 
+template<unsigned idx>
+void lc86_jit::int_(ZydisDecodedInstruction *instr)
+{
+	// idx 0 -> int3, 1 -> int n
+
+	// NOTE: we don't support virtual 8086 mode, so we don't need to check for it
+	MOV(MEMD32(RCX, CPU_EXP_ADDR), 0);
+	MOV(MEMD16(RCX, CPU_EXP_CODE), 0);
+	if constexpr (idx == 0) {
+		MOV(MEMD16(RCX, CPU_EXP_IDX), EXP_BP);
+	}
+	else if constexpr (idx == 1) {
+		MOV(MEMD16(RCX, CPU_EXP_IDX), static_cast<uint8_t>(instr->operands[OPNUM_SINGLE].imm.value.u));
+	}
+	else {
+		LIB86CPU_ABORT_msg("Unknown int instruction specified with index %u", idx);
+	}
+	MOV(MEMD32(RCX, CPU_EXP_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
+	MOV(RAX, &cpu_raise_exception<true>);
+	CALL(RAX);
+	gen_epilogue_main<false>();
+
+	m_needs_epilogue = false;
+	m_cpu->translate_next = 0;
+}
+
 void
 lc86_jit::aaa(ZydisDecodedInstruction *instr)
 {
@@ -4677,17 +4703,13 @@ lc86_jit::inc(ZydisDecodedInstruction *instr)
 void
 lc86_jit::int3(ZydisDecodedInstruction *instr)
 {
-	// NOTE1: we don't support virtual 8086 mode, so we don't need to check for it
-	MOV(MEMD32(RCX, CPU_EXP_ADDR), 0);
-	MOV(MEMD16(RCX, CPU_EXP_CODE), 0);
-	MOV(MEMD16(RCX, CPU_EXP_IDX), EXP_BP);
-	MOV(MEMD32(RCX, CPU_EXP_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
-	MOV(RAX, &cpu_raise_exception<true>);
-	CALL(RAX);
-	gen_epilogue_main<false>();
+	int_<0>(instr);
+}
 
-	m_needs_epilogue = false;
-	m_cpu->translate_next = 0;
+void
+lc86_jit::intn(ZydisDecodedInstruction *instr)
+{
+	int_<1>(instr);
 }
 
 void
