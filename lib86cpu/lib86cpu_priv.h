@@ -92,7 +92,7 @@ struct translated_code_t {
 	addr_t cs_base;
 	addr_t pc;
 	addr_t virt_pc;
-	uint32_t cpu_flags;
+	uint32_t guest_flags;
 	entry_t ptr_code;
 	entry_t jmp_offset[3];
 	uint32_t flags;

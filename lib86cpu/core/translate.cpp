@@ -466,7 +466,7 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t siz
 						try {
 							if (it->get()->cs_base == cpu_ctx->regs.cs_hidden.base &&
 								it->get()->pc == get_code_addr(cpu_ctx->cpu, get_pc(cpu_ctx), cpu_ctx->regs.eip) &&
-								it->get()->cpu_flags == flags) {
+								it->get()->guest_flags == flags) {
 								// worst case: the write overlaps with the tc we are currently executing
 								halt_tc = true;
 								if constexpr (!remove_hook) {
@@ -534,7 +534,7 @@ tc_cache_search(cpu_t *cpu, addr_t pc)
 		translated_code_t *tc = it->get();
 		if (tc->cs_base == cpu->cpu_ctx.regs.cs_hidden.base &&
 			tc->pc == pc &&
-			tc->cpu_flags == flags) {
+			tc->guest_flags == flags) {
 			return tc;
 		}
 		it++;
@@ -656,7 +656,7 @@ link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 
 	if (it != cpu_ctx->cpu->ibtc.end()) {
 		if (it->second->cs_base == cpu_ctx->regs.cs_hidden.base &&
-			it->second->cpu_flags == ((cpu_ctx->hflags & HFLG_CONST) | (cpu_ctx->regs.eflags & EFLAGS_CONST)) &&
+			it->second->guest_flags == ((cpu_ctx->hflags & HFLG_CONST) | (cpu_ctx->regs.eflags & EFLAGS_CONST)) &&
 			((it->second->virt_pc & ~PAGE_MASK) == (tc->virt_pc & ~PAGE_MASK))) {
 			return it->second->ptr_code;
 		}
@@ -1456,7 +1456,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			cpu->tc->pc = pc;
 			cpu->tc->virt_pc = virt_pc;
 			cpu->tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
-			cpu->tc->cpu_flags = (cpu->cpu_ctx.hflags & HFLG_CONST) | (cpu->cpu_ctx.regs.eflags & EFLAGS_CONST);
+			cpu->tc->guest_flags = (cpu->cpu_ctx.hflags & HFLG_CONST) | (cpu->cpu_ctx.regs.eflags & EFLAGS_CONST);
 			cpu->jit->gen_code_block();
 
 			// we are done with code generation for this block, so we null the tc and bb pointers to prevent accidental usage
