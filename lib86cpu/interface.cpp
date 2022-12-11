@@ -210,6 +210,7 @@ void
 cpu_exit(cpu_t *cpu)
 {
 	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_ABORT_INT);
+	cpu_resume(cpu);
 }
 
 /*
@@ -239,16 +240,17 @@ cpu_sync_state(cpu_t *cpu)
 /*
 * cpu_set_flags -> sets lib86cpu flags with the current cpu state. Only call this before cpu_run
 * cpu: a valid cpu instance
+* flags: the flags to set
 * ret: the status of the operation
 */
 lc86_status
 cpu_set_flags(cpu_t *cpu, uint32_t flags)
 {
-	if (flags & ~(CPU_INTEL_SYNTAX | CPU_DBG_PRESENT)) {
+	if (flags & ~(CPU_INTEL_SYNTAX | CPU_DBG_PRESENT | CPU_ABORT_ON_HLT)) {
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 
-	cpu->cpu_flags &= ~(CPU_INTEL_SYNTAX | CPU_DBG_PRESENT);
+	cpu->cpu_flags &= ~(CPU_INTEL_SYNTAX | CPU_DBG_PRESENT | CPU_ABORT_ON_HLT);
 	cpu->cpu_flags |= flags;
 	// XXX: eventually, the user should be able to set the instruction formatting
 	set_instr_format(cpu);
@@ -317,6 +319,7 @@ cpu_wait_for_pause(cpu_t *cpu)
 void
 cpu_resume(cpu_t *cpu)
 {
+	cpu->resume_flg.test_and_set();
 	cpu->suspend_flg.clear();
 	cpu->suspend_flg.notify_all();
 }
@@ -330,6 +333,10 @@ void
 cpu_raise_hw_int(cpu_t *cpu)
 {
 	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_HW_INT);
+	if (cpu->suspend_flg.test()) {
+		cpu->suspend_flg.clear();
+		cpu->suspend_flg.notify_all();
+	}
 }
 
 /*

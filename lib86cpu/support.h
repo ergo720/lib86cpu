@@ -10,6 +10,7 @@
 #include "endianness.h"
 
 
+// these flags are ORed with the flags in lib86cpu.h, so avoid coflicts
 #define CPU_DISAS_ONE           (1 << 7)
 #define CPU_ALLOW_CODE_WRITE    (1 << 8)
 #define CPU_FORCE_INSERT        (1 << 9)

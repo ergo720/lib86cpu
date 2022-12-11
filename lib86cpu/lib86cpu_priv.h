@@ -82,6 +82,7 @@ struct exp_info_t {
 struct cpu_ctx_t;
 struct translated_code_t;
 using entry_t = translated_code_t *(*)(cpu_ctx_t *cpu_ctx);
+using read_int_t = uint32_t (*)(cpu_ctx_t *cpu_ctx);
 using clear_int_t = void (*)(cpu_ctx_t *cpu_ctx);
 using raise_int_t = void (*)(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 
@@ -149,6 +150,7 @@ struct cpu_t {
 	std::vector<const memory_region_t<addr_t> *> cached_regions;
 	std::bitset<std::numeric_limits<port_t>::max() + 1> iotable;
 	std::atomic_flag suspend_flg;
+	std::atomic_flag resume_flg;
 	uint16_t num_tc;
 	struct {
 		uint64_t tsc;
@@ -157,6 +159,7 @@ struct cpu_t {
 		uint64_t host_freq;
 	} clock;
 	msr_t msr;
+	read_int_t read_int_fn;
 	clear_int_t clear_int_fn;
 	raise_int_t raise_int_fn;
 	fp_int get_int_vec;

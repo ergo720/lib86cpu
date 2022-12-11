@@ -62,6 +62,7 @@ constexpr auto all_callable_funcs = std::make_tuple(
 	idivw_helper,
 	idivb_helper,
 	cpuid_helper,
+	hlt_helper,
 	cpu_runtime_abort,
 	dbg_update_exp_hook
 );

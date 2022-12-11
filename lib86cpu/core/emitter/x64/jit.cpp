@@ -427,19 +427,26 @@ lc86_jit::gen_code_block()
 	tc->jmp_offset[0] = tc->jmp_offset[1] = tc->jmp_offset[2] = reinterpret_cast<entry_t>(exit_offset);
 }
 
-void
-lc86_jit::gen_int_fn(bool is_raise)
+template<unsigned idx>
+void lc86_jit::gen_int_fn()
 {
 	// The interrupt functions are leaf functions, so they don't need an exception table on WIN64
+	// idx 0 -> read, 1 -> raise, 2 -> clear
 
 	start_new_session();
 
-	if (is_raise) {
+	if constexpr (idx == 0) {
+		MOV(EAX, MEMD32(RCX, CPU_CTX_INT));
+	}
+	else if constexpr (idx == 1) {
 		m_a.lock().or_(MEMD32(RCX, CPU_CTX_INT), EDX);
 	}
-	else {
+	else if constexpr (idx == 2) {
 		XOR(EAX, EAX);
 		XCHG(MEMD32(RCX, CPU_CTX_INT), EAX);
+	}
+	else {
+		throw lc86_exp_abort("Unknown interrupt function specified with index " + std::to_string(idx), lc86_status::internal_error);
 	}
 	RET();
 
@@ -482,11 +489,17 @@ lc86_jit::gen_int_fn(bool is_raise)
 
 	m_mem.protect_sys_mem(block, MEM_READ | MEM_EXEC);
 
-	if (is_raise) {
+	if constexpr (idx == 0) {
+		m_cpu->read_int_fn = reinterpret_cast<read_int_t>(static_cast<uint8_t *>(block.addr) + offset);
+	}
+	else if constexpr (idx == 1) {
 		m_cpu->raise_int_fn = reinterpret_cast<raise_int_t>(static_cast<uint8_t *>(block.addr) + offset);
 	}
-	else {
+	else if constexpr (idx == 2) {
 		m_cpu->clear_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset);
+	}
+	else {
+		throw lc86_exp_abort("Unknown interrupt function specified with index " + std::to_string(idx), lc86_status::internal_error);
 	}
 }
 
@@ -564,8 +577,9 @@ lc86_jit::gen_tc_epilogue()
 void
 lc86_jit::gen_int_fn()
 {
-	gen_int_fn(false);
-	gen_int_fn(true);
+	gen_int_fn<0>();
+	gen_int_fn<1>();
+	gen_int_fn<2>();
 }
 
 template<bool terminates, typename T1, typename T2, typename T3, typename T4>
@@ -4378,8 +4392,18 @@ lc86_jit::hlt(ZydisDecodedInstruction *instr)
 		RAISEin0_t(EXP_GP);
 	}
 	else {
-		// interrupts are not completely supported yet, so if we reach here, we will just abort for now
-		BAD;
+		// some apps like test386 expect HLT to raise an exception, but otherwise don't rely on interrupts. So only check the flag after the potential exception
+		if (m_cpu->cpu_flags & CPU_ABORT_ON_HLT) {
+			throw lc86_exp_abort("Encountered HLT instruction, terminating the emulation", lc86_status::success);
+		}
+
+		MOV(MEMD32(RCX, CPU_EXP_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
+		MOV(RAX, &hlt_helper);
+		CALL(RAX);
+		gen_epilogue_main<false>();
+
+		m_needs_epilogue = false;
+		m_cpu->translate_next = 0;
 	}
 }
 

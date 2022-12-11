@@ -1334,9 +1334,13 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 	}
 
 	if (int_flg & CPU_PAUSE_INT) {
-		cpu_ctx->cpu->suspend_flg.test_and_set();
-		cpu_ctx->cpu->suspend_flg.notify_all();
-		cpu_ctx->cpu->suspend_flg.wait(true);
+		// if resume_flg is false, it means this is a spurious wake up from cpu_raise_hw_int, so we must keep waiting
+		do {
+			cpu_ctx->cpu->suspend_flg.test_and_set();
+			cpu_ctx->cpu->suspend_flg.notify_all();
+			cpu_ctx->cpu->suspend_flg.wait(true);
+		} while (!cpu_ctx->cpu->resume_flg.test());
+		cpu_ctx->cpu->resume_flg.clear();
 	}
 
 	if (((int_flg & CPU_HW_INT) | (cpu_ctx->regs.eflags & IF_MASK)) == (IF_MASK | CPU_HW_INT)) {

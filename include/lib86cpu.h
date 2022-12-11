@@ -35,8 +35,9 @@ using logfn_t = void(*)(log_level, const unsigned, const char *, ...);
 
 #define LC86_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::success)
 
-#define CPU_INTEL_SYNTAX        (1 << 1)
-#define CPU_DBG_PRESENT         (1 << 11)
+#define CPU_INTEL_SYNTAX        (1 << 1)   // use intel syntax for instruction decoding
+#define CPU_DBG_PRESENT         (1 << 11)  // start with the debugger attached
+#define CPU_ABORT_ON_HLT        (1 << 12)  // the HLT instruction will terminate the emulation
 
 // mmio/pmio access handlers
 using fp_read8 = uint8_t(*)(addr_t addr, void *opaque);
@@ -77,6 +78,7 @@ API_FUNC void cpu_pause(cpu_t *cpu, bool should_wait);
 API_FUNC void cpu_wait_for_pause(cpu_t *cpu);
 API_FUNC void cpu_resume(cpu_t *cpu);
 API_FUNC void cpu_raise_hw_int(cpu_t *cpu);
+API_FUNC bool cpu_is_halted(cpu_t *cpu);
 
 // register api
 API_FUNC regs_t *get_regs_ptr(cpu_t *cpu);

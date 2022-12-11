@@ -152,7 +152,8 @@ private:
 	template<bool set_ret = true>
 	void gen_epilogue_main();
 	void gen_tail_call(x86::Gp addr);
-	void gen_int_fn(bool is_raise);
+	template<unsigned idx>
+	void gen_int_fn();
 	void check_int_emit();
 	bool check_rf_single_step_emit();
 	template<typename T>

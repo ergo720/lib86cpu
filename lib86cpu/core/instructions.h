@@ -27,3 +27,4 @@ void cpuid_helper(cpu_ctx_t *cpu_ctx);
 void cpu_rdtsc_handler(cpu_ctx_t *cpu_ctx);
 uint8_t msr_read_helper(cpu_ctx_t *cpu_ctx);
 uint8_t msr_write_helper(cpu_ctx_t *cpu_ctx);
+translated_code_t *hlt_helper(cpu_ctx_t *cpu_ctx);
