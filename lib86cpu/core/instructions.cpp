@@ -1162,6 +1162,8 @@ idivb_helper(cpu_ctx_t *cpu_ctx, uint8_t d, uint32_t eip)
 void
 cpuid_helper(cpu_ctx_t *cpu_ctx)
 {
+	// these are the same values that the xbox cpu reports with cpuid. They were tested against real hardware here https://github.com/mborgerson/xemu/issues/509
+
 	switch (cpu_ctx->regs.eax)
 	{
 	default:

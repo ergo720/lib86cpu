@@ -1,6 +1,6 @@
 # Lib86cpu
 
-"lib86cpu" is an dynamic recompiler library that emulates an Intel Pentium III processor, and exposes its functionality
+"lib86cpu" is an dynamic recompiler library that emulates an Intel Pentium III Coppermine processor, and exposes its functionality
 via its own API.
 
 ### Supported host architectures
