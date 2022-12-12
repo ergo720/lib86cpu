@@ -377,7 +377,7 @@ dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num)
 void
 dbg_ram_read(cpu_t *cpu, uint8_t *buff)
 {
-	size_t actual_size;
+	uint32_t actual_size;
 	if (!LC86_SUCCESS(mem_read_block_virt(cpu, mem_pc, PAGE_SIZE, buff, &actual_size))) {
 		std::memset(&buff[actual_size], 0, PAGE_SIZE - actual_size);
 	}
