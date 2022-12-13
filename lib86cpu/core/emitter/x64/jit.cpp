@@ -3652,8 +3652,9 @@ lc86_jit::call(ZydisDecodedInstruction *instr)
 				MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(1)));
 				ST_SEG(CPU_CTX_CS, AX);
 				ST_R32(CPU_CTX_EIP, EDX);
-				SHL(AX, 4);
-				ST_SEG_BASE(CPU_CTX_CS, AX);
+				MOVZX(EAX, AX);
+				SHL(EAX, 4);
+				ST_SEG_BASE(CPU_CTX_CS, EAX);
 				link_indirect_emit();
 			}
 			m_cpu->tc->flags |= TC_FLG_INDIRECT;
