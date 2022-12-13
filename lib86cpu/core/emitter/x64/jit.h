@@ -74,6 +74,7 @@ public:
 	void imul(ZydisDecodedInstruction *instr);
 	void in(ZydisDecodedInstruction *instr);
 	void inc(ZydisDecodedInstruction *instr);
+	void ins(ZydisDecodedInstruction *instr);
 	void int3(ZydisDecodedInstruction *instr);
 	void intn(ZydisDecodedInstruction *instr);
 	void iret(ZydisDecodedInstruction *instr);

@@ -4726,6 +4726,81 @@ lc86_jit::inc(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::ins(ZydisDecodedInstruction *instr)
+{
+	switch (instr->opcode)
+	{
+	case 0x6C:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0x6D: {
+		Label start, end = m_a.newLabel();
+		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+			start = rep_start(end);
+		}
+
+		auto val_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+		MOVZX(EDX, MEMD16(RCX, CPU_CTX_EDX));
+		if (check_io_priv_emit(EDX)) {
+			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
+		}
+		LD_IO();
+
+		LD_SEG_BASE(R8D, CPU_CTX_ES);
+		if (m_cpu->addr_mode == ADDR16) {
+			MOVZX(EDX, MEMD16(RCX, CPU_CTX_EDI));
+		}
+		else {
+			LD_R32(EDX, CPU_CTX_EDI);
+		}
+		MOV(EBX, EDX);
+		ADD(EDX, R8D);
+		ST_MEM(val_host_reg);
+
+		Label sub = m_a.newLabel();
+		uint32_t k = 1 << m_cpu->size_mode;
+		LD_R32(EAX, CPU_CTX_EFLAGS);
+		AND(EAX, DF_MASK);
+		TEST(EAX, EAX);
+		BR_NE(sub);
+
+		ADD(EBX, k);
+		if (m_cpu->addr_mode == ADDR16) {
+			ST_R16(CPU_CTX_EDI, BX);
+		}
+		else {
+			ST_R32(CPU_CTX_EDI, EBX);
+		}
+		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
+		}
+		else {
+			BR_UNCOND(end);
+		}
+
+		m_a.bind(sub);
+		SUB(EBX, k);
+		if (m_cpu->addr_mode == ADDR16) {
+			ST_R16(CPU_CTX_EDI, BX);
+		}
+		else {
+			ST_R32(CPU_CTX_EDI, EBX);
+		}
+		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
+		}
+
+		m_a.bind(end);
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+void
 lc86_jit::int3(ZydisDecodedInstruction *instr)
 {
 	int_<0>(instr);
