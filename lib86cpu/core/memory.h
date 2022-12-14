@@ -56,199 +56,161 @@ as_io_search_port(cpu_t *cpu, port_t port)
 template<typename T>
 T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, const memory_region_t<addr_t> *region)
 {
-	if ((addr >= region->start) && ((addr + sizeof(T) - 1) <= region->end)) {
-		switch (region->type)
-		{
-		case mem_type::ram:
-			return ram_read<T>(cpu, get_ram_host_ptr(cpu, addr));
+	switch (region->type)
+	{
+	case mem_type::ram:
+		return ram_read<T>(cpu, get_ram_host_ptr(cpu, addr));
 
-		case mem_type::rom:
+	case mem_type::rom:
+		if ((addr + sizeof(T) - 1) > region->end) [[unlikely]] {
+			// avoid rom buffer overflow
+			T value = 0;
+			unsigned i = 0;
+			while (addr <= region->end) {
+				const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, addr);
+				value |= (static_cast<T>(as_memory_dispatch_read<uint8_t>(cpu, addr, region)) << (i * 8));
+				++addr;
+				++i;
+			}
+			return value;
+		}
+		else {
 			return ram_read<T>(cpu, get_rom_host_ptr(region, addr));
-
-		case mem_type::mmio:
-			if constexpr (sizeof(T) == 1) {
-				return region->handlers.fnr8(addr, region->opaque);
-			}
-			else if constexpr (sizeof(T) == 2) {
-				return region->handlers.fnr16(addr, region->opaque);
-			}
-			else if constexpr (sizeof(T) == 4) {
-				return region->handlers.fnr32(addr, region->opaque);
-			}
-			else if constexpr (sizeof(T) == 8) {
-				return region->handlers.fnr64(addr, region->opaque);
-			}
-			else {
-				LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
-			}
-
-		case mem_type::alias: {
-			const memory_region_t<addr_t> *alias = region;
-			AS_RESOLVE_ALIAS();
-			return as_memory_dispatch_read<T>(cpu, region->start + alias_offset + (addr - alias->start), region);
 		}
-		break;
 
-		case mem_type::unmapped:
-			LOG(log_level::warn, "Memory read to unmapped memory at address %#010x with size %d", addr, sizeof(T));
-			return std::numeric_limits<T>::max();
-
-		default:
-			LIB86CPU_ABORT();
+	case mem_type::mmio:
+		if constexpr (sizeof(T) == 1) {
+			return region->handlers.fnr8(addr, region->opaque);
 		}
+		else if constexpr (sizeof(T) == 2) {
+			return region->handlers.fnr16(addr, region->opaque);
+		}
+		else if constexpr (sizeof(T) == 4) {
+			return region->handlers.fnr32(addr, region->opaque);
+		}
+		else if constexpr (sizeof(T) == 8) {
+			return region->handlers.fnr64(addr, region->opaque);
+		}
+		else {
+			LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+		}
+
+	case mem_type::alias: {
+		const memory_region_t<addr_t> *alias = region;
+		AS_RESOLVE_ALIAS();
+		return as_memory_dispatch_read<T>(cpu, region->start + alias_offset + (addr - alias->start), region);
 	}
-	else {
-		T value = 0;
-		unsigned i = 0;
-		while (i < sizeof(T)) {
-			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, addr);
-			value |= (static_cast<T>(as_memory_dispatch_read<uint8_t>(cpu, addr, region)) << (i * 8));
-			++addr;
-			++i;
-		}
-		return value;
+	break;
+
+	case mem_type::unmapped:
+		LOG(log_level::warn, "Memory read to unmapped memory at address %#010x with size %d", addr, sizeof(T));
+		return std::numeric_limits<T>::max();
+
+	default:
+		LIB86CPU_ABORT();
 	}
 }
 
 template<typename T>
 void as_memory_dispatch_write(cpu_t *cpu, addr_t addr, T value, const memory_region_t<addr_t> *region)
 {
-	if ((addr >= region->start) && ((addr + sizeof(T) - 1) <= region->end)) {
-		switch (region->type)
-		{
-		case mem_type::ram:
-			ram_write<T>(cpu, get_ram_host_ptr(cpu, addr), value);
-			break;
+	switch (region->type)
+	{
+	case mem_type::ram:
+		ram_write<T>(cpu, get_ram_host_ptr(cpu, addr), value);
+		break;
 
-		case mem_type::rom:
-			break;
+	case mem_type::rom:
+		break;
 
-		case mem_type::mmio:
-			if constexpr (sizeof(T) == 1) {
-				region->handlers.fnw8(addr, value, region->opaque);
-			}
-			else if constexpr (sizeof(T) == 2) {
-				region->handlers.fnw16(addr, value, region->opaque);
-			}
-			else if constexpr (sizeof(T) == 4) {
-				region->handlers.fnw32(addr, value, region->opaque);
-			}
-			else if constexpr (sizeof(T) == 8) {
-				region->handlers.fnw64(addr, value, region->opaque);
-			}
-			else {
-				LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
-			}
-			break;
-
-		case mem_type::alias: {
-			const memory_region_t<addr_t> *alias = region;
-			AS_RESOLVE_ALIAS();
-			as_memory_dispatch_write<T>(cpu, region->start + alias_offset + (addr - alias->start), value, region);
+	case mem_type::mmio:
+		if constexpr (sizeof(T) == 1) {
+			region->handlers.fnw8(addr, value, region->opaque);
+		}
+		else if constexpr (sizeof(T) == 2) {
+			region->handlers.fnw16(addr, value, region->opaque);
+		}
+		else if constexpr (sizeof(T) == 4) {
+			region->handlers.fnw32(addr, value, region->opaque);
+		}
+		else if constexpr (sizeof(T) == 8) {
+			region->handlers.fnw64(addr, value, region->opaque);
+		}
+		else {
+			LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
 		}
 		break;
 
-		case mem_type::unmapped:
-			LOG(log_level::warn, "Memory write to unmapped memory at address %#010x with size %d", addr, sizeof(T));
-			break;
-
-		default:
-			LIB86CPU_ABORT();
-		}
+	case mem_type::alias: {
+		const memory_region_t<addr_t> *alias = region;
+		AS_RESOLVE_ALIAS();
+		as_memory_dispatch_write<T>(cpu, region->start + alias_offset + (addr - alias->start), value, region);
 	}
-	else {
-		uint8_t i = 0;
-		int8_t j = sizeof(T) - 1;
-		while (i < sizeof(T)) {
-			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, addr);
-			as_memory_dispatch_write<uint8_t>(cpu, addr, value >> (j * 8), region);
-			++addr;
-			++i;
-			--j;
-		}
+	break;
+
+	case mem_type::unmapped:
+		LOG(log_level::warn, "Memory write to unmapped memory at address %#010x with size %d", addr, sizeof(T));
+		break;
+
+	default:
+		LIB86CPU_ABORT();
 	}
 }
 
 template<typename T>
 T as_io_dispatch_read(cpu_t *cpu, port_t port, const memory_region_t<port_t> *region)
 {
-	if ((port >= region->start) && ((port + sizeof(T) - 1) <= region->end)) {
-		switch (region->type)
-		{
-		case mem_type::pmio:
-			if constexpr (sizeof(T) == 1) {
-				return region->handlers.fnr8(port, region->opaque);
-			}
-			else if constexpr (sizeof(T) == 2) {
-				return region->handlers.fnr16(port, region->opaque);
-			}
-			else if constexpr (sizeof(T) == 4) {
-				return region->handlers.fnr32(port, region->opaque);
-			}
-			else {
-				LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
-			}
-
-		case mem_type::unmapped:
-			LOG(log_level::warn, "Io read to unmapped memory at port %#06x with size %d", port, sizeof(T));
-			return std::numeric_limits<T>::max();
-
-		default:
-			LIB86CPU_ABORT();
+	switch (region->type)
+	{
+	case mem_type::pmio:
+		if constexpr (sizeof(T) == 1) {
+			return region->handlers.fnr8(port, region->opaque);
 		}
-	}
-	else {
-		T value = 0;
-		unsigned i = 0;
-		while (i < sizeof(T)) {
-			const memory_region_t<port_t> *region = as_io_search_port(cpu, port);
-			value |= (static_cast<T>(as_io_dispatch_read<uint8_t>(cpu, port, region)) << (i * 8));
-			++port;
-			++i;
+		else if constexpr (sizeof(T) == 2) {
+			return region->handlers.fnr16(port, region->opaque);
 		}
-		return value;
+		else if constexpr (sizeof(T) == 4) {
+			return region->handlers.fnr32(port, region->opaque);
+		}
+		else {
+			LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+		}
+
+	case mem_type::unmapped:
+		LOG(log_level::warn, "Io read to unmapped memory at port %#06x with size %d", port, sizeof(T));
+		return std::numeric_limits<T>::max();
+
+	default:
+		LIB86CPU_ABORT();
 	}
 }
 
 template<typename T>
 void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, const memory_region_t<port_t> *region)
 {
-	if ((port >= region->start) && ((port + sizeof(T) - 1) <= region->end)) {
-		switch (region->type)
-		{
-		case mem_type::pmio:
-			if constexpr (sizeof(T) == 1) {
-				region->handlers.fnw8(port, value, region->opaque);
-			}
-			else if constexpr (sizeof(T) == 2) {
-				region->handlers.fnw16(port, value, region->opaque);
-			}
-			else if constexpr (sizeof(T) == 4) {
-				region->handlers.fnw32(port, value, region->opaque);
-			}
-			else {
-				LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
-			}
-			break;
-
-		case mem_type::unmapped:
-			LOG(log_level::warn, "Io write to unmapped memory at port %#06x with size %d", port, sizeof(T));
-			return;
-
-		default:
-			LIB86CPU_ABORT();
+	switch (region->type)
+	{
+	case mem_type::pmio:
+		if constexpr (sizeof(T) == 1) {
+			region->handlers.fnw8(port, value, region->opaque);
 		}
-	}
-	else {
-		uint8_t i = 0;
-		int8_t j = sizeof(T) - 1;
-		while (i < sizeof(T)) {
-			const memory_region_t<port_t> *region = as_io_search_port(cpu, port);
-			as_io_dispatch_write<uint8_t>(cpu, port, value >> (j * 8), region);
-			++port;
-			++i;
-			--j;
+		else if constexpr (sizeof(T) == 2) {
+			region->handlers.fnw16(port, value, region->opaque);
 		}
+		else if constexpr (sizeof(T) == 4) {
+			region->handlers.fnw32(port, value, region->opaque);
+		}
+		else {
+			LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+		}
+		break;
+
+	case mem_type::unmapped:
+		LOG(log_level::warn, "Io write to unmapped memory at port %#06x with size %d", port, sizeof(T));
+		return;
+
+	default:
+		LIB86CPU_ABORT();
 	}
 }
 

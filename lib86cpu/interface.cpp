@@ -138,7 +138,8 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 
-	cpu->cpu_ctx.ram = new uint8_t[ramsize];
+	// allocate 8 extra bytes at then end in the case something ever does a 2,4,8 byte access on the last valid byte of ram
+	cpu->cpu_ctx.ram = new uint8_t[ramsize + 8];
 	if (cpu->cpu_ctx.ram == nullptr) {
 		cpu_free(cpu);
 		return set_last_error(lc86_status::no_memory);
