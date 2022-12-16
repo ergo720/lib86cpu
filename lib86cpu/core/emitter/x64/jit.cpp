@@ -2951,7 +2951,7 @@ void lc86_jit::int_(ZydisDecodedInstruction *instr)
 	else {
 		LIB86CPU_ABORT_msg("Unknown int instruction specified with index %u", idx);
 	}
-	MOV(MEMD32(RCX, CPU_EXP_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
+	MOV(MEMD32(RCX, CPU_CTX_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
 	MOV(RAX, &cpu_raise_exception<true>);
 	CALL(RAX);
 	gen_epilogue_main<false>();
@@ -4404,7 +4404,7 @@ lc86_jit::hlt(ZydisDecodedInstruction *instr)
 			throw lc86_exp_abort("Encountered HLT instruction, terminating the emulation", lc86_status::success);
 		}
 
-		MOV(MEMD32(RCX, CPU_EXP_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
+		MOV(MEMD32(RCX, CPU_CTX_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
 		if (m_cpu->cpu_ctx.hflags & HFLG_TIMEOUT) {
 			Label retry = m_a.newLabel();
 			Label no_timeout = m_a.newLabel();
