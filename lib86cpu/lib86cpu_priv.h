@@ -167,6 +167,7 @@ struct cpu_t {
 	read_int_t read_int_fn;
 	clear_int_t clear_int_fn;
 	raise_int_t raise_int_fn;
+	clear_int_t lower_hw_int_fn;
 	fp_int get_int_vec;
 	std::string dbg_name;
 	addr_t bp_addr;

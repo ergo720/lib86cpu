@@ -53,6 +53,7 @@ translated_code_t *cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 #define CPU_ABORT_INT   (1 << 1)
 #define CPU_A20_INT     (1 << 2)
 #define CPU_REGION_INT  (1 << 3)
+#define CPU_NON_HW_INT  (CPU_ABORT_INT | CPU_A20_INT | CPU_REGION_INT)
 
 // disassembly context flags
 #define DISAS_FLG_CS32         (1 << 0)

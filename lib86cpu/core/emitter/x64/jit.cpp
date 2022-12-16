@@ -433,7 +433,7 @@ template<unsigned idx>
 void lc86_jit::gen_int_fn()
 {
 	// The interrupt functions are leaf functions, so they don't need an exception table on WIN64
-	// idx 0 -> read, 1 -> raise, 2 -> clear
+	// idx 0 -> read, 1 -> raise any int, 2 -> clear non hw int, 3 -> clear hw int
 
 	start_new_session();
 
@@ -444,8 +444,10 @@ void lc86_jit::gen_int_fn()
 		m_a.lock().or_(MEMD32(RCX, CPU_CTX_INT), EDX);
 	}
 	else if constexpr (idx == 2) {
-		XOR(EAX, EAX);
-		XCHG(MEMD32(RCX, CPU_CTX_INT), EAX);
+		m_a.lock().and_(MEMD32(RCX, CPU_CTX_INT), ~CPU_NON_HW_INT);
+	}
+	else if constexpr (idx == 3) {
+		m_a.lock().and_(MEMD32(RCX, CPU_CTX_INT), ~CPU_HW_INT);
 	}
 	else {
 		throw lc86_exp_abort("Unknown interrupt function specified with index " + std::to_string(idx), lc86_status::internal_error);
@@ -499,6 +501,9 @@ void lc86_jit::gen_int_fn()
 	}
 	else if constexpr (idx == 2) {
 		m_cpu->clear_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset);
+	}
+	else if constexpr (idx == 3) {
+		m_cpu->lower_hw_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset);
 	}
 	else {
 		throw lc86_exp_abort("Unknown interrupt function specified with index " + std::to_string(idx), lc86_status::internal_error);
@@ -610,6 +615,7 @@ lc86_jit::gen_int_fn()
 	gen_int_fn<0>();
 	gen_int_fn<1>();
 	gen_int_fn<2>();
+	gen_int_fn<3>();
 }
 
 template<bool terminates, typename T1, typename T2, typename T3, typename T4>

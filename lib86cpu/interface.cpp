@@ -335,14 +335,25 @@ cpu_set_a20(cpu_t *cpu, bool closed, bool should_int)
 }
 
 /*
-* cpu_raise_hw_int -> raises a hardware interrupt (this function is multi-thread safe)
+* cpu_raise_hw_int -> raises the hardware interrupt line (this function is multi-thread safe)
 * cpu: a valid cpu instance
 * ret: nothing
 */
 void
-cpu_raise_hw_int(cpu_t *cpu)
+cpu_raise_hw_int_line(cpu_t *cpu)
 {
 	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_HW_INT);
+}
+
+/*
+* cpu_raise_hw_int -> lowers the hardware interrupt line (this function is multi-thread safe)
+* cpu: a valid cpu instance
+* ret: nothing
+*/
+void
+cpu_lower_hw_int_line(cpu_t *cpu)
+{
+	cpu->lower_hw_int_fn(&cpu->cpu_ctx);
 }
 
 /*
