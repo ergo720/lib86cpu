@@ -29,7 +29,7 @@ translated_code_t *cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 // HFLG_CR0_EM: em flag of cr0
 // HFLG_TRAMP: used to select the trampoline tc instead of the hook tc
 // HFLG_DBG_TRAP: used to suppress data/io watchpoints (not recorded in the tc flags)
-// HFLG_TIMEOUT_SET: timeout check was emitted
+// HFLG_TIMEOUT: timeout check was emitted
 #define CPL_SHIFT           0
 #define CS32_SHIFT          2
 #define SS32_SHIFT          3
