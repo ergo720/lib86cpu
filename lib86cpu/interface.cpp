@@ -172,7 +172,7 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 }
 
 /*
-* cpu_free -> destroys a cpu instance. Only call this after cpu_run has returned
+* cpu_free -> destroys a cpu instance. Only call this after cpu_run/cpu_run_until has returned
 * cpu: a valid cpu instance
 * ret: nothing
 */
@@ -190,48 +190,31 @@ cpu_free(cpu_t *cpu)
 	delete cpu;
 }
 
-/*
-* cpu_run -> starts the emulation. Only returns when there is an error in lib86cpu
-* cpu: a valid cpu instance
-* ret: the exit reason
-*/
-lc86_status
-cpu_run(cpu_t *cpu)
+template<bool should_purge>
+static void cpu_sync_state(cpu_t *cpu)
 {
-	cpu_sync_state(cpu);
-	return cpu_start(cpu);
-}
+	// only flush the tlb and the code cache if the cpu mode changed
+	if ((cpu->cpu_ctx.regs.cr0 & CR0_PE_MASK) != ((cpu->cpu_ctx.hflags & HFLG_PE_MODE) >> PE_MODE_SHIFT)) {
+		tlb_flush(cpu, TLB_zero);
+		if constexpr (should_purge) {
+			tc_cache_purge(cpu);
+		}
+		else {
+			tc_cache_clear(cpu);
+		}
+	}
 
-/*
-* cpu_exit -> submit to the cpu a request to terminate the emulation (this function is multi-thread safe)
-* cpu: a valid cpu instance
-* ret: nothing
-*/
-void
-cpu_exit(cpu_t *cpu)
-{
-	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_ABORT_INT);
-	cpu_resume(cpu);
-}
-
-/*
-* cpu_sync_state -> synchronizes internal cpu flags with the current cpu state. Only call this before cpu_run
-* cpu: a valid cpu instance
-* ret: nothing
-*/
-void
-cpu_sync_state(cpu_t *cpu)
-{
-	tlb_flush(cpu, TLB_zero);
+	// there's no need to sync HFLG_TRAMP, HFLG_DBG_TRAP and HFLG_TIMEOUT since those can never be set when this is called either from the client or from cpu_run
 	cpu->cpu_ctx.hflags = 0;
+	cpu->cpu_ctx.hflags |= (cpu->cpu_ctx.regs.cs & HFLG_CPL);
+	if (cpu->cpu_ctx.regs.cs_hidden.flags & SEG_HIDDEN_DB) {
+		cpu->cpu_ctx.hflags |= HFLG_CS32;
+	}
+	if (cpu->cpu_ctx.regs.ss_hidden.flags & SEG_HIDDEN_DB) {
+		cpu->cpu_ctx.hflags |= HFLG_SS32;
+	}
 	if (cpu->cpu_ctx.regs.cr0 & CR0_PE_MASK) {
-		cpu->cpu_ctx.hflags |= ((cpu->cpu_ctx.regs.cs & HFLG_CPL) | HFLG_PE_MODE);
-		if (cpu->cpu_ctx.regs.cs_hidden.flags & SEG_HIDDEN_DB) {
-			cpu->cpu_ctx.hflags |= HFLG_CS32;
-		}
-		if (cpu->cpu_ctx.regs.ss_hidden.flags & SEG_HIDDEN_DB) {
-			cpu->cpu_ctx.hflags |= HFLG_SS32;
-		}
+		cpu->cpu_ctx.hflags |= HFLG_PE_MODE;
 	}
 	if (cpu->cpu_ctx.regs.cr0 & CR0_EM_MASK) {
 		cpu->cpu_ctx.hflags |= HFLG_CR0_EM;
@@ -239,7 +222,67 @@ cpu_sync_state(cpu_t *cpu)
 }
 
 /*
-* cpu_set_flags -> sets lib86cpu flags with the current cpu state. Only call this before cpu_run
+* cpu_run -> starts the emulation. Only returns when there is an error in lib86cpu, cpu_sync_state internally called
+* cpu: a valid cpu instance
+* ret: the exit reason
+*/
+lc86_status
+cpu_run(cpu_t *cpu)
+{
+	cpu_sync_state<true>(cpu);
+	return cpu_start<true>(cpu);
+}
+
+/*
+* cpu_run -> starts the emulation. Returns when (1) there is an error in lib86cpu (2) the timeout time has been reached. cpu_sync_state not internally called
+* cpu: a valid cpu instance
+* timeout_time: a timeout in microseconds representing the time slice to run before returning
+* ret: the exit reason
+*/
+lc86_status
+cpu_run_until(cpu_t *cpu, uint64_t timeout_time)
+{
+	cpu->timer.timeout_time = timeout_time;
+	return cpu_start<false>(cpu);
+}
+
+/*
+* cpu_run -> changes the timeout time currently set
+* cpu: a valid cpu instance
+* timeout_time: a timeout in microseconds representing the time slice to run before returning
+* ret: the exit reason
+*/
+void
+cpu_set_timeout(cpu_t *cpu, uint64_t timeout_time)
+{
+	cpu->timer.timeout_time = timeout_time;
+}
+
+/*
+* cpu_exit->submit to the cpu a request to terminate the emulation(this function is multi - thread safe)
+* cpu: a valid cpu instance
+* ret: nothing
+*/
+void
+cpu_exit(cpu_t *cpu)
+{
+	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_ABORT_INT);
+}
+
+/*
+* cpu_sync_state -> synchronizes internal cpu flags with the current cpu state. This is necessary to call when cr0, cs, cs_flags and ss_flags have changed.
+* Only call while the emulation is not running
+* cpu: a valid cpu instance
+* ret: nothing
+*/
+void
+cpu_sync_state(cpu_t *cpu)
+{
+	cpu_sync_state<false>(cpu);
+}
+
+/*
+* cpu_set_flags -> sets lib86cpu flags with the current cpu state. Only call this while the emulation is not running
 * cpu: a valid cpu instance
 * flags: the flags to set
 * ret: the status of the operation
@@ -249,6 +292,11 @@ cpu_set_flags(cpu_t *cpu, uint32_t flags)
 {
 	if (flags & ~(CPU_INTEL_SYNTAX | CPU_DBG_PRESENT | CPU_ABORT_ON_HLT)) {
 		return set_last_error(lc86_status::invalid_parameter);
+	}
+
+	if ((cpu->cpu_flags & (CPU_DBG_PRESENT | CPU_ABORT_ON_HLT)) != (flags & (CPU_DBG_PRESENT | CPU_ABORT_ON_HLT))) {
+		// CPU_DBG_PRESENT and CPU_ABORT_ON_HLT change the code emitted for lidt and hlt respectively, so we need to flush the cache if those changed
+		tc_cache_clear(cpu);
 	}
 
 	cpu->cpu_flags &= ~(CPU_INTEL_SYNTAX | CPU_DBG_PRESENT | CPU_ABORT_ON_HLT);
@@ -287,45 +335,6 @@ cpu_set_a20(cpu_t *cpu, bool closed, bool should_int)
 }
 
 /*
-* cpu_pause -> submit to the cpu a request to stop (this function is multi-thread safe)
-* cpu: a valid cpu instance
-* should_wait: if true, the function won't return until the cpu is actually stopped, otherwise it returns immediately
-* ret: nothing
-*/
-void
-cpu_pause(cpu_t *cpu, bool should_wait)
-{
-	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_PAUSE_INT);
-	if (should_wait) {
-		cpu_wait_for_pause(cpu);
-	}
-}
-
-/*
-* cpu_wait_for_pause -> blocks until the cpu is stopped (this function is multi-thread safe)
-* cpu: a valid cpu instance
-* ret: nothing
-*/
-void
-cpu_wait_for_pause(cpu_t *cpu)
-{
-	cpu->suspend_flg.wait(false);
-}
-
-/*
-* cpu_resume -> submit to the cpu a request to resume execution (this function is multi-thread safe)
-* cpu: a valid cpu instance
-* ret: nothing
-*/
-void
-cpu_resume(cpu_t *cpu)
-{
-	cpu->resume_flg.test_and_set();
-	cpu->suspend_flg.clear();
-	cpu->suspend_flg.notify_all();
-}
-
-/*
 * cpu_raise_hw_int -> raises a hardware interrupt (this function is multi-thread safe)
 * cpu: a valid cpu instance
 * ret: nothing
@@ -334,10 +343,6 @@ void
 cpu_raise_hw_int(cpu_t *cpu)
 {
 	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_HW_INT);
-	if (cpu->suspend_flg.test()) {
-		cpu->suspend_flg.clear();
-		cpu->suspend_flg.notify_all();
-	}
 }
 
 /*
@@ -416,7 +421,8 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 // of merging and splitting events that involve unmapped regions in the address_space object. These are currently not tracked, which is why the memory APIs below
 // don't track the number of regions currently added to the system.
 // NOTE2: these functions will raise a guest interrupt when they detect the need to flush the code cache. You can suppress the interrupt and make them have effect
-// immediately by passing should_int=false. This is only safe before you have called cpu_run to start the emulation, since at that point no code has been generated yet.
+// immediately by passing should_int=false. This is only safe before you have called cpu_run/cpu_run_until to start the emulation, since at that point no code
+// has been generated yet.
 
 /*
 * mem_init_region_ram -> creates a ram region. If more than one is added, the address range of the existing one is erased

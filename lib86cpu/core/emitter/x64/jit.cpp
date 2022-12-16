@@ -8,6 +8,7 @@
 #include "support.h"
 #include "instructions.h"
 #include "debugger.h"
+#include "clock.h"
 #include <assert.h>
 #include <optional>
 
@@ -240,6 +241,7 @@ get_local_var_offset()
 #define PUSH(dst) m_a.push(dst)
 #define POP(dst) m_a.pop(dst)
 #define INT3() m_a.int3()
+#define PAUSE() m_a.pause()
 
 #define BR_UNCOND(dst) m_a.jmp(dst)
 #define BR_EQ(label) m_a.je(label)
@@ -503,6 +505,43 @@ void lc86_jit::gen_int_fn()
 	}
 }
 
+
+void
+lc86_jit::gen_timeout_check()
+{
+	if (m_cpu->cpu_ctx.hflags & HFLG_TIMEOUT) {
+		Label no_timeout = m_a.newLabel();
+		MOV(RAX, &cpu_timer_helper<false>);
+		CALL(RAX);
+		RELOAD_RCX_CTX();
+		TEST(EAX, EAX);
+		BR_EQ(no_timeout);
+		XOR(EAX, EAX);
+		MOV(MEMD8(RCX, CPU_CTX_EXIT), 1); // request an exit
+		gen_epilogue_main<false>();
+		m_a.bind(no_timeout);
+	}
+}
+
+void
+lc86_jit::gen_no_link_checks()
+{
+	if (m_cpu->cpu_ctx.hflags & HFLG_DBG_TRAP) {
+		LD_R32(EAX, CPU_CTX_EIP);
+		raise_exp_inline_emit<true>(0, 0, EXP_DB, EAX);
+		return;
+	}
+
+	if (check_rf_single_step_emit()) {
+		return;
+	}
+
+	gen_timeout_check();
+
+	// make sure we check for interrupts before jumping to the next tc
+	check_int_emit();
+}
+
 void
 lc86_jit::gen_prologue_main()
 {
@@ -554,19 +593,10 @@ lc86_jit::gen_tc_epilogue()
 	// update the eip if we stopped decoding without a terminating instr
 	if (m_cpu->translate_next == 1) {
 		assert((DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR) != 0);
+		assert((m_cpu->tc->flags & TC_FLG_LINK_MASK) == 0);
+
 		MOV(MEMD32(RCX, CPU_CTX_EIP), m_cpu->virt_pc - m_cpu->cpu_ctx.regs.cs_hidden.base);
-
-		if (m_cpu->cpu_ctx.hflags & HFLG_DBG_TRAP) {
-			raise_exp_inline_emit(0, 0, EXP_DB, m_cpu->virt_pc - m_cpu->cpu_ctx.regs.cs_hidden.base);
-			return;
-		}
-	}
-
-	// TC_FLG_INDIRECT, TC_FLG_DIRECT and TC_FLG_DST_ONLY already check for rf/single step, so we only need to check them here if no linking code was emitted
-	if ((m_cpu->tc->flags & TC_FLG_LINK_MASK) == 0) {
-		if (check_rf_single_step_emit()) {
-			return;
-		}
+		gen_no_link_checks();
 	}
 
 	if (m_needs_epilogue) {
@@ -585,6 +615,7 @@ lc86_jit::gen_int_fn()
 template<bool terminates, typename T1, typename T2, typename T3, typename T4>
 void lc86_jit::raise_exp_inline_emit(T1 fault_addr, T2 code, T3 idx, T4 eip)
 {
+	// should be false when generating a conditional exception, true when taking an unconditional exception
 	if constexpr (terminates) {
 		m_needs_epilogue = false;
 		m_cpu->translate_next = 0;
@@ -602,6 +633,7 @@ void lc86_jit::raise_exp_inline_emit(T1 fault_addr, T2 code, T3 idx, T4 eip)
 template<bool terminates>
 void lc86_jit::raise_exp_inline_emit()
 {
+	// same as the function above, but it doesn't populate the exception data
 	if constexpr (terminates) {
 		m_needs_epilogue = false;
 		m_cpu->translate_next = 0;
@@ -682,22 +714,12 @@ void lc86_jit::link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_pc)
 {
 	// dst_pc: destination pc, next_pc: pc of next instr, target_addr: pc where instr jumps to at runtime
 	// If target_pc is an integral type, then we know already where the instr will jump, and so we can perform the comparisons at compile time
-	// and only emit the taken code path. If it's in a reg, it should not be eax, edx or ebx
+	// and only emit the taken code path. If it's in a reg, it must be ebx because otherwise a volative reg might be trashed by the timer and
+	// interrupt calls in gen_no_link_checks
 
 	m_needs_epilogue = false;
 
-	if (m_cpu->cpu_ctx.hflags & HFLG_DBG_TRAP) {
-		LD_R32(EAX, CPU_CTX_EIP);
-		raise_exp_inline_emit<true>(0, 0, EXP_DB, EAX);
-		return;
-	}
-
-	if (check_rf_single_step_emit()) {
-		return;
-	}
-
-	// make sure we check for interrupts before jumping to the next tc
-	check_int_emit();
+	gen_no_link_checks();
 
 	// vec_addr: instr_pc, dst_pc, next_pc
 	addr_t page_addr = m_cpu->virt_pc & ~PAGE_MASK;
@@ -720,9 +742,9 @@ void lc86_jit::link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_pc)
 		if (next_pc) { // if(dst_pc) -> cond jmp dst_pc; if(next_pc) -> cond jmp next_pc
 			if (dst) {
 				MOV(RDX, &m_cpu->tc->flags);
-				MOV(EBX, MEM32(RDX));
+				MOV(R8D, MEM32(RDX));
 				MOV(EAX, ~TC_FLG_JMP_TAKEN);
-				AND(EAX, EBX);
+				AND(EAX, R8D);
 				if constexpr (std::is_integral_v<T>) {
 					if (target_pc == dst_pc) {
 						MOV(MEM32(RDX), EAX);
@@ -752,9 +774,9 @@ void lc86_jit::link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_pc)
 			}
 			else {
 				MOV(RDX, &m_cpu->tc->flags);
-				MOV(EBX, MEM32(RDX));
+				MOV(R8D, MEM32(RDX));
 				MOV(EAX, ~TC_FLG_JMP_TAKEN);
-				AND(EAX, EBX);
+				AND(EAX, R8D);
 				if constexpr (std::is_integral_v<T>) {
 					if (target_pc == *next_pc) {
 						OR(EAX, TC_JMP_NEXT_PC << 4);
@@ -795,9 +817,9 @@ void lc86_jit::link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_pc)
 
 	case 2: { // cond jmp next_pc + uncond jmp dst_pc
 		MOV(RDX, &m_cpu->tc->flags);
-		MOV(EBX, MEM32(RDX));
+		MOV(R8D, MEM32(RDX));
 		MOV(EAX, ~TC_FLG_JMP_TAKEN);
-		AND(EAX, EBX);
+		AND(EAX, R8D);
 		if constexpr (std::is_integral_v<T>) {
 			if (target_pc == *next_pc) {
 				OR(EAX, TC_JMP_NEXT_PC << 4);
@@ -841,18 +863,7 @@ lc86_jit::link_dst_only_emit()
 {
 	m_needs_epilogue = false;
 
-	if (m_cpu->cpu_ctx.hflags & HFLG_DBG_TRAP) {
-		LD_R32(EAX, CPU_CTX_EIP);
-		raise_exp_inline_emit<true>(0, 0, EXP_DB, EAX);
-		return;
-	}
-
-	if (check_rf_single_step_emit()) {
-		return;
-	}
-
-	// make sure we check for interrupts before jumping to the next tc
-	check_int_emit();
+	gen_no_link_checks();
 
 	m_cpu->tc->flags |= (1 & TC_FLG_NUM_JMP);
 
@@ -866,18 +877,7 @@ lc86_jit::link_indirect_emit()
 {
 	m_needs_epilogue = false;
 
-	if (m_cpu->cpu_ctx.hflags & HFLG_DBG_TRAP) {
-		LD_R32(EAX, CPU_CTX_EIP);
-		raise_exp_inline_emit<true>(0, 0, EXP_DB, EAX);
-		return;
-	}
-
-	if (check_rf_single_step_emit()) {
-		return;
-	}
-
-	// make sure we check for interrupts before jumping to the next tc
-	check_int_emit();
+	gen_no_link_checks();
 
 	MOV(RDX, m_cpu->tc);
 	MOV(RAX, &link_indirect_handler);
@@ -4399,10 +4399,35 @@ lc86_jit::hlt(ZydisDecodedInstruction *instr)
 		}
 
 		MOV(MEMD32(RCX, CPU_EXP_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
-		MOV(RAX, &hlt_helper);
-		CALL(RAX);
-		gen_epilogue_main<false>();
+		if (m_cpu->cpu_ctx.hflags & HFLG_TIMEOUT) {
+			Label retry = m_a.newLabel();
+			Label no_timeout = m_a.newLabel();
+			m_a.bind(retry);
+			MOV(RAX, &cpu_timer_helper<true>);
+			CALL(RAX);
+			RELOAD_RCX_CTX();
+			PAUSE();
+			TEST(EAX, EAX);
+			BR_EQ(retry);
+			CMP(EAX, 2);
+			BR_EQ(no_timeout);
+			MOV(MEMD8(RCX, CPU_CTX_EXIT), 1); // request an exit
+			MOV(MEMD8(RCX, CPU_CTX_HALTED), 1); // set halted flag
+			m_a.bind(no_timeout);
+		}
+		else {
+			Label retry = m_a.newLabel();
+			m_a.bind(retry);
+			MOV(RAX, &hlt_helper);
+			CALL(RAX);
+			RELOAD_RCX_CTX();
+			PAUSE();
+			TEST(EAX, EAX);
+			BR_EQ(retry);
+		}
 
+		XOR(EAX, EAX);
+		gen_epilogue_main<false>();
 		m_needs_epilogue = false;
 		m_cpu->translate_next = 0;
 	}
@@ -5086,7 +5111,8 @@ lc86_jit::jcc(ZydisDecodedInstruction *instr)
 
 	MOV(MEMD32(RCX, CPU_CTX_EIP), R9D);
 	ADD(R9D, m_cpu->cpu_ctx.regs.cs_hidden.base);
-	link_direct_emit(dst_pc, &next_pc, R9D);
+	MOV(EBX, R9D);
+	link_direct_emit(dst_pc, &next_pc, EBX);
 
 	m_cpu->tc->flags |= TC_FLG_DIRECT;
 	m_cpu->translate_next = 0;
@@ -5391,14 +5417,14 @@ lc86_jit::loop(ZydisDecodedInstruction *instr)
 	addr_t dst_pc = loop_eip + m_cpu->cpu_ctx.regs.cs_hidden.base;
 
 	ST_R32(CPU_CTX_EIP, loop_eip);
-	MOV(R8D, dst_pc);
+	MOV(EBX, dst_pc);
 	BR_UNCOND(end);
 	m_a.bind(next);
 	ST_R32(CPU_CTX_EIP, next_eip);
-	MOV(R8D, next_pc);
+	MOV(EBX, next_pc);
 	m_a.bind(end);
 
-	link_direct_emit(dst_pc, &next_pc, R8D);
+	link_direct_emit(dst_pc, &next_pc, EBX);
 	m_cpu->tc->flags |= TC_FLG_DIRECT;
 	m_cpu->translate_next = 0;
 }
@@ -5514,6 +5540,9 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				BR_EQ(ok);
 				RAISEin0_f(EXP_GP);
 				m_a.bind(ok);
+				if (cr_idx == CR0_idx) {
+					gen_no_link_checks();
+				}
 			}
 			break;
 
@@ -5642,6 +5671,9 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			if ((((m_cpu->virt_pc + m_cpu->instr_bytes) & ~PAGE_MASK) == (m_cpu->virt_pc & ~PAGE_MASK)) && (dr_idx == DR6_idx)) {
 				link_dst_only_emit();
 				m_cpu->tc->flags |= TC_FLG_DST_ONLY;
+			}
+			else {
+				gen_no_link_checks();
 			}
 			m_cpu->translate_next = 0;
 		}
@@ -6834,7 +6866,7 @@ lc86_jit::rdtsc(ZydisDecodedInstruction *instr)
 		m_a.bind(ok);
 	}
 
-	MOV(RAX, &cpu_rdtsc_handler);
+	MOV(RAX, &cpu_rdtsc_helper);
 	CALL(RAX);
 	RELOAD_RCX_CTX();
 }

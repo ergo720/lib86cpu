@@ -45,6 +45,7 @@ private:
 };
 
 void cpu_reset(cpu_t *cpu);
+template<bool run_forever>
 lc86_status cpu_start(cpu_t *cpu);
 [[noreturn]] void cpu_runtime_abort(const char *msg);
 [[noreturn]] void cpu_abort(int32_t code, const char *msg, ...);

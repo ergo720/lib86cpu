@@ -127,6 +127,8 @@ struct cpu_ctx_t {
 	uint8_t *ram;
 	exp_info_t exp_info;
 	uint32_t int_pending;
+	uint8_t exit_requested;
+	uint8_t is_halted;
 };
 
 // int_pending must be 4 byte aligned to ensure atomicity
@@ -149,15 +151,18 @@ struct cpu_t {
 	std::vector<std::pair<bool, std::unique_ptr<memory_region_t<addr_t>>>> regions_changed;
 	std::vector<const memory_region_t<addr_t> *> cached_regions;
 	std::bitset<std::numeric_limits<port_t>::max() + 1> iotable;
-	std::atomic_flag suspend_flg;
-	std::atomic_flag resume_flg;
 	uint16_t num_tc;
 	struct {
 		uint64_t tsc;
-		static constexpr uint64_t freq = 733333333;
+		static constexpr uint64_t cpu_freq = 733333333;
 		uint64_t last_host_ticks;
+	} tsc_clock;
+	struct {
+		uint64_t last_time;
+		uint64_t tot_time_us;
 		uint64_t host_freq;
-	} clock;
+		uint64_t timeout_time;
+	} timer;
 	msr_t msr;
 	read_int_t read_int_fn;
 	clear_int_t clear_int_fn;

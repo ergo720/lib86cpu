@@ -34,6 +34,9 @@ lc86status_to_str(lc86_status status)
 {
 	switch (status)
 	{
+	case lc86_status::timeout:
+		return "The operation timed out";
+
 	case lc86_status::internal_error:
 		return "An unspecified error internal to lib86cpu has occured";
 

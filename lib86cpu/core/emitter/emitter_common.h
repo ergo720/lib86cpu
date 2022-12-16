@@ -16,6 +16,8 @@
 #define CPU_CTX_TLB          offsetof(cpu_ctx_t, tlb)
 #define CPU_CTX_EXP          offsetof(cpu_ctx_t, exp_info)
 #define CPU_CTX_INT          offsetof(cpu_ctx_t, int_pending)
+#define CPU_CTX_EXIT         offsetof(cpu_ctx_t, exit_requested)
+#define CPU_CTX_HALTED       offsetof(cpu_ctx_t, is_halted)
 
 #define CPU_CTX_EAX          offsetof(cpu_ctx_t, regs.eax)
 #define CPU_CTX_ECX          offsetof(cpu_ctx_t, regs.ecx)

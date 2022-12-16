@@ -1190,29 +1190,26 @@ cpuid_helper(cpu_ctx_t *cpu_ctx)
 	}
 }
 
-translated_code_t *
+uint32_t
 hlt_helper(cpu_ctx_t *cpu_ctx)
 {
-	// this first checks if there are any unmasked hw interrupts pending, and satisfy the wait if so. Otherwise, it starts a wait on the suspend flag and waits
-	// a wake up from either cpu_resume or cpu_raise_hw_int.
-	while (true) {
-		uint32_t int_flg = cpu_ctx->cpu->read_int_fn(cpu_ctx);
-		if (int_flg & CPU_ABORT_INT) {
-			// abort interrupts are checked so that the client can still terminate the emulation with cpu_exit, in the case hw interrupts were
-			// masked by the guest or not sent by the client
-			throw lc86_exp_abort("Received abort signal, terminating the emulation", lc86_status::success);
-		}
-		if (((int_flg & CPU_HW_INT) | (cpu_ctx->regs.eflags & IF_MASK)) == (CPU_HW_INT | IF_MASK)) {
-			cpu_ctx->exp_info.exp_data.fault_addr = 0;
-			cpu_ctx->exp_info.exp_data.code = 0;
-			cpu_ctx->exp_info.exp_data.idx = cpu_ctx->cpu->get_int_vec();
-			cpu_ctx->exp_info.exp_data.eip = cpu_ctx->regs.eip;
-			return cpu_raise_exception<false, true>(cpu_ctx);
-		}
-		cpu_ctx->cpu->suspend_flg.test_and_set();
-		cpu_ctx->cpu->suspend_flg.notify_all();
-		cpu_ctx->cpu->suspend_flg.wait(true);
+	uint32_t int_flg = cpu_ctx->cpu->read_int_fn(cpu_ctx);
+	if (int_flg & CPU_ABORT_INT) {
+		// abort interrupts are checked so that the client can still terminate the emulation with cpu_exit, in the case hw interrupts were
+		// masked by the guest or not sent by the client
+		throw lc86_exp_abort("Received abort signal, terminating the emulation", lc86_status::success);
 	}
+
+	if (((int_flg & CPU_HW_INT) | (cpu_ctx->regs.eflags & IF_MASK)) == (CPU_HW_INT | IF_MASK)) {
+		cpu_ctx->exp_info.exp_data.fault_addr = 0;
+		cpu_ctx->exp_info.exp_data.code = 0;
+		cpu_ctx->exp_info.exp_data.idx = cpu_ctx->cpu->get_int_vec();
+		cpu_ctx->exp_info.exp_data.eip = cpu_ctx->regs.eip;
+		cpu_raise_exception<false, true>(cpu_ctx);
+		return 1;
+	}
+
+	return 0;
 }
 
 template uint8_t lret_pe_helper<true>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);

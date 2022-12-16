@@ -29,28 +29,30 @@ translated_code_t *cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 // HFLG_CR0_EM: em flag of cr0
 // HFLG_TRAMP: used to select the trampoline tc instead of the hook tc
 // HFLG_DBG_TRAP: used to suppress data/io watchpoints (not recorded in the tc flags)
-#define CPL_SHIFT       0
-#define CS32_SHIFT      2
-#define SS32_SHIFT      3
-#define PE_MODE_SHIFT   4
-#define EM_SHIFT        5
-#define TRAMP_SHIFT     6
-#define DBG_TRAP_SHIFT  7
-#define HFLG_CPL        (3 << CPL_SHIFT)
-#define HFLG_CS32       (1 << CS32_SHIFT)
-#define HFLG_SS32       (1 << SS32_SHIFT)
-#define HFLG_PE_MODE    (1 << PE_MODE_SHIFT)
-#define HFLG_CR0_EM     (1 << EM_SHIFT)
-#define HFLG_TRAMP      (1 << TRAMP_SHIFT)
-#define HFLG_DBG_TRAP   (1 << DBG_TRAP_SHIFT)
-#define HFLG_CONST      (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP)
+// HFLG_TIMEOUT_SET: timeout check was emitted
+#define CPL_SHIFT           0
+#define CS32_SHIFT          2
+#define SS32_SHIFT          3
+#define PE_MODE_SHIFT       4
+#define EM_SHIFT            5
+#define TRAMP_SHIFT         6
+#define DBG_TRAP_SHIFT      7
+#define TIMEOUT_SHIFT       9
+#define HFLG_CPL            (3 << CPL_SHIFT)
+#define HFLG_CS32           (1 << CS32_SHIFT)
+#define HFLG_SS32           (1 << SS32_SHIFT)
+#define HFLG_PE_MODE        (1 << PE_MODE_SHIFT)
+#define HFLG_CR0_EM         (1 << EM_SHIFT)
+#define HFLG_TRAMP          (1 << TRAMP_SHIFT)
+#define HFLG_DBG_TRAP       (1 << DBG_TRAP_SHIFT)
+#define HFLG_TIMEOUT        (1 << TIMEOUT_SHIFT)
+#define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_TIMEOUT)
 
 // cpu interrupt flags
 #define CPU_HW_INT      (1 << 0)
 #define CPU_ABORT_INT   (1 << 1)
 #define CPU_A20_INT     (1 << 2)
 #define CPU_REGION_INT  (1 << 3)
-#define CPU_PAUSE_INT   (1 << 4)
 
 // disassembly context flags
 #define DISAS_FLG_CS32         (1 << 0)

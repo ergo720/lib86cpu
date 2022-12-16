@@ -45,7 +45,6 @@ cpu_reset(cpu_t *cpu)
 	cpu->msr.mtrr.def_type = 0;
 	std::memset(cpu->msr.mtrr.phys_var, 0, sizeof(cpu->msr.mtrr.phys_var));
 	std::memset(cpu->msr.mtrr.phys_fixed, 0, sizeof(cpu->msr.mtrr.phys_fixed));
-	cpu->clock.tsc = 0;
 	tsc_init(cpu);
 }
 
@@ -1336,16 +1335,6 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 		}
 	}
 
-	if (int_flg & CPU_PAUSE_INT) {
-		// if resume_flg is false, it means this is a spurious wake up from cpu_raise_hw_int, so we must keep waiting
-		do {
-			cpu_ctx->cpu->suspend_flg.test_and_set();
-			cpu_ctx->cpu->suspend_flg.notify_all();
-			cpu_ctx->cpu->suspend_flg.wait(true);
-		} while (!cpu_ctx->cpu->resume_flg.test());
-		cpu_ctx->cpu->resume_flg.clear();
-	}
-
 	if (((int_flg & CPU_HW_INT) | (cpu_ctx->regs.eflags & IF_MASK)) == (IF_MASK | CPU_HW_INT)) {
 		cpu_ctx->exp_info.exp_data.fault_addr = 0;
 		cpu_ctx->exp_info.exp_data.code = 0;
@@ -1575,8 +1564,8 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 	}
 }
 
-lc86_status
-cpu_start(cpu_t *cpu)
+template<bool run_forever>
+lc86_status cpu_start(cpu_t *cpu)
 {
 	if (cpu->cpu_flags & CPU_DBG_PRESENT) {
 		std::promise<bool> promise;
@@ -1591,7 +1580,27 @@ cpu_start(cpu_t *cpu)
 	}
 
 	try {
-		cpu_main_loop<false, false>(cpu, []() { return true; });
+		if constexpr (run_forever) {
+			cpu_main_loop<false, false>(cpu, []() { return true; });
+		}
+		else {
+			cpu->cpu_ctx.hflags |= HFLG_TIMEOUT;
+			if (cpu->cpu_ctx.is_halted) {
+				if (((cpu->read_int_fn(&cpu->cpu_ctx) & CPU_HW_INT) | (cpu->cpu_ctx.regs.eflags & IF_MASK)) == (IF_MASK | CPU_HW_INT)) {
+					cpu->cpu_ctx.exp_info.exp_data.fault_addr = 0;
+					cpu->cpu_ctx.exp_info.exp_data.code = 0;
+					cpu->cpu_ctx.exp_info.exp_data.idx = cpu->get_int_vec();
+					cpu->cpu_ctx.exp_info.exp_data.eip = cpu->cpu_ctx.regs.eip;
+					cpu_raise_exception<false, true>(&cpu->cpu_ctx);
+				}
+				cpu->cpu_ctx.is_halted = 0;
+			}
+			cpu_timer_set_now(cpu);
+			cpu->cpu_ctx.exit_requested = 0;
+			cpu_main_loop<false, false>(cpu, [cpu]() { return !cpu->cpu_ctx.exit_requested; });
+			cpu->cpu_ctx.hflags &= ~HFLG_TIMEOUT;
+			return lc86_status::timeout;
+		}
 	}
 	catch (lc86_exp_abort &exp) {
 		if (cpu->cpu_flags & CPU_DBG_PRESENT) {
@@ -1620,3 +1629,5 @@ template translated_code_t *cpu_raise_exception<true, false>(cpu_ctx_t *cpu_ctx)
 template translated_code_t *cpu_raise_exception<false, true>(cpu_ctx_t *cpu_ctx);
 template translated_code_t *cpu_raise_exception<false, false>(cpu_ctx_t *cpu_ctx);
 template void tc_should_clear_cache_and_tlb<true>(cpu_t *cpu, addr_t start, addr_t end);
+template lc86_status cpu_start<true>(cpu_t *cpu);
+template lc86_status cpu_start<false>(cpu_t *cpu);
