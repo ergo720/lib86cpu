@@ -1273,7 +1273,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 	} while ((cpu->translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR))) == 1);
 }
 
-translated_code_t *
+uint32_t
 cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 {
 	cpu_ctx->cpu->clear_int_fn(cpu_ctx);
@@ -1341,9 +1341,10 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 		cpu_ctx->exp_info.exp_data.idx = cpu_ctx->cpu->get_int_vec();
 		cpu_ctx->exp_info.exp_data.eip = cpu_ctx->regs.eip;
 		cpu_raise_exception<false, true>(cpu_ctx);
+		return 1;
 	}
 
-	return nullptr;
+	return 0;
 }
 
 // forward declare for cpu_main_loop

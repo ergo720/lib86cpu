@@ -45,15 +45,12 @@ cpu_timer_set_now(cpu_t *cpu)
 	cpu->timer.tot_time_us = 0;
 }
 
-template<bool check_int>
-uint32_t cpu_timer_helper(cpu_ctx_t *cpu_ctx)
+uint32_t
+cpu_timer_helper(cpu_ctx_t *cpu_ctx)
 {
-	if constexpr (check_int) {
-		uint32_t int_flg = cpu_ctx->cpu->read_int_fn(cpu_ctx);
-		cpu_do_int(cpu_ctx, int_flg);
-		if (((int_flg & CPU_HW_INT) | (cpu_ctx->regs.eflags & IF_MASK)) == (IF_MASK | CPU_HW_INT)) {
-			return 2;
-		}
+	// always check for interrupts first. Otherwise, if the cpu consistently timeouts at every code block, it will never check for interrupts
+	if (cpu_do_int(cpu_ctx, cpu_ctx->cpu->read_int_fn(cpu_ctx))) {
+		return 2;
 	}
 
 	LARGE_INTEGER now;
@@ -69,6 +66,3 @@ uint32_t cpu_timer_helper(cpu_ctx_t *cpu_ctx)
 
 	return 0;
 }
-
-template uint32_t cpu_timer_helper<true>(cpu_ctx_t *cpu_ctx);
-template uint32_t cpu_timer_helper<false>(cpu_ctx_t *cpu_ctx);

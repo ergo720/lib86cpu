@@ -512,20 +512,36 @@ void lc86_jit::gen_int_fn()
 
 
 void
-lc86_jit::gen_timeout_check()
+lc86_jit::gen_block_end_checks()
 {
+	Label no_int = m_a.newLabel();
 	if (m_cpu->cpu_ctx.hflags & HFLG_TIMEOUT) {
-		Label no_timeout = m_a.newLabel();
-		MOV(RAX, &cpu_timer_helper<false>);
+		Label hw_int = m_a.newLabel();
+		MOV(RAX, &cpu_timer_helper);
 		CALL(RAX);
 		RELOAD_RCX_CTX();
 		TEST(EAX, EAX);
-		BR_EQ(no_timeout);
-		XOR(EAX, EAX);
+		BR_EQ(no_int);
+		CMP(EAX, 2);
+		BR_EQ(hw_int);
 		MOV(MEMD8(RCX, CPU_CTX_EXIT), 1); // request an exit
-		gen_epilogue_main<false>();
-		m_a.bind(no_timeout);
+		m_a.bind(hw_int);
 	}
+	else {
+		MOV(EDX, MEMD32(RCX, CPU_CTX_INT));
+		TEST(EDX, EDX);
+		BR_EQ(no_int);
+		MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS));
+		AND(EAX, IF_MASK);
+		OR(EAX, EDX);
+		CMP(EAX, 1); // hw int set but if=0
+		BR_EQ(no_int);
+		MOV(RAX, &cpu_do_int);
+		CALL(RAX);
+	}
+	XOR(EAX, EAX);
+	gen_epilogue_main<false>();
+	m_a.bind(no_int);
 }
 
 void
@@ -541,10 +557,7 @@ lc86_jit::gen_no_link_checks()
 		return;
 	}
 
-	gen_timeout_check();
-
-	// make sure we check for interrupts before jumping to the next tc
-	check_int_emit();
+	gen_block_end_checks();
 }
 
 void
@@ -664,24 +677,6 @@ void
 lc86_jit::raise_exp_inline_emit(uint32_t fault_addr, uint16_t code, uint16_t idx, uint32_t eip)
 {
 	raise_exp_inline_emit<true>(fault_addr, code, idx, eip);
-}
-
-void
-lc86_jit::check_int_emit()
-{
-	Label no_int = m_a.newLabel();
-	MOV(EDX, MEMD32(RCX, CPU_CTX_INT));
-	TEST(EDX, EDX);
-	BR_EQ(no_int);
-	MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS));
-	AND(EAX, IF_MASK);
-	OR(EAX, EDX);
-	CMP(EAX, 1); // hw int set but if=0
-	BR_EQ(no_int);
-	MOV(RAX, &cpu_do_int);
-	CALL(RAX);
-	gen_epilogue_main<false>();
-	m_a.bind(no_int);
 }
 
 bool
@@ -4409,7 +4404,7 @@ lc86_jit::hlt(ZydisDecodedInstruction *instr)
 			Label retry = m_a.newLabel();
 			Label no_timeout = m_a.newLabel();
 			m_a.bind(retry);
-			MOV(RAX, &cpu_timer_helper<true>);
+			MOV(RAX, &cpu_timer_helper);
 			CALL(RAX);
 			RELOAD_RCX_CTX();
 			PAUSE();

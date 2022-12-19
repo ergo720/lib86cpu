@@ -155,9 +155,8 @@ private:
 	void gen_tail_call(x86::Gp addr);
 	template<unsigned idx>
 	void gen_int_fn();
-	void gen_timeout_check();
+	void gen_block_end_checks();
 	void gen_no_link_checks();
-	void check_int_emit();
 	bool check_rf_single_step_emit();
 	template<typename T>
 	void link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_addr);
