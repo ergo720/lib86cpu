@@ -6923,8 +6923,7 @@ lc86_jit::ret(ZydisDecodedInstruction *instr)
 		else {
 			stack_pop_emit<2>();
 			if (m_cpu->size_mode == SIZE16) {
-				MOV(R11W, MEMD16(RSP, LOCAL_VARS_off(0)));
-				MOVZX(R11D, R11W);
+				MOVZX(R11D, MEMD16(RSP, LOCAL_VARS_off(0)));
 			}
 			else {
 				MOV(R11D, MEMD32(RSP, LOCAL_VARS_off(0)));
