@@ -11,6 +11,7 @@
 #include "clock.h"
 #include <assert.h>
 #include <optional>
+#include <immintrin.h>
 
 #ifdef LIB86CPU_X64_EMITTER
 
@@ -677,6 +678,29 @@ void
 lc86_jit::gen_raise_exp_inline(uint32_t fault_addr, uint16_t code, uint16_t idx, uint32_t eip)
 {
 	gen_raise_exp_inline<true>(fault_addr, code, idx, eip);
+}
+
+void
+lc86_jit::halt_loop()
+{
+	while (true) {
+		uint32_t ret = cpu_timer_helper(&m_cpu->cpu_ctx);
+		_mm_pause();
+
+		if (ret == 0) {
+			// nothing changed, keep looping
+			continue;
+		}
+
+		if (ret == 2) {
+			// hw int, exit the loop and clear the halted state
+			m_cpu->cpu_ctx.is_halted = 0;
+			return;
+		}
+
+		// timeout, exit the loop
+		return;
+	}
 }
 
 bool

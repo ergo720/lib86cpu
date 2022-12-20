@@ -1586,18 +1586,17 @@ lc86_status cpu_start(cpu_t *cpu)
 		}
 		else {
 			cpu->cpu_ctx.hflags |= HFLG_TIMEOUT;
-			if (cpu->cpu_ctx.is_halted) {
-				if (((cpu->read_int_fn(&cpu->cpu_ctx) & CPU_HW_INT) | (cpu->cpu_ctx.regs.eflags & IF_MASK)) == (IF_MASK | CPU_HW_INT)) {
-					cpu->cpu_ctx.exp_info.exp_data.fault_addr = 0;
-					cpu->cpu_ctx.exp_info.exp_data.code = 0;
-					cpu->cpu_ctx.exp_info.exp_data.idx = cpu->get_int_vec();
-					cpu->cpu_ctx.exp_info.exp_data.eip = cpu->cpu_ctx.regs.eip;
-					cpu_raise_exception<false, true>(&cpu->cpu_ctx);
-				}
-				cpu->cpu_ctx.is_halted = 0;
-			}
 			cpu_timer_set_now(cpu);
 			cpu->cpu_ctx.exit_requested = 0;
+			if (cpu->cpu_ctx.is_halted) {
+				// if the cpu was previously halted, then we must keep waiting until the next hw int
+				cpu->jit->halt_loop();
+				if (cpu->cpu_ctx.is_halted) {
+					// if it is still halted, then it must be a timeout
+					cpu->cpu_ctx.hflags &= ~HFLG_TIMEOUT;
+					return lc86_status::timeout;
+				}
+			}
 			cpu_main_loop<false, false>(cpu, [cpu]() { return !cpu->cpu_ctx.exit_requested; });
 			cpu->cpu_ctx.hflags &= ~HFLG_TIMEOUT;
 			return lc86_status::timeout;
