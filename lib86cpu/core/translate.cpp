@@ -685,7 +685,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		catch (host_exp_t type) {
 			// this happens on instr breakpoints (not int3)
 			assert(type == host_exp_t::de_exp);
-			cpu->jit->raise_exp_inline_emit(0, 0, EXP_DB, cpu->instr_eip);
+			cpu->jit->gen_raise_exp_inline(0, 0, EXP_DB, cpu->instr_eip);
 			disas_ctx->flags |= DISAS_FLG_DBG_FAULT;
 			return;
 		}
@@ -712,7 +712,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			case ZYDIS_STATUS_DECODING_ERROR:
 				// illegal and/or undefined instruction, or lock prefix used on an instruction which does not accept it or used as source operand,
 				// or the instruction encodes a register that cannot be used (e.g. mov cs, edx)
-				cpu->jit->raise_exp_inline_emit(0, 0, EXP_UD, cpu->instr_eip);
+				cpu->jit->gen_raise_exp_inline(0, 0, EXP_UD, cpu->instr_eip);
 				return;
 
 			case ZYDIS_STATUS_NO_MORE_DATA:
@@ -721,7 +721,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				if (disas_ctx->exp_data.idx == EXP_PF) {
 					// buffer size reduced because of page fault on second page
 					disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
-					cpu->jit->raise_exp_inline_emit(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx, disas_ctx->exp_data.eip);
+					cpu->jit->gen_raise_exp_inline(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx, disas_ctx->exp_data.eip);
 					return;
 				}
 				else {
@@ -735,10 +735,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 				volatile addr_t addr = get_code_addr(cpu, disas_ctx->virt_pc + X86_MAX_INSTR_LENGTH, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, TLB_CODE, disas_ctx);
 				if (disas_ctx->exp_data.idx == EXP_PF) {
 					disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
-					cpu->jit->raise_exp_inline_emit(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx, disas_ctx->exp_data.eip);
+					cpu->jit->gen_raise_exp_inline(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx, disas_ctx->exp_data.eip);
 				}
 				else {
-					cpu->jit->raise_exp_inline_emit(0, 0, EXP_GP, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
+					cpu->jit->gen_raise_exp_inline(0, 0, EXP_GP, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
 				}
 				return;
 			}
@@ -1436,7 +1436,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 
 				if (take_hook) {
 					cpu->instr_eip = disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base;
-					cpu->jit->hook_emit(it->second);
+					cpu->jit->gen_hook(it->second);
 				}
 				else {
 					// start guest code translation

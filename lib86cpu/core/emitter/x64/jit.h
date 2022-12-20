@@ -32,8 +32,8 @@ public:
 	void gen_tc_prologue() { start_new_session(); gen_prologue_main(); }
 	void gen_tc_epilogue();
 	void gen_int_fn();
-	void hook_emit(void *hook_addr);
-	void raise_exp_inline_emit(uint32_t fault_addr, uint16_t code, uint16_t idx, uint32_t eip);
+	void gen_hook(void *hook_addr);
+	void gen_raise_exp_inline(uint32_t fault_addr, uint16_t code, uint16_t idx, uint32_t eip);
 	void free_code_block(void *addr) { m_mem.release_sys_mem(addr); }
 	void destroy_all_code() { m_mem.destroy_all_blocks(); }
 
@@ -157,16 +157,16 @@ private:
 	void gen_int_fn();
 	void gen_block_end_checks();
 	void gen_no_link_checks();
-	bool check_rf_single_step_emit();
+	bool gen_check_rf_single_step();
 	template<typename T>
-	void link_direct_emit(addr_t dst_pc, addr_t *next_pc, T target_addr);
-	void link_dst_only_emit();
-	void link_indirect_emit();
-	void link_ret_emit();
+	void gen_link_direct(addr_t dst_pc, addr_t *next_pc, T target_addr);
+	void gen_link_dst_only();
+	void gen_link_indirect();
+	void gen_link_ret();
 	template<bool terminates, typename T1, typename T2, typename T3, typename T4>
-	void raise_exp_inline_emit(T1 fault_addr, T2 code, T3 idx, T4 eip);
+	void gen_raise_exp_inline(T1 fault_addr, T2 code, T3 idx, T4 eip);
 	template<bool terminates>
-	void raise_exp_inline_emit();
+	void gen_raise_exp_inline();
 	template<bool add_seg_base = true>
 	op_info get_operand(ZydisDecodedInstruction *instr, const unsigned opnum);
 	op_info get_register_op(ZydisDecodedInstruction *instr, const unsigned opnum);
@@ -215,14 +215,14 @@ private:
 	void load_io(uint8_t size_mode);
 	void store_io(uint8_t size_mode);
 	template<typename T>
-	bool check_io_priv_emit(T port);
+	bool gen_check_io_priv(T port);
 	Label rep_start(Label end);
 	template<unsigned rep_prfx>
 	void rep(Label start, Label end);
 	template<typename... Args>
-	void stack_push_emit(Args... pushed_args);
+	void gen_stack_push(Args... pushed_args);
 	template<unsigned num, unsigned store_at = 0, bool write_esp = true>
-	void stack_pop_emit();
+	void gen_stack_pop();
 	template<unsigned idx>
 	void shift(ZydisDecodedInstruction *instr);
 	template<unsigned idx>
