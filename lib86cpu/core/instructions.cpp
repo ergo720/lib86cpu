@@ -123,7 +123,7 @@ validate_seg_helper(cpu_t *cpu)
 }
 
 template<bool is_iret>
-uint8_t lret_pe_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
+uint32_t lret_pe_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
 {
 	cpu_t *cpu = cpu_ctx->cpu;
 	uint32_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
@@ -270,7 +270,7 @@ iret_real_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
 	write_eflags_helper(cpu, temp_eflags, eflags_mask);
 }
 
-uint8_t
+uint32_t
 ljmp_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint8_t size_mode, uint32_t jmp_eip, uint32_t eip)
 {
 	cpu_t *cpu = cpu_ctx->cpu;
@@ -384,7 +384,7 @@ ljmp_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint8_t size_mode, uint32_t jmp
 	return 0;
 }
 
-uint8_t
+uint32_t
 lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t size_mode, uint32_t ret_eip, uint32_t eip)
 {
 	cpu_t *cpu = cpu_ctx->cpu;
@@ -598,7 +598,7 @@ lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t siz
 }
 
 template<unsigned reg>
-uint8_t mov_sel_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
+uint32_t mov_sel_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
 {
 	cpu_t *cpu = cpu_ctx->cpu;
 
@@ -677,7 +677,7 @@ void verrw_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
 	cpu_ctx->lazy_eflags.auxbits = (cpu_ctx->lazy_eflags.auxbits & 0xFFFF00FE) | (sfd | pdb);
 }
 
-uint8_t
+uint32_t
 ltr_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
 {
 	cpu_t *cpu = cpu_ctx->cpu;
@@ -708,7 +708,7 @@ ltr_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
 	return 0;
 }
 
-uint8_t
+uint32_t
 lldt_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
 {
 	cpu_t *cpu = cpu_ctx->cpu;
@@ -739,7 +739,7 @@ lldt_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
 	return 0;
 }
 
-uint8_t
+uint32_t
 update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes)
 {
 	switch (idx)
@@ -893,7 +893,7 @@ update_drN_helper(cpu_ctx_t *cpu_ctx, uint8_t dr_idx, uint32_t new_dr)
 	}
 }
 
-uint8_t
+uint32_t
 msr_read_helper(cpu_ctx_t *cpu_ctx)
 {
 	uint64_t val;
@@ -964,7 +964,7 @@ msr_read_helper(cpu_ctx_t *cpu_ctx)
 	return 0;
 }
 
-uint8_t
+uint32_t
 msr_write_helper(cpu_ctx_t *cpu_ctx)
 {
 	uint64_t val = (static_cast<uint64_t>(cpu_ctx->regs.edx) << 32) | cpu_ctx->regs.eax;
@@ -1042,7 +1042,7 @@ msr_write_helper(cpu_ctx_t *cpu_ctx)
 	return 0;
 }
 
-uint8_t
+uint32_t
 divd_helper(cpu_ctx_t *cpu_ctx, uint32_t d, uint32_t eip)
 {
 	uint64_t D = (static_cast<uint64_t>(cpu_ctx->regs.eax)) | (static_cast<uint64_t>(cpu_ctx->regs.edx) << 32);
@@ -1060,7 +1060,7 @@ divd_helper(cpu_ctx_t *cpu_ctx, uint32_t d, uint32_t eip)
 	return 0;
 }
 
-uint8_t
+uint32_t
 divw_helper(cpu_ctx_t *cpu_ctx, uint16_t d, uint32_t eip)
 {
 	uint32_t D = (cpu_ctx->regs.eax & 0xFFFF) | ((cpu_ctx->regs.edx & 0xFFFF) << 16);
@@ -1080,7 +1080,7 @@ divw_helper(cpu_ctx_t *cpu_ctx, uint16_t d, uint32_t eip)
 	return 0;
 }
 
-uint8_t
+uint32_t
 divb_helper(cpu_ctx_t *cpu_ctx, uint8_t d, uint32_t eip)
 {
 	uint16_t D = cpu_ctx->regs.eax & 0xFFFF;
@@ -1099,7 +1099,7 @@ divb_helper(cpu_ctx_t *cpu_ctx, uint8_t d, uint32_t eip)
 	return 0;
 }
 
-uint8_t
+uint32_t
 idivd_helper(cpu_ctx_t *cpu_ctx, uint32_t d, uint32_t eip)
 {
 	int64_t D = static_cast<int64_t>((static_cast<uint64_t>(cpu_ctx->regs.eax)) | (static_cast<uint64_t>(cpu_ctx->regs.edx) << 32));
@@ -1118,7 +1118,7 @@ idivd_helper(cpu_ctx_t *cpu_ctx, uint32_t d, uint32_t eip)
 	return 0;
 }
 
-uint8_t
+uint32_t
 idivw_helper(cpu_ctx_t *cpu_ctx, uint16_t d, uint32_t eip)
 {
 	int32_t D = static_cast<int32_t>((cpu_ctx->regs.eax & 0xFFFF) | ((cpu_ctx->regs.edx & 0xFFFF) << 16));
@@ -1139,7 +1139,7 @@ idivw_helper(cpu_ctx_t *cpu_ctx, uint16_t d, uint32_t eip)
 	return 0;
 }
 
-uint8_t
+uint32_t
 idivb_helper(cpu_ctx_t *cpu_ctx, uint8_t d, uint32_t eip)
 {
 	int16_t D = static_cast<int16_t>(cpu_ctx->regs.eax & 0xFFFF);
@@ -1212,14 +1212,14 @@ hlt_helper(cpu_ctx_t *cpu_ctx)
 	return 0;
 }
 
-template uint8_t lret_pe_helper<true>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
-template uint8_t lret_pe_helper<false>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
+template uint32_t lret_pe_helper<true>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
+template uint32_t lret_pe_helper<false>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
 
 template void verrw_helper<true>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
 template void verrw_helper<false>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
 
-template uint8_t mov_sel_pe_helper<DS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
-template uint8_t mov_sel_pe_helper<ES_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
-template uint8_t mov_sel_pe_helper<SS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
-template uint8_t mov_sel_pe_helper<FS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
-template uint8_t mov_sel_pe_helper<GS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template uint32_t mov_sel_pe_helper<DS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template uint32_t mov_sel_pe_helper<ES_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template uint32_t mov_sel_pe_helper<SS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template uint32_t mov_sel_pe_helper<FS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template uint32_t mov_sel_pe_helper<GS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);

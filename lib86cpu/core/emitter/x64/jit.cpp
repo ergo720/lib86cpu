@@ -2735,7 +2735,7 @@ void lc86_jit::load_sys_seg_reg(ZydisDecodedInstruction *instr)
 			}
 			CALL(RAX);
 			RELOAD_RCX_CTX();
-			CMP(AL, 0);
+			TEST(EAX, EAX);
 			BR_EQ(ok);
 			RAISEin_no_param_f();
 			m_a.bind(ok);
@@ -2824,7 +2824,7 @@ void lc86_jit::lxs(ZydisDecodedInstruction *instr)
 		Label ok = m_a.newLabel();
 		CALL(RAX);
 		RELOAD_RCX_CTX();
-		CMP(AL, 0);
+		TEST(EAX, EAX);
 		BR_EQ(ok);
 		RAISEin_no_param_f();
 		m_a.bind(ok);
@@ -3554,7 +3554,7 @@ lc86_jit::call(ZydisDecodedInstruction *instr)
 			MOV(RAX, &lcall_pe_helper);
 			CALL(RAX);
 			RELOAD_RCX_CTX();
-			CMP(AL, 0);
+			TEST(EAX, EAX);
 			BR_NE(exp);
 			link_indirect_emit();
 			m_a.bind(exp);
@@ -3639,7 +3639,7 @@ lc86_jit::call(ZydisDecodedInstruction *instr)
 				MOV(RAX, &lcall_pe_helper);
 				CALL(RAX);
 				RELOAD_RCX_CTX();
-				CMP(AL, 0);
+				TEST(EAX, EAX);
 				BR_NE(exp);
 				link_indirect_emit();
 				m_a.bind(exp);
@@ -4375,7 +4375,7 @@ lc86_jit::div(ZydisDecodedInstruction *instr)
 		MOV(R8D, m_cpu->instr_eip);
 		CALL(RAX);
 		RELOAD_RCX_CTX();
-		CMP(AL, 0);
+		TEST(EAX, EAX);
 		BR_EQ(ok);
 		RAISEin_no_param_f();
 		m_a.bind(ok);
@@ -4498,7 +4498,7 @@ lc86_jit::idiv(ZydisDecodedInstruction *instr)
 		MOV(R8D, m_cpu->instr_eip);
 		CALL(RAX);
 		RELOAD_RCX_CTX();
-		CMP(AL, 0);
+		TEST(EAX, EAX);
 		BR_EQ(ok);
 		RAISEin_no_param_f();
 		m_a.bind(ok);
@@ -4850,7 +4850,7 @@ lc86_jit::iret(ZydisDecodedInstruction *instr)
 		MOV(RAX, &lret_pe_helper<true>);
 		CALL(RAX);
 		RELOAD_RCX_CTX();
-		CMP(AL, 0);
+		TEST(EAX, EAX);
 		BR_NE(exp);
 		link_ret_emit();
 		m_a.bind(exp);
@@ -5148,7 +5148,7 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 			MOV(RAX, &ljmp_pe_helper);
 			CALL(RAX);
 			RELOAD_RCX_CTX();
-			CMP(AL, 0);
+			TEST(EAX, EAX);
 			BR_NE(exp);
 			link_indirect_emit();
 			m_a.bind(exp);
@@ -5537,7 +5537,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				MOV(RAX, &update_crN_helper);
 				CALL(RAX);
 				RELOAD_RCX_CTX();
-				CMP(AL, 0);
+				TEST(EAX, EAX);
 				BR_EQ(ok);
 				RAISEin0_f(EXP_GP);
 				m_a.bind(ok);
@@ -5755,7 +5755,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				MOV(RAX, &mov_sel_pe_helper<SS_idx>);
 				CALL(RAX);
 				RELOAD_RCX_CTX();
-				CMP(AL, 0);
+				TEST(EAX, EAX);
 				BR_EQ(ok);
 				RAISEin_no_param_f();
 				m_a.bind(ok);
@@ -5794,7 +5794,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				Label ok = m_a.newLabel();
 				CALL(RAX);
 				RELOAD_RCX_CTX();
-				CMP(AL, 0);
+				TEST(EAX, EAX);
 				BR_EQ(ok);
 				RAISEin_no_param_f();
 				m_a.bind(ok);
@@ -6426,7 +6426,7 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 			Label ok = m_a.newLabel();
 			CALL(RAX);
 			RELOAD_RCX_CTX();
-			CMP(AL, 0);
+			TEST(EAX, EAX);
 			BR_EQ(ok);
 			RAISEin_no_param_f();
 			m_a.bind(ok);
@@ -6847,7 +6847,7 @@ lc86_jit::rdmsr(ZydisDecodedInstruction *instr)
 		MOV(RAX, &msr_read_helper);
 		CALL(RAX);
 		RELOAD_RCX_CTX();
-		CMP(AL, 0);
+		TEST(EAX, EAX);
 		BR_EQ(ok);
 		RAISEin0_f(EXP_GP);
 		m_a.bind(ok);
@@ -6915,7 +6915,7 @@ lc86_jit::ret(ZydisDecodedInstruction *instr)
 			MOV(RAX, &lret_pe_helper<false>);
 			CALL(RAX);
 			RELOAD_RCX_CTX();
-			CMP(AL, 0);
+			TEST(EAX, EAX);
 			BR_EQ(ok);
 			RAISEin_no_param_f();
 			m_a.bind(ok);
@@ -7712,7 +7712,7 @@ lc86_jit::wrmsr(ZydisDecodedInstruction *instr)
 		MOV(RAX, &msr_write_helper);
 		CALL(RAX);
 		RELOAD_RCX_CTX();
-		CMP(AL, 0);
+		TEST(EAX, EAX);
 		BR_EQ(ok);
 		RAISEin0_f(EXP_GP);
 		m_a.bind(ok);
