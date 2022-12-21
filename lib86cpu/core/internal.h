@@ -303,4 +303,9 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define MSR_MTRR_PHYSMASK_RES      0xFFFFFFF0000007FF
 #define MSR_MTRR_DEF_TYPE_RES      0xFFFFFFFFFFFFF300
 
+// cpu_timer_helper return statuses
+#define TIMER_NO_CHANGE 0
+#define TIMER_TIMEOUT   1
+#define TIMER_HW_INT    2
+
 #define X86_MAX_INSTR_LENGTH 15

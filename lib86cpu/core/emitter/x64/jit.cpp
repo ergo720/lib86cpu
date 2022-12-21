@@ -514,7 +514,7 @@ lc86_jit::gen_block_end_checks()
 		CALL_F(&cpu_timer_helper);
 		TEST(EAX, EAX);
 		BR_EQ(no_int);
-		CMP(EAX, 2);
+		CMP(EAX, TIMER_HW_INT);
 		BR_EQ(hw_int);
 		MOV(MEMD8(RCX, CPU_CTX_EXIT), 1); // request an exit
 		m_a.bind(hw_int);
@@ -675,12 +675,12 @@ lc86_jit::halt_loop()
 		uint32_t ret = cpu_timer_helper(&m_cpu->cpu_ctx);
 		_mm_pause();
 
-		if (ret == 0) {
+		if (ret == TIMER_NO_CHANGE) {
 			// nothing changed, keep looping
 			continue;
 		}
 
-		if (ret == 2) {
+		if (ret == TIMER_HW_INT) {
 			// hw int, exit the loop and clear the halted state
 			m_cpu->cpu_ctx.is_halted = 0;
 			return;
@@ -4392,7 +4392,7 @@ lc86_jit::hlt(ZydisDecodedInstruction *instr)
 			PAUSE();
 			TEST(EAX, EAX);
 			BR_EQ(retry);
-			CMP(EAX, 2);
+			CMP(EAX, TIMER_HW_INT);
 			BR_EQ(no_timeout);
 			MOV(MEMD8(RCX, CPU_CTX_EXIT), 1); // request an exit
 			MOV(MEMD8(RCX, CPU_CTX_HALTED), 1); // set halted flag
