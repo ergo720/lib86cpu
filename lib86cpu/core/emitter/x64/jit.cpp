@@ -312,6 +312,7 @@ get_local_var_offset()
 #define GET_IMM() get_immediate_op(instr, OPNUM_SRC)
 
 #define RELOAD_RCX_CTX() MOV(RCX, &m_cpu->cpu_ctx)
+#define CALL_F(func) MOV(RAX, func); CALL(RAX); RELOAD_RCX_CTX()
 
 
 lc86_jit::lc86_jit(cpu_t *cpu)
@@ -510,9 +511,7 @@ lc86_jit::gen_block_end_checks()
 	Label no_int = m_a.newLabel();
 	if (m_cpu->cpu_ctx.hflags & HFLG_TIMEOUT) {
 		Label hw_int = m_a.newLabel();
-		MOV(RAX, &cpu_timer_helper);
-		CALL(RAX);
-		RELOAD_RCX_CTX();
+		CALL_F(&cpu_timer_helper);
 		TEST(EAX, EAX);
 		BR_EQ(no_int);
 		CMP(EAX, 2);
@@ -659,10 +658,7 @@ void lc86_jit::gen_raise_exp_inline()
 void
 lc86_jit::gen_hook(void *hook_addr)
 {
-	MOV(RAX, reinterpret_cast<uintptr_t>(hook_addr));
-	CALL(RAX);
-	RELOAD_RCX_CTX();
-
+	CALL_F(reinterpret_cast<uintptr_t>(hook_addr));
 	gen_link_ret();
 }
 
@@ -897,9 +893,7 @@ lc86_jit::gen_link_indirect()
 	gen_no_link_checks();
 
 	MOV(RDX, m_cpu->tc);
-	MOV(RAX, &link_indirect_handler);
-	CALL(RAX);
-	RELOAD_RCX_CTX();
+	CALL_F(&link_indirect_handler);
 	gen_tail_call(RAX);
 }
 
@@ -1710,23 +1704,20 @@ lc86_jit::load_mem(uint8_t size, uint8_t is_priv)
 	switch (size)
 	{
 	case SIZE32:
-		MOV(RAX, &mem_read_helper<uint32_t>);
+		CALL_F(&mem_read_helper<uint32_t>);
 		break;
 
 	case SIZE16:
-		MOV(RAX, &mem_read_helper<uint16_t>);
+		CALL_F(&mem_read_helper<uint16_t>);
 		break;
 
 	case SIZE8:
-		MOV(RAX, &mem_read_helper<uint8_t>);
+		CALL_F(&mem_read_helper<uint8_t>);
 		break;
 
 	default:
 		LIB86CPU_ABORT();
 	}
-
-	CALL(RAX);
-	RELOAD_RCX_CTX();
 }
 
 template<typename T>
@@ -1741,25 +1732,22 @@ void lc86_jit::store_mem(T val, uint8_t size, uint8_t is_priv)
 	{
 	case SIZE32:
 		MOV(R8D, val);
-		MOV(RAX, &mem_write_helper<uint32_t>);
+		CALL_F(&mem_write_helper<uint32_t>);
 		break;
 
 	case SIZE16:
 		MOV(R8W, val);
-		MOV(RAX, &mem_write_helper<uint16_t>);
+		CALL_F(&mem_write_helper<uint16_t>);
 		break;
 
 	case SIZE8:
 		MOV(R8B, val);
-		MOV(RAX, &mem_write_helper<uint8_t>);
+		CALL_F(&mem_write_helper<uint8_t>);
 		break;
 
 	default:
 		LIB86CPU_ABORT();
 	}
-
-	CALL(RAX);
-	RELOAD_RCX_CTX();
 }
 
 void
@@ -1770,23 +1758,20 @@ lc86_jit::load_io(uint8_t size_mode)
 	switch (size_mode)
 	{
 	case SIZE32:
-		MOV(RAX, &io_read_helper<uint32_t>);
+		CALL_F(&io_read_helper<uint32_t>);
 		break;
 
 	case SIZE16:
-		MOV(RAX, &io_read_helper<uint16_t>);
+		CALL_F(&io_read_helper<uint16_t>);
 		break;
 
 	case SIZE8:
-		MOV(RAX, &io_read_helper<uint8_t>);
+		CALL_F(&io_read_helper<uint8_t>);
 		break;
 
 	default:
 		LIB86CPU_ABORT();
 	}
-
-	CALL(RAX);
-	RELOAD_RCX_CTX();
 }
 
 void
@@ -1799,25 +1784,22 @@ lc86_jit::store_io(uint8_t size_mode)
 	{
 	case SIZE32:
 		MOV(R8D, EAX);
-		MOV(RAX, &io_write_helper<uint32_t>);
+		CALL_F(&io_write_helper<uint32_t>);
 		break;
 
 	case SIZE16:
 		MOV(R8W, AX);
-		MOV(RAX, &io_write_helper<uint16_t>);
+		CALL_F(&io_write_helper<uint16_t>);
 		break;
 
 	case SIZE8:
 		MOV(R8B, AL);
-		MOV(RAX, &io_write_helper<uint8_t>);
+		CALL_F(&io_write_helper<uint8_t>);
 		break;
 
 	default:
 		LIB86CPU_ABORT();
 	}
-
-	CALL(RAX);
-	RELOAD_RCX_CTX();
 }
 
 template<typename T>
@@ -2719,9 +2701,7 @@ void lc86_jit::load_sys_seg_reg(ZydisDecodedInstruction *instr)
 
 				if (m_cpu->cpu_flags & CPU_DBG_PRESENT) {
 					// hook the breakpoint exception handler so that the debugger can catch it
-					MOV(RAX, &dbg_update_exp_hook);
-					CALL(RAX);
-					RELOAD_RCX_CTX();
+					CALL_F(&dbg_update_exp_hook);
 				}
 			}
 			else {
@@ -2744,13 +2724,11 @@ void lc86_jit::load_sys_seg_reg(ZydisDecodedInstruction *instr)
 			MOV(R8D, m_cpu->instr_eip);
 			MOV(DX, AX);
 			if constexpr (idx == LDTR_idx) {
-				MOV(RAX, &lldt_helper);
+				CALL_F(&lldt_helper);
 			}
 			else {
-				MOV(RAX, &ltr_helper);
+				CALL_F(&ltr_helper);
 			}
-			CALL(RAX);
-			RELOAD_RCX_CTX();
 			TEST(EAX, EAX);
 			BR_EQ(ok);
 			RAISEin_no_param_f();
@@ -2777,13 +2755,11 @@ void lc86_jit::verx(ZydisDecodedInstruction *instr)
 	MOV(R8D, m_cpu->instr_eip);
 	MOV(DX, AX);
 	if constexpr (is_verr) {
-		MOV(RAX, &verrw_helper<true>);
+		CALL_F(&verrw_helper<true>);
 	}
 	else {
-		MOV(RAX, &verrw_helper<false>);
+		CALL_F(&verrw_helper<false>);
 	}
-	CALL(RAX);
-	RELOAD_RCX_CTX();
 }
 
 template<unsigned idx>
@@ -2814,23 +2790,23 @@ void lc86_jit::lxs(ZydisDecodedInstruction *instr)
 		switch (idx)
 		{
 		case SS_idx:
-			MOV(RAX, &mov_sel_pe_helper<SS_idx>);
+			CALL_F(&mov_sel_pe_helper<SS_idx>);
 			break;
 
 		case FS_idx:
-			MOV(RAX, &mov_sel_pe_helper<FS_idx>);
+			CALL_F(&mov_sel_pe_helper<FS_idx>);
 			break;
 
 		case GS_idx:
-			MOV(RAX, &mov_sel_pe_helper<GS_idx>);
+			CALL_F(&mov_sel_pe_helper<GS_idx>);
 			break;
 
 		case ES_idx:
-			MOV(RAX, &mov_sel_pe_helper<ES_idx>);
+			CALL_F(&mov_sel_pe_helper<ES_idx>);
 			break;
 
 		case DS_idx:
-			MOV(RAX, &mov_sel_pe_helper<DS_idx>);
+			CALL_F(&mov_sel_pe_helper<DS_idx>);
 			break;
 
 		default:
@@ -2838,8 +2814,6 @@ void lc86_jit::lxs(ZydisDecodedInstruction *instr)
 		}
 
 		Label ok = m_a.newLabel();
-		CALL(RAX);
-		RELOAD_RCX_CTX();
 		TEST(EAX, EAX);
 		BR_EQ(ok);
 		RAISEin_no_param_f();
@@ -3567,9 +3541,7 @@ lc86_jit::call(ZydisDecodedInstruction *instr)
 			MOV(R9B, m_cpu->size_mode);
 			MOV(R8D, call_eip);
 			MOV(EDX, new_sel);
-			MOV(RAX, &lcall_pe_helper);
-			CALL(RAX);
-			RELOAD_RCX_CTX();
+			CALL_F( &lcall_pe_helper);
 			TEST(EAX, EAX);
 			BR_NE(exp);
 			gen_link_indirect();
@@ -3652,9 +3624,7 @@ lc86_jit::call(ZydisDecodedInstruction *instr)
 				MOV(R9B, m_cpu->size_mode);
 				MOV(R8D, EBX);
 				MOV(EDX, EAX);
-				MOV(RAX, &lcall_pe_helper);
-				CALL(RAX);
-				RELOAD_RCX_CTX();
+				CALL_F(&lcall_pe_helper);
 				TEST(EAX, EAX);
 				BR_NE(exp);
 				gen_link_indirect();
@@ -4126,9 +4096,7 @@ lc86_jit::cmps(ZydisDecodedInstruction *instr)
 void
 lc86_jit::cpuid(ZydisDecodedInstruction *instr)
 {
-	MOV(RAX, &cpuid_helper);
-	CALL(RAX);
-	RELOAD_RCX_CTX();
+	CALL_F(&cpuid_helper);
 }
 
 void
@@ -4420,9 +4388,7 @@ lc86_jit::hlt(ZydisDecodedInstruction *instr)
 			Label retry = m_a.newLabel();
 			Label no_timeout = m_a.newLabel();
 			m_a.bind(retry);
-			MOV(RAX, &cpu_timer_helper);
-			CALL(RAX);
-			RELOAD_RCX_CTX();
+			CALL_F(&cpu_timer_helper);
 			PAUSE();
 			TEST(EAX, EAX);
 			BR_EQ(retry);
@@ -4435,9 +4401,7 @@ lc86_jit::hlt(ZydisDecodedInstruction *instr)
 		else {
 			Label retry = m_a.newLabel();
 			m_a.bind(retry);
-			MOV(RAX, &hlt_helper);
-			CALL(RAX);
-			RELOAD_RCX_CTX();
+			CALL_F(&hlt_helper);
 			PAUSE();
 			TEST(EAX, EAX);
 			BR_EQ(retry);
@@ -4863,9 +4827,7 @@ lc86_jit::iret(ZydisDecodedInstruction *instr)
 		Label exp = m_a.newLabel();
 		MOV(R8D, m_cpu->instr_eip);
 		MOV(DL, m_cpu->size_mode);
-		MOV(RAX, &lret_pe_helper<true>);
-		CALL(RAX);
-		RELOAD_RCX_CTX();
+		CALL_F(&lret_pe_helper<true>);
 		TEST(EAX, EAX);
 		BR_NE(exp);
 		gen_link_ret();
@@ -4875,9 +4837,7 @@ lc86_jit::iret(ZydisDecodedInstruction *instr)
 	else {
 		MOV(R8D, m_cpu->instr_eip);
 		MOV(DL, m_cpu->size_mode);
-		MOV(RAX, &iret_real_helper);
-		CALL(RAX);
-		RELOAD_RCX_CTX();
+		CALL_F(&iret_real_helper);
 		gen_link_ret();
 	}
 
@@ -5161,9 +5121,7 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 			MOV(R9D, new_eip);
 			MOV(R8B, m_cpu->size_mode);
 			MOV(DX, new_sel);
-			MOV(RAX, &ljmp_pe_helper);
-			CALL(RAX);
-			RELOAD_RCX_CTX();
+			CALL_F(&ljmp_pe_helper);
 			TEST(EAX, EAX);
 			BR_NE(exp);
 			gen_link_indirect();
@@ -5550,9 +5508,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				MOV(MEMD32(RSP, STACK_ARGS_off), m_cpu->instr_bytes);
 				MOV(R9D, m_cpu->instr_eip);
 				MOV(R8D, cr_idx - CR_offset);
-				MOV(RAX, &update_crN_helper);
-				CALL(RAX);
-				RELOAD_RCX_CTX();
+				CALL_F(&update_crN_helper);
 				TEST(EAX, EAX);
 				BR_EQ(ok);
 				RAISEin0_f(EXP_GP);
@@ -5599,9 +5555,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			case DR2_idx:
 			case DR3_idx: {
 				MOV(DL, dr_idx);
-				MOV(RAX, &update_drN_helper);
-				CALL(RAX);
-				RELOAD_RCX_CTX();
+				CALL_F(&update_drN_helper);
 			}
 			break;
 
@@ -5768,9 +5722,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				Label ok = m_a.newLabel();
 				MOV(R8D, m_cpu->instr_eip);
 				MOV(DX, AX);
-				MOV(RAX, &mov_sel_pe_helper<SS_idx>);
-				CALL(RAX);
-				RELOAD_RCX_CTX();
+				CALL_F(&mov_sel_pe_helper<SS_idx>);
 				TEST(EAX, EAX);
 				BR_EQ(ok);
 				RAISEin_no_param_f();
@@ -5788,19 +5740,19 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				switch (REG_idx(instr->operands[OPNUM_DST].reg.value))
 				{
 				case DS_idx:
-					MOV(RAX, &mov_sel_pe_helper<DS_idx>);
+					CALL_F(&mov_sel_pe_helper<DS_idx>);
 					break;
 
 				case ES_idx:
-					MOV(RAX, &mov_sel_pe_helper<ES_idx>);
+					CALL_F(&mov_sel_pe_helper<ES_idx>);
 					break;
 
 				case FS_idx:
-					MOV(RAX, &mov_sel_pe_helper<FS_idx>);
+					CALL_F(&mov_sel_pe_helper<FS_idx>);
 					break;
 
 				case GS_idx:
-					MOV(RAX, &mov_sel_pe_helper<GS_idx>);
+					CALL_F(&mov_sel_pe_helper<GS_idx>);
 					break;
 
 				default:
@@ -5808,8 +5760,6 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				}
 
 				Label ok = m_a.newLabel();
-				CALL(RAX);
-				RELOAD_RCX_CTX();
 				TEST(EAX, EAX);
 				BR_EQ(ok);
 				RAISEin_no_param_f();
@@ -6416,23 +6366,23 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 			switch (sel.first)
 			{
 			case SS_idx:
-				MOV(RAX, &mov_sel_pe_helper<SS_idx>);
+				CALL_F(&mov_sel_pe_helper<SS_idx>);
 				break;
 
 			case FS_idx:
-				MOV(RAX, &mov_sel_pe_helper<FS_idx>);
+				CALL_F(&mov_sel_pe_helper<FS_idx>);
 				break;
 
 			case GS_idx:
-				MOV(RAX, &mov_sel_pe_helper<GS_idx>);
+				CALL_F(&mov_sel_pe_helper<GS_idx>);
 				break;
 
 			case ES_idx:
-				MOV(RAX, &mov_sel_pe_helper<ES_idx>);
+				CALL_F(&mov_sel_pe_helper<ES_idx>);
 				break;
 
 			case DS_idx:
-				MOV(RAX, &mov_sel_pe_helper<DS_idx>);
+				CALL_F(&mov_sel_pe_helper<DS_idx>);
 				break;
 
 			default:
@@ -6440,8 +6390,6 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 			}
 
 			Label ok = m_a.newLabel();
-			CALL(RAX);
-			RELOAD_RCX_CTX();
 			TEST(EAX, EAX);
 			BR_EQ(ok);
 			RAISEin_no_param_f();
@@ -6860,9 +6808,7 @@ lc86_jit::rdmsr(ZydisDecodedInstruction *instr)
 	}
 	else {
 		Label ok = m_a.newLabel();
-		MOV(RAX, &msr_read_helper);
-		CALL(RAX);
-		RELOAD_RCX_CTX();
+		CALL_F(&msr_read_helper);
 		TEST(EAX, EAX);
 		BR_EQ(ok);
 		RAISEin0_f(EXP_GP);
@@ -6883,9 +6829,7 @@ lc86_jit::rdtsc(ZydisDecodedInstruction *instr)
 		m_a.bind(ok);
 	}
 
-	MOV(RAX, &cpu_rdtsc_helper);
-	CALL(RAX);
-	RELOAD_RCX_CTX();
+	CALL_F(&cpu_rdtsc_helper);
 }
 
 void
@@ -6928,9 +6872,7 @@ lc86_jit::ret(ZydisDecodedInstruction *instr)
 			Label ok = m_a.newLabel();
 			MOV(R8D, m_cpu->instr_eip);
 			MOV(DL, m_cpu->size_mode);
-			MOV(RAX, &lret_pe_helper<false>);
-			CALL(RAX);
-			RELOAD_RCX_CTX();
+			CALL_F(&lret_pe_helper<false>);
 			TEST(EAX, EAX);
 			BR_EQ(ok);
 			RAISEin_no_param_f();
@@ -7725,9 +7667,7 @@ lc86_jit::wrmsr(ZydisDecodedInstruction *instr)
 	}
 	else {
 		Label ok = m_a.newLabel();
-		MOV(RAX, &msr_write_helper);
-		CALL(RAX);
-		RELOAD_RCX_CTX();
+		CALL_F(&msr_write_helper);
 		TEST(EAX, EAX);
 		BR_EQ(ok);
 		RAISEin0_f(EXP_GP);
