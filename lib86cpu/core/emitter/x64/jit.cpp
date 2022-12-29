@@ -6128,6 +6128,7 @@ lc86_jit::neg(ZydisDecodedInstruction *instr)
 			{
 				auto rax_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
 				auto rbx_host_reg = SIZED_REG(x64::rbx, m_cpu->size_mode);
+				auto r8_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 				MOV(EBX, EDX);
 				LD_MEM();
 				MOV(EDX, EBX);
@@ -6135,8 +6136,8 @@ lc86_jit::neg(ZydisDecodedInstruction *instr)
 				NEG(rax_host_reg);
 				MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), rax_host_reg);
 				ST_MEM(rax_host_reg);
-				MOV(rax_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
-				set_flags_sub(0, rbx_host_reg, rax_host_reg);
+				MOV(r8_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
+				set_flags_sub(0, rbx_host_reg, r8_host_reg);
 			});
 		break;
 
