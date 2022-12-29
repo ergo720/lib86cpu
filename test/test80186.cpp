@@ -47,6 +47,10 @@ gen_test80186_test(const std::string &path, int intel_syntax, int use_dbg)
 		ifs.read((char *)&ram[code_start], length);
 		ifs.close();
 
+		// the result bin file expects to read values not written to by the test as zero, so zero out the memory to prevent reporting spurious error as
+		// when it would read them as otherwise undefined values in memory
+		std::memset(&ram[0], 0, code_start);
+
 		if (!LC86_SUCCESS(mem_init_region_ram(cpu, 0, ramsize))) {
 			std::printf("Failed to initialize ram memory for test80186!\n");
 			cpu_free(cpu);
