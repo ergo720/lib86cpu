@@ -4379,36 +4379,44 @@ lc86_jit::hlt(ZydisDecodedInstruction *instr)
 	}
 	else {
 		// some apps like test386 expect HLT to raise an exception, but otherwise don't rely on interrupts. So only check the flag after the potential exception
+		// some apps like test80186 terminate with a HLT instruction, so do a runtime abort instead of a compile time abort, so that the last code block (which is
+		// required to be run by the test) is actually executed
 		if (m_cpu->cpu_flags & CPU_ABORT_ON_HLT) {
-			throw lc86_exp_abort("Encountered HLT instruction, terminating the emulation", lc86_status::success);
-		}
-
-		MOV(MEMD32(RCX, CPU_CTX_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
-		if (m_cpu->cpu_ctx.hflags & HFLG_TIMEOUT) {
-			Label retry = m_a.newLabel();
-			Label no_timeout = m_a.newLabel();
-			m_a.bind(retry);
-			CALL_F(&cpu_timer_helper);
-			PAUSE();
-			TEST(EAX, EAX);
-			BR_EQ(retry);
-			CMP(EAX, TIMER_HW_INT);
-			BR_EQ(no_timeout);
-			MOV(MEMD8(RCX, CPU_CTX_EXIT), 1); // request an exit
-			MOV(MEMD8(RCX, CPU_CTX_HALTED), 1); // set halted flag
-			m_a.bind(no_timeout);
+			static const char *abort_msg = "Encountered HLT instruction, terminating the emulation";
+			MOV(RCX, abort_msg);
+			MOV(RAX, &cpu_runtime_abort); // won't return
+			CALL(RAX);
+			INT3();
 		}
 		else {
-			Label retry = m_a.newLabel();
-			m_a.bind(retry);
-			CALL_F(&hlt_helper);
-			PAUSE();
-			TEST(EAX, EAX);
-			BR_EQ(retry);
+			MOV(MEMD32(RCX, CPU_CTX_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
+			if (m_cpu->cpu_ctx.hflags & HFLG_TIMEOUT) {
+				Label retry = m_a.newLabel();
+				Label no_timeout = m_a.newLabel();
+				m_a.bind(retry);
+				CALL_F(&cpu_timer_helper);
+				PAUSE();
+				TEST(EAX, EAX);
+				BR_EQ(retry);
+				CMP(EAX, TIMER_HW_INT);
+				BR_EQ(no_timeout);
+				MOV(MEMD8(RCX, CPU_CTX_EXIT), 1); // request an exit
+				MOV(MEMD8(RCX, CPU_CTX_HALTED), 1); // set halted flag
+				m_a.bind(no_timeout);
+			}
+			else {
+				Label retry = m_a.newLabel();
+				m_a.bind(retry);
+				CALL_F(&hlt_helper);
+				PAUSE();
+				TEST(EAX, EAX);
+				BR_EQ(retry);
+			}
+
+			XOR(EAX, EAX);
+			gen_epilogue_main<false>();
 		}
 
-		XOR(EAX, EAX);
-		gen_epilogue_main<false>();
 		m_needs_epilogue = false;
 		m_cpu->translate_next = 0;
 	}
