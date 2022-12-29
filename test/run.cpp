@@ -116,6 +116,8 @@ main(int argc, char **argv)
 		}
 	}
 
+	register_log_func(logger);
+
 	switch (test_num)
 	{
 	case 0:
@@ -154,12 +156,15 @@ main(int argc, char **argv)
 		}
 		break;
 
+	case 4:
+		gen_test80186_test(executable, intel_syntax, use_dbg);
+		return 0;
+
 	default:
 		printf("Unknown test option specified\n");
 		return 1;
 	}
 
-	register_log_func(logger);
 	cpu_set_flags(cpu, (intel_syntax ? CPU_INTEL_SYNTAX : 0) | (use_dbg ? CPU_DBG_PRESENT : 0) | CPU_ABORT_ON_HLT);
 
 	lc86_status code = cpu_run(cpu);

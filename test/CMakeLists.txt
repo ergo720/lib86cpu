@@ -14,6 +14,7 @@ file (GLOB SOURCES
  "${TEST_RUN86_ROOT_DIR}/kernel.cpp"
  "${TEST_RUN86_ROOT_DIR}/run.cpp"
  "${TEST_RUN86_ROOT_DIR}/test386.cpp"
+ "${TEST_RUN86_ROOT_DIR}/test80186.cpp"
 )
 
 source_group(TREE ${TEST_RUN86_ROOT_DIR} PREFIX header FILES ${HEADERS})
