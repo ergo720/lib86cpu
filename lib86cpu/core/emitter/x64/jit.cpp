@@ -4749,8 +4749,10 @@ lc86_jit::ins(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0x6D: {
+		// technically, the effect of repnz on instructions that don't support it is officially undefined, but test80186 relies on it
+		// https://en.wikipedia.org/wiki/X86_instruction_listings#Undocumented_instructions
 		Label start, end = m_a.newLabel();
-		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			start = rep_start(end);
 		}
 
@@ -4786,7 +4788,7 @@ lc86_jit::ins(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_EDI, EBX);
 		}
-		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 		else {
@@ -4801,7 +4803,7 @@ lc86_jit::ins(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_EDI, EBX);
 		}
-		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 
@@ -5283,8 +5285,10 @@ lc86_jit::lods(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0xAD: {
+		// technically, the effect of repnz on instructions that don't support it is officially undefined, but test80186 relies on it
+		// https://en.wikipedia.org/wiki/X86_instruction_listings#Undocumented_instructions
 		Label start, end = m_a.newLabel();
-		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			start = rep_start(end);
 		}
 
@@ -5316,7 +5320,7 @@ lc86_jit::lods(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_ESI, EBX);
 		}
-		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 		else {
@@ -5331,7 +5335,7 @@ lc86_jit::lods(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_ESI, EBX);
 		}
-		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 
@@ -5866,8 +5870,10 @@ lc86_jit::movs(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0xA5: {
+		// technically, the effect of repnz on instructions that don't support it is officially undefined, but test80186 relies on it
+		// https://en.wikipedia.org/wiki/X86_instruction_listings#Undocumented_instructions
 		Label start, end = m_a.newLabel();
-		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			start = rep_start(end);
 		}
 
@@ -5914,7 +5920,7 @@ lc86_jit::movs(ZydisDecodedInstruction *instr)
 			ST_R32(CPU_CTX_EDI, EBX);
 			ST_R32(CPU_CTX_ESI, EAX);
 		}
-		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 		else {
@@ -5932,7 +5938,7 @@ lc86_jit::movs(ZydisDecodedInstruction *instr)
 			ST_R32(CPU_CTX_EDI, EBX);
 			ST_R32(CPU_CTX_ESI, EAX);
 		}
-		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 
@@ -7428,8 +7434,10 @@ lc86_jit::stos(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0xAB: {
+		// technically, the effect of repnz on instructions that don't support it is officially undefined, but test80186 relies on it
+		// https://en.wikipedia.org/wiki/X86_instruction_listings#Undocumented_instructions
 		Label start, end = m_a.newLabel();
-		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			start = rep_start(end);
 		}
 
@@ -7481,7 +7489,7 @@ lc86_jit::stos(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_EDI, EBX);
 		}
-		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 		else {
@@ -7496,7 +7504,7 @@ lc86_jit::stos(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_EDI, EBX);
 		}
-		if (instr->attributes & ZYDIS_ATTRIB_HAS_REP) {
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 
