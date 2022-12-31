@@ -75,9 +75,11 @@ check_dbl_exp(cpu_ctx_t *cpu_ctx)
 	cpu_ctx->exp_info.exp_data.idx = idx;
 }
 
-template<bool is_int, bool is_hw>
+template<bool is_intn, bool is_hw_int>
 translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 {
+	// is_intn -> int3, into or intn instruction, is_hw_int -> hardware interrupt
+
 	check_dbl_exp(cpu_ctx);
 
 	cpu_t *cpu = cpu_ctx->cpu;
@@ -90,7 +92,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 	if (cpu_ctx->hflags & HFLG_PE_MODE) {
 		// protected mode
 
-		constexpr uint16_t ext_flg = is_int ? 0 : 1; // EXT flag clear for INT instructions, set otherwise
+		constexpr uint16_t ext_flg = is_intn ? 0 : 1; // EXT flag clear for INT instructions, set otherwise
 
 		if (idx * 8 + 7 > cpu_ctx->regs.idtr_hidden.limit) {
 			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2 + ext_flg;
@@ -127,7 +129,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 
 		uint32_t dpl = (desc & SEG_DESC_DPL) >> 45;
 		uint32_t cpl = cpu_ctx->hflags & HFLG_CPL;
-		if (is_int && (dpl < cpl)) { // only INT instructions check the dpl of the gate in the idt
+		if (is_intn && (dpl < cpl)) { // only INT instructions check the dpl of the gate in the idt
 			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2;
 			cpu_ctx->exp_info.exp_data.idx = EXP_GP;
 			return cpu_raise_exception(cpu_ctx);
@@ -228,7 +230,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		}
 
 		uint8_t has_code;
-		if constexpr (is_int || is_hw) {
+		if constexpr (is_intn || is_hw_int) {
 			// INT instructions and hw interrupts don't push error codes
 			has_code = 0;
 		}
