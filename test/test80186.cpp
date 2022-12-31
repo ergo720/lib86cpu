@@ -70,7 +70,7 @@ gen_test80186_test(const std::string &path, int intel_syntax, int use_dbg)
 		std::printf("Emulation terminated with status %d. The error was \"%s\"\n", code, get_last_error().c_str());
 
 		// special test case without result
-		if (test_name == "jmpmov") {
+		if (test_name == std::string_view("jmpmov")) {
 			std::printf("Testing byte 0 of ram for jmpmov test\n");
 			if ((uint8_t)ram[0] == static_cast<uint8_t>(0x4001)) {
 				std::printf("Test jmpmov succeeded\n");
