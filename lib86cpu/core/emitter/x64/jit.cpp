@@ -2936,7 +2936,7 @@ void lc86_jit::int_(ZydisDecodedInstruction *instr)
 	else {
 		LIB86CPU_ABORT_msg("Unknown int instruction specified with index %u", idx);
 	}
-	MOV(MEMD32(RCX, CPU_CTX_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
+	MOV(MEMD32(RCX, CPU_EXP_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
 	MOV(RAX, &cpu_raise_exception<true>);
 	CALL(RAX);
 	gen_epilogue_main<false>();
