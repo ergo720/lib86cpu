@@ -7831,6 +7831,23 @@ lc86_jit::xchg(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::xlat(ZydisDecodedInstruction *instr)
+{
+	LD_SEG_BASE(EAX, get_seg_prfx_offset(instr));
+	if (m_cpu->addr_mode == ADDR16) {
+		MOVZX(EDX, MEMD16(RCX, CPU_CTX_EBX));
+	}
+	else {
+		LD_R32(EDX, CPU_CTX_EBX);
+	}
+	MOVZX(EBX, MEMD8(RCX, CPU_CTX_EAX));
+	LEA(EAX, MEMS32(EAX, EBX, 0));
+	ADD(EDX, EAX);
+	LD_MEMs(SIZE8);
+	ST_R8L(CPU_CTX_EAX, AL);
+}
+
+void
 lc86_jit::xor_(ZydisDecodedInstruction *instr)
 {
 	switch (instr->opcode)

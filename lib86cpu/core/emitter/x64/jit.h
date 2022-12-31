@@ -139,6 +139,7 @@ public:
 	void wbinvd(ZydisDecodedInstruction *instr);
 	void wrmsr(ZydisDecodedInstruction *instr);
 	void xchg(ZydisDecodedInstruction *instr);
+	void xlat(ZydisDecodedInstruction *instr);
 	void xor_(ZydisDecodedInstruction *instr);
 
 #if defined(_WIN64)

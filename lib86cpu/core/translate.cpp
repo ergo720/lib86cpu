@@ -1267,7 +1267,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			cpu->jit->xchg(&instr);
 			break;
 
-		case ZYDIS_MNEMONIC_XLAT:        BAD;
+		case ZYDIS_MNEMONIC_XLAT:
+			cpu->jit->xlat(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_XOR:
 			cpu->jit->xor_(&instr);
 			break;
