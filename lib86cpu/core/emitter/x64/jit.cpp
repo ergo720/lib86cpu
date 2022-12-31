@@ -916,15 +916,17 @@ op_info lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opn
 	{
 		switch (operand->encoding)
 		{
-		case ZYDIS_OPERAND_ENCODING_DISP16_32_64:
+		case ZYDIS_OPERAND_ENCODING_DISP16_32_64: {
+			uint32_t disp = instr->address_width == 32 ? operand->mem.disp.value : operand->mem.disp.value & 0xFFFF;
 			if constexpr (add_seg_base) {
 				LD_SEG_BASE(EDX, REG_off(operand->mem.segment));
-				ADD(EDX, operand->mem.disp.value);
+				ADD(EDX, disp);
 			}
 			else {
-				MOV(EDX, operand->mem.disp.value);
+				MOV(EDX, disp);
 			}
-			return {};
+		}
+		return {};
 
 		case ZYDIS_OPERAND_ENCODING_MODRM_RM: {
 			if (instr->address_width == 32) {
