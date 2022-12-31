@@ -60,6 +60,7 @@ public:
 	void cdq(ZydisDecodedInstruction *instr);
 	void cld(ZydisDecodedInstruction *instr);
 	void cli(ZydisDecodedInstruction *instr);
+	void cmc(ZydisDecodedInstruction *instr);
 	void cmovcc(ZydisDecodedInstruction *instr);
 	void cmp(ZydisDecodedInstruction *instr);
 	void cmps(ZydisDecodedInstruction *instr);

@@ -3742,6 +3742,24 @@ lc86_jit::cli(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::cmc(ZydisDecodedInstruction *instr)
+{
+	assert(instr->opcode == 0xF5);
+
+	MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
+	MOV(EDX, EAX);
+	NOT(EDX);
+	AND(EDX, 0x80000000);
+	LD_OF(EBX, EAX);
+	AND(EAX, 0x3FFFFFFF);
+	XOR(EBX, EDX);
+	SHR(EBX, 1);
+	OR(EDX, EBX);
+	OR(EAX, EDX);
+	MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EAX);
+}
+
+void
 lc86_jit::cmovcc(ZydisDecodedInstruction *instr)
 {
 	switch (instr->opcode)

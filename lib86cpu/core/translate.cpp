@@ -857,7 +857,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 		case ZYDIS_MNEMONIC_CLTS:        BAD;
-		case ZYDIS_MNEMONIC_CMC:         BAD;
+		case ZYDIS_MNEMONIC_CMC:
+			cpu->jit->cmc(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_CMOVB:
 		case ZYDIS_MNEMONIC_CMOVBE:
 		case ZYDIS_MNEMONIC_CMOVL:
