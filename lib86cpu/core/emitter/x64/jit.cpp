@@ -5213,7 +5213,45 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 			m_cpu->tc->flags |= TC_FLG_INDIRECT;
 		}
 		else if (instr->raw.modrm.reg == 5) {
-			BAD;
+			assert(instr->operands[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_MEMORY);
+
+			GET_OP(OPNUM_SINGLE);
+			MOV(EBX, EDX);
+			LD_MEM();
+			if (m_cpu->size_mode == SIZE16) {
+				MOVZX(EAX, AX);
+				ADD(EBX, 2);
+			}
+			else {
+				ADD(EBX, 4);
+			}
+			MOV(EDX, EBX);
+			MOV(EBX, EAX);
+			LD_MEMs(SIZE16);
+
+			if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
+				Label exp = m_a.newLabel();
+				MOV(MEMD32(RSP, STACK_ARGS_off), m_cpu->instr_eip);
+				MOV(R9D, EBX);
+				MOV(R8B, m_cpu->size_mode);
+				MOV(DX, AX);
+				CALL_F(&ljmp_pe_helper);
+				TEST(EAX, EAX);
+				BR_NE(exp);
+				gen_link_indirect();
+				m_a.bind(exp);
+				RAISEin_no_param_f();
+				m_cpu->tc->flags |= TC_FLG_INDIRECT;
+			}
+			else {
+				ST_R16(CPU_CTX_CS, AX);
+				ST_R32(CPU_CTX_EIP, EBX);
+				MOVZX(EAX, AX);
+				SHL(EAX, 4);
+				ST_R32(CPU_CTX_CS_BASE, EAX);
+				gen_link_indirect();
+				m_cpu->tc->flags |= TC_FLG_INDIRECT;
+			}
 		}
 		else {
 			LIB86CPU_ABORT();
