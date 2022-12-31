@@ -2922,27 +2922,45 @@ void lc86_jit::bit(ZydisDecodedInstruction *instr)
 template<unsigned idx>
 void lc86_jit::int_(ZydisDecodedInstruction *instr)
 {
-	// idx 0 -> int3, 1 -> int n
+	// idx 0 -> int3, 1 -> int n, 2 -> into
 
 	// NOTE: we don't support virtual 8086 mode, so we don't need to check for it
-	MOV(MEMD32(RCX, CPU_EXP_ADDR), 0);
-	MOV(MEMD16(RCX, CPU_EXP_CODE), 0);
-	if constexpr (idx == 0) {
-		MOV(MEMD16(RCX, CPU_EXP_IDX), EXP_BP);
-	}
-	else if constexpr (idx == 1) {
-		MOV(MEMD16(RCX, CPU_EXP_IDX), static_cast<uint8_t>(instr->operands[OPNUM_SINGLE].imm.value.u));
+	if constexpr (idx == 2) {
+		Label no_exp = m_a.newLabel();
+		MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
+		LD_OF(EDX, EAX);
+		TEST(EDX, EDX);
+		BR_EQ(no_exp);
+		MOV(MEMD32(RCX, CPU_EXP_ADDR), 0);
+		MOV(MEMD16(RCX, CPU_EXP_CODE), 0);
+		MOV(MEMD16(RCX, CPU_EXP_IDX), EXP_OF);
+		MOV(MEMD32(RCX, CPU_EXP_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
+		MOV(RAX, &cpu_raise_exception<true>);
+		CALL(RAX);
+		gen_epilogue_main<false>();
+		m_a.bind(no_exp);
 	}
 	else {
-		LIB86CPU_ABORT_msg("Unknown int instruction specified with index %u", idx);
-	}
-	MOV(MEMD32(RCX, CPU_EXP_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
-	MOV(RAX, &cpu_raise_exception<true>);
-	CALL(RAX);
-	gen_epilogue_main<false>();
+		MOV(MEMD32(RCX, CPU_EXP_ADDR), 0);
+		MOV(MEMD16(RCX, CPU_EXP_CODE), 0);
+		if constexpr (idx == 0) {
+			MOV(MEMD16(RCX, CPU_EXP_IDX), EXP_BP);
+		}
+		else if constexpr (idx == 1) {
+			MOV(MEMD16(RCX, CPU_EXP_IDX), static_cast<uint8_t>(instr->operands[OPNUM_SINGLE].imm.value.u));
+		}
+		else {
+			LIB86CPU_ABORT_msg("Unknown int instruction specified with index %u", idx);
+		}
 
-	m_needs_epilogue = false;
-	m_cpu->translate_next = 0;
+		MOV(MEMD32(RCX, CPU_EXP_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
+		MOV(RAX, &cpu_raise_exception<true>);
+		CALL(RAX);
+		gen_epilogue_main<false>();
+
+		m_needs_epilogue = false;
+		m_cpu->translate_next = 0;
+	}
 }
 
 void
@@ -4826,6 +4844,12 @@ void
 lc86_jit::intn(ZydisDecodedInstruction *instr)
 {
 	int_<1>(instr);
+}
+
+void
+lc86_jit::into(ZydisDecodedInstruction *instr)
+{
+	int_<2>(instr);
 }
 
 void
