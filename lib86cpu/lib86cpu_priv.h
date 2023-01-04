@@ -153,13 +153,11 @@ struct cpu_t {
 	std::bitset<std::numeric_limits<port_t>::max() + 1> iotable;
 	uint16_t num_tc;
 	struct {
-		uint64_t tsc;
-		static constexpr uint64_t cpu_freq = 733333333;
 		uint64_t last_host_ticks;
+		static constexpr uint64_t cpu_freq = 733333333;
 	} tsc_clock;
 	struct {
 		uint64_t last_time;
-		uint64_t tot_time_us;
 		uint64_t host_freq;
 		uint64_t timeout_time;
 	} timer;
