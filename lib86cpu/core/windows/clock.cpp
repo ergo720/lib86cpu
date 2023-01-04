@@ -46,7 +46,6 @@ cpu_timer_helper(cpu_ctx_t *cpu_ctx)
 {
 	// always check for interrupts first. Otherwise, if the cpu consistently timeouts at every code block, it will never check for interrupts
 	if (cpu_do_int(cpu_ctx, cpu_ctx->cpu->read_int_fn(cpu_ctx))) {
-		LOG(log_level::info, "cpu_timer_helper returns %u", TIMER_HW_INT);
 		return TIMER_HW_INT;
 	}
 
