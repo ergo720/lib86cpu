@@ -16,92 +16,92 @@
 static uint8_t
 default_mmio_read_handler8(addr_t addr, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled MMIO read at address %#010x", addr);
+	LOG(log_level::warn, "Unhandled MMIO read at address %#010x with size 1", addr);
 	return std::numeric_limits<uint8_t>::max();
 }
 
 static uint16_t
 default_mmio_read_handler16(addr_t addr, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled MMIO read at address %#010x", addr);
+	LOG(log_level::warn, "Unhandled MMIO read at address %#010x with size 2", addr);
 	return std::numeric_limits<uint16_t>::max();
 }
 
 static uint32_t
 default_mmio_read_handler32(addr_t addr, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled MMIO read at address %#010x", addr);
+	LOG(log_level::warn, "Unhandled MMIO read at address %#010x with size 4", addr);
 	return std::numeric_limits<uint32_t>::max();
 }
 
 static uint64_t
 default_mmio_read_handler64(addr_t addr, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled MMIO read at address %#010x", addr);
+	LOG(log_level::warn, "Unhandled MMIO read at address %#010x with size 8", addr);
 	return std::numeric_limits<uint64_t>::max();
 }
 
 static void
 default_mmio_write_handler8(addr_t addr, const uint8_t value, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled MMIO write at address %#010x", addr);
+	LOG(log_level::warn, "Unhandled MMIO write at address %#010x with size 1", addr);
 }
 
 static void
 default_mmio_write_handler16(addr_t addr, const uint16_t value, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled MMIO write at address %#010x", addr);
+	LOG(log_level::warn, "Unhandled MMIO write at address %#010x with size 2", addr);
 }
 
 static void
 default_mmio_write_handler32(addr_t addr, const uint32_t value, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled MMIO write at address %#010x", addr);
+	LOG(log_level::warn, "Unhandled MMIO write at address %#010x with size 4", addr);
 }
 
 static void
 default_mmio_write_handler64(addr_t addr, const uint64_t value, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled MMIO write at address %#010x", addr);
+	LOG(log_level::warn, "Unhandled MMIO write at address %#010x with size 8", addr);
 }
 
 static uint8_t
 default_pmio_read_handler8(addr_t addr, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled PMIO read at port %#06x", addr);
+	LOG(log_level::warn, "Unhandled PMIO read at port %#06x with size 1", addr);
 	return std::numeric_limits<uint8_t>::max();
 }
 
 static uint16_t
 default_pmio_read_handler16(addr_t addr, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled PMIO read at port %#06x", addr);
+	LOG(log_level::warn, "Unhandled PMIO read at port %#06x with size 2", addr);
 	return std::numeric_limits<uint16_t>::max();
 }
 
 static uint32_t
 default_pmio_read_handler32(addr_t addr, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled PMIO read at port %#06x", addr);
+	LOG(log_level::warn, "Unhandled PMIO read at port %#06x with size 4", addr);
 	return std::numeric_limits<uint32_t>::max();
 }
 
 static void
 default_pmio_write_handler8(addr_t addr, const uint8_t value, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled PMIO write at port %#06x", addr);
+	LOG(log_level::warn, "Unhandled PMIO write at port %#06x with size 1", addr);
 }
 
 static void
 default_pmio_write_handler16(addr_t addr, const uint16_t value, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled PMIO write at port %#06x", addr);
+	LOG(log_level::warn, "Unhandled PMIO write at port %#06x with size 2", addr);
 }
 
 static void
 default_pmio_write_handler32(addr_t addr, const uint32_t value, void *opaque)
 {
-	LOG(log_level::warn, "Unhandled PMIO write at port %#06x", addr);
+	LOG(log_level::warn, "Unhandled PMIO write at port %#06x with size 4", addr);
 }
 
 static uint16_t
