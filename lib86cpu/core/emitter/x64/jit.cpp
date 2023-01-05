@@ -1811,7 +1811,7 @@ bool lc86_jit::gen_check_io_priv(T port)
 
 	static const uint8_t op_size_to_mem_size[3] = { 4, 2, 1 };
 
-	if ((m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) && ((m_cpu->cpu_ctx.hflags & HFLG_CPL) > ((m_cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12))) {
+	if ((m_cpu->cpu_ctx.hflags & HFLG_CPL) > ((m_cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12)) {
 		Label exp = m_a.newLabel();
 		LD_SEG_BASE(R10D, CPU_CTX_TR);
 		LD_SEG_LIMIT(R11D, CPU_CTX_TR);
