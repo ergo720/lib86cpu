@@ -6397,6 +6397,85 @@ lc86_jit::out(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::outs(ZydisDecodedInstruction *instr)
+{
+	switch (instr->opcode)
+	{
+	case 0x6E:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0x6F: {
+		// technically, the effect of repnz on instructions that don't support it is officially undefined, but test80186 relies on it
+		// https://en.wikipedia.org/wiki/X86_instruction_listings#Undocumented_instructions
+		Label start, end = m_a.newLabel();
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+			start = rep_start(end);
+		}
+
+		auto val_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+		LD_SEG_BASE(EAX, get_seg_prfx_offset(instr));
+		if (m_cpu->addr_mode == ADDR16) {
+			MOVZX(EDX, MEMD16(RCX, CPU_CTX_ESI));
+		}
+		else {
+			LD_R32(EDX, CPU_CTX_ESI);
+		}
+		MOV(EBX, EDX);
+		ADD(EDX, EAX);
+		LD_MEM();
+		MOV(MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode), val_host_reg);
+
+		MOVZX(EDX, MEMD16(RCX, CPU_CTX_EDX));
+		if (gen_check_io_priv(EDX)) {
+			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
+		}
+		MOV(val_host_reg, MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode));
+		ST_IO();
+
+		Label sub = m_a.newLabel();
+		uint32_t k = 1 << m_cpu->size_mode;
+		LD_R32(EAX, CPU_CTX_EFLAGS);
+		AND(EAX, DF_MASK);
+		TEST(EAX, EAX);
+		BR_NE(sub);
+
+		ADD(EBX, k);
+		if (m_cpu->addr_mode == ADDR16) {
+			ST_R16(CPU_CTX_ESI, BX);
+		}
+		else {
+			ST_R32(CPU_CTX_ESI, EBX);
+		}
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
+		}
+		else {
+			BR_UNCOND(end);
+		}
+
+		m_a.bind(sub);
+		SUB(EBX, k);
+		if (m_cpu->addr_mode == ADDR16) {
+			ST_R16(CPU_CTX_ESI, BX);
+		}
+		else {
+			ST_R32(CPU_CTX_ESI, EBX);
+		}
+		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
+		}
+
+		m_a.bind(end);
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+void
 lc86_jit::pop(ZydisDecodedInstruction *instr)
 {
 	switch (instr->opcode)

@@ -106,6 +106,7 @@ public:
 	void not_(ZydisDecodedInstruction *instr);
 	void or_(ZydisDecodedInstruction *instr);
 	void out(ZydisDecodedInstruction *instr);
+	void outs(ZydisDecodedInstruction *instr);
 	void pop(ZydisDecodedInstruction *instr);
 	void popa(ZydisDecodedInstruction *instr);
 	void popf(ZydisDecodedInstruction *instr);

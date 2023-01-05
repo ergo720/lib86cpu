@@ -1097,9 +1097,12 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			cpu->jit->out(&instr);
 			break;
 
-		case ZYDIS_MNEMONIC_OUTSB:BAD;
-		case ZYDIS_MNEMONIC_OUTSD:BAD;
-		case ZYDIS_MNEMONIC_OUTSW:BAD;
+		case ZYDIS_MNEMONIC_OUTSB:
+		case ZYDIS_MNEMONIC_OUTSD:
+		case ZYDIS_MNEMONIC_OUTSW:
+			cpu->jit->outs(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_POP:
 			cpu->jit->pop(&instr);
 			break;
