@@ -1279,7 +1279,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 		default:
-			LIB86CPU_ABORT();
+			BAD;
 		}
 
 		cpu->virt_pc += cpu->instr_bytes;
