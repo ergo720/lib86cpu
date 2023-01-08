@@ -614,9 +614,12 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv
 }
 
 // memory write helper invoked by the jitted code
-template<typename T>
+template<typename T, bool dont_write>
 void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint8_t is_priv)
 {
+	// if dont_write is true, then no write will happen and we only check if the access would fault. This is used by the ENTER instruction to check
+	// if a stack push with the final value of (e)sp will cause a page fault
+
 	uint32_t tlb_idx1 = addr >> PAGE_SHIFT;
 	uint32_t tlb_idx2 = (addr + sizeof(T) - 1) >> PAGE_SHIFT;
 	uint32_t tlb_entry = cpu_ctx->tlb[tlb_idx1];
@@ -627,6 +630,11 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint
 	// the tlb dirty flag. Writes that cross pages or that hit a page where a watchpoint is installed or there is translated code always result in tlb misses,
 	// and writes without the dirty flag set miss only once
 	if ((((tlb_entry & (mem_access | TLB_CODE | TLB_WATCH)) | (tlb_idx1 << PAGE_SHIFT)) ^ (mem_access | (tlb_idx2 << PAGE_SHIFT))) == 0) {
+		if constexpr (dont_write) {
+			// If the tlb hits, then the access is valid
+			return;
+		}
+
 		// tlb hit, check the region type
 		switch (tlb_entry & (TLB_RAM | TLB_ROM | TLB_MMIO | TLB_SUBPAGE))
 		{
@@ -689,8 +697,20 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint
 		}
 	}
 
-	// tlb miss, acccess the memory region with is_phys flag=0
-	mem_write_slow<T>(cpu_ctx->cpu, addr, val, eip, is_priv);
+	if constexpr (dont_write) {
+		// If the tlb misses, then the access might still be valid if the mmu can translate the address
+		if ((sizeof(T) != 1) && ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
+			volatile addr_t phys_addr_s = mmu_translate_addr(cpu_ctx->cpu, addr, 1 | is_priv, eip);
+			volatile addr_t phys_addr_e = mmu_translate_addr(cpu_ctx->cpu, addr + sizeof(T) - 1, 1 | is_priv, eip);
+		}
+		else {
+			volatile addr_t phys_addr = mmu_translate_addr(cpu_ctx->cpu, addr, 1 | is_priv, eip);
+		}
+	}
+	else {
+		// tlb miss, acccess the memory region with is_phys flag=0
+		mem_write_slow<T>(cpu_ctx->cpu, addr, val, eip, is_priv);
+	}
 }
 
 // io read helper invoked by the jitted code
@@ -713,10 +733,14 @@ template uint8_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, 
 template uint16_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
 template uint32_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
 template uint64_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
-template void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t val, uint32_t eip, uint8_t is_priv);
-template void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t val, uint32_t eip, uint8_t is_priv);
-template void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t val, uint32_t eip, uint8_t is_priv);
-template void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t val, uint32_t eip, uint8_t is_priv);
+template void mem_write_helper<uint8_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t val, uint32_t eip, uint8_t is_priv);
+template void mem_write_helper<uint16_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t val, uint32_t eip, uint8_t is_priv);
+template void mem_write_helper<uint32_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t val, uint32_t eip, uint8_t is_priv);
+template void mem_write_helper<uint64_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t val, uint32_t eip, uint8_t is_priv);
+template void mem_write_helper<uint8_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t val, uint32_t eip, uint8_t is_priv);
+template void mem_write_helper<uint16_t,true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t val, uint32_t eip, uint8_t is_priv);
+template void mem_write_helper<uint32_t,true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t val, uint32_t eip, uint8_t is_priv);
+template void mem_write_helper<uint64_t,true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t val, uint32_t eip, uint8_t is_priv);
 
 template uint8_t io_read_helper(cpu_ctx_t *cpu_ctx, port_t port);
 template uint16_t io_read_helper(cpu_ctx_t *cpu_ctx, port_t port);

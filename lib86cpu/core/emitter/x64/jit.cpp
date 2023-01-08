@@ -288,6 +288,7 @@ get_local_var_offset()
 #define LD_MEMs(size) load_mem(size, 0)
 #define ST_MEM(val) store_mem(val, m_cpu->size_mode, 0)
 #define ST_MEMs(val, size) store_mem(val, size, 0)
+#define ST_MEMv(val) store_mem<decltype(val), true>(val, m_cpu->size_mode, 0)
 
 #define LD_IO() load_io(m_cpu->size_mode)
 #define ST_IO() store_io(m_cpu->size_mode)
@@ -1722,7 +1723,7 @@ lc86_jit::load_mem(uint8_t size, uint8_t is_priv)
 	}
 }
 
-template<typename T>
+template<typename T, bool dont_write>
 void lc86_jit::store_mem(T val, uint8_t size, uint8_t is_priv)
 {
 	// RCX: cpu_ctx, EDX: addr, R8B/R8W/R8D: val, R9D: instr_eip, stack: is_priv
@@ -1734,17 +1735,17 @@ void lc86_jit::store_mem(T val, uint8_t size, uint8_t is_priv)
 	{
 	case SIZE32:
 		MOV(R8D, val);
-		CALL_F(&mem_write_helper<uint32_t>);
+		CALL_F((&mem_write_helper<uint32_t, dont_write>));
 		break;
 
 	case SIZE16:
 		MOV(R8W, val);
-		CALL_F(&mem_write_helper<uint16_t>);
+		CALL_F((&mem_write_helper<uint16_t, dont_write>));
 		break;
 
 	case SIZE8:
 		MOV(R8B, val);
-		CALL_F(&mem_write_helper<uint8_t>);
+		CALL_F((&mem_write_helper<uint8_t, dont_write>));
 		break;
 
 	default:
@@ -1905,10 +1906,11 @@ void lc86_jit::rep(Label start, Label end)
 	BR_UNCOND(start);
 }
 
-template<typename... Args>
+template<bool use_esp, typename... Args>
 void lc86_jit::gen_stack_push(Args... pushed_args)
 {
-	// edx, ebx are clobbered, pushed val is either a sized imm or sized reg (1st arg only, remaining in mem) -> same size of pushed val
+	// edx, ebx, eax are clobbered, pushed val is either a sized imm or sized reg (1st arg only, remaining in mem) -> same size of pushed val
+	// when use_esp is true, the guest esp is used for the pushes, otherwise a variable in the host ebx is used
 
 	assert(m_cpu->size_mode != SIZE8);
 	static_assert(sizeof...(Args), "Cannot push zero values!");
@@ -1916,52 +1918,112 @@ void lc86_jit::gen_stack_push(Args... pushed_args)
 	switch ((m_cpu->size_mode << 1) | ((m_cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
 	case (SIZE32 << 1) | 0: { // sp, push 32
-		LD_R16(BX, CPU_CTX_ESP);
+		if constexpr (use_esp) {
+			LD_R16(BX, CPU_CTX_ESP);
+		}
 		([this, &pushed_args] {
 			SUB(BX, 4);
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
-			MOVZX(EBX, BX);
-			ADD(EDX, EBX);
+			MOVZX(EAX, BX);
+			ADD(EDX, EAX);
 			ST_MEM(pushed_args);
 			}(), ...);
-		ST_R16(CPU_CTX_ESP, BX);
+		if constexpr (use_esp) {
+			ST_R16(CPU_CTX_ESP, BX);
+		}
 	}
 	break;
 
 	case (SIZE32 << 1) | 1: { // esp, push 32
-		LD_R32(EBX, CPU_CTX_ESP);
+		if constexpr (use_esp) {
+			LD_R32(EBX, CPU_CTX_ESP);
+		}
 		([this, &pushed_args] {
 			SUB(EBX, 4);
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			ADD(EDX, EBX);
 			ST_MEM(pushed_args);
 			}(), ...);
-		ST_R32(CPU_CTX_ESP, EBX);
+		if constexpr (use_esp) {
+			ST_R32(CPU_CTX_ESP, EBX);
+		}
 	}
 	break;
 
 	case (SIZE16 << 1) | 0: { // sp, push 16
-		LD_R16(BX, CPU_CTX_ESP);
+		if constexpr (use_esp) {
+			LD_R16(BX, CPU_CTX_ESP);
+		}
 		([this, &pushed_args] {
 			SUB(BX, 2);
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
-			MOVZX(EBX, BX);
-			ADD(EDX, EBX);
+			MOVZX(EAX, BX);
+			ADD(EDX, EAX);
 			ST_MEM(pushed_args);
 			}(), ...);
-		ST_R16(CPU_CTX_ESP, BX);
+		if constexpr (use_esp) {
+			ST_R16(CPU_CTX_ESP, BX);
+		}
 	}
 	break;
 
 	case (SIZE16 << 1) | 1: { // esp, push 16
-		LD_R32(EBX, CPU_CTX_ESP);
+		if constexpr (use_esp) {
+			LD_R32(EBX, CPU_CTX_ESP);
+		}
 		([this, &pushed_args] {
 			SUB(EBX, 2);
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			ADD(EDX, EBX);
 			ST_MEM(pushed_args);
 			}(), ...);
-		ST_R32(CPU_CTX_ESP, EBX);
+		if constexpr (use_esp) {
+			ST_R32(CPU_CTX_ESP, EBX);
+		}
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+void
+lc86_jit::gen_virtual_stack_push()
+{
+	// Currently, this is only used by the ENTER instruction to check if a stack push with the final value of (e)sp will cause a page fault
+
+	assert(m_cpu->size_mode != SIZE8);
+
+	switch ((m_cpu->size_mode << 1) | ((m_cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
+	{
+	case (SIZE32 << 1) | 0: { // sp, push 32
+		LD_SEG_BASE(EDX, CPU_CTX_SS);
+		MOVZX(EAX, BX);
+		ADD(EDX, EAX);
+		ST_MEMv(0);
+	}
+	break;
+
+	case (SIZE32 << 1) | 1: { // esp, push 32
+		LD_SEG_BASE(EDX, CPU_CTX_SS);
+		ADD(EDX, EBX);
+		ST_MEMv(0);
+	}
+	break;
+
+	case (SIZE16 << 1) | 0: { // sp, push 16
+		LD_SEG_BASE(EDX, CPU_CTX_SS);
+		MOVZX(EAX, BX);
+		ADD(EDX, EAX);
+		ST_MEMv(0);
+	}
+	break;
+
+	case (SIZE16 << 1) | 1: { // esp, push 16
+		LD_SEG_BASE(EDX, CPU_CTX_SS);
+		ADD(EDX, EBX);
+		ST_MEMv(0);
 	}
 	break;
 
@@ -4407,6 +4469,90 @@ lc86_jit::div(ZydisDecodedInstruction *instr)
 	default:
 		LIB86CPU_ABORT();
 	}
+}
+
+void
+lc86_jit::enter(ZydisDecodedInstruction *instr)
+{
+	uint32_t stack_sub, nesting_lv = instr->operands[OPNUM_SRC].imm.value.u & 0x1F;
+	auto rax_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+	auto r10_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
+
+	MOV(r10_host_reg, MEMD(RCX, CPU_CTX_EBP, m_cpu->size_mode));
+	switch ((m_cpu->size_mode << 1) | ((m_cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
+	{
+	case (SIZE32 << 1) | 0: { // sp, push 32
+		stack_sub = 4;
+		MOVZX(EBX, MEMD16(RCX, CPU_CTX_ESP));
+		gen_stack_push<false>(r10_host_reg);
+		MOV(EAX, MEMD32(RCX, CPU_CTX_ESP));
+		AND(EAX, 0xFFFF0000);
+		OR(EBX, EAX);
+		MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EBX);
+	}
+	break;
+
+	case (SIZE32 << 1) | 1: { // esp, push 32
+		stack_sub = 4;
+		MOV(EBX, MEMD32(RCX, CPU_CTX_ESP));
+		gen_stack_push<false>(r10_host_reg);
+		MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EBX);
+	}
+	break;
+
+	case (SIZE16 << 1) | 0: { // sp, push 16
+		stack_sub = 2;
+		MOVZX(EBX, MEMD16(RCX, CPU_CTX_ESP));
+		gen_stack_push<false>(r10_host_reg);
+		MOV(MEMD16(RSP, LOCAL_VARS_off(0)), BX);
+	}
+	break;
+
+	case (SIZE16 << 1) | 1: { // esp, push 16
+		stack_sub = 2;
+		MOV(EBX, MEMD32(RCX, CPU_CTX_ESP));
+		gen_stack_push<false>(r10_host_reg);
+		MOV(MEMD16(RSP, LOCAL_VARS_off(0)), BX);
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+
+	if (nesting_lv > 0) {
+		for (uint32_t i = 1; i < nesting_lv; ++i) {
+			if (m_cpu->cpu_ctx.hflags & HFLG_SS32) {
+				MOV(EAX, MEMD32(RCX, CPU_CTX_EBP));
+			}
+			else {
+				MOVZX(EAX, MEMD16(RCX, CPU_CTX_EBP));
+			}
+			SUB(EAX, stack_sub * i);
+			LD_SEG_BASE(EDX, CPU_CTX_SS);
+			ADD(EDX, EAX);
+			LD_MEM();
+			MOV(r10_host_reg, rax_host_reg);
+			gen_stack_push<false>(r10_host_reg);
+		}
+
+		MOV(r10_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
+		gen_stack_push<false>(r10_host_reg);
+	}
+
+	if (m_cpu->cpu_ctx.hflags & HFLG_SS32) {
+		SUB(EBX, instr->operands[OPNUM_DST].imm.value.u);
+		gen_virtual_stack_push();
+		ST_R32(CPU_CTX_ESP, EBX);
+	}
+	else {
+		SUB(BX, instr->operands[OPNUM_DST].imm.value.u);
+		gen_virtual_stack_push();
+		ST_R16(CPU_CTX_ESP, BX);
+	}
+
+	MOV(rax_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
+	ST_REG_val(rax_host_reg, CPU_CTX_EBP, m_cpu->size_mode);
 }
 
 void

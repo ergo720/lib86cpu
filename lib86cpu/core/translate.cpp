@@ -920,7 +920,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			cpu->jit->div(&instr);
 			break;
 
-		case ZYDIS_MNEMONIC_ENTER: BAD;
+		case ZYDIS_MNEMONIC_ENTER:
+			cpu->jit->enter(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_HLT:
 			cpu->jit->hlt(&instr);
 			break;

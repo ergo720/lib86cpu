@@ -71,6 +71,7 @@ public:
 	void das(ZydisDecodedInstruction *instr);
 	void dec(ZydisDecodedInstruction *instr);
 	void div(ZydisDecodedInstruction *instr);
+	void enter(ZydisDecodedInstruction *instr);
 	void hlt(ZydisDecodedInstruction *instr);
 	void idiv(ZydisDecodedInstruction *instr);
 	void imul(ZydisDecodedInstruction *instr);
@@ -215,7 +216,7 @@ private:
 	template<typename T>
 	void store_reg(T val, size_t reg_offset, size_t size);
 	void load_mem(uint8_t size, uint8_t is_priv);
-	template<typename T>
+	template<typename T, bool dont_write = false>
 	void store_mem(T val, uint8_t size, uint8_t is_priv);
 	void load_io(uint8_t size_mode);
 	void store_io(uint8_t size_mode);
@@ -224,8 +225,9 @@ private:
 	Label rep_start(Label end);
 	template<unsigned rep_prfx>
 	void rep(Label start, Label end);
-	template<typename... Args>
+	template<bool use_esp = true, typename... Args>
 	void gen_stack_push(Args... pushed_args);
+	void gen_virtual_stack_push();
 	template<unsigned num, unsigned store_at = 0, bool write_esp = true>
 	void gen_stack_pop();
 	template<unsigned idx>
