@@ -6516,7 +6516,6 @@ lc86_jit::out(ZydisDecodedInstruction *instr)
 		uint8_t port = instr->operands[OPNUM_DST].imm.value.u;
 		gen_check_io_priv(port);
 		MOV(EDX, port);
-		XOR(EAX, EAX);
 		LD_REG_val(SIZED_REG(x64::rax, m_cpu->size_mode), CPU_CTX_EAX, m_cpu->size_mode);
 		ST_IO();
 	}
@@ -6531,7 +6530,6 @@ lc86_jit::out(ZydisDecodedInstruction *instr)
 		if (gen_check_io_priv(EDX)) {
 			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
 		}
-		XOR(EAX, EAX);
 		LD_REG_val(SIZED_REG(x64::rax, m_cpu->size_mode), CPU_CTX_EAX, m_cpu->size_mode);
 		ST_IO();
 	}
