@@ -126,10 +126,12 @@ public:
 	void sbb(ZydisDecodedInstruction *instr);
 	void scas(ZydisDecodedInstruction *instr);
 	void setcc(ZydisDecodedInstruction *instr);
+	void sgdt(ZydisDecodedInstruction *instr);
 	void shl(ZydisDecodedInstruction *instr);
 	void shld(ZydisDecodedInstruction *instr);
 	void shr(ZydisDecodedInstruction *instr);
 	void shrd(ZydisDecodedInstruction *instr);
+	void sidt(ZydisDecodedInstruction *instr);
 	void stc(ZydisDecodedInstruction *instr);
 	void std(ZydisDecodedInstruction *instr);
 	void sti(ZydisDecodedInstruction *instr);
@@ -238,6 +240,8 @@ private:
 	void rotate(ZydisDecodedInstruction *instr);
 	template<unsigned idx>
 	void load_sys_seg_reg(ZydisDecodedInstruction *instr);
+	template<unsigned idx>
+	void store_sys_seg_reg(ZydisDecodedInstruction *instr);
 	template<bool is_verr>
 	void verx(ZydisDecodedInstruction *instr);
 	template<unsigned idx>

@@ -2801,6 +2801,56 @@ void lc86_jit::load_sys_seg_reg(ZydisDecodedInstruction *instr)
 	}
 }
 
+template<unsigned idx>
+void lc86_jit::store_sys_seg_reg(ZydisDecodedInstruction *instr)
+{
+	switch (idx)
+	{
+	case GDTR_idx:
+		assert(instr->raw.modrm.reg == 0);
+		break;
+
+	case IDTR_idx:
+		assert(instr->raw.modrm.reg == 1);
+		break;
+
+	default:
+		LIB86CPU_ABORT_msg("Unknown selector specified with index %u", idx);
+	}
+
+	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
+		Label ok = m_a.newLabel();
+		LD_R32(EAX, CPU_CTX_CR4);
+		AND(EAX, CR4_UMIP_MASK);
+		TEST(EAX, EAX);
+		BR_EQ(ok);
+		RAISEin0_f(EXP_GP);
+		m_a.bind(ok);
+	}
+
+	if constexpr ((idx == GDTR_idx) || (idx == IDTR_idx)) {
+		get_rm<OPNUM_SINGLE>(instr,
+			[](const op_info rm)
+			{
+				assert(0);
+			},
+			[this](const op_info rm)
+			{
+				constexpr auto seg_offset = idx == GDTR_idx ? CPU_CTX_GDTR : CPU_CTX_IDTR;
+				MOV(EBX, EDX);
+				MOV(AX, MEMD16(RCX, seg_offset + seg_limit_offset));
+				ST_MEMs(AX, SIZE16);
+				ADD(EBX, 2);
+				MOV(EDX, EBX);
+				LD_SEG_BASE(EAX, seg_offset);
+				ST_MEMs(EAX, SIZE32);
+			});
+	}
+	else {
+		LIB86CPU_ABORT_msg("Unknown selector specified with index %u", idx);
+	}
+}
+
 template<bool is_verr>
 void lc86_jit::verx(ZydisDecodedInstruction *instr)
 {
@@ -7657,6 +7707,12 @@ lc86_jit::setcc(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::sgdt(ZydisDecodedInstruction *instr)
+{
+	store_sys_seg_reg<GDTR_idx>(instr);
+}
+
+void
 lc86_jit::shl(ZydisDecodedInstruction *instr)
 {
 	assert(instr->raw.modrm.reg == 4);
@@ -7680,6 +7736,12 @@ void
 lc86_jit::shrd(ZydisDecodedInstruction *instr)
 {
 	double_shift<1>(instr);
+}
+
+void
+lc86_jit::sidt(ZydisDecodedInstruction *instr)
+{
+	store_sys_seg_reg<IDTR_idx>(instr);
 }
 
 void

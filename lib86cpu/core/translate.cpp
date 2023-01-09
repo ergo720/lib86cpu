@@ -1201,7 +1201,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			cpu->jit->setcc(&instr);
 			break;
 
-		case ZYDIS_MNEMONIC_SGDT:        BAD;
+		case ZYDIS_MNEMONIC_SGDT:
+			cpu->jit->sgdt(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_SHL:
 			cpu->jit->shl(&instr);
 			break;
@@ -1218,7 +1221,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			cpu->jit->shrd(&instr);
 			break;
 
-		case ZYDIS_MNEMONIC_SIDT:        BAD;
+		case ZYDIS_MNEMONIC_SIDT:
+			cpu->jit->sidt(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_SLDT:        BAD;
 		case ZYDIS_MNEMONIC_SMSW:        BAD;
 		case ZYDIS_MNEMONIC_STC:

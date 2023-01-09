@@ -244,13 +244,14 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define CR3_PCD_MASK (1 << 4)
 #define CR3_PWT_MASK (1 << 3)
 #define CR3_FLG_MASK (CR3_PD_MASK | CR3_PCD_MASK | CR3_PWT_MASK)
-#define CR4_VME_MASK (1 << 0)
-#define CR4_TSD_MASK (1 << 2)
-#define CR4_DE_MASK  (1 << 3)
-#define CR4_PSE_MASK (1 << 4)
-#define CR4_PAE_MASK (1 << 5)
-#define CR4_PGE_MASK (1 << 7)
-#define CR4_RES_MASK (0x1FFFFF << 11) // cr4 reserved bits
+#define CR4_VME_MASK    (1 << 0)
+#define CR4_TSD_MASK    (1 << 2)
+#define CR4_DE_MASK     (1 << 3)
+#define CR4_PSE_MASK    (1 << 4)
+#define CR4_PAE_MASK    (1 << 5)
+#define CR4_PGE_MASK    (1 << 7)
+#define CR4_UMIP_MASK   (1 << 11)
+#define CR4_RES_MASK    (0x1FFFFF << 11) // cr4 reserved bits
 
 // debug register flags
 #define DR6_B0_MASK      (1 << 0)
