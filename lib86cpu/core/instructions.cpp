@@ -233,7 +233,15 @@ uint32_t lret_pe_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
 		// same privilege
 
 		set_access_flg_seg_desc_helper(cpu, cs_desc, desc_addr, eip);
-		cpu->cpu_ctx.regs.esp = esp;
+
+		uint32_t stack_mask;
+		if (cpu->cpu_ctx.hflags & HFLG_SS32) {
+			stack_mask = 0xFFFFFFFF;
+		}
+		else {
+			stack_mask = 0xFFFF;
+		}
+		cpu->cpu_ctx.regs.esp = (cpu->cpu_ctx.regs.esp & ~stack_mask) | (esp & stack_mask);
 		cpu->cpu_ctx.regs.eip = ret_eip;
 		write_seg_reg_helper<CS_idx>(cpu, cs, read_seg_desc_base_helper(cpu, cs_desc), read_seg_desc_limit_helper(cpu, cs_desc), read_seg_desc_flags_helper(cpu, cs_desc));
 	}
