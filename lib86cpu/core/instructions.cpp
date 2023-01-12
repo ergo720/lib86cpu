@@ -263,7 +263,7 @@ iret_real_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
 		eflags_mask = ID_MASK | AC_MASK | RF_MASK | NT_MASK | IOPL_MASK | DF_MASK | IF_MASK | TF_MASK;
 	}
 
-	cpu->cpu_ctx.regs.esp = esp;
+	cpu->cpu_ctx.regs.esp = (cpu->cpu_ctx.regs.esp & ~0xFFFF) | (esp & 0xFFFF);
 	cpu_ctx->regs.eip = ret_eip;
 	cpu_ctx->regs.cs = cs;
 	cpu_ctx->regs.cs_hidden.base = cs << 4;
