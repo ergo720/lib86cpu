@@ -15,7 +15,7 @@ template<bool is_verr> void verrw_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint3
 template<unsigned reg> uint32_t mov_sel_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
 uint32_t ltr_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
 uint32_t lldt_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
-uint32_t update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes);
+uint32_t update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx);
 void update_drN_helper(cpu_ctx_t *cpu_ctx, uint8_t dr_idx, uint32_t new_dr);
 uint32_t divd_helper(cpu_ctx_t *cpu_ctx, uint32_t d, uint32_t eip);
 uint32_t divw_helper(cpu_ctx_t *cpu_ctx, uint16_t d, uint32_t eip);

@@ -748,20 +748,25 @@ lldt_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
 }
 
 uint32_t
-update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip, uint32_t bytes)
+update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 {
 	switch (idx)
 	{
 	case 0:
 		if (((new_cr & CR0_PE_MASK) == 0 && (new_cr & CR0_PG_MASK) >> 31 == 1) ||
 			((new_cr & CR0_CD_MASK) == 0 && (new_cr & CR0_NW_MASK) >> 29 == 1)) {
-			return CR_RET_EXP;
+			return 1;
 		}
 
 		cpu_ctx->hflags = (((new_cr & CR0_EM_MASK) << 3) | (cpu_ctx->hflags & ~HFLG_CR0_EM));
 
+		// only flush the tlb if pg changed or wp changed and pg=1
+		if (((cpu_ctx->regs.cr0 & CR0_PG_MASK) != (new_cr & CR0_PG_MASK)) ||
+			(((cpu_ctx->regs.cr0 & CR0_WP_MASK) != (new_cr & CR0_WP_MASK)) && (new_cr & CR0_PG_MASK))) {
+			tlb_flush(cpu_ctx->cpu, TLB_keep_cw);
+		}
+
 		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
-			tlb_flush(cpu_ctx->cpu, TLB_zero);
 			if (new_cr & CR0_PE_MASK) {
 				// real -> protected
 				if (cpu_ctx->regs.cs_hidden.flags & SEG_HIDDEN_DB) {
@@ -785,18 +790,8 @@ update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip
 				break_list.clear();
 				LOG(log_level::info, "Removed all breakpoints because cpu mode changed");
 			}
-
-			cpu_ctx->regs.eip = (eip + bytes);
-			cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
-			return CR_RET_MODE_CHANGED;
 		}
 
-		if ((cpu_ctx->regs.cr0 & (CR0_WP_MASK | CR0_PG_MASK)) != (new_cr & (CR0_WP_MASK | CR0_PG_MASK))) {
-			tlb_flush(cpu_ctx->cpu, TLB_keep_cw);
-		}
-
-		// mov cr0, reg always terminates the tc, so we must update the eip here
-		cpu_ctx->regs.eip = (eip + bytes);
 		cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
 		break;
 
@@ -815,7 +810,7 @@ update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip
 
 	case 4: {
 		if (new_cr & CR4_RES_MASK) {
-			return CR_RET_EXP;
+			return 1;
 		}
 
 		if (new_cr & (CR4_VME_MASK | CR4_PAE_MASK)) {
@@ -835,7 +830,7 @@ update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx, uint32_t eip
 		LIB86CPU_ABORT();
 	}
 
-	return CR_RET_OK;
+	return 0;
 }
 
 void

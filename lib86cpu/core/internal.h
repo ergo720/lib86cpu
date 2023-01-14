@@ -17,14 +17,11 @@ template<bool should_flush_tlb>
 void tc_should_clear_cache_and_tlb(cpu_t *cpu, addr_t start, addr_t end);
 void tc_cache_clear(cpu_t *cpu);
 void tc_cache_purge(cpu_t *cpu);
-translated_code_t *tc_cache_purge(cpu_ctx_t *cpu_ctx);
 addr_t get_pc(cpu_ctx_t *cpu_ctx);
 template<bool is_intn = false, bool is_hw_int = false>
 translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx);
 uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 
-using purge_arg_cpu_t = void(*)(cpu_t *);
-using purge_arg_ctx_t = translated_code_t *(*)(cpu_ctx_t *);
 
 // cpu hidden flags (assumed to be constant during exec of a tc, together with a flag subset of eflags)
 // HFLG_CPL: cpl of cpu
@@ -231,9 +228,6 @@ using purge_arg_ctx_t = translated_code_t *(*)(cpu_ctx_t *);
 #define TLB_no_g        2
 
 // control register flags
-#define CR_RET_OK            0
-#define CR_RET_EXP           1
-#define CR_RET_MODE_CHANGED  2
 #define CR0_PG_MASK (1 << 31)
 #define CR0_CD_MASK (1 << 30)
 #define CR0_NW_MASK (1 << 29)
