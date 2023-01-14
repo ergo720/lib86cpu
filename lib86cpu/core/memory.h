@@ -290,7 +290,6 @@ void mem_write_slow(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t is_p
 	if ((sizeof(T) != 1) && ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
 		uint8_t is_code1, is_code2;
 		uint8_t i = 0;
-		int8_t j = sizeof(T) - 1;
 		addr_t phys_addr_s = get_write_addr(cpu, addr, is_priv, eip, &is_code1);
 		addr_t phys_addr_e = get_write_addr(cpu, addr + sizeof(T) - 1, is_priv, eip, &is_code2);
 		addr_t phys_addr = phys_addr_s;
@@ -306,10 +305,9 @@ void mem_write_slow(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t is_p
 		}
 		while (i < sizeof(T)) {
 			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
-			as_memory_dispatch_write<uint8_t>(cpu, phys_addr, value >> (j * 8), region);
+			as_memory_dispatch_write<uint8_t>(cpu, phys_addr, value >> (i * 8), region);
 			phys_addr++;
 			i++;
-			j--;
 			if (i == bytes_in_page) {
 				phys_addr = phys_addr_e & ~PAGE_MASK;
 			}
