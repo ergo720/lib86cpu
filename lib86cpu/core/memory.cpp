@@ -548,9 +548,6 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv
 			// it's ram, tlb holds the physical address
 			addr_t phys_addr = (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
 			T ret = *reinterpret_cast<T *>(&cpu_ctx->ram[phys_addr - cpu_ctx->cpu->ram_start]);
-			if constexpr (is_big_endian) {
-				swap_byte_order<T>(ret);
-			}
 			return ret;
 		}
 
@@ -560,9 +557,6 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv
 			addr_t phys_addr = subpage->phys_addr | (addr & PAGE_MASK);
 			const memory_region_t<addr_t> *rom = cpu_ctx->cpu->cached_regions[subpage->cached_region_idx[0]];
 			T ret = *reinterpret_cast<T *>(&rom->rom_ptr[phys_addr - rom->start]);
-			if constexpr (is_big_endian) {
-				swap_byte_order<T>(ret);
-			}
 			return ret;
 		}
 
@@ -640,9 +634,6 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint
 		{
 		case TLB_RAM: {
 			// it's ram, access it directly
-			if constexpr (is_big_endian) {
-				swap_byte_order<T>(val);
-			}
 			addr_t phys_addr = (tlb_entry & ~PAGE_MASK) | (addr & PAGE_MASK);
 			*reinterpret_cast<T *>(&cpu_ctx->ram[phys_addr - cpu_ctx->cpu->ram_start]) = val;
 			return;
