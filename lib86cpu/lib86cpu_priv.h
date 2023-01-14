@@ -36,7 +36,6 @@ enum class mem_type {
 enum class host_exp_t : int {
 	pf_exp,
 	de_exp,
-	cpu_mode_changed,
 	halt_tc,
 };
 

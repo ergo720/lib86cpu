@@ -593,6 +593,19 @@ tc_cache_purge(cpu_t *cpu)
 	cpu->jit->gen_int_fn();
 }
 
+translated_code_t *
+tc_cache_purge(cpu_ctx_t *cpu_ctx)
+{
+	// This is a wrapper that's called by the jitted code when mov cr0, reg changes cpu mode. It must have the same function signature of the main() jitted function
+	// and it must be tail called, so that when this returns, it will skip the caller and return directly to tc_run_code. Otherwise, this will cause a crash upon returning
+	// since the caller was destroyed by tc_cache_purge right below. This will also happen if the code linking is not not tail call optimized (currently they all are).
+	// Test case: during installation with the cdrom, Windows XP switches back and forth between real and protected mode continuously, which will cause excessive slowness
+	// with the old exception approach that was previously employed
+
+	tc_cache_purge(cpu_ctx->cpu);
+	return nullptr;
+}
+
 static void
 tc_link_direct(translated_code_t *prev_tc, translated_code_t *ptr_tc)
 {
@@ -1575,10 +1588,6 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 			cpu_main_loop<false, true>(cpu_ctx->cpu, [&i]() { return i++ == 0; });
 			return nullptr;
 		}
-
-		case host_exp_t::cpu_mode_changed:
-			tc_cache_purge(cpu_ctx->cpu);
-			[[fallthrough]];
 
 		case host_exp_t::halt_tc:
 			return nullptr;

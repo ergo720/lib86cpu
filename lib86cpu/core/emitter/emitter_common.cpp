@@ -38,6 +38,7 @@ constexpr auto all_callable_funcs = std::make_tuple(
 	io_write_helper<uint32_t>,
 	io_write_helper<uint16_t>,
 	io_write_helper<uint8_t>,
+	static_cast<purge_arg_ctx_t>(tc_cache_purge),
 	ljmp_pe_helper,
 	lcall_pe_helper,
 	lret_pe_helper<true>,

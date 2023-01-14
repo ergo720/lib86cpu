@@ -5795,13 +5795,19 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			case CR3_idx:
 			case CR4_idx: {
 				Label ok = m_a.newLabel();
+				Label mode_changed = m_a.newLabel();
 				MOV(MEMD32(RSP, STACK_ARGS_off), m_cpu->instr_bytes);
 				MOV(R9D, m_cpu->instr_eip);
 				MOV(R8D, cr_idx - CR_offset);
 				CALL_F(&update_crN_helper);
 				TEST(EAX, EAX);
 				BR_EQ(ok);
+				CMP(EAX, CR_RET_MODE_CHANGED);
+				BR_EQ(mode_changed);
 				RAISEin0_f(EXP_GP);
+				m_a.bind(mode_changed);
+				MOV(RAX, static_cast<purge_arg_ctx_t>(&tc_cache_purge));
+				gen_tail_call(RAX);
 				m_a.bind(ok);
 				if (cr_idx == CR0_idx) {
 					gen_no_link_checks();
