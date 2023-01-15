@@ -1,7 +1,7 @@
 # Lib86cpu
 
 "lib86cpu" is an dynamic recompiler library that emulates an Intel Pentium III Coppermine processor, and exposes its functionality
-via its own API.
+via its own API. Specifically, it emulates the Pentium III processor found on the original Xbox console.
 
 ### Supported host architectures
 - x86-64
