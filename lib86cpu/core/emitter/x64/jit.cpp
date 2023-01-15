@@ -2814,6 +2814,10 @@ void lc86_jit::store_sys_seg_reg(ZydisDecodedInstruction *instr)
 		assert(instr->raw.modrm.reg == 1);
 		break;
 
+	case TR_idx:
+		assert(instr->raw.modrm.reg == 1);
+		break;
+
 	default:
 		LIB86CPU_ABORT_msg("Unknown selector specified with index %u", idx);
 	}
@@ -2844,6 +2848,19 @@ void lc86_jit::store_sys_seg_reg(ZydisDecodedInstruction *instr)
 				MOV(EDX, EBX);
 				LD_SEG_BASE(EAX, seg_offset);
 				ST_MEMs(EAX, SIZE32);
+			});
+	}
+	else if constexpr (idx == TR_idx) {
+		get_rm<OPNUM_SINGLE>(instr,
+			[this](const op_info rm)
+			{
+				MOVZX(EAX, MEMD16(RCX, CPU_CTX_TR));
+				ST_R32(rm.val, EAX);
+			},
+			[this](const op_info rm)
+			{
+				MOV(AX, MEMD16(RCX, CPU_CTX_TR));
+				ST_MEMs(AX, SIZE16);
 			});
 	}
 	else {
@@ -7881,6 +7898,12 @@ lc86_jit::stos(ZydisDecodedInstruction *instr)
 	default:
 		LIB86CPU_ABORT();
 	}
+}
+
+void
+lc86_jit::str(ZydisDecodedInstruction *instr)
+{
+	store_sys_seg_reg<TR_idx>(instr);
 }
 
 void

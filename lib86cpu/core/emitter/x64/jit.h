@@ -136,6 +136,7 @@ public:
 	void std(ZydisDecodedInstruction *instr);
 	void sti(ZydisDecodedInstruction *instr);
 	void stos(ZydisDecodedInstruction *instr);
+	void str(ZydisDecodedInstruction *instr);
 	void sub(ZydisDecodedInstruction *instr);
 	void test(ZydisDecodedInstruction *instr);
 	void verr(ZydisDecodedInstruction *instr);

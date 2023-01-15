@@ -1245,7 +1245,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			cpu->jit->stos(&instr);
 			break;
 
-		case ZYDIS_MNEMONIC_STR:         BAD;
+		case ZYDIS_MNEMONIC_STR:
+			cpu->jit->str(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_SUB:
 			cpu->jit->sub(&instr);
 			break;
