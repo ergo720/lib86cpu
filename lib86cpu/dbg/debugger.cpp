@@ -11,7 +11,6 @@
 #include <charconv>
 
 
-
 template<typename T>
 static void
 read_value_from_ini(std::ifstream *ifs, std::string_view key, T *value)
@@ -230,7 +229,7 @@ dbg_add_exp_hook(cpu_ctx_t *cpu_ctx)
 			}
 			unsigned exp_idx = EXP_BP;
 			for (int i = 0; i < 2; ++i) {
-				uint64_t desc = mem_read<uint64_t>(cpu_ctx->cpu, cpu_ctx->regs.idtr_hidden.base + exp_idx * 8, cpu_ctx->regs.eip, 2);
+				uint64_t desc = mem_read_helper<uint64_t>(cpu_ctx, cpu_ctx->regs.idtr_hidden.base + exp_idx * 8, cpu_ctx->regs.eip, 2);
 				uint16_t type = (desc >> 40) & 0x1F;
 				uint32_t new_eip, new_base;
 				switch (type)
@@ -274,7 +273,7 @@ dbg_add_exp_hook(cpu_ctx_t *cpu_ctx)
 					LOG(log_level::warn, "Failed to install hook for the exception handler: GDT or LDT limit exceeded");
 					return;
 				}
-				desc = mem_read<uint64_t>(cpu_ctx->cpu, base + sel_idx * 8, cpu_ctx->regs.eip, 2);
+				desc = mem_read_helper<uint64_t>(cpu_ctx, base + sel_idx * 8, cpu_ctx->regs.eip, 2);
 				if ((desc & SEG_DESC_P) == 0) {
 					LOG(log_level::warn, "Failed to install hook for the exception handler: GDT or LDT descriptor not present");
 					return;
@@ -294,9 +293,9 @@ dbg_add_exp_hook(cpu_ctx_t *cpu_ctx)
 				LOG(log_level::warn, "Failed to install hook for the exception handler: IDT limit exceeded");
 				return;
 			}
-			uint32_t vec_bp_entry = mem_read<uint32_t>(cpu_ctx->cpu, cpu_ctx->regs.idtr_hidden.base + EXP_BP * 4, cpu_ctx->regs.eip, 0);
+			uint32_t vec_bp_entry = mem_read_helper<uint32_t>(cpu_ctx, cpu_ctx->regs.idtr_hidden.base + EXP_BP * 4, cpu_ctx->regs.eip, 0);
 			cpu_ctx->cpu->bp_addr = ((vec_bp_entry >> 16) << 4) + (vec_bp_entry & 0xFFFF);
-			uint32_t vec_db_entry = mem_read<uint32_t>(cpu_ctx->cpu, cpu_ctx->regs.idtr_hidden.base + EXP_DB * 4, cpu_ctx->regs.eip, 0);
+			uint32_t vec_db_entry = mem_read_helper<uint32_t>(cpu_ctx, cpu_ctx->regs.idtr_hidden.base + EXP_DB * 4, cpu_ctx->regs.eip, 0);
 			cpu_ctx->cpu->db_addr = ((vec_db_entry >> 16) << 4) + (vec_db_entry & 0xFFFF);
 		}
 	}
@@ -311,7 +310,7 @@ dbg_add_exp_hook(cpu_ctx_t *cpu_ctx)
 }
 
 static std::vector<std::pair<addr_t, std::string>>
-dbg_disas_code_block(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, unsigned instr_num, uint32_t tlb_entry)
+dbg_disas_code_block(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, unsigned instr_num)
 {
 	std::vector<std::pair<addr_t, std::string>> disas_data;
 	while (instr_num) {
@@ -319,20 +318,17 @@ dbg_disas_code_block(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, 
 		ZyanStatus status = decode_instr(cpu, disas_ctx, decoder, &instr);
 		if (ZYAN_SUCCESS(status)) {
 			disas_data.push_back(std::make_pair(disas_ctx->virt_pc, log_instr(disas_ctx->virt_pc, &instr)));
-			instr_num--;
+			--instr_num;
 			size_t bytes = instr.length;
 			addr_t next_pc = disas_ctx->virt_pc + bytes;
 			if ((disas_ctx->virt_pc & ~PAGE_MASK) != ((next_pc - 1) & ~PAGE_MASK)) {
-				// page crossing, needs to translate virt_pc again and disable debug exp in the new page
-				disas_ctx->pc = get_code_addr(cpu, next_pc, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, 0, disas_ctx);
-				cpu->cpu_ctx.tlb[disas_ctx->virt_pc >> PAGE_SHIFT] = tlb_entry;
+				// page crossing, needs to translate virt_pc again
+				disas_ctx->pc = get_code_addr<false>(cpu, next_pc, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, disas_ctx);
 				if (disas_ctx->exp_data.idx == EXP_PF) {
 					// page fault in the new page, cannot display remaining instr
 					disas_ctx->virt_pc = next_pc;
 					return disas_data;
 				}
-				tlb_entry = cpu->cpu_ctx.tlb[next_pc >> PAGE_SHIFT];
-				cpu->cpu_ctx.tlb[next_pc >> PAGE_SHIFT] &= ~TLB_WATCH;
 			}
 			else {
 				disas_ctx->pc += bytes;
@@ -341,11 +337,9 @@ dbg_disas_code_block(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, 
 		}
 		else {
 			// decoding failed, cannot display remaining instr
-			cpu->cpu_ctx.tlb[disas_ctx->virt_pc >> PAGE_SHIFT] = tlb_entry;
 			return disas_data;
 		}
 	}
-	cpu->cpu_ctx.tlb[disas_ctx->virt_pc >> PAGE_SHIFT] = tlb_entry;
 	return disas_data;
 }
 
@@ -357,20 +351,24 @@ dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num)
 	disas_ctx.flags = ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT) |
 		((cpu->cpu_ctx.hflags & HFLG_PE_MODE) >> (PE_MODE_SHIFT - 1));
 	disas_ctx.virt_pc = pc;
-	disas_ctx.pc = get_code_addr(cpu, disas_ctx.virt_pc, cpu->cpu_ctx.regs.eip, 0, &disas_ctx);
+	disas_ctx.pc = get_code_addr<false>(cpu, disas_ctx.virt_pc, cpu->cpu_ctx.regs.eip, &disas_ctx);
 	if (disas_ctx.exp_data.idx == EXP_PF) {
 		// page fault, cannot display instr
 		return {};
 	}
 
 	// disable debug exp since we only want to disassemble instr for displying them
-	uint32_t tlb_entry = cpu->cpu_ctx.tlb[disas_ctx.virt_pc >> PAGE_SHIFT];
-	cpu->cpu_ctx.tlb[disas_ctx.virt_pc >> PAGE_SHIFT] &= ~TLB_WATCH;
+	std::vector<wp_info<addr_t>> wp_data;
+	std::vector<wp_info<port_t>> wp_io;
+	wp_data.swap(cpu->wp_data);
+	wp_io.swap(cpu->wp_io);
 
 	ZydisDecoder decoder;
 	init_instr_decoder(&disas_ctx, &decoder);
-	const auto &ret = dbg_disas_code_block(cpu, &disas_ctx, &decoder, instr_num, tlb_entry);
+	const auto &ret = dbg_disas_code_block(cpu, &disas_ctx, &decoder, instr_num);
 	break_pc = disas_ctx.virt_pc;
+	wp_data.swap(cpu->wp_data);
+	wp_io.swap(cpu->wp_io);
 	return ret;
 }
 
@@ -395,7 +393,7 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 	g_cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK;
 
 	try {
-		uint8_t is_code;
+		bool is_code;
 		addr_t phys_addr = get_write_addr(g_cpu, addr, 2, addr - g_cpu->cpu_ctx.regs.cs_hidden.base, &is_code);
 		const memory_region_t<addr_t> *region = as_memory_search_addr(g_cpu, phys_addr);
 
@@ -403,9 +401,9 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 		switch (region->type)
 		{
 		case mem_type::ram:
-			ram_write<uint8_t>(g_cpu, get_ram_host_ptr(g_cpu, phys_addr), val);
+			ram_write<uint8_t>(g_cpu, get_ram_host_ptr(g_cpu, region, phys_addr), val);
 			if (is_code) {
-				tc_invalidate(&g_cpu->cpu_ctx, addr, 1, g_cpu->cpu_ctx.regs.eip);
+				tc_invalidate(&g_cpu->cpu_ctx, phys_addr, 1, g_cpu->cpu_ctx.regs.eip);
 			}
 			// also update the read mem buffer used by dbg_ram_read
 			data[off] = val;
@@ -439,8 +437,8 @@ dbg_single_step_handler(cpu_ctx_t *cpu_ctx)
 {
 	// NOTE1: this is called from the emulation thread
 	// NOTE2: since the cpu has just pushed the ret_eip on the stack of the exception handler and no other guest code runs before we are called
-	// in this hook, then mem_read cannot raise page faults now
-	uint32_t ret_eip = mem_read<uint32_t>(cpu_ctx->cpu, cpu_ctx->regs.esp, 0, 0);
+	// in this hook, then mem_read_helper cannot raise page faults now
+	uint32_t ret_eip = mem_read_helper<uint32_t>(cpu_ctx, cpu_ctx->regs.esp, 0, 0);
 	addr_t pc = cpu_ctx->regs.cs_hidden.base + ret_eip;
 	if (cpu_ctx->cpu->cpu_flags & CPU_SINGLE_STEP) {
 		// disable all breakpoints so that we can show the original instructions in the disassembler
@@ -483,8 +481,8 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 {
 	// NOTE1: this is called from the emulation thread
 	// NOTE2: since the cpu has just pushed the ret_eip on the stack of the exception handler and no other guest code runs before we are called
-	// in this hook, then mem_read cannot raise page faults now
-	uint32_t ret_eip = mem_read<uint32_t>(cpu_ctx->cpu, cpu_ctx->regs.esp, 0, 0);
+	// in this hook, then mem_read_helper cannot raise page faults now
+	uint32_t ret_eip = mem_read_helper<uint32_t>(cpu_ctx, cpu_ctx->regs.esp, 0, 0);
 	addr_t pc = cpu_ctx->regs.cs_hidden.base + ret_eip - 1; // if this is our int3, it will always be one byte large
 	if (break_list.contains(pc)) {
 		// disable all breakpoints so that we can show the original instructions in the disassembler
@@ -545,9 +543,9 @@ dbg_insert_sw_breakpoint(cpu_t *cpu, addr_t addr)
 	cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK;
 
 	try {
-		uint8_t is_code;
-		volatile addr_t phys_addr = get_write_addr(cpu, addr, 0, cpu->cpu_ctx.regs.eip, &is_code);
-		if (cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] & TLB_RAM) {
+		bool is_code;
+		addr_t phys_addr = get_write_addr(cpu, addr, 0, cpu->cpu_ctx.regs.eip, &is_code);
+		if (as_memory_search_addr(cpu, phys_addr)->type == mem_type::ram) {
 			inserted = true;
 		}
 		else {
@@ -576,22 +574,25 @@ dbg_apply_sw_breakpoints(cpu_t *cpu)
 	uint32_t old_wp = cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK;
 	cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK;
 
+	// disable debug exp since we only want to insert a breakpoint
+	std::vector<wp_info<addr_t>> wp_data;
+	std::vector<wp_info<port_t>> wp_io;
+	wp_data.swap(cpu->wp_data);
+	wp_io.swap(cpu->wp_io);
+
 	for (const auto &elem : break_list) {
-		// disable debug exp since we only want to insert a breakpoint
 		addr_t addr = elem.first;
-		uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
-		cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] &= ~TLB_WATCH;
 
 		// the mem accesses below cannot raise page faults since break_list can only contain valid pages because of the checks done in insert_sw_breakpoint
-		uint8_t original_byte = mem_read<uint8_t>(cpu, addr, cpu->cpu_ctx.regs.eip, 0);
-		mem_write<uint8_t>(cpu, addr, 0xCC, cpu->cpu_ctx.regs.eip, 0);
+		uint8_t original_byte = mem_read_helper<uint8_t>(&cpu->cpu_ctx, addr, cpu->cpu_ctx.regs.eip, 0);
+		mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, 0xCC, cpu->cpu_ctx.regs.eip, 0);
 		break_list.insert_or_assign(addr, original_byte);
-
-		cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] = tlb_entry;
 	}
 
 	(cpu->cpu_ctx.hflags &= ~HFLG_CPL) |= old_cpl;
 	(cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK) |= old_wp;
+	wp_data.swap(cpu->wp_data);
+	wp_io.swap(cpu->wp_io);
 }
 
 void
@@ -603,22 +604,25 @@ dbg_remove_sw_breakpoints(cpu_t *cpu)
 	uint32_t old_wp = cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK;
 	cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK;
 
+	// disable debug exp since we only want to remove a breakpoint
+	std::vector<wp_info<addr_t>> wp_data;
+	std::vector<wp_info<port_t>> wp_io;
+	wp_data.swap(cpu->wp_data);
+	wp_io.swap(cpu->wp_io);
+
 	for (const auto &elem : break_list) {
-		// disable debug exp since we only want to remove a breakpoint
 		const auto &[addr, original_byte] = elem;
-		uint32_t tlb_entry = cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT];
-		cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] &= ~TLB_WATCH;
 
 		try {
-			mem_write<uint8_t>(cpu, addr, original_byte, cpu->cpu_ctx.regs.eip, 0);
+			mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, original_byte, cpu->cpu_ctx.regs.eip, 0);
 		}
 		catch (host_exp_t type) {
 			// this can only happen when the page is invalid
 		}
-
-		cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT] = tlb_entry;
 	}
 
 	(cpu->cpu_ctx.hflags &= ~HFLG_CPL) |= old_cpl;
 	(cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK) |= old_wp;
+	wp_data.swap(cpu->wp_data);
+	wp_io.swap(cpu->wp_io);
 }

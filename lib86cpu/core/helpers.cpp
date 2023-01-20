@@ -17,7 +17,7 @@ stack_push_helper(cpu_t *cpu, const uint32_t val, uint32_t size_mode, uint32_t &
 	case (SIZE32 << 1) | 0: { // sp, push 32
 		uint16_t sp = addr & 0xFFFF;
 		sp -= 4;
-		mem_write<uint32_t>(cpu, sp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
+		mem_write_helper<uint32_t>(&cpu->cpu_ctx, sp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
 		addr = sp;
 	}
 	break;
@@ -25,7 +25,7 @@ stack_push_helper(cpu_t *cpu, const uint32_t val, uint32_t size_mode, uint32_t &
 	case (SIZE32 << 1) | 1: { // esp, push 32
 		uint32_t esp = addr;
 		esp -= 4;
-		mem_write<uint32_t>(cpu, esp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
+		mem_write_helper<uint32_t>(&cpu->cpu_ctx, esp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
 		addr = esp;
 	}
 	break;
@@ -33,7 +33,7 @@ stack_push_helper(cpu_t *cpu, const uint32_t val, uint32_t size_mode, uint32_t &
 	case (SIZE16 << 1) | 0: { // sp, push 16
 		uint16_t sp = addr & 0xFFFF;
 		sp -= 2;
-		mem_write<uint16_t>(cpu, sp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
+		mem_write_helper<uint16_t>(&cpu->cpu_ctx, sp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
 		addr = sp;
 	}
 	break;
@@ -41,7 +41,7 @@ stack_push_helper(cpu_t *cpu, const uint32_t val, uint32_t size_mode, uint32_t &
 	case (SIZE16 << 1) | 1: { // esp, push 16
 		uint16_t esp = addr;
 		esp -= 2;
-		mem_write<uint16_t>(cpu, esp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
+		mem_write_helper<uint16_t>(&cpu->cpu_ctx, esp + cpu->cpu_ctx.regs.ss_hidden.base, val, eip, 0);
 		addr = esp;
 	}
 	break;
@@ -62,28 +62,28 @@ stack_pop_helper(cpu_t *cpu, uint32_t size_mode, uint32_t &addr, uint32_t eip)
 	{
 	case (SIZE32 << 1) | 0: { // sp, pop 32
 		uint16_t sp = addr & 0xFFFF;
-		ret = mem_read<uint32_t>(cpu, sp + cpu->cpu_ctx.regs.ss_hidden.base, eip, 0);
+		ret = mem_read_helper<uint32_t>(&cpu->cpu_ctx, sp + cpu->cpu_ctx.regs.ss_hidden.base, eip, 0);
 		addr = sp + 4;
 	}
 	break;
 
 	case (SIZE32 << 1) | 1: { // esp, pop 32
 		uint32_t esp = addr;
-		ret = mem_read<uint32_t>(cpu, esp + cpu->cpu_ctx.regs.ss_hidden.base, eip, 0);
+		ret = mem_read_helper<uint32_t>(&cpu->cpu_ctx, esp + cpu->cpu_ctx.regs.ss_hidden.base, eip, 0);
 		addr = esp + 4;
 	}
 	break;
 
 	case (SIZE16 << 1) | 0: { // sp, pop 16
 		uint16_t sp = addr & 0xFFFF;
-		ret = mem_read<uint16_t>(cpu, sp + cpu->cpu_ctx.regs.ss_hidden.base, eip, 0);
+		ret = mem_read_helper<uint16_t>(&cpu->cpu_ctx, sp + cpu->cpu_ctx.regs.ss_hidden.base, eip, 0);
 		addr = sp + 2;
 	}
 	break;
 
 	case (SIZE16 << 1) | 1: { // esp, pop 16
 		uint16_t esp = addr;
-		ret = mem_read<uint16_t>(cpu, esp + cpu->cpu_ctx.regs.ss_hidden.base, eip, 0);
+		ret = mem_read_helper<uint16_t>(&cpu->cpu_ctx, esp + cpu->cpu_ctx.regs.ss_hidden.base, eip, 0);
 		addr = esp + 2;
 	}
 	break;
@@ -136,7 +136,7 @@ uint8_t read_seg_desc_helper(cpu_t *cpu, uint16_t sel, addr_t &desc_addr, uint64
 		return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP, eip);
 	}
 
-	desc = mem_read<uint64_t>(cpu, desc_addr, eip, 2);
+	desc = mem_read_helper<uint64_t>(&cpu->cpu_ctx, desc_addr, eip, 2);
 	return 0;
 }
 
@@ -144,7 +144,7 @@ void
 set_access_flg_seg_desc_helper(cpu_t *cpu, uint64_t desc, addr_t desc_addr, uint32_t eip)
 {
 	if ((((desc & SEG_DESC_S) >> 44) | ((desc & SEG_DESC_A) >> 39)) == 1) {
-		mem_write<uint64_t>(cpu, desc_addr, desc | SEG_DESC_A, eip, 2);
+		mem_write_helper<uint64_t>(&cpu->cpu_ctx, desc_addr, desc | SEG_DESC_A, eip, 2);
 	}
 }
 
@@ -265,12 +265,12 @@ read_stack_ptr_from_tss_helper(cpu_t *cpu, uint32_t dpl, uint32_t &esp, uint16_t
 	}
 
 	if (type) {
-		esp = mem_read<uint32_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx, eip, 0);
-		ss = mem_read<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx + 4, eip, 0);
+		esp = mem_read_helper<uint32_t>(&cpu->cpu_ctx, cpu->cpu_ctx.regs.tr_hidden.base + idx, eip, 0);
+		ss = mem_read_helper<uint16_t>(&cpu->cpu_ctx, cpu->cpu_ctx.regs.tr_hidden.base + idx + 4, eip, 0);
 	}
 	else {
-		esp = mem_read<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx, eip, 0);
-		ss = mem_read<uint16_t>(cpu, cpu->cpu_ctx.regs.tr_hidden.base + idx + 2, eip, 0);
+		esp = mem_read_helper<uint16_t>(&cpu->cpu_ctx, cpu->cpu_ctx.regs.tr_hidden.base + idx, eip, 0);
+		ss = mem_read_helper<uint16_t>(&cpu->cpu_ctx, cpu->cpu_ctx.regs.tr_hidden.base + idx + 2, eip, 0);
 	}
 
 	return 0;

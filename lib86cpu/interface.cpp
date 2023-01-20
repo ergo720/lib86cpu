@@ -154,7 +154,6 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 
 	cpu->memory_space_tree = address_space<addr_t>::create();
 	cpu->io_space_tree = address_space<port_t>::create();
-	cpu->cached_regions.push_back(nullptr);
 
 	try {
 		cpu->jit = std::make_unique<lc86_jit>(cpu);
@@ -164,6 +163,8 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 		last_error = exp.what();
 		return exp.get_code();
 	}
+	std::random_device rd;
+	cpu->rng_gen.seed(rd());
 
 	LOG(log_level::info, "Created new cpu \"%s\"", cpu->cpu_name);
 
@@ -195,7 +196,7 @@ static void cpu_sync_state(cpu_t *cpu)
 {
 	// only flush the tlb and the code cache if the cpu mode changed
 	if ((cpu->cpu_ctx.regs.cr0 & CR0_PE_MASK) != ((cpu->cpu_ctx.hflags & HFLG_PE_MODE) >> PE_MODE_SHIFT)) {
-		tlb_flush(cpu, TLB_zero);
+		tlb_flush(cpu);
 		if constexpr (should_purge) {
 			tc_cache_purge(cpu);
 		}
@@ -327,9 +328,8 @@ cpu_set_a20(cpu_t *cpu, bool closed, bool should_int)
 		}
 		else {
 			cpu->a20_mask = cpu->new_a20;
-			tlb_flush(cpu, TLB_zero);
-			cpu->cached_regions.clear();
-			cpu->cached_regions.push_back(nullptr);
+			tlb_flush(cpu);
+			tc_cache_clear(cpu);
 		}
 	}
 }
@@ -411,7 +411,7 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 		switch (region->type)
 		{
 		case mem_type::ram:
-			return static_cast<uint8_t *>(get_ram_host_ptr(cpu, phys_addr));
+			return static_cast<uint8_t *>(get_ram_host_ptr(cpu, region, phys_addr));
 
 		case mem_type::rom:
 			return static_cast<uint8_t *>(get_rom_host_ptr(region, phys_addr));
@@ -436,7 +436,7 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 // has been generated yet.
 
 /*
-* mem_init_region_ram -> creates a ram region. If more than one is added, the address range of the existing one is erased
+* mem_init_region_ram -> creates a ram region
 * cpu: a valid cpu instance
 * start: the guest physical address where the ram starts
 * size: size in bytes of ram
@@ -451,7 +451,7 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, uint32_t size, bool should_int)
 	}
 
 	std::unique_ptr<memory_region_t<addr_t>> ram(new memory_region_t<addr_t>);
-	ram->start = start;
+	ram->start = ram->buff_off_start = start;
 	ram->end = std::min(static_cast<uint64_t>(start) + size - 1, 0xFFFFFFFFULL);
 	ram->type = mem_type::ram;
 
@@ -460,10 +460,6 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, uint32_t size, bool should_int)
 		cpu->raise_int_fn(&cpu->cpu_ctx, CPU_REGION_INT);
 	}
 	else {
-		if (auto ram = as_memory_search_addr(cpu, cpu->ram_start); ram->type == mem_type::ram) {
-			cpu->memory_space_tree->erase(ram->start, ram->end);
-		}
-		cpu->ram_start = start;
 		cpu->memory_space_tree->insert(std::move(ram));
 		tc_should_clear_cache_and_tlb<true>(cpu, start, start + size - 1);
 	}
@@ -594,7 +590,7 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, uint32_t size, uint8_t *buffer, bo
 	}
 
 	std::unique_ptr<memory_region_t<addr_t>> rom(new memory_region_t<addr_t>);
-	rom->start = start;
+	rom->start = rom->buff_off_start = start;
 	rom->end = std::min(static_cast<uint64_t>(start) + size - 1, 0xFFFFFFFFULL);
 	rom->type = mem_type::rom;
 	rom->rom_ptr = buffer;
@@ -667,7 +663,7 @@ lc86_status mem_read_block(cpu_t *cpu, addr_t addr, uint32_t size, uint8_t *out,
 				switch (region->type)
 				{
 				case mem_type::ram:
-					std::memcpy(out + vec_offset, get_ram_host_ptr(cpu, phys_addr), bytes_to_read);
+					std::memcpy(out + vec_offset, get_ram_host_ptr(cpu, region, phys_addr), bytes_to_read);
 					break;
 
 				case mem_type::rom:
@@ -748,18 +744,18 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, uint32_t size, const void
 
 	try {
 		while (size_left > 0) {
-			uint8_t is_code;
+			bool is_code;
 			addr_t phys_addr;
 			uint32_t bytes_to_write = std::min(PAGE_SIZE - page_offset, size_left);
 			if constexpr (is_virt) {
 				phys_addr = get_write_addr(cpu, addr, 0, 0, &is_code);
 				if (is_code) {
-					tc_invalidate<false, false>(&cpu->cpu_ctx, phys_addr, bytes_to_write, cpu->cpu_ctx.regs.eip);
+					tc_invalidate(&cpu->cpu_ctx, phys_addr, bytes_to_write, cpu->cpu_ctx.regs.eip);
 				}
 			}
 			else {
 				phys_addr = addr;
-				tc_invalidate<false, false>(&cpu->cpu_ctx, phys_addr, bytes_to_write, cpu->cpu_ctx.regs.eip);
+				tc_invalidate(&cpu->cpu_ctx, phys_addr, bytes_to_write, cpu->cpu_ctx.regs.eip);
 			}
 
 			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
@@ -769,10 +765,10 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, uint32_t size, const void
 				{
 				case mem_type::ram:
 					if constexpr (fill) {
-						std::memset(get_ram_host_ptr(cpu, phys_addr), val, bytes_to_write);
+						std::memset(get_ram_host_ptr(cpu, region, phys_addr), val, bytes_to_write);
 					}
 					else {
-						std::memcpy(get_ram_host_ptr(cpu, phys_addr), buffer, bytes_to_write);
+						std::memcpy(get_ram_host_ptr(cpu, region, phys_addr), buffer, bytes_to_write);
 					}
 					break;
 
@@ -866,28 +862,55 @@ mem_fill_block_phys(cpu_t *cpu, addr_t addr, uint32_t size, int val, uint32_t *a
 	return mem_write_handler<true, false>(cpu, addr, size, nullptr, val, actual_size);
 }
 
+template<typename T>
+static lc86_status io_read_handler(cpu_t *cpu, port_t port, T &out)
+{
+	try {
+		out = io_read_helper<T>(&cpu->cpu_ctx, port, 0);
+		return lc86_status::success;
+	}
+	catch (host_exp_t type) {
+		assert(type == host_exp_t::de_exp);
+		return set_last_error(lc86_status::guest_exp);
+	}
+}
+
 /*
 * io_read_8/16/32 -> reads 8/16/32 bits from a pmio port
 * cpu: a valid cpu instance
 * port: the port to read from
+* out: pointer where the read contents are stored to
 * ret: the read value
 */
-uint8_t
-io_read_8(cpu_t *cpu, port_t port)
+lc86_status
+io_read_8(cpu_t *cpu, port_t port, uint8_t &out)
 {
-	return io_read<uint8_t>(cpu, port);
+	return io_read_handler<uint8_t>(cpu, port, out);
 }
 
-uint16_t
-io_read_16(cpu_t *cpu, port_t port)
+lc86_status
+io_read_16(cpu_t *cpu, port_t port, uint16_t &out)
 {
-	return io_read<uint16_t>(cpu, port);
+	return io_read_handler<uint16_t>(cpu, port, out);
 }
 
-uint32_t
-io_read_32(cpu_t *cpu, port_t port)
+lc86_status
+io_read_32(cpu_t *cpu, port_t port, uint32_t &out)
 {
-	return io_read<uint32_t>(cpu, port);
+	return io_read_handler<uint32_t>(cpu, port, out);
+}
+
+template<typename T>
+static lc86_status io_write_handler(cpu_t *cpu, port_t port, T val)
+{
+	try {
+		io_write_helper<T>(&cpu->cpu_ctx, port, val, 0);
+		return lc86_status::success;
+	}
+	catch (host_exp_t type) {
+		assert(type == host_exp_t::de_exp);
+		return set_last_error(lc86_status::guest_exp);
+	}
 }
 
 /*
@@ -895,38 +918,49 @@ io_read_32(cpu_t *cpu, port_t port)
 * cpu: a valid cpu instance
 * port: the port to write to
 * value: the value to write
-* ret: nothing
+* ret: the status of the operation
 */
-void
+lc86_status
 io_write_8(cpu_t *cpu, port_t port, uint8_t value)
 {
-	io_write<uint8_t>(cpu, port, value);
+	return io_write_handler<uint8_t>(cpu, port, value);
 }
 
-void
+lc86_status
 io_write_16(cpu_t *cpu, port_t port, uint16_t value)
 {
-	io_write<uint16_t>(cpu, port, value);
+	return io_write_handler<uint16_t>(cpu, port, value);
 }
 
-void
+lc86_status
 io_write_32(cpu_t *cpu, port_t port, uint32_t value)
 {
-	io_write<uint32_t>(cpu, port, value);
+	return io_write_handler<uint32_t>(cpu, port, value);
 }
 
 /*
 * tlb_invalidate -> flushes tlb entries in the specified range
 * cpu: a valid cpu instance
 * addr_start: a guest virtual address where the flush starts
-* addr_end: a guest virtual address where the flush end
+* addr_end: a guest virtual address where the flush ends
 * ret: nothing
 */
 void
 tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end)
 {
-	for (uint32_t tlb_idx_s = addr_start >> PAGE_SHIFT, tlb_idx_e = addr_end >> PAGE_SHIFT; tlb_idx_s <= tlb_idx_e; tlb_idx_s++) {
-		cpu->cpu_ctx.tlb[tlb_idx_s] = (cpu->cpu_ctx.tlb[tlb_idx_s] & ~TLB_VALID);
+	uint32_t tlb_idx_s = addr_start >> PAGE_SHIFT, tlb_idx_e = addr_end >> PAGE_SHIFT;
+	for (; tlb_idx_s <= tlb_idx_e; ++tlb_idx_s) {
+		for (unsigned i = 0; i < ITLB_NUM_LINES; ++i) {
+			cpu->itlb[tlb_idx_s][i].entry = 0;
+			cpu->itlb[tlb_idx_s][i].region = nullptr;
+		}
+	}
+	tlb_idx_s = addr_start >> PAGE_SHIFT;
+	for (; tlb_idx_s <= tlb_idx_e; ++tlb_idx_s) {
+		for (unsigned i = 0; i < DTLB_NUM_LINES; ++i) {
+			cpu->dtlb[tlb_idx_s][i].entry = 0;
+			cpu->dtlb[tlb_idx_s][i].region = nullptr;
+		}
 	}
 }
 
@@ -946,9 +980,9 @@ hook_add(cpu_t *cpu, addr_t addr, void *hook_addr)
 	// of the translation of a new code block)
 
 	try {
-		uint8_t is_code;
-		volatile addr_t phys_addr = get_write_addr(cpu, addr, 2, cpu->cpu_ctx.regs.eip, &is_code);
-		tc_invalidate(&cpu->cpu_ctx, addr, 1, cpu->cpu_ctx.regs.eip);
+		bool is_code;
+		addr_t phys_addr = get_write_addr(cpu, addr, 2, cpu->cpu_ctx.regs.eip, &is_code);
+		tc_invalidate(&cpu->cpu_ctx, phys_addr, 1, cpu->cpu_ctx.regs.eip);
 	}
 	catch (host_exp_t type) {
 		return set_last_error(lc86_status::guest_exp);
@@ -974,10 +1008,10 @@ hook_remove(cpu_t *cpu, addr_t addr)
 	}
 
 	try {
-		uint8_t is_code;
-		volatile addr_t phys_addr = get_write_addr(cpu, addr, 2, cpu->cpu_ctx.regs.eip, &is_code);
+		bool is_code;
+		addr_t phys_addr = get_write_addr(cpu, addr, 2, cpu->cpu_ctx.regs.eip, &is_code);
 		cpu->hook_map.erase(it);
-		tc_invalidate<true, false>(&cpu->cpu_ctx, addr);
+		tc_invalidate<true>(&cpu->cpu_ctx, phys_addr);
 	}
 	catch (host_exp_t type) {
 		return set_last_error(lc86_status::guest_exp);

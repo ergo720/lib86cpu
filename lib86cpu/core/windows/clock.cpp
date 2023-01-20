@@ -45,8 +45,8 @@ uint32_t
 cpu_timer_helper(cpu_ctx_t *cpu_ctx)
 {
 	// always check for interrupts first. Otherwise, if the cpu consistently timeouts at every code block, it will never check for interrupts
-	if (cpu_do_int(cpu_ctx, cpu_ctx->cpu->read_int_fn(cpu_ctx))) {
-		return TIMER_HW_INT;
+	if (uint32_t ret = cpu_do_int(cpu_ctx, cpu_ctx->cpu->read_int_fn(cpu_ctx))) {
+		return ret;
 	}
 
 	LARGE_INTEGER now;
@@ -55,8 +55,8 @@ cpu_timer_helper(cpu_ctx_t *cpu_ctx)
 	elapsed_us *= 1000000;
 	elapsed_us /= cpu_ctx->cpu->timer.host_freq;
 	if (elapsed_us >= cpu_ctx->cpu->timer.timeout_time) {
-		return TIMER_TIMEOUT;
+		return CPU_TIMEOUT_INT;
 	}
 
-	return TIMER_NO_CHANGE;
+	return CPU_NO_INT;
 }

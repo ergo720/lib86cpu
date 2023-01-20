@@ -11,7 +11,7 @@
 #include "breakpoint.h"
 
 
-template<bool remove_hook = false, bool is_virt = true>
+template<bool remove_hook = false, bool is_virt = false>
 void tc_invalidate(cpu_ctx_t * cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size = 0, [[maybe_unused]] uint32_t eip = 0);
 template<bool should_flush_tlb>
 void tc_should_clear_cache_and_tlb(cpu_t *cpu, addr_t start, addr_t end);
@@ -51,11 +51,18 @@ uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 #define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_TIMEOUT)
 
 // cpu interrupt flags
+#define CPU_NO_INT      0
 #define CPU_HW_INT      (1 << 0)
 #define CPU_ABORT_INT   (1 << 1)
 #define CPU_A20_INT     (1 << 2)
 #define CPU_REGION_INT  (1 << 3)
+#define CPU_TIMEOUT_INT (1 << 4)
 #define CPU_NON_HW_INT  (CPU_ABORT_INT | CPU_A20_INT | CPU_REGION_INT)
+
+// mmu flags
+#define MMU_IS_WRITE    (1 << 0)
+#define MMU_IS_PRIV     (1 << 1)
+#define MMU_SET_CODE    (1 << 4)
 
 // disassembly context flags
 #define DISAS_FLG_CS32         (1 << 0)
@@ -210,22 +217,25 @@ uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 #define PAGE_MASK_LARGE   (PAGE_SIZE_LARGE - 1)
 
 // tlb macros
+#define ITLB_TAG_SHIFT64  11
+#define ITLB_IDX_MASK     0x1FF
+#define ITLB_TAG_MASK     0x7FF
+#define ITLB_TAG_MASK64   ((uint64_t)ITLB_TAG_MASK << 32)
+#define DTLB_TAG_SHIFT64  9
+#define DTLB_IDX_MASK     0x7FF
+#define DTLB_TAG_MASK     0x1FF
+#define DTLB_TAG_MASK64   ((uint64_t)DTLB_TAG_MASK << 32)
 #define TLB_SUP_READ    (1 << 0)  // page access type allowed: supervisor read
 #define TLB_SUP_WRITE   (1 << 1)  // page access type allowed: supervisor write
 #define TLB_USER_READ   (1 << 2)  // page access type allowed: user read
 #define TLB_USER_WRITE  (1 << 3)  // page access type allowed: user write
-#define TLB_CODE        (1 << 4)  // page contains at least one code block
 #define TLB_RAM         (1 << 5)  // page is backed by ram
 #define TLB_ROM         (1 << 6)  // page is backed by rom
 #define TLB_MMIO        (1 << 7)  // page is backed by mmio
 #define TLB_GLOBAL      (1 << 8)  // page has global flag in its pte
 #define TLB_DIRTY       (1 << 9)  // page was written to at least once
-#define TLB_WATCH       (1 << 10) // page has at least one debug watchpoint
 #define TLB_SUBPAGE     (1 << 11) // page is backed by different memory regions
 #define TLB_VALID       (TLB_SUP_READ | TLB_SUP_WRITE | TLB_USER_READ | TLB_USER_WRITE) // entry is valid
-#define TLB_zero        0
-#define TLB_keep_cw     1
-#define TLB_no_g        2
 
 // control register flags
 #define CR0_PG_MASK (1 << 31)
@@ -304,10 +314,5 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define MSR_MTRR_PHYSBASE_RES      0xFFFFFFF000000F00
 #define MSR_MTRR_PHYSMASK_RES      0xFFFFFFF0000007FF
 #define MSR_MTRR_DEF_TYPE_RES      0xFFFFFFFFFFFFF300
-
-// cpu_timer_helper return statuses
-#define TIMER_NO_CHANGE 0
-#define TIMER_TIMEOUT   1
-#define TIMER_HW_INT    2
 
 #define X86_MAX_INSTR_LENGTH 15

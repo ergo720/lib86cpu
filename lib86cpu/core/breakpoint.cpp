@@ -40,30 +40,22 @@ cpu_check_watchpoint_overlap(cpu_t *cpu, addr_t addr, size_t size, int idx)
 }
 
 static void
-cpu_check_watchpoints(cpu_t *cpu, addr_t addr, size_t size, int type, uint32_t eip)
+cpu_check_watchpoints(cpu_t *cpu, addr_t addr, int dr_idx, int type, uint32_t eip)
 {
 	bool match = false;
-	int dr_idx = 0;
-	for (; dr_idx < 4; ++dr_idx) {
-		if (cpu_check_watchpoint_enabled(cpu, dr_idx) && cpu_check_watchpoint_overlap(cpu, addr, size, dr_idx)) {
-			int dr7_type = cpu_get_watchpoint_type(cpu, dr_idx);
-			if (type == DR7_TYPE_DATA_W) {
-				if (((dr7_type == DR7_TYPE_DATA_W) || (dr7_type == DR7_TYPE_DATA_RW)) && !(cpu->cpu_ctx.hflags & HFLG_DBG_TRAP)) {
-					match = true;
-					break;
-				}
-			}
-			else if (type == DR7_TYPE_INSTR) {
-				if (!(cpu->cpu_ctx.regs.eflags & RF_MASK)) {
-					match = true;
-					break;
-				}
-			}
-			else if ((type == dr7_type) && !(cpu->cpu_ctx.hflags & HFLG_DBG_TRAP)) { // either DR7_TYPE_IO_RW or DR7_TYPE_DATA_RW
-				match = true;
-				break;
-			}
+	int dr7_type = cpu_get_watchpoint_type(cpu, dr_idx);
+	if (type == DR7_TYPE_DATA_W) {
+		if (((dr7_type == DR7_TYPE_DATA_W) || (dr7_type == DR7_TYPE_DATA_RW)) && !(cpu->cpu_ctx.hflags & HFLG_DBG_TRAP)) {
+			match = true;
 		}
+	}
+	else if (type == DR7_TYPE_INSTR) {
+		if (!(cpu->cpu_ctx.regs.eflags & RF_MASK)) {
+			match = true;
+		}
+	}
+	else if ((type == dr7_type) && !(cpu->cpu_ctx.hflags & HFLG_DBG_TRAP)) { // either DR7_TYPE_IO_RW or DR7_TYPE_DATA_RW
+		match = true;
 	}
 
 	if (match) {
@@ -79,9 +71,19 @@ cpu_check_watchpoints(cpu_t *cpu, addr_t addr, size_t size, int type, uint32_t e
 void
 cpu_check_data_watchpoints(cpu_t *cpu, addr_t addr, size_t size, int type, uint32_t eip)
 {
-	// if TLB_WATCH is not set, then there cannot be any watchpoints on this page, so we can skip checking for them entirely
+	for (const auto &wp : cpu->wp_data) {
+		if ((wp.watch_addr <= (addr + size - 1)) && (addr <= wp.watch_end)) [[unlikely]] {
+			cpu_check_watchpoints(cpu, addr, wp.dr_idx, type, eip);
+		}
+	}
+}
 
-	if ((cpu->cpu_ctx.tlb[addr >> PAGE_SHIFT]) & TLB_WATCH) {
-		cpu_check_watchpoints(cpu, addr, size, type, eip);
+void
+cpu_check_io_watchpoints(cpu_t *cpu, port_t port, size_t size, int type, uint32_t eip)
+{
+	for (const auto &wp : cpu->wp_io) {
+		if ((wp.watch_addr <= (port + size - 1)) && (port <= wp.watch_end)) [[unlikely]] {
+			cpu_check_watchpoints(cpu, port, wp.dr_idx, type, eip);
+		}
 	}
 }

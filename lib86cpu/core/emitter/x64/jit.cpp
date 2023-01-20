@@ -27,8 +27,6 @@ static_assert(ZYDIS_REGISTER_DR5 - ZYDIS_REGISTER_DR0 == 5);
 static_assert(ZYDIS_REGISTER_DR6 - ZYDIS_REGISTER_DR0 == 6);
 static_assert(ZYDIS_REGISTER_DR7 - ZYDIS_REGISTER_DR0 == 7);
 
-#define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(m_cpu->virt_pc, instr).c_str())
-
 // all regs available on x64
 #define AH x86::ah
 #define CH x86::ch
@@ -511,23 +509,18 @@ lc86_jit::gen_block_end_checks()
 {
 	Label no_int = m_a.newLabel();
 	if (m_cpu->cpu_ctx.hflags & HFLG_TIMEOUT) {
-		Label hw_int = m_a.newLabel();
+		Label no_timeout = m_a.newLabel();
 		CALL_F(&cpu_timer_helper);
 		TEST(EAX, EAX);
 		BR_EQ(no_int);
-		CMP(EAX, TIMER_HW_INT);
-		BR_EQ(hw_int);
+		TEST(EAX, CPU_HW_INT | CPU_NON_HW_INT);
+		BR_NE(no_timeout);
 		MOV(MEMD8(RCX, CPU_CTX_EXIT), 1); // request an exit
-		m_a.bind(hw_int);
+		m_a.bind(no_timeout);
 	}
 	else {
 		MOV(EDX, MEMD32(RCX, CPU_CTX_INT));
 		TEST(EDX, EDX);
-		BR_EQ(no_int);
-		MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS));
-		AND(EAX, IF_MASK);
-		OR(EAX, EDX);
-		CMP(EAX, 1); // hw int set but if=0
 		BR_EQ(no_int);
 		MOV(RAX, &cpu_do_int);
 		CALL(RAX);
@@ -676,12 +669,12 @@ lc86_jit::halt_loop()
 		uint32_t ret = cpu_timer_helper(&m_cpu->cpu_ctx);
 		_mm_pause();
 
-		if (ret == TIMER_NO_CHANGE) {
+		if (ret == CPU_NO_INT) {
 			// nothing changed, keep looping
 			continue;
 		}
 
-		if (ret == TIMER_HW_INT) {
+		if (ret == CPU_HW_INT) {
 			// hw int, exit the loop and clear the halted state
 			m_cpu->cpu_ctx.is_halted = 0;
 			return;
@@ -1758,6 +1751,8 @@ lc86_jit::load_io(uint8_t size_mode)
 {
 	// RCX: cpu_ctx, EDX: port
 
+	MOV(R8D, m_cpu->instr_eip);
+
 	switch (size_mode)
 	{
 	case SIZE32:
@@ -1782,6 +1777,8 @@ lc86_jit::store_io(uint8_t size_mode)
 {
 	// RCX: cpu_ctx, EDX: port, R8B/R8W/R8D: val
 	// register val, should have been placed in EAX/AX/AL by load_reg or something else
+
+	MOV(R9D, m_cpu->instr_eip);
 
 	switch (size_mode)
 	{
@@ -4649,8 +4646,10 @@ lc86_jit::hlt(ZydisDecodedInstruction *instr)
 				PAUSE();
 				TEST(EAX, EAX);
 				BR_EQ(retry);
-				CMP(EAX, TIMER_HW_INT);
-				BR_EQ(no_timeout);
+				TEST(EAX, CPU_NON_HW_INT);
+				BR_NE(retry);
+				TEST(EAX, CPU_HW_INT);
+				BR_NE(no_timeout);
 				MOV(MEMD8(RCX, CPU_CTX_EXIT), 1); // request an exit
 				MOV(MEMD8(RCX, CPU_CTX_HALTED), 1); // set halted flag
 				m_a.bind(no_timeout);
@@ -5852,18 +5851,16 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 		else {
 			auto dr_pair = REG_pair(instr->operands[OPNUM_DST].reg.value);
 			int dr_idx = dr_pair.first;
-			size_t dr_offset = dr_pair.second;
 			LD_R32(R8D, REG_off(instr->operands[OPNUM_SRC].reg.value));
 			switch (dr_idx)
 			{
 			case DR0_idx:
 			case DR1_idx:
 			case DR2_idx:
-			case DR3_idx: {
-				MOV(DL, dr_idx);
+			case DR3_idx:
+				MOV(DL, dr_idx - DR_offset);
 				CALL_F(&update_drN_helper);
-			}
-			break;
+				break;
 
 			case DR4_idx: {
 				Label ok = m_a.newLabel();
@@ -5872,12 +5869,12 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				BR_EQ(ok);
 				RAISEin0_f(EXP_UD);
 				m_a.bind(ok);
-				dr_offset = REG_off(ZYDIS_REGISTER_DR6); // turns dr4 to dr6
 			}
 			[[fallthrough]];
 
 			case DR6_idx:
 				OR(R8D, DR6_RES_MASK);
+				ST_R32(CPU_CTX_DR6, R8D);
 				break;
 
 			case DR5_idx: {
@@ -5887,62 +5884,18 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				BR_EQ(ok);
 				RAISEin0_f(EXP_UD);
 				m_a.bind(ok);
-				dr_offset = REG_off(ZYDIS_REGISTER_DR7); // turns dr5 to dr7
 			}
 			[[fallthrough]];
 
-			case DR7_idx: {
-				static const char *abort_msg = "Io watchpoints are not supported";
-				OR(R8D, DR7_RES_MASK);
-				LD_R32(R9D, CPU_CTX_CR4);
-				AND(R9D, CR4_DE_MASK);
-				for (int idx = 0; idx < 4; ++idx) {
-					Label io = m_a.newLabel();
-					Label disabled = m_a.newLabel();
-					Label exit = m_a.newLabel();
-					MOV(EAX, R8D);
-					SHR(EAX, DR7_TYPE_SHIFT + idx * 4);
-					AND(EAX, 3);
-					CMP(EAX, DR7_TYPE_IO_RW); // check if it is a mem or io watchpoint
-					BR_EQ(io);
-					LEA(RBX, MEMD64(RCX, CPU_CTX_TLB));
-					MOV(EDX, R8D);
-					SHR(EDX, idx * 2);
-					AND(EDX, 3);
-					BR_EQ(disabled); // check if watchpoint is enabled
-					LD_R32(EAX, REG_off(static_cast<ZydisRegister>(ZYDIS_REGISTER_DR0 + idx)));
-					SHR(EAX, PAGE_SHIFT);
-					MOV(EDX, MEMS32(RBX, RAX, 2));
-					OR(EDX, TLB_WATCH);
-					MOV(MEMS32(RBX, RAX, 2), EDX); // set enabled watchpoint
-					BR_UNCOND(exit);
-					m_a.bind(disabled);
-					LD_R32(EAX, REG_off(static_cast<ZydisRegister>(ZYDIS_REGISTER_DR0 + idx)));
-					SHR(EAX, PAGE_SHIFT);
-					MOV(EDX, MEMS32(RBX, RAX, 2));
-					AND(EDX, ~TLB_WATCH);
-					MOV(MEMS32(RBX, RAX, 2), EDX); // remove disabled watchpoint
-					BR_UNCOND(exit);
-					m_a.bind(io);
-					TEST(R9D, R9D);
-					BR_EQ(exit);
-					// we don't support io watchpoints yet so for now we just abort
-					MOV(RCX, abort_msg);
-					MOV(RAX, &cpu_runtime_abort); // won't return
-					CALL(RAX);
-					INT3();
-					m_a.bind(exit);
-				}
-			}
-			break;
+			case DR7_idx:
+				MOV(DL, DR7_idx - DR_offset);
+				CALL_F(&update_drN_helper);
+				break;
 
 			default:
 				LIB86CPU_ABORT();
 			}
 
-			if ((dr_idx != DR0_idx) && (dr_idx != DR1_idx) && (dr_idx != DR2_idx) && (dr_idx != DR3_idx)) {
-				ST_R32(dr_offset, R8D);
-			}
 			ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
 			// instr breakpoint are checked at compile time, so we cannot jump to the next tc if we are writing to anything but dr6
 			if ((((m_cpu->virt_pc + m_cpu->instr_bytes) & ~PAGE_MASK) == (m_cpu->virt_pc & ~PAGE_MASK)) && (dr_idx == DR6_idx)) {
