@@ -375,6 +375,9 @@ get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip)
 addr_t
 get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, bool *is_code)
 {
+	// this also needs to check for the dirty flag, to catch the case where the first access to the page is a read and then a write happens, so that
+	// we give the mmu the chance to set the dirty flag in the pte
+
 	uint32_t idx = (addr >> PAGE_SHIFT) & DTLB_IDX_MASK;
 	uint64_t mem_access = tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv];
 	uint64_t tag = ((static_cast<uint64_t>(addr) << DTLB_TAG_SHIFT64) & DTLB_TAG_MASK64) | mem_access;
