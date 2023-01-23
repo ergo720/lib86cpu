@@ -671,8 +671,8 @@ lc86_jit::halt_loop()
 		uint32_t ret = cpu_timer_helper(&m_cpu->cpu_ctx);
 		_mm_pause();
 
-		if (ret == CPU_NO_INT) {
-			// nothing changed, keep looping
+		if ((ret == CPU_NO_INT) || (ret == CPU_NON_HW_INT)) {
+			// either nothing changed or it's not a hw int, keep looping in both cases
 			continue;
 		}
 
