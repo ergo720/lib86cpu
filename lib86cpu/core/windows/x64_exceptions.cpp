@@ -63,7 +63,7 @@ lc86_jit::create_unwind_info()
 		num_unwind_codes = 3;
 	}
 
-	// Create UNWIND_CODE entries for push rdi
+	// Create UNWIND_CODE entries for push rbx
 	unwind_codes[num_unwind_codes] = 1 | (UWOP_PUSH_NONVOL << 8) | (EXP_RBX_idx << 12);
 	++num_unwind_codes;
 
