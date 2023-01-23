@@ -667,6 +667,29 @@ link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 }
 
 static void
+halt_loop(cpu_t *cpu)
+{
+	while (true) {
+		uint32_t ret = cpu_timer_helper(&cpu->cpu_ctx);
+		_mm_pause();
+
+		if ((ret == CPU_NO_INT) || (ret == CPU_NON_HW_INT)) {
+			// either nothing changed or it's not a hw int, keep looping in both cases
+			continue;
+		}
+
+		if (ret == CPU_HW_INT) {
+			// hw int, exit the loop and clear the halted state
+			cpu->cpu_ctx.is_halted = 0;
+			return;
+		}
+
+		// timeout, exit the loop
+		return;
+	}
+}
+
+static void
 cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 {
 	cpu->translate_next = 1;
@@ -1601,7 +1624,7 @@ lc86_status cpu_start(cpu_t *cpu)
 			cpu->cpu_ctx.exit_requested = 0;
 			if (cpu->cpu_ctx.is_halted) {
 				// if the cpu was previously halted, then we must keep waiting until the next hw int
-				cpu->jit->halt_loop();
+				halt_loop(cpu);
 				if (cpu->cpu_ctx.is_halted) {
 					// if it is still halted, then it must be a timeout
 					cpu->cpu_ctx.hflags &= ~HFLG_TIMEOUT;

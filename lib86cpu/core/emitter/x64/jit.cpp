@@ -697,29 +697,6 @@ lc86_jit::gen_raise_exp_inline(uint32_t fault_addr, uint16_t code, uint16_t idx,
 	gen_raise_exp_inline<true>(fault_addr, code, idx, eip);
 }
 
-void
-lc86_jit::halt_loop()
-{
-	while (true) {
-		uint32_t ret = cpu_timer_helper(&m_cpu->cpu_ctx);
-		_mm_pause();
-
-		if ((ret == CPU_NO_INT) || (ret == CPU_NON_HW_INT)) {
-			// either nothing changed or it's not a hw int, keep looping in both cases
-			continue;
-		}
-
-		if (ret == CPU_HW_INT) {
-			// hw int, exit the loop and clear the halted state
-			m_cpu->cpu_ctx.is_halted = 0;
-			return;
-		}
-
-		// timeout, exit the loop
-		return;
-	}
-}
-
 bool
 lc86_jit::gen_check_rf_single_step()
 {
