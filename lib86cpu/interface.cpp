@@ -146,9 +146,6 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 	}
 
 	cpu->cpu_name = "Intel Pentium III KC 733 (Xbox CPU)";
-	cpu_reset(cpu);
-	// XXX: eventually, the user should be able to set the instruction formatting
-	set_instr_format(cpu);
 	cpu->dbg_name = debuggee ? debuggee : "";
 	cpu->get_int_vec = int_fn ? int_fn : default_get_int_vec;
 
@@ -163,6 +160,11 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 		last_error = exp.what();
 		return exp.get_code();
 	}
+
+	cpu_reset(cpu);
+	// XXX: eventually, the user should be able to set the instruction formatting
+	set_instr_format(cpu);
+
 	std::random_device rd;
 	cpu->rng_gen.seed(rd());
 

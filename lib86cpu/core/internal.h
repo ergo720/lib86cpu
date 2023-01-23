@@ -329,4 +329,24 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define FPU_FES_MASK     (1 << FPU_FES_SHIFT)
 #define FPU_FTSS_MASK    (7 << FPU_FTSS_SHIFT)
 
+// fpu exception macros
+#define FPU_EXP_INVALID    (1 << 0)
+#define FPU_EXP_DENORMAL   (1 << 1)
+#define FPU_EXP_DIVBYZERO  (1 << 2)
+#define FPU_EXP_OVERFLOW   (1 << 3)
+#define FPU_EXP_UNDERFLOW  (1 << 4)
+#define FPU_EXP_PRECISION  (1 << 5)
+#define FPU_EXP_ALL        (FPU_EXP_INVALID | FPU_EXP_DENORMAL | FPU_EXP_DIVBYZERO | FPU_EXP_OVERFLOW | FPU_EXP_UNDERFLOW | FPU_EXP_PRECISION)
+
+// fpu precision macros
+#define FPU_SINGLE_PRECISION      0
+#define FPU_DOUBLE_PRECISION      2
+#define FPU_DOUBLE_EXT_PRECISION  3
+
+// fpu rounding macros
+#define FPU_ROUND_NEAR  0
+#define FPU_ROUND_DOWN  1
+#define FPU_ROUND_UP    2
+#define FPU_ROUND_ZERO  3
+
 #define X86_MAX_INSTR_LENGTH 15

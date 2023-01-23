@@ -93,6 +93,11 @@ static_assert(ZYDIS_REGISTER_DR7 - ZYDIS_REGISTER_DR0 == 7);
 #define R14 x86::r14
 #define R15 x86::r15
 
+#define RCX_HOME_off 8  // skip ret rip that was pushed on the stack by the caller
+#define RDX_HOME_off 16
+#define R8_HOME_off  24
+#define R9_HOME_off  32
+
 // all x64 regs that can actually be used in the main jitted function
 enum class x64 : uint32_t {
 	rax = 0,
@@ -157,12 +162,32 @@ get_local_var_offset()
 	return get_local_var_offset(idx);
 }
 
+template<x86::Gp reg>
+size_t
+get_reg_arg_offset()
+{
+	// this adds get_jit_stack_required() to revert SUB(RSP, get_jit_stack_required()), then adds 8 to revert PUSH(RBX)
+
+	if (reg == RCX) {
+		return get_jit_stack_required() + 8 + RCX_HOME_off;
+	}
+	else if (reg == RDX) {
+		return get_jit_stack_required() + 8 + RDX_HOME_off;
+	}
+	else if (reg == R8) {
+		return get_jit_stack_required() + 8 + R8_HOME_off;
+	}
+	else if (reg == R9) {
+		return get_jit_stack_required() + 8 + R9_HOME_off;
+	}
+	else {
+		LIB86CPU_ABORT_msg("Unknown register specified in %s", __func__);
+	}
+}
+
 #define LOCAL_VARS_off(idx) get_local_var_offset<idx>()
 #define STACK_ARGS_off get_jit_reg_args_size()
-#define RCX_HOME_off 8
-#define RDX_HOME_off 16
-#define R8_HOME_off 24
-#define R9_HOME_off 32
+#define REG_ARG_off(reg) get_reg_arg_offset<reg>()
 
 // [reg]
 #define MEM8(reg)  x86::byte_ptr(reg)
@@ -465,6 +490,17 @@ lc86_jit::gen_aux_funcs()
 	m_a.lock().and_(MEMD32(RCX, CPU_CTX_INT), ~CPU_HW_INT);
 	RET();
 
+	// set host fctrl
+	size_t set_fctrl_off = m_a.offset(), set_fctrl_off_aligned16 = (set_fctrl_off + 15) & ~15;
+	if (set_fctrl_off_aligned16 > set_fctrl_off) {
+		for (unsigned i = 0; i < (set_fctrl_off_aligned16 - set_fctrl_off); ++i) {
+			INT3();
+		}
+	}
+	MOV(MEMD16(RSP, REG_ARG_off(RCX)), CX);
+	FLDCW(MEMD16(RSP, REG_ARG_off(RCX)));
+	RET();
+
 	if (auto err = m_code.flatten()) {
 		std::string err_str("Asmjit failed at flatten() with the error ");
 		err_str += DebugUtils::errorAsString(err);
@@ -508,6 +544,7 @@ lc86_jit::gen_aux_funcs()
 	m_cpu->raise_int_fn = reinterpret_cast<raise_int_t>(static_cast<uint8_t *>(block.addr) + offset + raise_int_off_aligned16);
 	m_cpu->clear_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset + clear_int_off_aligned16);
 	m_cpu->lower_hw_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset + lower_hw_int_off_aligned16);
+	m_cpu->set_fctrl_fn = reinterpret_cast<set_fctrl_t>(static_cast<uint8_t *>(block.addr) + offset + set_fctrl_off_aligned16);
 }
 
 
