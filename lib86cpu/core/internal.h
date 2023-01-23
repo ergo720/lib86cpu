@@ -11,8 +11,8 @@
 #include "breakpoint.h"
 
 
-template<bool remove_hook = false, bool is_virt = false>
-void tc_invalidate(cpu_ctx_t * cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t size = 0, [[maybe_unused]] uint32_t eip = 0);
+template<bool remove_hook = false>
+void tc_invalidate(cpu_ctx_t * cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_t size = 0, [[maybe_unused]] uint32_t eip = 0);
 template<bool should_flush_tlb>
 void tc_should_clear_cache_and_tlb(cpu_t *cpu, addr_t start, addr_t end);
 void tc_cache_clear(cpu_t *cpu);
