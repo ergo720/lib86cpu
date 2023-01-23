@@ -589,7 +589,7 @@ tc_cache_purge(cpu_t *cpu)
 	// necessary to unwind the stack of the JITed functions
 	tc_cache_clear(cpu);
 	cpu->jit->destroy_all_code();
-	cpu->jit->gen_int_fn();
+	cpu->jit->gen_aux_funcs();
 }
 
 static void

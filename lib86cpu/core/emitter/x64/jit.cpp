@@ -321,7 +321,7 @@ lc86_jit::lc86_jit(cpu_t *cpu)
 	m_cpu = cpu;
 	_environment = Environment::host();
 	_environment.setObjectFormat(ObjectFormat::kJIT);
-	gen_int_fn();
+	gen_aux_funcs();
 }
 
 void
@@ -424,29 +424,45 @@ lc86_jit::gen_code_block()
 	tc->jmp_offset[0] = tc->jmp_offset[1] = tc->jmp_offset[2] = reinterpret_cast<entry_t>(exit_offset);
 }
 
-template<unsigned idx>
-void lc86_jit::gen_int_fn()
+void
+lc86_jit::gen_aux_funcs()
 {
-	// The interrupt functions are leaf functions, so they don't need an exception table on WIN64
-	// idx 0 -> read, 1 -> raise any int, 2 -> clear non hw int, 3 -> clear hw int
+	// These are leaf functions, so they don't need an exception table on WIN64
 
 	start_new_session();
 
-	if constexpr (idx == 0) {
-		MOV(EAX, MEMD32(RCX, CPU_CTX_INT));
+	// read int
+	MOV(EAX, MEMD32(RCX, CPU_CTX_INT));
+	RET();
+
+	// raise any int
+	size_t raise_int_off = m_a.offset(), raise_int_off_aligned16 = (raise_int_off + 15) & ~15;
+	if (raise_int_off_aligned16 > raise_int_off) {
+		for (unsigned i = 0; i < (raise_int_off_aligned16 - raise_int_off); ++i) {
+			INT3();
+		}
 	}
-	else if constexpr (idx == 1) {
-		m_a.lock().or_(MEMD32(RCX, CPU_CTX_INT), EDX);
+	m_a.lock().or_(MEMD32(RCX, CPU_CTX_INT), EDX);
+	RET();
+
+	// clear non hw int
+	size_t clear_int_off = m_a.offset(), clear_int_off_aligned16 = (clear_int_off + 15) & ~15;
+	if (clear_int_off_aligned16 > clear_int_off) {
+		for (unsigned i = 0; i < (clear_int_off_aligned16 - clear_int_off); ++i) {
+			INT3();
+		}
 	}
-	else if constexpr (idx == 2) {
-		m_a.lock().and_(MEMD32(RCX, CPU_CTX_INT), ~CPU_NON_HW_INT);
+	m_a.lock().and_(MEMD32(RCX, CPU_CTX_INT), ~CPU_NON_HW_INT);
+	RET();
+
+	// clear hw int
+	size_t lower_hw_int_off = m_a.offset(), lower_hw_int_off_aligned16 = (lower_hw_int_off + 15) & ~15;
+	if (lower_hw_int_off_aligned16 > lower_hw_int_off) {
+		for (unsigned i = 0; i < (lower_hw_int_off_aligned16 - lower_hw_int_off); ++i) {
+			INT3();
+		}
 	}
-	else if constexpr (idx == 3) {
-		m_a.lock().and_(MEMD32(RCX, CPU_CTX_INT), ~CPU_HW_INT);
-	}
-	else {
-		throw lc86_exp_abort("Unknown interrupt function specified with index " + std::to_string(idx), lc86_status::internal_error);
-	}
+	m_a.lock().and_(MEMD32(RCX, CPU_CTX_INT), ~CPU_HW_INT);
 	RET();
 
 	if (auto err = m_code.flatten()) {
@@ -488,21 +504,10 @@ void lc86_jit::gen_int_fn()
 
 	m_mem.protect_sys_mem(block, MEM_READ | MEM_EXEC);
 
-	if constexpr (idx == 0) {
-		m_cpu->read_int_fn = reinterpret_cast<read_int_t>(static_cast<uint8_t *>(block.addr) + offset);
-	}
-	else if constexpr (idx == 1) {
-		m_cpu->raise_int_fn = reinterpret_cast<raise_int_t>(static_cast<uint8_t *>(block.addr) + offset);
-	}
-	else if constexpr (idx == 2) {
-		m_cpu->clear_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset);
-	}
-	else if constexpr (idx == 3) {
-		m_cpu->lower_hw_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset);
-	}
-	else {
-		throw lc86_exp_abort("Unknown interrupt function specified with index " + std::to_string(idx), lc86_status::internal_error);
-	}
+	m_cpu->read_int_fn = reinterpret_cast<read_int_t>(static_cast<uint8_t *>(block.addr) + offset);
+	m_cpu->raise_int_fn = reinterpret_cast<raise_int_t>(static_cast<uint8_t *>(block.addr) + offset + raise_int_off_aligned16);
+	m_cpu->clear_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset + clear_int_off_aligned16);
+	m_cpu->lower_hw_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset + lower_hw_int_off_aligned16);
 }
 
 
@@ -608,15 +613,6 @@ lc86_jit::gen_tc_epilogue()
 	if (m_needs_epilogue) {
 		gen_epilogue_main();
 	}
-}
-
-void
-lc86_jit::gen_int_fn()
-{
-	gen_int_fn<0>();
-	gen_int_fn<1>();
-	gen_int_fn<2>();
-	gen_int_fn<3>();
 }
 
 template<bool terminates, typename T1, typename T2, typename T3, typename T4>

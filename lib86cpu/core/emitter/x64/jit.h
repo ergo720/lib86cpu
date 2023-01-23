@@ -31,7 +31,7 @@ public:
 	void gen_code_block();
 	void gen_tc_prologue() { start_new_session(); gen_prologue_main(); }
 	void gen_tc_epilogue();
-	void gen_int_fn();
+	void gen_aux_funcs();
 	void gen_hook(void *hook_addr);
 	void gen_raise_exp_inline(uint32_t fault_addr, uint16_t code, uint16_t idx, uint32_t eip);
 	void halt_loop();
@@ -163,8 +163,6 @@ private:
 	template<bool set_ret = true>
 	void gen_epilogue_main();
 	void gen_tail_call(x86::Gp addr);
-	template<unsigned idx>
-	void gen_int_fn();
 	void gen_block_end_checks();
 	void gen_no_link_checks();
 	bool gen_check_rf_single_step();
