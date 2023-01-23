@@ -4628,7 +4628,7 @@ lc86_jit::fninit(ZydisDecodedInstruction *instr)
 		RAISEin0_t(EXP_NM);
 	}
 	else {
-		ST_R16(CPU_CTX_FCTRL, 0x37);
+		ST_R16(CPU_CTX_FCTRL, 0x37F);
 		ST_R16(CPU_CTX_FSTATUS, 0);
 		MOV(MEMD64(RCX, CPU_CTX_FTAGS0), 0x303030303030303); // FPU_TAG_EMPTY for all ftags
 		ST_R16(CPU_CTX_FCS, 0);
