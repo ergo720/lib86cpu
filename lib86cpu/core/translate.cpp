@@ -480,7 +480,6 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t siz
 							// the current tc cannot fault
 						}
 						cpu_ctx->cpu->code_cache[idx].erase(it);
-						cpu_ctx->cpu->num_tc--;
 						break;
 					}
 					it++;
@@ -513,7 +512,7 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t addr, [[maybe_unused]] uint8_t siz
 	}
 
 	if (halt_tc) {
-		// in this case the tc we were executing has been destroyed and thus we must return to the translator with an exception
+		// in this case the tc we were executing must be interrupted and to do that, we must return to the translator with an exception
 		if constexpr (!remove_hook) {
 			cpu_ctx->regs.eip = eip;
 		}
@@ -573,7 +572,6 @@ tc_cache_clear(cpu_t *cpu)
 {
 	// Use this when you want to destroy all tc's but without affecting the actual code allocated. E.g: on x86-64, you'll want to keep the .pdata sections
 	// when this is called from a function called from the JITed code, and the current function can potentially throw an exception
-	cpu->num_tc = 0;
 	cpu->tc_page_map.clear();
 	cpu->ibtc.clear();
 	cpu->smc.reset();
@@ -590,6 +588,7 @@ tc_cache_purge(cpu_t *cpu)
 	tc_cache_clear(cpu);
 	cpu->jit->destroy_all_code();
 	cpu->jit->gen_aux_funcs();
+	cpu->num_tc = 0;
 }
 
 static void
