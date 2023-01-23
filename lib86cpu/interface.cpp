@@ -220,6 +220,9 @@ static void cpu_sync_state(cpu_t *cpu)
 	if (cpu->cpu_ctx.regs.cr0 & CR0_EM_MASK) {
 		cpu->cpu_ctx.hflags |= HFLG_CR0_EM;
 	}
+	if (cpu->cpu_ctx.regs.cr0 & CR0_TS_MASK) {
+		cpu->cpu_ctx.hflags |= HFLG_CR0_TS;
+	}
 }
 
 /*
@@ -1096,4 +1099,62 @@ write_eflags(cpu_t *cpu, uint32_t value, bool reg32)
 	}
 	cpu->cpu_ctx.lazy_eflags.result = new_res;
 	cpu->cpu_ctx.lazy_eflags.auxbits = new_aux;
+}
+
+/*
+* read_ftag -> reads the current value of ftag
+* cpu: a valid cpu instance
+* ret: ftag
+*/
+uint16_t
+read_ftags(cpu_t *cpu)
+{
+	uint16_t ftag = 0;
+	for (unsigned i = 0; i < 8; ++i) {
+		ftag |= (cpu->cpu_ctx.regs.ftags[i] << (i * 2));
+	}
+	return ftag;
+}
+
+/*
+* write_ftag -> writes a new value to ftag
+* cpu: a valid cpu instance
+* value: the value to write
+* ret: nothing
+*/
+void
+write_ftags(cpu_t *cpu, uint16_t value)
+{
+	for (unsigned i = 0; i < 8; ++i) {
+		uint16_t tag_val = value & (3 << (i * 2));
+		cpu->cpu_ctx.regs.ftags[i] = tag_val >> (i * 2);
+	}
+}
+
+/*
+* read_fstatus -> reads the current value of fstatus
+* cpu: a valid cpu instance
+* ret: fstatus
+*/
+uint16_t
+read_fstatus(cpu_t *cpu)
+{
+	uint16_t fstatus = (cpu->cpu_ctx.regs.fstatus & ~(FPU_FTSS_MASK | FPU_FES_MASK));
+	fstatus |= (cpu->cpu_ctx.fpu_data.ftss << FPU_FTSS_SHIFT);
+	fstatus |= (cpu->cpu_ctx.fpu_data.fes << FPU_FES_SHIFT);
+	return fstatus;
+}
+
+/*
+* write_fstatus -> writes a new value to fstatus
+* cpu: a valid cpu instance
+* value: the value to write
+* ret: nothing
+*/
+void
+write_fstatus(cpu_t *cpu, uint16_t value)
+{
+	cpu->cpu_ctx.fpu_data.ftss = (value & FPU_FTSS_MASK) >> FPU_FTSS_SHIFT;
+	cpu->cpu_ctx.fpu_data.fes = (value & FPU_FES_MASK) >> FPU_FES_SHIFT;
+	cpu->cpu_ctx.regs.fstatus = value;
 }

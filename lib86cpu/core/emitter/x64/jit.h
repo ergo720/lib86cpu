@@ -72,6 +72,7 @@ public:
 	void dec(ZydisDecodedInstruction *instr);
 	void div(ZydisDecodedInstruction *instr);
 	void enter(ZydisDecodedInstruction *instr);
+	void fninit(ZydisDecodedInstruction *instr);
 	void hlt(ZydisDecodedInstruction *instr);
 	void idiv(ZydisDecodedInstruction *instr);
 	void imul(ZydisDecodedInstruction *instr);

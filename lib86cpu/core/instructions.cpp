@@ -759,6 +759,7 @@ update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 		}
 
 		cpu_ctx->hflags = (((new_cr & CR0_EM_MASK) << 3) | (cpu_ctx->hflags & ~HFLG_CR0_EM));
+		cpu_ctx->hflags = (((new_cr & CR0_TS_MASK) << 7) | (cpu_ctx->hflags & ~HFLG_CR0_TS));
 
 		// only flush the tlb if pg changed or wp changed and pg=1
 		if (((cpu_ctx->regs.cr0 & CR0_PG_MASK) != (new_cr & CR0_PG_MASK)) ||

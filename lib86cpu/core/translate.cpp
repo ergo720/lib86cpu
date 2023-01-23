@@ -40,13 +40,13 @@ cpu_reset(cpu_t *cpu)
 	cpu->cpu_ctx.regs.ldtr_hidden.flags = ((1 << 15) | (2 << 8)); // present, ldt
 	cpu->cpu_ctx.regs.tr_hidden.flags = ((1 << 15) | (11 << 8)); // present, 32bit tss busy
 	cpu->cpu_ctx.lazy_eflags.result = 0x100; // make zf=0
-	cpu->cpu_ctx.regs.tag = 0x5555;
 	cpu->a20_mask = 0xFFFFFFFF; // gate closed
 	cpu->cpu_ctx.exp_info.old_exp = EXP_INVALID;
 	cpu->msr.mtrr.def_type = 0;
 	std::memset(cpu->msr.mtrr.phys_var, 0, sizeof(cpu->msr.mtrr.phys_var));
 	std::memset(cpu->msr.mtrr.phys_fixed, 0, sizeof(cpu->msr.mtrr.phys_fixed));
 	tsc_init(cpu);
+	fpu_init(cpu);
 }
 
 static void
@@ -921,6 +921,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 		case ZYDIS_MNEMONIC_ENTER:
 			cpu->jit->enter(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_FNINIT:
+			cpu->jit->fninit(&instr);
 			break;
 
 		case ZYDIS_MNEMONIC_HLT:

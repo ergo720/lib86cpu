@@ -128,6 +128,11 @@ struct lazy_eflags_t {
 	uint8_t parity[256] = { GEN_TABLE };
 };
 
+struct fpu_data_t {
+	uint16_t ftss; // these are the top of stack pointer bits of fstatus
+	uint16_t fes; // pending unmasked exception flag that is, es bit of fstatus
+};
+
 // this struct should contain all cpu variables which need to be visible from the jitted code
 struct cpu_ctx_t {
 	cpu_t *cpu;
@@ -139,6 +144,7 @@ struct cpu_ctx_t {
 	uint32_t int_pending;
 	uint8_t exit_requested;
 	uint8_t is_halted;
+	fpu_data_t fpu_data;
 };
 
 // int_pending must be 4 byte aligned to ensure atomicity

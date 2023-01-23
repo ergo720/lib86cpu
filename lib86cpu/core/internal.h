@@ -21,6 +21,7 @@ addr_t get_pc(cpu_ctx_t *cpu_ctx);
 template<bool is_intn = false, bool is_hw_int = false>
 translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx);
 uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
+void fpu_init(cpu_t *cpu);
 
 
 // cpu hidden flags (assumed to be constant during exec of a tc, together with a flag subset of eflags)
@@ -32,23 +33,26 @@ uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 // HFLG_TRAMP: used to select the trampoline tc instead of the hook tc
 // HFLG_DBG_TRAP: used to suppress data/io watchpoints (not recorded in the tc flags)
 // HFLG_TIMEOUT: timeout check was emitted
+// HFLG_CR0_TS: ts flag of cr0
 #define CPL_SHIFT           0
 #define CS32_SHIFT          2
 #define SS32_SHIFT          3
 #define PE_MODE_SHIFT       4
-#define EM_SHIFT            5
+#define CR0_EM_SHIFT        5
 #define TRAMP_SHIFT         6
 #define DBG_TRAP_SHIFT      7
 #define TIMEOUT_SHIFT       9
+#define CR0_TS_SHIFT        10
 #define HFLG_CPL            (3 << CPL_SHIFT)
 #define HFLG_CS32           (1 << CS32_SHIFT)
 #define HFLG_SS32           (1 << SS32_SHIFT)
 #define HFLG_PE_MODE        (1 << PE_MODE_SHIFT)
-#define HFLG_CR0_EM         (1 << EM_SHIFT)
+#define HFLG_CR0_EM         (1 << CR0_EM_SHIFT)
 #define HFLG_TRAMP          (1 << TRAMP_SHIFT)
 #define HFLG_DBG_TRAP       (1 << DBG_TRAP_SHIFT)
 #define HFLG_TIMEOUT        (1 << TIMEOUT_SHIFT)
-#define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_TIMEOUT)
+#define HFLG_CR0_TS         (1 << CR0_TS_SHIFT)
+#define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_TIMEOUT | HFLG_CR0_TS)
 
 // cpu interrupt flags
 #define CPU_NO_INT      0
@@ -147,8 +151,6 @@ uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 #define R5_idx      38
 #define R6_idx      39
 #define R7_idx      40
-#define ST_idx      41
-#define TAG_idx     42
 
 #define SEG_offset  ES_idx
 #define CR_offset   CR0_idx
@@ -314,5 +316,17 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define MSR_MTRR_PHYSBASE_RES      0xFFFFFFF000000F00
 #define MSR_MTRR_PHYSMASK_RES      0xFFFFFFF0000007FF
 #define MSR_MTRR_DEF_TYPE_RES      0xFFFFFFFFFFFFF300
+
+// fpu tag macros
+#define FPU_TAG_VALID   0
+#define FPU_TAG_ZERO    1
+#define FPU_TAG_SPECIAL 2  // invalid (NaN, unsupported), infinity, or denormal
+#define FPU_TAG_EMPTY   3
+
+// fpu register macros
+#define FPU_FES_SHIFT    7
+#define FPU_FTSS_SHIFT   11
+#define FPU_FES_MASK     (1 << FPU_FES_SHIFT)
+#define FPU_FTSS_MASK    (7 << FPU_FTSS_SHIFT)
 
 #define X86_MAX_INSTR_LENGTH 15

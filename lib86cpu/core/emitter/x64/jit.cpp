@@ -265,6 +265,8 @@ get_local_var_offset()
 #define CMOV_EQ(dst, src) m_a.cmove(dst, src)
 #define CMOV_NE(dst, src) m_a.cmovne(dst, src)
 
+#define FLDCW(src) m_a.fldcw(src)
+
 #define LD_R8L(dst, reg_offset) MOV(dst, MEMD8(RCX, reg_offset))
 #define LD_R8H(dst, reg_offset) MOV(dst, MEMD8(RCX, reg_offset + 1))
 #define LD_R16(dst, reg_offset) MOV(dst, MEMD16(RCX, reg_offset))
@@ -4617,6 +4619,27 @@ lc86_jit::enter(ZydisDecodedInstruction *instr)
 
 	MOV(rax_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
 	ST_REG_val(rax_host_reg, CPU_CTX_EBP, m_cpu->size_mode);
+}
+
+void
+lc86_jit::fninit(ZydisDecodedInstruction *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		ST_R16(CPU_CTX_FCTRL, 0x37);
+		ST_R16(CPU_CTX_FSTATUS, 0);
+		MOV(MEMD64(RCX, CPU_CTX_FTAGS0), 0x303030303030303); // FPU_TAG_EMPTY for all ftags
+		ST_R16(CPU_CTX_FCS, 0);
+		ST_R32(CPU_CTX_FIP, 0);
+		ST_R16(CPU_CTX_FDS, 0);
+		ST_R32(CPU_CTX_FDP, 0);
+		ST_R16(CPU_CTX_FOP, 0);
+		ST_R16(FPU_DATA_FTSS, 0);
+		ST_R16(FPU_DATA_FES, 0);
+		FLDCW(MEMD16(RCX, CPU_CTX_FCTRL)); // make host fctrl == guest fctrl
+	}
 }
 
 void

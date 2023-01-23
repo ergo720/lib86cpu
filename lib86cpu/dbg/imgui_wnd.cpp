@@ -297,9 +297,17 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 				cpu->cpu_ctx.regs.r7.high,
 				cpu->cpu_ctx.regs.r7.low
 			);
-			ImGui::Text("status: 0x%04hX  tag: 0x%04hX",
-				cpu->cpu_ctx.regs.status,
-				cpu->cpu_ctx.regs.tag
+			ImGui::Text("fctrl: 0x%04hX  fstatus: 0x%04hX  ftags: 0x%04hX",
+				cpu->cpu_ctx.regs.fctrl,
+				read_fstatus(cpu),
+				read_ftags(cpu)
+			);
+			ImGui::Text("fcs: 0x%04hX  fip: 0x%08hX  fds: 0x%04hX  fdp: 0x%08hX  fop: 0x%04hX",
+				cpu->cpu_ctx.regs.fcs,
+				cpu->cpu_ctx.regs.fip,
+				cpu->cpu_ctx.regs.fds,
+				cpu->cpu_ctx.regs.fdp,
+				cpu->cpu_ctx.regs.fop
 			);
 		}
 		else {

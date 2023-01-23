@@ -84,6 +84,10 @@ API_FUNC void cpu_lower_hw_int_line(cpu_t *cpu);
 API_FUNC regs_t *get_regs_ptr(cpu_t *cpu);
 API_FUNC uint32_t read_eflags(cpu_t *cpu);
 API_FUNC void write_eflags(cpu_t *cpu, uint32_t value, bool reg32 = true);
+API_FUNC uint16_t read_ftags(cpu_t *cpu);
+API_FUNC void write_ftags(cpu_t *cpu, uint16_t value);
+API_FUNC uint16_t read_fstatus(cpu_t *cpu);
+API_FUNC void write_fstatus(cpu_t *cpu, uint16_t value);
 
 // memory api
 API_FUNC uint8_t *get_ram_ptr(cpu_t *cpu);
