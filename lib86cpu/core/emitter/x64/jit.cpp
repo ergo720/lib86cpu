@@ -3528,7 +3528,8 @@ lc86_jit::arpl(ZydisDecodedInstruction *instr)
 			OR(EAX, EDX);
 			LD_SF(R8D, R9D);
 			OR(EAX, R8D);
-			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), EAX);
+			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), 0);
+			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EAX);
 		},
 		[this, src, &ok](const op_info rm)
 		{
@@ -3560,7 +3561,8 @@ lc86_jit::arpl(ZydisDecodedInstruction *instr)
 			OR(EAX, EDX);
 			LD_SF(R8D, R9D);
 			OR(EAX, R8D);
-			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), EAX);
+			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), 0);
+			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EAX);
 		});
 	m_a.bind(ok);
 }

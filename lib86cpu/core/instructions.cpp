@@ -680,7 +680,7 @@ void verrw_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
 	}
 
 	uint32_t sfd = (cpu_ctx->lazy_eflags.result >> 31) ^ (cpu_ctx->lazy_eflags.auxbits & 1);
-	uint32_t pdb = (cpu_ctx->lazy_eflags.result ^ (cpu_ctx->lazy_eflags.auxbits >> 8) & 0xFF) << 8;
+	uint32_t pdb = ((cpu_ctx->lazy_eflags.result << 8) ^ cpu_ctx->lazy_eflags.auxbits) & 0xFF00;
 	cpu_ctx->lazy_eflags.result = 0;
 	cpu_ctx->lazy_eflags.auxbits = (cpu_ctx->lazy_eflags.auxbits & 0xFFFF00FE) | (sfd | pdb);
 }
