@@ -918,6 +918,14 @@ msr_read_helper(cpu_ctx_t *cpu_ctx)
 		val = MSR_IA32_APICBASE_BSP;
 		break;
 
+	case IA32_BIOS_UPDT_TRIG:
+		val = 0;
+		break;
+
+	case IA32_BIOS_SIGN_ID:
+		val = cpu_ctx->cpu->msr.bios_sign_id;
+		break;
+
 	case IA32_MTRRCAP:
 		val = (MSR_MTRRcap_VCNT | MSR_MTRRcap_FIX | MSR_MTRRcap_WC);
 		break;
@@ -989,6 +997,17 @@ msr_write_helper(cpu_ctx_t *cpu_ctx)
 		if (val & MSR_IA32_APIC_BASE_RES) {
 			return 1;
 		}
+		break;
+
+	case IA32_BIOS_UPDT_TRIG:
+		cpu_ctx->cpu->microcode_updated = 1;
+		break;
+
+	case IA32_BIOS_SIGN_ID:
+		if (val & MSR_BIOS_SIGN_ID_RES) {
+			return 1;
+		}
+		cpu_ctx->cpu->msr.bios_sign_id = val;
 		break;
 
 	case IA32_MTRRCAP:
@@ -1193,6 +1212,9 @@ cpuid_helper(cpu_ctx_t *cpu_ctx)
 		cpu_ctx->regs.ebx = 0;
 		cpu_ctx->regs.edx = 0x0383F9FF; // fpu, vme, de, pse, tsc, msr, pae, mce, cx8, sep, mtrr, pge, mca, cmov, pat, pse-36, mmx, fxsr, sse
 		cpu_ctx->regs.ecx = 0;
+		if (cpu_ctx->cpu->microcode_updated) {
+			cpu_ctx->cpu->msr.bios_sign_id = INTEL_MICROCODE_ID;
+		}
 		break;
 
 	case 0:

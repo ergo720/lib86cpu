@@ -172,6 +172,7 @@ struct cpu_t {
 	tlb_t itlb[ITLB_NUM_SETS][ITLB_NUM_LINES]; // instruction tlb
 	tlb_t dtlb[DTLB_NUM_SETS][DTLB_NUM_LINES]; // data tlb
 	uint16_t num_tc; // num of tc actually emitted, tc's might not be present in the code cache
+	uint8_t microcode_updated;
 	struct {
 		uint64_t last_host_ticks;
 		static constexpr uint64_t cpu_freq = 733333333;

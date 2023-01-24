@@ -94,4 +94,5 @@ struct msr_t {
 		uint64_t phys_fixed[11];
 		uint64_t def_type;
 	} mtrr;
+	uint64_t bios_sign_id;
 };

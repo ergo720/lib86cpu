@@ -289,6 +289,8 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 
 // msr register addresses
 #define IA32_APIC_BASE             0x1B
+#define IA32_BIOS_UPDT_TRIG        0x79
+#define IA32_BIOS_SIGN_ID          0x8B
 #define IA32_MTRRCAP               0xFE
 #define IA32_MTRR_PHYSBASE_base    0x200
 #define IA32_MTRR_PHYSMASK_base    0x201
@@ -308,6 +310,7 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define IA32_MTRR_PHYSMASK(n)      (IA32_MTRR_PHYSMASK_base + (n * 2))
 
 // msr macros
+#define MSR_BIOS_SIGN_ID_RES       0x00000000FFFFFFFF
 #define MSR_IA32_APICBASE_BSP      (1 << 8)
 #define MSR_MTRRcap_VCNT           8
 #define MSR_MTRRcap_FIX            (1 << 8)
@@ -350,3 +353,4 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define FPU_ROUND_ZERO  3
 
 #define X86_MAX_INSTR_LENGTH 15
+#define INTEL_MICROCODE_ID   (1ULL << 32)
