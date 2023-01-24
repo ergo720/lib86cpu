@@ -1288,7 +1288,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			cpu->jit->wrmsr(&instr);
 			break;
 
-		case ZYDIS_MNEMONIC_XADD:        BAD;
+		case ZYDIS_MNEMONIC_XADD:
+			cpu->jit->xadd(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_XCHG:
 			cpu->jit->xchg(&instr);
 			break;

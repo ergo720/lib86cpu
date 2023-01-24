@@ -8161,6 +8161,56 @@ lc86_jit::wrmsr(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::xadd(ZydisDecodedInstruction *instr)
+{
+	switch (instr->opcode)
+	{
+	case 0xC0:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0xC1: {
+		auto src = GET_REG(OPNUM_SRC);
+		auto src_host_reg = SIZED_REG(x64::rbx, src.bits);
+		LD_REG_val(src_host_reg, src.val, src.bits);
+		get_rm<OPNUM_DST>(instr,
+			[this, src, src_host_reg](const op_info rm)
+			{
+				auto dst_host_reg = SIZED_REG(x64::rax, rm.bits);
+				auto res_host_reg = SIZED_REG(x64::r8, rm.bits);
+				LD_REG_val(dst_host_reg, rm.val, rm.bits);
+				ST_REG_val(dst_host_reg, src.val, src.bits);
+				MOV(res_host_reg, dst_host_reg);
+				ADD(res_host_reg, src_host_reg);
+				ST_REG_val(res_host_reg, rm.val, rm.bits);
+				set_flags_sum(dst_host_reg, src_host_reg, res_host_reg);
+			},
+			[this, src, src_host_reg](const op_info rm)
+			{
+				auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+				auto res_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
+				MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
+				LD_MEM();
+				MOV(res_host_reg, dst_host_reg);
+				ADD(res_host_reg, src_host_reg);
+				MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
+				MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), dst_host_reg);
+				MOV(MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode), res_host_reg);
+				ST_MEM(res_host_reg);
+				MOV(dst_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
+				MOV(res_host_reg, MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode));
+				ST_REG_val(dst_host_reg, src.val, src.bits);
+				set_flags_sum(dst_host_reg, src_host_reg, res_host_reg);
+			});
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+void
 lc86_jit::xchg(ZydisDecodedInstruction *instr)
 {
 	switch (instr->opcode)
