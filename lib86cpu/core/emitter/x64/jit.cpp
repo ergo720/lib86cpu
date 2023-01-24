@@ -3055,7 +3055,7 @@ void lc86_jit::bit(ZydisDecodedInstruction *instr)
 			MOV(EBX, EDX);
 			LD_MEM();
 			MOV(EDX, EBX);
-			auto dst_mem = MEMD(RCX, LOCAL_VARS_off(0), m_cpu->size_mode);
+			auto dst_mem = MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode);
 			MOV(dst_mem, dst_host_reg);
 			if (instr->opcode != 0xBA) {
 				auto src = GET_REG(OPNUM_SRC);
@@ -3543,9 +3543,9 @@ lc86_jit::arpl(ZydisDecodedInstruction *instr)
 		[this, src, &ok](const op_info rm)
 		{
 			Label adjust = m_a.newLabel();
-			MOV(MEMD32(RCX, LOCAL_VARS_off(0)), EDX);
+			MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
 			LD_MEMs(SIZE16);
-			MOV(EDX, MEMD32(RCX, LOCAL_VARS_off(0)));
+			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
 			MOV(R8W, AX);
 			AND(BX, 3);
 			AND(AX, 3);
@@ -3586,13 +3586,13 @@ lc86_jit::bound(ZydisDecodedInstruction *instr)
 	auto rdx_host_reg = SIZED_REG(x64::rdx, m_cpu->size_mode);
 	LD_REG_val(dst_host_reg, dst.val, dst.bits); // idx
 	GET_OP(OPNUM_SRC);
-	MOV(MEMD32(RCX, LOCAL_VARS_off(0)), EDX);
+	MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
 	LD_MEM();
-	MOV(EDX, MEMD32(RCX, LOCAL_VARS_off(0)));
-	MOV(MEMD(RCX, LOCAL_VARS_off(0), m_cpu->size_mode), src_host_reg);
+	MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
+	MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), src_host_reg);
 	ADD(EDX, 1 << m_cpu->size_mode);
 	LD_MEM(); //upper
-	MOV(rdx_host_reg, MEMD(RCX, LOCAL_VARS_off(0), m_cpu->size_mode)); // lower
+	MOV(rdx_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode)); // lower
 	CMP(dst_host_reg, rdx_host_reg);
 	SET_SLT(R8B);
 	MOV(DL, R8B);
@@ -8234,9 +8234,9 @@ lc86_jit::xchg(ZydisDecodedInstruction *instr)
 			[this, src, src_host_reg](const op_info rm)
 			{
 				auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
-				MOV(MEMD32(RCX, LOCAL_VARS_off(0)), EDX);
+				MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
 				LD_MEM();
-				MOV(EDX, MEMD32(RCX, LOCAL_VARS_off(0)));
+				MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
 				ST_REG_val(dst_host_reg, src.val, src.bits);
 				ST_MEM(src_host_reg);
 			});
