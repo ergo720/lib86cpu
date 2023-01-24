@@ -63,6 +63,7 @@ public:
 	void cmovcc(ZydisDecodedInstruction *instr);
 	void cmp(ZydisDecodedInstruction *instr);
 	void cmps(ZydisDecodedInstruction *instr);
+	void cmpxchg8b(ZydisDecodedInstruction *instr);
 	void cpuid(ZydisDecodedInstruction *instr);
 	void cwd(ZydisDecodedInstruction *instr);
 	void cwde(ZydisDecodedInstruction *instr);

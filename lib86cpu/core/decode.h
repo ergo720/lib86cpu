@@ -10,6 +10,7 @@
 #include "Zydis/Zydis.h"
 #include <stdint.h>
 
+#define SIZE64 3
 #define SIZE32 2
 #define SIZE16 1
 #define SIZE8  0

@@ -1711,6 +1711,10 @@ lc86_jit::load_mem(uint8_t size, uint8_t is_priv)
 
 	switch (size)
 	{
+	case SIZE64:
+		CALL_F(&mem_read_helper<uint64_t>);
+		break;
+
 	case SIZE32:
 		CALL_F(&mem_read_helper<uint32_t>);
 		break;
@@ -1738,6 +1742,11 @@ void lc86_jit::store_mem(T val, uint8_t size, uint8_t is_priv)
 
 	switch (size)
 	{
+	case SIZE64:
+		MOV(R8, val);
+		CALL_F((&mem_write_helper<uint64_t, dont_write>));
+		break;
+
 	case SIZE32:
 		MOV(R8D, val);
 		CALL_F((&mem_write_helper<uint32_t, dont_write>));
@@ -4274,6 +4283,56 @@ lc86_jit::cmps(ZydisDecodedInstruction *instr)
 	default:
 		LIB86CPU_ABORT();
 	}
+}
+
+void
+lc86_jit::cmpxchg8b(ZydisDecodedInstruction *instr)
+{
+	get_rm<OPNUM_SINGLE>(instr,
+		[](const op_info rm)
+		{
+			assert(0);
+		},
+		[this](const op_info rm)
+		{
+			Label equal = m_a.newLabel();
+			MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
+			LD_MEMs(SIZE64);
+			LD_R32(EDX, CPU_CTX_EDX);
+			LD_R32(EBX, CPU_CTX_EAX);
+			SHL(RDX, 32);
+			OR(RDX, RBX);
+			TEST(RAX, RDX);
+			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
+			BR_EQ(equal);
+			MOV(RBX, RAX);
+			ST_MEMs(RAX, SIZE64);
+			ST_R32(CPU_CTX_EAX, EBX);
+			SHR(RBX, 32);
+			ST_R32(CPU_CTX_EDX, EBX);
+			MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_RES));
+			OR(EDX, 0x100);
+			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), EDX);
+			m_a.bind(equal);
+			LD_R32(EAX, CPU_CTX_ECX);
+			LD_R32(EBX, CPU_CTX_EBX);
+			SHL(RAX, 32);
+			OR(RAX, RBX);
+			ST_MEMs(RAX, SIZE64);
+			MOV(R8D, MEMD32(RCX, CPU_CTX_EFLAGS_RES));
+			MOV(R9D, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
+			MOV(EAX, R8D);
+			MOV(EDX, R9D);
+			SHL(EAX, 8);
+			XOR(EAX, EDX);
+			AND(EDX, 0xFFFF00FE);
+			AND(EAX, 0xFF00);
+			OR(EAX, EDX);
+			LD_SF(R8D, R9D);
+			OR(EAX, R8D);
+			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), 0);
+			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EAX);
+		});
 }
 
 void
