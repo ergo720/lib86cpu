@@ -2819,6 +2819,10 @@ void lc86_jit::store_sys_seg_reg(ZydisDecodedInstruction *instr)
 		assert(instr->raw.modrm.reg == 0);
 		break;
 
+	case LDTR_idx:
+		assert(instr->raw.modrm.reg == 0);
+		break;
+
 	case IDTR_idx:
 		assert(instr->raw.modrm.reg == 1);
 		break;
@@ -2859,16 +2863,17 @@ void lc86_jit::store_sys_seg_reg(ZydisDecodedInstruction *instr)
 				ST_MEMs(EAX, SIZE32);
 			});
 	}
-	else if constexpr (idx == TR_idx) {
+	else if constexpr ((idx == TR_idx) || (idx == LDTR_idx)) {
+		constexpr auto seg_offset = idx == TR_idx ? CPU_CTX_TR : CPU_CTX_LDTR;
 		get_rm<OPNUM_SINGLE>(instr,
 			[this](const op_info rm)
 			{
-				MOVZX(EAX, MEMD16(RCX, CPU_CTX_TR));
+				MOVZX(EAX, MEMD16(RCX, seg_offset));
 				ST_R32(rm.val, EAX);
 			},
 			[this](const op_info rm)
 			{
-				MOV(AX, MEMD16(RCX, CPU_CTX_TR));
+				MOV(AX, MEMD16(RCX, seg_offset));
 				ST_MEMs(AX, SIZE16);
 			});
 	}
@@ -7765,6 +7770,12 @@ void
 lc86_jit::sidt(ZydisDecodedInstruction *instr)
 {
 	store_sys_seg_reg<IDTR_idx>(instr);
+}
+
+void
+lc86_jit::sldt(ZydisDecodedInstruction *instr)
+{
+	store_sys_seg_reg<LDTR_idx>(instr);
 }
 
 void

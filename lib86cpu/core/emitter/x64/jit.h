@@ -133,6 +133,7 @@ public:
 	void shr(ZydisDecodedInstruction *instr);
 	void shrd(ZydisDecodedInstruction *instr);
 	void sidt(ZydisDecodedInstruction *instr);
+	void sldt(ZydisDecodedInstruction *instr);
 	void stc(ZydisDecodedInstruction *instr);
 	void std(ZydisDecodedInstruction *instr);
 	void sti(ZydisDecodedInstruction *instr);
