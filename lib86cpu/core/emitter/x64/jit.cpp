@@ -4653,6 +4653,26 @@ lc86_jit::fninit(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::fnstsw(ZydisDecodedInstruction *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		LD_R16(AX, CPU_CTX_FSTATUS);
+		get_rm<OPNUM_SINGLE>(instr,
+			[this](const op_info rm)
+			{
+				ST_R16(CPU_CTX_EAX, AX);
+			},
+			[this](const op_info rm)
+			{
+				ST_MEMs(AX, SIZE16);
+			});
+	}
+}
+
+void
 lc86_jit::hlt(ZydisDecodedInstruction *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {

@@ -925,6 +925,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			cpu->jit->fninit(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_FNSTSW:
+			cpu->jit->fnstsw(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_HLT:
 			cpu->jit->hlt(&instr);
 			break;
