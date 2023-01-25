@@ -4295,14 +4295,14 @@ lc86_jit::cmpxchg8b(ZydisDecodedInstruction *instr)
 		},
 		[this](const op_info rm)
 		{
-			Label equal = m_a.newLabel();
+			Label equal = m_a.newLabel(), done = m_a.newLabel();
 			MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
 			LD_MEMs(SIZE64);
 			LD_R32(EDX, CPU_CTX_EDX);
 			LD_R32(EBX, CPU_CTX_EAX);
 			SHL(RDX, 32);
 			OR(RDX, RBX);
-			TEST(RAX, RDX);
+			CMP(RAX, RDX);
 			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
 			BR_EQ(equal);
 			MOV(RBX, RAX);
@@ -4313,6 +4313,7 @@ lc86_jit::cmpxchg8b(ZydisDecodedInstruction *instr)
 			MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_RES));
 			OR(EDX, 0x100);
 			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), EDX);
+			BR_UNCOND(done);
 			m_a.bind(equal);
 			LD_R32(EAX, CPU_CTX_ECX);
 			LD_R32(EBX, CPU_CTX_EBX);
@@ -4332,6 +4333,7 @@ lc86_jit::cmpxchg8b(ZydisDecodedInstruction *instr)
 			OR(EAX, R8D);
 			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), 0);
 			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EAX);
+			m_a.bind(done);
 		});
 }
 
