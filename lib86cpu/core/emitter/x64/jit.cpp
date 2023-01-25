@@ -4286,6 +4286,71 @@ lc86_jit::cmps(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::cmpxchg(ZydisDecodedInstruction *instr)
+{
+	switch (instr->opcode)
+	{
+	case 0xB0:
+		m_cpu->size_mode = SIZE8;
+		[[fallthrough]];
+
+	case 0xB1: {
+		auto src = GET_REG(OPNUM_SRC);
+		auto cmp_host_reg = SIZED_REG(x64::rbx, m_cpu->size_mode);
+		LD_REG_val(cmp_host_reg, CPU_CTX_EAX, m_cpu->size_mode);
+		get_rm<OPNUM_DST>(instr,
+			[this, cmp_host_reg, src](const op_info rm)
+			{
+				Label equal = m_a.newLabel(), done = m_a.newLabel();
+				auto src_host_reg = SIZED_REG(x64::rdx, src.bits);
+				auto dst_host_reg = SIZED_REG(x64::rax, rm.bits);
+				auto sub_host_reg = SIZED_REG(x64::r8, rm.bits);
+				LD_REG_val(dst_host_reg, rm.val, rm.bits);
+				MOV(sub_host_reg, dst_host_reg);
+				SUB(sub_host_reg, cmp_host_reg);
+				BR_EQ(equal);
+				ST_REG_val(dst_host_reg, CPU_CTX_EAX, m_cpu->size_mode);
+				BR_UNCOND(done);
+				m_a.bind(equal);
+				LD_REG_val(src_host_reg, src.val, src.bits);
+				ST_REG_val(src_host_reg, rm.val, rm.bits);
+				m_a.bind(done);
+				set_flags_sub(dst_host_reg, cmp_host_reg, sub_host_reg);
+			},
+			[this, cmp_host_reg, src](const op_info rm)
+			{
+				Label equal = m_a.newLabel(), done = m_a.newLabel();
+				auto src_host_reg = SIZED_REG(x64::r10, src.bits);
+				auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+				auto sub_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
+				MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
+				LD_MEM();
+				MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
+				MOV(sub_host_reg, dst_host_reg);
+				SUB(sub_host_reg, cmp_host_reg);
+				MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), dst_host_reg);
+				MOV(MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode), sub_host_reg);
+				BR_EQ(equal);
+				ST_REG_val(dst_host_reg, CPU_CTX_EAX, m_cpu->size_mode);
+				ST_MEM(dst_host_reg);
+				BR_UNCOND(done);
+				m_a.bind(equal);
+				LD_REG_val(src_host_reg, src.val, src.bits);
+				ST_MEM(src_host_reg);
+				m_a.bind(done);
+				MOV(dst_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
+				MOV(sub_host_reg, MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode));
+				set_flags_sub(dst_host_reg, cmp_host_reg, sub_host_reg);
+			});
+	}
+	break;
+
+	default:
+		LIB86CPU_ABORT();
+	}
+}
+
+void
 lc86_jit::cmpxchg8b(ZydisDecodedInstruction *instr)
 {
 	get_rm<OPNUM_SINGLE>(instr,

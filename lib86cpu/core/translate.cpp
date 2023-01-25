@@ -887,11 +887,14 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			cpu->jit->cmps(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_CMPXCHG:
+			cpu->jit->cmpxchg(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_CMPXCHG8B:
 			cpu->jit->cmpxchg8b(&instr);
 			break;
 
-		case ZYDIS_MNEMONIC_CMPXCHG:     BAD;
 		case ZYDIS_MNEMONIC_CPUID:
 			cpu->jit->cpuid(&instr);
 			break;
