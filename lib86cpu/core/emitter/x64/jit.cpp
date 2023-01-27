@@ -1768,35 +1768,40 @@ void lc86_jit::store_mem(T val, uint8_t size, uint8_t is_priv)
 	MOV(MEMD32(RSP, STACK_ARGS_off), is_priv);
 	MOV(R9D, m_cpu->instr_eip);
 
-	auto is_not_r8 = [this]<typename T>(T val, x86::Gp r8)
-	{
-		if constexpr (std::is_integral_v<T>) {
-			MOV(r8, val);
+	bool is_r8 = false;
+	if constexpr (!std::is_integral_v<T>) {
+		if (val.id() == x86::Gp::kIdR8) {
+			is_r8 = true;
 		}
-		else if (val.id() != x86::Gp::kIdR8) {
-			MOV(r8, val);
-		}
-	};
+	}
 
 	switch (size)
 	{
 	case SIZE64:
-		is_not_r8.operator()(val, R8);
+		if (!is_r8) {
+			MOV(R8, val);
+		}
 		CALL_F((&mem_write_helper<uint64_t, dont_write>));
 		break;
 
 	case SIZE32:
-		is_not_r8.operator()(val, R8D);
+		if (!is_r8) {
+			MOV(R8D, val);
+		}
 		CALL_F((&mem_write_helper<uint32_t, dont_write>));
 		break;
 
 	case SIZE16:
-		is_not_r8.operator()(val, R8W);
+		if (!is_r8) {
+			MOV(R8W, val);
+		}
 		CALL_F((&mem_write_helper<uint16_t, dont_write>));
 		break;
 
 	case SIZE8:
-		is_not_r8.operator()(val, R8B);
+		if (!is_r8) {
+			MOV(R8B, val);
+		}
 		CALL_F((&mem_write_helper<uint8_t, dont_write>));
 		break;
 
