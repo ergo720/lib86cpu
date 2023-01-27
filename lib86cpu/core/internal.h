@@ -305,6 +305,7 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define IA32_MTRR_FIX4K_E8000      0x26D
 #define IA32_MTRR_FIX4K_F0000      0x26E
 #define IA32_MTRR_FIX4K_F8000      0x26F
+#define IA32_PAT                   0x277
 #define IA32_MTRR_DEF_TYPE         0x2FF
 #define IA32_MTRR_PHYSBASE(n)      (IA32_MTRR_PHYSBASE_base + (n * 2))
 #define IA32_MTRR_PHYSMASK(n)      (IA32_MTRR_PHYSMASK_base + (n * 2))
@@ -319,6 +320,17 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define MSR_MTRR_PHYSBASE_RES      0xFFFFFFF000000F00
 #define MSR_MTRR_PHYSMASK_RES      0xFFFFFFF0000007FF
 #define MSR_MTRR_DEF_TYPE_RES      0xFFFFFFFFFFFFF300
+#define MSR_PAT_RES                0xF8F8F8F8F8F8F8F8
+
+// pat macros
+#define PAT_TYPE_UC    0 // Uncacheable
+#define PAT_TYPE_WC    1 // Write Combining
+#define PAT_TYPE_RES2  2 // Reserved
+#define PAT_TYPE_RES3  3 // Reserved
+#define PAT_TYPE_WT    4 // Write Through
+#define PAT_TYPE_WP    5 // Write Protected
+#define PAT_TYPE_WB    6 // Write Back
+#define PAT_TYPE_UC2   7 // Uncached
 
 // fpu tag macros
 #define FPU_TAG_VALID   0

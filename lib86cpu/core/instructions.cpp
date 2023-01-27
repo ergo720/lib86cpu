@@ -972,6 +972,10 @@ msr_read_helper(cpu_ctx_t *cpu_ctx)
 		val = cpu_ctx->cpu->msr.mtrr.phys_fixed[cpu_ctx->regs.ecx - IA32_MTRR_FIX4K_C0000 + 3];
 		break;
 
+	case IA32_PAT:
+		val = cpu_ctx->cpu->msr.pat;
+		break;
+
 	case IA32_MTRR_DEF_TYPE:
 		val = cpu_ctx->cpu->msr.mtrr.def_type;
 		break;
@@ -1059,6 +1063,19 @@ msr_write_helper(cpu_ctx_t *cpu_ctx)
 	case IA32_MTRR_FIX4K_F0000:
 	case IA32_MTRR_FIX4K_F8000:
 		cpu_ctx->cpu->msr.mtrr.phys_fixed[cpu_ctx->regs.ecx - IA32_MTRR_FIX4K_C0000 + 3] = val;
+		break;
+
+	case IA32_PAT:
+		if (val & MSR_PAT_RES) {
+			return 1;
+		}
+		for (unsigned i = 0; i < 7; ++i) {
+			uint64_t pat_type = (val >> (i * 8)) & 7;
+			if ((pat_type == PAT_TYPE_RES2) || (pat_type == PAT_TYPE_RES3)) {
+				return 1;
+			}
+		}
+		cpu_ctx->cpu->msr.pat = val;
 		break;
 
 	case IA32_MTRR_DEF_TYPE:

@@ -95,4 +95,5 @@ struct msr_t {
 		uint64_t def_type;
 	} mtrr;
 	uint64_t bios_sign_id;
+	uint64_t pat;
 };
