@@ -1740,25 +1740,35 @@ void lc86_jit::store_mem(T val, uint8_t size, uint8_t is_priv)
 	MOV(MEMD32(RSP, STACK_ARGS_off), is_priv);
 	MOV(R9D, m_cpu->instr_eip);
 
+	auto is_not_r8 = [this]<typename T>(T val, x86::Gp r8)
+	{
+		if constexpr (std::is_integral_v<T>) {
+			MOV(r8, val);
+		}
+		else if (val.id() != x86::Gp::kIdR8) {
+			MOV(r8, val);
+		}
+	};
+
 	switch (size)
 	{
 	case SIZE64:
-		MOV(R8, val);
+		is_not_r8.operator()(val, R8);
 		CALL_F((&mem_write_helper<uint64_t, dont_write>));
 		break;
 
 	case SIZE32:
-		MOV(R8D, val);
+		is_not_r8.operator()(val, R8D);
 		CALL_F((&mem_write_helper<uint32_t, dont_write>));
 		break;
 
 	case SIZE16:
-		MOV(R8W, val);
+		is_not_r8.operator()(val, R8W);
 		CALL_F((&mem_write_helper<uint16_t, dont_write>));
 		break;
 
 	case SIZE8:
-		MOV(R8B, val);
+		is_not_r8.operator()(val, R8B);
 		CALL_F((&mem_write_helper<uint8_t, dont_write>));
 		break;
 
@@ -1797,24 +1807,20 @@ void
 lc86_jit::store_io(uint8_t size_mode)
 {
 	// RCX: cpu_ctx, EDX: port, R8B/R8W/R8D: val
-	// register val, should have been placed in EAX/AX/AL by load_reg or something else
 
 	MOV(R9D, m_cpu->instr_eip);
 
 	switch (size_mode)
 	{
 	case SIZE32:
-		MOV(R8D, EAX);
 		CALL_F(&io_write_helper<uint32_t>);
 		break;
 
 	case SIZE16:
-		MOV(R8W, AX);
 		CALL_F(&io_write_helper<uint16_t>);
 		break;
 
 	case SIZE8:
-		MOV(R8B, AL);
 		CALL_F(&io_write_helper<uint8_t>);
 		break;
 
@@ -4793,15 +4799,15 @@ lc86_jit::fnstsw(ZydisDecodedInstruction *instr)
 		RAISEin0_t(EXP_NM);
 	}
 	else {
-		LD_R16(AX, CPU_CTX_FSTATUS);
+		LD_R16(R8W, CPU_CTX_FSTATUS);
 		get_rm<OPNUM_SINGLE>(instr,
 			[this](const op_info rm)
 			{
-				ST_R16(CPU_CTX_EAX, AX);
+				ST_R16(CPU_CTX_EAX, R8W);
 			},
 			[this](const op_info rm)
 			{
-				ST_MEMs(AX, SIZE16);
+				ST_MEMs(R8W, SIZE16);
 			});
 	}
 }
@@ -6240,7 +6246,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 	case 0xA3: {
 		GET_OP(OPNUM_DST);
 		op_info src = GET_OP(OPNUM_SRC);
-		auto src_host_reg = SIZED_REG(x64::rax, src.bits);
+		auto src_host_reg = SIZED_REG(x64::r8, src.bits);
 		LD_REG_val(src_host_reg, src.val, src.bits);
 		ST_MEM(src_host_reg);
 	}
@@ -6722,7 +6728,7 @@ lc86_jit::out(ZydisDecodedInstruction *instr)
 		uint8_t port = instr->operands[OPNUM_DST].imm.value.u;
 		gen_check_io_priv(port);
 		MOV(EDX, port);
-		LD_REG_val(SIZED_REG(x64::rax, m_cpu->size_mode), CPU_CTX_EAX, m_cpu->size_mode);
+		LD_REG_val(SIZED_REG(x64::r8, m_cpu->size_mode), CPU_CTX_EAX, m_cpu->size_mode);
 		ST_IO();
 	}
 	break;
@@ -6736,7 +6742,7 @@ lc86_jit::out(ZydisDecodedInstruction *instr)
 		if (gen_check_io_priv(EDX)) {
 			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
 		}
-		LD_REG_val(SIZED_REG(x64::rax, m_cpu->size_mode), CPU_CTX_EAX, m_cpu->size_mode);
+		LD_REG_val(SIZED_REG(x64::r8, m_cpu->size_mode), CPU_CTX_EAX, m_cpu->size_mode);
 		ST_IO();
 	}
 	break;
@@ -6764,6 +6770,7 @@ lc86_jit::outs(ZydisDecodedInstruction *instr)
 		}
 
 		auto val_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+		auto r8_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 		LD_SEG_BASE(EAX, get_seg_prfx_offset(instr));
 		if (m_cpu->addr_mode == ADDR16) {
 			MOVZX(EDX, MEMD16(RCX, CPU_CTX_ESI));
@@ -6780,7 +6787,7 @@ lc86_jit::outs(ZydisDecodedInstruction *instr)
 		if (gen_check_io_priv(EDX)) {
 			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
 		}
-		MOV(val_host_reg, MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode));
+		MOV(r8_host_reg, MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode));
 		ST_IO();
 
 		Label sub = m_a.newLabel();
@@ -7211,8 +7218,8 @@ lc86_jit::pusha(ZydisDecodedInstruction *instr)
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			MOVZX(EBX, BX);
 			ADD(EDX, EBX);
-			LD_R32(EAX, get_reg_offset(instr->operands[i].reg.value));
-			ST_MEM(EAX);
+			LD_R32(R8D, get_reg_offset(instr->operands[i].reg.value));
+			ST_MEM(R8D);
 		}
 		ST_R16(CPU_CTX_ESP, BX);
 	}
@@ -7224,8 +7231,8 @@ lc86_jit::pusha(ZydisDecodedInstruction *instr)
 			SUB(EBX, 4);
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			ADD(EDX, EBX);
-			LD_R32(EAX, get_reg_offset(instr->operands[i].reg.value));
-			ST_MEM(EAX);
+			LD_R32(R8D, get_reg_offset(instr->operands[i].reg.value));
+			ST_MEM(R8D);
 		}
 		ST_R32(CPU_CTX_ESP, EBX);
 	}
@@ -7238,8 +7245,8 @@ lc86_jit::pusha(ZydisDecodedInstruction *instr)
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			MOVZX(EBX, BX);
 			ADD(EDX, EBX);
-			LD_R16(AX, get_reg_offset(instr->operands[i].reg.value));
-			ST_MEM(AX);
+			LD_R16(R8W, get_reg_offset(instr->operands[i].reg.value));
+			ST_MEM(R8W);
 		}
 		ST_R16(CPU_CTX_ESP, BX);
 	}
@@ -7251,8 +7258,8 @@ lc86_jit::pusha(ZydisDecodedInstruction *instr)
 			SUB(EBX, 2);
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			ADD(EDX, EBX);
-			LD_R16(AX, get_reg_offset(instr->operands[i].reg.value));
-			ST_MEM(AX);
+			LD_R16(R8W, get_reg_offset(instr->operands[i].reg.value));
+			ST_MEM(R8W);
 		}
 		ST_R32(CPU_CTX_ESP, EBX);
 	}
@@ -7985,20 +7992,20 @@ lc86_jit::stos(ZydisDecodedInstruction *instr)
 		{
 		case SIZE8:
 			k = 1;
-			LD_R8L(AL, CPU_CTX_EAX);
-			ST_MEM(AL);
+			LD_R8L(R8B, CPU_CTX_EAX);
+			ST_MEM(R8B);
 			break;
 
 		case SIZE16:
 			k = 2;
-			LD_R16(AX, CPU_CTX_EAX);
-			ST_MEM(AX);
+			LD_R16(R8W, CPU_CTX_EAX);
+			ST_MEM(R8W);
 			break;
 
 		case SIZE32:
 			k = 4;
-			LD_R32(EAX, CPU_CTX_EAX);
-			ST_MEM(EAX);
+			LD_R32(R8D, CPU_CTX_EAX);
+			ST_MEM(R8D);
 			break;
 
 		default:
