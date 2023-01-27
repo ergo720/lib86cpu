@@ -292,6 +292,9 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define IA32_BIOS_UPDT_TRIG        0x79
 #define IA32_BIOS_SIGN_ID          0x8B
 #define IA32_MTRRCAP               0xFE
+#define IA32_SYSENTER_CS           0x174
+#define IA32_SYSENTER_ESP          0x175
+#define IA32_SYSENTER_EIP          0x176
 #define IA32_MTRR_PHYSBASE_base    0x200
 #define IA32_MTRR_PHYSMASK_base    0x201
 #define IA32_MTRR_FIX64K_00000     0x250

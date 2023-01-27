@@ -930,6 +930,18 @@ msr_read_helper(cpu_ctx_t *cpu_ctx)
 		val = (MSR_MTRRcap_VCNT | MSR_MTRRcap_FIX | MSR_MTRRcap_WC);
 		break;
 
+	case IA32_SYSENTER_CS:
+		val = cpu_ctx->cpu->msr.sys_cs & 0xFFFFFFFF;
+		break;
+
+	case IA32_SYSENTER_ESP:
+		val = cpu_ctx->cpu->msr.sys_esp;
+		break;
+
+	case IA32_SYSENTER_EIP:
+		val = cpu_ctx->cpu->msr.sys_eip;
+		break;
+
 	case IA32_MTRR_PHYSBASE(0):
 	case IA32_MTRR_PHYSBASE(1):
 	case IA32_MTRR_PHYSBASE(2):
@@ -1016,6 +1028,18 @@ msr_write_helper(cpu_ctx_t *cpu_ctx)
 
 	case IA32_MTRRCAP:
 		return 1;
+
+	case IA32_SYSENTER_CS:
+		cpu_ctx->cpu->msr.sys_cs = (val & 0xFFFFFFFF);
+		break;
+
+	case IA32_SYSENTER_ESP:
+		cpu_ctx->cpu->msr.sys_esp = val;
+		break;
+
+	case IA32_SYSENTER_EIP:
+		cpu_ctx->cpu->msr.sys_eip = val;
+		break;
 
 	case IA32_MTRR_PHYSBASE(0):
 	case IA32_MTRR_PHYSBASE(1):

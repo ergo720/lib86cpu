@@ -96,4 +96,7 @@ struct msr_t {
 	} mtrr;
 	uint64_t bios_sign_id;
 	uint64_t pat;
+	uint64_t sys_cs;
+	uint64_t sys_esp;
+	uint64_t sys_eip;
 };
