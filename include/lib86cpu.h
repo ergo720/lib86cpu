@@ -109,7 +109,7 @@ API_FUNC lc86_status io_read_32(cpu_t *cpu, port_t port, uint32_t &out);
 API_FUNC lc86_status io_write_8(cpu_t *cpu, port_t port, uint8_t value);
 API_FUNC lc86_status io_write_16(cpu_t *cpu, port_t port, uint16_t value);
 API_FUNC lc86_status io_write_32(cpu_t *cpu, port_t port, uint32_t value);
-API_FUNC void tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end);
+API_FUNC void tlb_invalidate(cpu_t *cpu, addr_t addr);
 
 // hook api
 API_FUNC lc86_status hook_add(cpu_t *cpu, addr_t addr, void *hook_addr);

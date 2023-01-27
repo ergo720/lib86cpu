@@ -66,7 +66,8 @@ constexpr auto all_callable_funcs = std::make_tuple(
 	cpuid_helper,
 	hlt_helper,
 	cpu_runtime_abort,
-	dbg_update_exp_hook
+	dbg_update_exp_hook,
+	tlb_invalidate
 );
 
 template<typename R, typename... Args>

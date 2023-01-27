@@ -974,7 +974,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 			break;
 
 		case ZYDIS_MNEMONIC_INVD:        BAD;
-		case ZYDIS_MNEMONIC_INVLPG:      BAD;
+		case ZYDIS_MNEMONIC_INVLPG:
+			cpu->jit->invlpg(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_IRET:
 		case ZYDIS_MNEMONIC_IRETD:
 			cpu->jit->iret(&instr);

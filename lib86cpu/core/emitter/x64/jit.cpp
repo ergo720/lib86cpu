@@ -5313,6 +5313,26 @@ lc86_jit::into(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::invlpg(ZydisDecodedInstruction *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
+		RAISEin0_t(EXP_GP);
+	}
+	else {
+		get_rm<OPNUM_SINGLE>(instr,
+			[](const op_info rm)
+			{
+				assert(0);
+			},
+			[this](const op_info rm)
+			{
+				MOV(RCX, m_cpu);
+				CALL_F(&tlb_invalidate);
+			});
+	}
+}
+
+void
 lc86_jit::iret(ZydisDecodedInstruction *instr)
 {
 	assert(instr->opcode == 0xCF);

@@ -84,6 +84,7 @@ public:
 	void int3(ZydisDecodedInstruction *instr);
 	void intn(ZydisDecodedInstruction *instr);
 	void into(ZydisDecodedInstruction *instr);
+	void invlpg(ZydisDecodedInstruction *instr);
 	void iret(ZydisDecodedInstruction *instr);
 	void jcc(ZydisDecodedInstruction *instr);
 	void jmp(ZydisDecodedInstruction *instr);

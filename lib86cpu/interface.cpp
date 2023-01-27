@@ -944,27 +944,33 @@ io_write_32(cpu_t *cpu, port_t port, uint32_t value)
 }
 
 /*
-* tlb_invalidate -> flushes tlb entries in the specified range
+* tlb_invalidate -> flushes tlb entries for the specified page
 * cpu: a valid cpu instance
-* addr_start: a guest virtual address where the flush starts
-* addr_end: a guest virtual address where the flush ends
+* addr: the guest virtual address of the specified page
 * ret: nothing
 */
 void
-tlb_invalidate(cpu_t *cpu, addr_t addr_start, addr_t addr_end)
+tlb_invalidate(cpu_t *cpu, addr_t addr)
 {
-	uint32_t tlb_idx_s = addr_start >> PAGE_SHIFT, tlb_idx_e = addr_end >> PAGE_SHIFT;
-	for (; tlb_idx_s <= tlb_idx_e; ++tlb_idx_s) {
-		for (unsigned i = 0; i < ITLB_NUM_LINES; ++i) {
-			cpu->itlb[tlb_idx_s][i].entry = 0;
-			cpu->itlb[tlb_idx_s][i].region = nullptr;
+	// this relies on the fact that, even with the most restrictive permission type, if the entry is valis, then TLB_SUP_READ must be set. Note that more permissive
+	// accesses will set additional permission bits in the entry, in adition to TLB_SUP_READ
+
+	uint32_t idx = (addr >> PAGE_SHIFT) & ITLB_IDX_MASK;
+	uint64_t tag = ((static_cast<uint64_t>(addr) << ITLB_TAG_SHIFT64) & ITLB_TAG_MASK64) | TLB_SUP_READ;
+	for (unsigned i = 0; i < ITLB_NUM_LINES; ++i) {
+		if (((cpu->itlb[idx][i].entry & (ITLB_TAG_MASK64 | TLB_SUP_READ)) ^ tag) == 0) {
+			cpu->itlb[idx][i].entry = 0;
+			cpu->itlb[idx][i].region = nullptr;
+			break;
 		}
 	}
-	tlb_idx_s = addr_start >> PAGE_SHIFT;
-	for (; tlb_idx_s <= tlb_idx_e; ++tlb_idx_s) {
-		for (unsigned i = 0; i < DTLB_NUM_LINES; ++i) {
-			cpu->dtlb[tlb_idx_s][i].entry = 0;
-			cpu->dtlb[tlb_idx_s][i].region = nullptr;
+	idx = (addr >> PAGE_SHIFT) & DTLB_IDX_MASK;
+	tag = ((static_cast<uint64_t>(addr) << DTLB_TAG_SHIFT64) & DTLB_TAG_MASK64) | TLB_SUP_READ;
+	for (unsigned i = 0; i < DTLB_NUM_LINES; ++i) {
+		if (((cpu->dtlb[idx][i].entry & (DTLB_TAG_MASK64 | TLB_SUP_READ)) ^ tag) == 0) {
+			cpu->dtlb[idx][i].entry = 0;
+			cpu->dtlb[idx][i].region = nullptr;
+			break;
 		}
 	}
 }
