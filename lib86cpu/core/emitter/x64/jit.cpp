@@ -1420,29 +1420,29 @@ void lc86_jit::imm_to_rm_flags(ZydisDecodedInstruction *instr, Imm src_imm, T &&
 }
 
 template<unsigned size, typename T>
-void lc86_jit::gen_sum_vec16_8(x86::Gp a, T b, x86::Gp sum)
+void lc86_jit::gen_sum_vec16_8(T b, x86::Gp sum)
 {
 	// a: cx/cl, b: (d|b)x/(d|b)l or imm16/8, sum: r8w/r8b
 
-	assert(a.id() == x86::Gp::kIdCx);
 	assert(sum.id() == x86::Gp::kIdR8);
 	if constexpr (!std::is_integral_v<T>) {
 		assert(b.id() == x86::Gp::kIdDx || b.id() == x86::Gp::kIdBx);
 	}
 
-	x86::Gp temp;
+	x86::Gp temp, a;
 	size_t shift;
 
 	if constexpr (size == SIZE16) {
+		a = CX;
 		temp = AX;
 		shift = 16;
 	}
 	else {
+		a = CL;
 		temp = AL;
 		shift = 24;
 	}
 
-	MOV(temp, a);
 	AND(a, b);
 	OR(temp, b);
 	NOT(sum);
@@ -1464,7 +1464,6 @@ void lc86_jit::gen_sum_vec32(T b)
 		assert(b.id() == x86::Gp::kIdDx || b.id() == x86::Gp::kIdBx);
 	}
 
-	MOV(EAX, ECX);
 	NOT(R8D);
 	OR(EAX, b);
 	AND(ECX, b);
@@ -1474,29 +1473,29 @@ void lc86_jit::gen_sum_vec32(T b)
 }
 
 template<unsigned size, typename T>
-void lc86_jit::gen_sub_vec16_8(x86::Gp a, T b, x86::Gp sub)
+void lc86_jit::gen_sub_vec16_8(T b, x86::Gp sub)
 {
 	// a: cx/cl, b: (d|b)x/(d|b)l or imm16/8, sub: r8w/r8b
 
-	assert(a.id() == x86::Gp::kIdCx);
 	assert(sub.id() == x86::Gp::kIdR8);
 	if constexpr (!std::is_integral_v<T>) {
 		assert(b.id() == x86::Gp::kIdDx || b.id() == x86::Gp::kIdBx);
 	}
 
-	x86::Gp temp;
+	x86::Gp temp, a;
 	size_t shift;
 
 	if constexpr (size == SIZE16) {
+		a = CX;
 		temp = AX;
 		shift = 16;
 	}
 	else {
+		a = CL;
 		temp = AL;
 		shift = 24;
 	}
 
-	MOV(temp, a);
 	NOT(a);
 	AND(a, b);
 	XOR(temp, b);
@@ -1519,7 +1518,6 @@ void lc86_jit::gen_sub_vec32(T b)
 		assert(b.id() == x86::Gp::kIdDx || b.id() == x86::Gp::kIdBx);
 	}
 
-	MOV(EAX, ECX);
 	NOT(ECX);
 	XOR(EAX, b);
 	AND(ECX, b);
@@ -1539,25 +1537,39 @@ void lc86_jit::set_flags_sum(x86::Gp a, T b, x86::Gp sum)
 		assert(b.id() == x86::Gp::kIdDx || b.id() == x86::Gp::kIdBx);
 	}
 
+	bool is_eax = false;
+	if (a.id() == x86::Gp::kIdAx) {
+		is_eax = true;
+	}
+
 	switch (m_cpu->size_mode)
 	{
 	case SIZE8:
 		MOVSX(R8D, sum);
 		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), R8D);
 		MOV(CL, a);
-		gen_sum_vec16_8<SIZE8>(CL, b, sum);
+		if (!is_eax) {
+			MOV(AL, CL);
+		}
+		gen_sum_vec16_8<SIZE8>(b, sum);
 		break;
 
 	case SIZE16:
 		MOVSX(R8D, sum);
 		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), R8D);
 		MOV(CX, a);
-		gen_sum_vec16_8<SIZE16>(CX, b, sum);
+		if (!is_eax) {
+			MOV(AX, CX);
+		}
+		gen_sum_vec16_8<SIZE16>(b, sum);
 		break;
 
 	case SIZE32:
 		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), R8D);
 		MOV(ECX, a);
+		if (!is_eax) {
+			MOV(EAX, ECX);
+		}
 		gen_sum_vec32(b);
 		break;
 
@@ -1579,25 +1591,41 @@ void lc86_jit::set_flags_sub(T1 a, T2 b, x86::Gp sub)
 		assert(b.id() == x86::Gp::kIdDx || b.id() == x86::Gp::kIdBx);
 	}
 
+	bool is_eax = false;
+	if constexpr (!std::is_integral_v<T1>) {
+		if (a.id() == x86::Gp::kIdAx) {
+			is_eax = true;
+		}
+	}
+
 	switch (m_cpu->size_mode)
 	{
 	case SIZE8:
 		MOVSX(R8D, sub);
 		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), R8D);
 		MOV(CL, a);
-		gen_sub_vec16_8<SIZE8>(CL, b, sub);
+		if (!is_eax) {
+			MOV(AL, CL);
+		}
+		gen_sub_vec16_8<SIZE8>(b, sub);
 		break;
 
 	case SIZE16:
 		MOVSX(R8D, sub);
 		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), R8D);
 		MOV(CX, a);
-		gen_sub_vec16_8<SIZE16>(CX, b, sub);
+		if (!is_eax) {
+			MOV(AX, CX);
+		}
+		gen_sub_vec16_8<SIZE16>(b, sub);
 		break;
 
 	case SIZE32:
 		MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), R8D);
 		MOV(ECX, a);
+		if (!is_eax) {
+			MOV(EAX, ECX);
+		}
 		gen_sub_vec32(b);
 		break;
 
@@ -4455,7 +4483,8 @@ lc86_jit::daa(ZydisDecodedInstruction *instr)
 	MOV(R8B, R10B);
 	ADD(R8B, 6);
 	MOV(MEMD8(RDX, CPU_CTX_EAX), R8B);
-	gen_sum_vec16_8<SIZE8>(CL, 6, R8B);
+	MOV(AL, CL);
+	gen_sum_vec16_8<SIZE8>(6, R8B);
 	RELOAD_RCX_CTX();
 	AND(EAX, 0x80000000);
 	OR(EAX, R11D);
@@ -4516,7 +4545,8 @@ lc86_jit::das(ZydisDecodedInstruction *instr)
 	MOV(R8B, R10B);
 	SUB(R8B, 6);
 	MOV(MEMD8(RDX, CPU_CTX_EAX), R8B);
-	gen_sub_vec16_8<SIZE8>(CL, 6, R8B);
+	MOV(AL, CL);
+	gen_sub_vec16_8<SIZE8>(6, R8B);
 	RELOAD_RCX_CTX();
 	AND(EAX, 0x80000000);
 	OR(EAX, R11D);

@@ -202,11 +202,11 @@ private:
 	template<bool is_sum, typename Imm, bool write_dst = true, typename T>
 	void imm_to_rm_flags(ZydisDecodedInstruction *instr, Imm src_imm, T &&lambda);
 	template<unsigned size, typename T>
-	void gen_sum_vec16_8(x86::Gp a, T b, x86::Gp sum);
+	void gen_sum_vec16_8(T b, x86::Gp sum);
 	template<typename T>
 	void gen_sum_vec32(T b);
 	template<unsigned size, typename T>
-	void gen_sub_vec16_8(x86::Gp a, T b, x86::Gp sum);
+	void gen_sub_vec16_8(T b, x86::Gp sum);
 	template<typename T>
 	void gen_sub_vec32(T b);
 	template<typename T>
