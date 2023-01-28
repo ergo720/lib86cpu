@@ -32,8 +32,9 @@ void fpu_init(cpu_t *cpu);
 // HFLG_CR0_EM: em flag of cr0
 // HFLG_TRAMP: used to select the trampoline tc instead of the hook tc
 // HFLG_DBG_TRAP: used to suppress data/io watchpoints (not recorded in the tc flags)
-// HFLG_TIMEOUT: timeout check was emitted
+// HFLG_CR4_OSFXSR: osfxsr flag of cr4
 // HFLG_CR0_TS: ts flag of cr0
+// HFLG_TIMEOUT: timeout check was emitted
 #define CPL_SHIFT           0
 #define CS32_SHIFT          2
 #define SS32_SHIFT          3
@@ -41,8 +42,9 @@ void fpu_init(cpu_t *cpu);
 #define CR0_EM_SHIFT        5
 #define TRAMP_SHIFT         6
 #define DBG_TRAP_SHIFT      7
-#define TIMEOUT_SHIFT       9
+#define CR4_OSFXSR_SHIFT    9
 #define CR0_TS_SHIFT        10
+#define TIMEOUT_SHIFT       11
 #define HFLG_CPL            (3 << CPL_SHIFT)
 #define HFLG_CS32           (1 << CS32_SHIFT)
 #define HFLG_SS32           (1 << SS32_SHIFT)
@@ -52,7 +54,8 @@ void fpu_init(cpu_t *cpu);
 #define HFLG_DBG_TRAP       (1 << DBG_TRAP_SHIFT)
 #define HFLG_TIMEOUT        (1 << TIMEOUT_SHIFT)
 #define HFLG_CR0_TS         (1 << CR0_TS_SHIFT)
-#define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_TIMEOUT | HFLG_CR0_TS)
+#define HFLG_CR4_OSFXSR     (1 << CR4_OSFXSR_SHIFT)
+#define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_TIMEOUT | HFLG_CR0_TS | HFLG_CR4_OSFXSR)
 
 // cpu interrupt flags
 #define CPU_NO_INT      0
@@ -263,6 +266,7 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define CR4_PSE_MASK    (1 << 4)
 #define CR4_PAE_MASK    (1 << 5)
 #define CR4_PGE_MASK    (1 << 7)
+#define CR4_OSFXSR_MASK (1 << 9)
 #define CR4_UMIP_MASK   (1 << 11)
 #define CR4_RES_MASK    (0x1FFFFF << 11) // cr4 reserved bits
 

@@ -39,6 +39,7 @@ cpu_reset(cpu_t *cpu)
 	cpu->cpu_ctx.regs.tr_hidden.limit = 0xFFFF;
 	cpu->cpu_ctx.regs.ldtr_hidden.flags = ((1 << 15) | (2 << 8)); // present, ldt
 	cpu->cpu_ctx.regs.tr_hidden.flags = ((1 << 15) | (11 << 8)); // present, 32bit tss busy
+	cpu->cpu_ctx.regs.mxcsr = 0x1F80;
 	cpu->cpu_ctx.lazy_eflags.result = 0x100; // make zf=0
 	cpu->a20_mask = 0xFFFFFFFF; // gate closed
 	cpu->cpu_ctx.exp_info.old_exp = EXP_INVALID;
@@ -933,6 +934,10 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 
 		case ZYDIS_MNEMONIC_FNSTSW:
 			cpu->jit->fnstsw(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_FXSAVE:
+			cpu->jit->fxsave(&instr);
 			break;
 
 		case ZYDIS_MNEMONIC_HLT:

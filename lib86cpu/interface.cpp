@@ -225,6 +225,9 @@ static void cpu_sync_state(cpu_t *cpu)
 	if (cpu->cpu_ctx.regs.cr0 & CR0_TS_MASK) {
 		cpu->cpu_ctx.hflags |= HFLG_CR0_TS;
 	}
+	if (cpu->cpu_ctx.regs.cr4 & CR4_OSFXSR_MASK) {
+		cpu->cpu_ctx.hflags |= HFLG_CR4_OSFXSR;
+	}
 }
 
 /*

@@ -822,11 +822,16 @@ update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 			tlb_flush(cpu_ctx->cpu);
 		}
 
+		cpu_ctx->hflags = ((new_cr & CR4_OSFXSR_MASK) | (cpu_ctx->hflags & ~HFLG_CR4_OSFXSR));
 		cpu_ctx->regs.cr4 = new_cr;
 	}
 	break;
 
 	case 2:
+		// cr2 is handled by the jit
+		assert(0);
+		[[fallthrough]];
+
 	default:
 		LIB86CPU_ABORT();
 	}
@@ -1287,6 +1292,50 @@ hlt_helper(cpu_ctx_t *cpu_ctx)
 	}
 
 	return 0;
+}
+
+void
+fxsave_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip)
+{
+	mem_write_helper<uint16_t>(cpu_ctx, addr, cpu_ctx->regs.fctrl, eip, 0);
+	addr += 2;
+	mem_write_helper<uint16_t>(cpu_ctx, addr, read_fstatus(cpu_ctx->cpu), eip, 0);
+	addr += 2;
+	uint8_t ftag_abridged = 0;
+	for (unsigned i = 0; i < 8; ++i) {
+		ftag_abridged |= (((cpu_ctx->regs.ftags[i] == FPU_TAG_EMPTY) ? 0 : 1) << i);
+	}
+	mem_write_helper<uint8_t>(cpu_ctx, addr, ftag_abridged, eip, 0);
+	addr += 2;
+	mem_write_helper<uint16_t>(cpu_ctx, addr, cpu_ctx->regs.fop, eip, 0);
+	addr += 2;
+	mem_write_helper<uint32_t>(cpu_ctx, addr, cpu_ctx->regs.fip, eip, 0);
+	addr += 4;
+	mem_write_helper<uint16_t>(cpu_ctx, addr, cpu_ctx->regs.fcs, eip, 0);
+	addr += 4;
+	mem_write_helper<uint32_t>(cpu_ctx, addr, cpu_ctx->regs.fdp, eip, 0);
+	addr += 4;
+	mem_write_helper<uint16_t>(cpu_ctx, addr, cpu_ctx->regs.fds, eip, 0);
+	addr += 4;
+	if (cpu_ctx->hflags & HFLG_CR4_OSFXSR) {
+		mem_write_helper<uint32_t>(cpu_ctx, addr, cpu_ctx->regs.mxcsr, eip, 0);
+		addr += 4;
+		mem_write_helper<uint32_t>(cpu_ctx, addr, 0, eip, 0);
+		addr += 4;
+	}
+	else {
+		addr += 8;
+	}
+	for (unsigned i = 0; i < 8; ++i) {
+		mem_write_helper<uint80_t>(cpu_ctx, addr, cpu_ctx->regs.fr[i], eip, 0);
+		addr += 16;
+	}
+	if (cpu_ctx->hflags & HFLG_CR4_OSFXSR) {
+		for (unsigned i = 0; i < 8; ++i) {
+			mem_write_helper<uint128_t>(cpu_ctx, addr, cpu_ctx->regs.xmm[i], eip, 0);
+			addr += 16;
+		}
+	}
 }
 
 template uint32_t lret_pe_helper<true>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);

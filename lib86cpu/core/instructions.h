@@ -28,3 +28,4 @@ void cpu_rdtsc_helper(cpu_ctx_t *cpu_ctx);
 uint32_t msr_read_helper(cpu_ctx_t *cpu_ctx);
 uint32_t msr_write_helper(cpu_ctx_t *cpu_ctx);
 uint32_t hlt_helper(cpu_ctx_t *cpu_ctx);
+void fxsave_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip);
