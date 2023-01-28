@@ -7,7 +7,34 @@
 #include "internal.h"
 #include "clock.h"
 #include <immintrin.h>
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
 
+#define FPU_SUPPORTED          (1 << 0)
+#define SSE2_SUPPORTED         (1 << 26)
+#define CPU_FEATURES_REQUIRED  (FPU_SUPPORTED | SSE2_SUPPORTED)
+
+
+bool
+verify_cpu_features()
+{
+	// we require x87 fpu and sse2 support at least
+
+#if defined(_MSC_VER)
+	int cpu_info[4];
+	__cpuid(cpu_info, 1);
+	if ((cpu_info[3] & CPU_FEATURES_REQUIRED) == CPU_FEATURES_REQUIRED) {
+		return true;
+	}
+	else {
+		last_error = "This library requires x86 fpu and sse2 support";
+		return false;
+	}
+#else
+#error Don't know how to query cpu features on this platform
+#endif
+}
 
 uint128_t::operator uint8_t()
 {
@@ -17,8 +44,6 @@ uint128_t::operator uint8_t()
 uint128_t
 uint128_t::operator>>(int shift)
 {
-	// this requires sse2 at least
-
 	__m128i val;
 	val.m128i_u64[0] = this->low;
 	val.m128i_u64[1] = this->high;

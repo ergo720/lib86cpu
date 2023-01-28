@@ -53,6 +53,7 @@ std::string lc86status_to_str(lc86_status status);
 void discard_log(log_level lv, const unsigned count, const char *msg, ...);
 lc86_status set_last_error(lc86_status status);
 void cpu_exec_trampoline(cpu_t *cpu, const uint32_t ret_eip);
+bool verify_cpu_features();
 
 inline logfn_t logfn = &discard_log;
 inline std::string last_error = "";

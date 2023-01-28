@@ -128,6 +128,11 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 	LOG(log_level::info, "Creating new cpu...");
 
 	out = nullptr;
+
+	if (!verify_cpu_features()) {
+		return lc86_status::not_supported;
+	}
+
 	cpu_t *cpu = new cpu_t();
 	if (cpu == nullptr) {
 		return set_last_error(lc86_status::no_memory);

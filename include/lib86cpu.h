@@ -16,7 +16,8 @@
 
 // lib86cpu error flags
 enum class lc86_status : int32_t {
-	timeout = -6,
+	not_supported = -7,
+	timeout,
 	internal_error,
 	no_memory,
 	invalid_parameter,

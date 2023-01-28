@@ -34,6 +34,9 @@ lc86status_to_str(lc86_status status)
 {
 	switch (status)
 	{
+	case lc86_status::not_supported:
+		return "The operation is not supported";
+
 	case lc86_status::timeout:
 		return "The operation timed out";
 
