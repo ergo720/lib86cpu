@@ -439,11 +439,7 @@ addr_t get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_c
 size_t
 as_ram_dispatch_read(cpu_t *cpu, addr_t addr, size_t size, const memory_region_t<addr_t> *region, uint8_t *buffer)
 {
-#if defined(_WIN64)
 	size_t bytes_to_read = std::min((region->end - addr) + 1ULL, size);
-#else
-	size_t bytes_to_read = std::min((region->end - addr) + 1, size);
-#endif
 
 	switch (region->type)
 	{
