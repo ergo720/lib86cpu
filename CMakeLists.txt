@@ -133,6 +133,15 @@ add_definitions(-wd4146)
 add_definitions(-wd4800)
 add_definitions(-wd4355)
 add_definitions(-wd4624)
+
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} \
+ /Ob2 \
+ /Oi \
+ /GS- \
+ /Gy \
+ /Qpar \
+ "
+)
 endif()
 
 if (${LIB86CPU_BUILD_SHARED_LIB})
