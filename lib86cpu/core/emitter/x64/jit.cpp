@@ -11,8 +11,6 @@
 #include "clock.h"
 #include <assert.h>
 #include <optional>
-#include <immintrin.h>
-//#include <emmintrin.h>
 
 #ifdef LIB86CPU_X64_EMITTER
 
@@ -341,118 +339,6 @@ get_reg_arg_offset()
 #define RELOAD_RCX_CTX() MOV(RCX, &m_cpu->cpu_ctx)
 #define CALL_F(func) MOV(RAX, func); CALL(RAX); RELOAD_RCX_CTX()
 
-
-uint128_t::operator uint8_t()
-{
-	return this->low & 0xFF;
-}
-
-uint128_t
-uint128_t::operator>>(int shift)
-{
-	// this requires sse2 at least
-
-	__m128i val;
-	val.m128i_u64[0] = this->low;
-	val.m128i_u64[1] = this->high;
-
-	switch (shift)
-	{
-	case 0:
-		val = _mm_srli_si128(val, 0);
-		break;
-
-	case 1:
-		val = _mm_srli_si128(val, 1);
-		break;
-
-	case 2:
-		val = _mm_srli_si128(val, 2);
-		break;
-
-	case 3:
-		val = _mm_srli_si128(val, 3);
-		break;
-
-	case 4:
-		val = _mm_srli_si128(val, 4);
-		break;
-
-	case 5:
-		val = _mm_srli_si128(val, 5);
-		break;
-
-	case 6:
-		val = _mm_srli_si128(val, 6);
-		break;
-
-	case 7:
-		val = _mm_srli_si128(val, 7);
-		break;
-
-	case 8:
-		val = _mm_srli_si128(val, 8);
-		break;
-
-	case 9:
-		val = _mm_srli_si128(val, 9);
-		break;
-
-	case 10:
-		val = _mm_srli_si128(val, 10);
-		break;
-
-	case 11:
-		val = _mm_srli_si128(val, 11);
-		break;
-
-	case 12:
-		val = _mm_srli_si128(val, 12);
-		break;
-
-	case 13:
-		val = _mm_srli_si128(val, 13);
-		break;
-
-	case 14:
-		val = _mm_srli_si128(val, 14);
-		break;
-
-	case 15:
-		val = _mm_srli_si128(val, 15);
-		break;
-
-	default:
-		LIB86CPU_ABORT_msg("Unsupported 128 bit shift count (count was %d", shift);
-	}
-
-	
-	this->low = val.m128i_u64[0];
-	this->high = val.m128i_u64[1];
-	return *this;
-}
-
-uint80_t::operator uint8_t()
-{
-	return this->low & 0xFF;
-}
-
-uint80_t::operator uint128_t()
-{
-	uint128_t converted;
-	converted.low = this->low;
-	converted.high = this->high;
-	return converted;
-}
-
-uint80_t
-uint80_t::operator>>(int shift)
-{
-	uint128_t val = static_cast<uint128_t>(*this) >> shift;
-	this->low = val.low;
-	this->high = val.high;
-	return *this;
-}
 
 lc86_jit::lc86_jit(cpu_t *cpu)
 {

@@ -118,6 +118,7 @@ set(SOURCES
  
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/emitter_common.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/jit.cpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/support.cpp"
  
   ${PLATFORM_SRC}
 )
