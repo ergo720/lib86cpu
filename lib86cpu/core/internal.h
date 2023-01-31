@@ -46,6 +46,7 @@ void halt_loop(cpu_t *cpu);
 #define CR4_OSFXSR_SHIFT    9
 #define CR0_TS_SHIFT        10
 #define TIMEOUT_SHIFT       11
+#define HFLG_INVALID        (1 << 31) // this should use a bit position that doesn't overlap with either HFLG_CONST or EFLAGS_CONST
 #define HFLG_CPL            (3 << CPL_SHIFT)
 #define HFLG_CS32           (1 << CS32_SHIFT)
 #define HFLG_SS32           (1 << SS32_SHIFT)

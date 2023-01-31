@@ -385,11 +385,6 @@ lc86_jit::gen_code_block()
 	estimated_code_size = (estimated_code_size + 3) & ~3;
 #endif
 
-	// Increase estimated_code_size by 11, to accomodate the exit function that terminates the execution of this tc.
-	// Note that this function should be 16 byte aligned
-	estimated_code_size += 11;
-	estimated_code_size = (estimated_code_size + 15) & ~15;
-
 	auto block = m_mem.allocate_sys_mem(estimated_code_size);
 	if (!block.addr) {
 		throw lc86_exp_abort("Failed to allocate memory for the generated code", lc86_status::no_memory);
@@ -409,37 +404,14 @@ lc86_jit::gen_code_block()
 	size_t buff_size = static_cast<size_t>(section->bufferSize());
 
 	assert(offset + buff_size <= estimated_code_size);
-	uint8_t *main_offset = static_cast<uint8_t *>(block.addr) + offset;
-	std::memcpy(main_offset, section->data(), buff_size);
+	uint8_t *exit_offset = static_cast<uint8_t *>(block.addr) + offset;
+	uint8_t *main_offset = exit_offset + 16;
+	std::memcpy(exit_offset, section->data(), buff_size);
 
 #if defined(_WIN64)
 	// According to asmjit's source code, the code size can decrease after the relocation above, so we need to query it again
-	uint8_t *exit_offset = gen_exception_info(main_offset, m_code.codeSize());
-#else
-	uint8_t *exit_offset = static_cast<uint8_t *>(block.addr) + offset + buff_size;
+	gen_exception_info(main_offset, m_code.codeSize() - 16);
 #endif
-
-	exit_offset = reinterpret_cast<uint8_t *>((reinterpret_cast<uintptr_t>(exit_offset) + 15) & ~15);
-
-
-	// Now generate the exit() function. Since it's a leaf function, it doesn't need an exception table on WIN64
-
-	static constexpr uint8_t exit_buff[] = {
-		0x48, // rex prefix
-		0xB8, // movabs rax, imm64
-		0,
-		0,
-		0,
-		0,
-		0,
-		0,
-		0,
-		0,
-		0xC3, // ret
-	};
-
-	std::memcpy(exit_offset, exit_buff, sizeof(exit_buff));
-	*reinterpret_cast<uint64_t *>(exit_offset + 2) = reinterpret_cast<uintptr_t>(tc);
 
 	// This code block is complete, so protect and flush the instruction cache now
 	m_mem.protect_sys_mem(block, MEM_READ | MEM_EXEC);
@@ -546,6 +518,22 @@ lc86_jit::gen_aux_funcs()
 	m_cpu->set_fctrl_fn = reinterpret_cast<set_fctrl_t>(static_cast<uint8_t *>(block.addr) + offset + set_fctrl_off_aligned16);
 }
 
+void
+lc86_jit::gen_exit_func()
+{
+	// this should be emitted before main(), so that we can calculate the tc ptr from tc->ptr_code by simply subtracting an offset
+
+	size_t exit_off_start = m_a.offset();
+	MOV(RAX, m_cpu->tc);
+	RET();
+	size_t exit_off_end = m_a.offset();
+	assert((exit_off_end - exit_off_start) == 11);
+
+	size_t main_off_aligned16 = (exit_off_end + 15) & ~15;
+	for (unsigned i = 0; i < (main_off_aligned16 - exit_off_end); ++i) {
+		INT3();
+	}
+}
 
 void
 lc86_jit::gen_block_end_checks()

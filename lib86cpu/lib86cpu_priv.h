@@ -98,9 +98,11 @@ struct translated_code_t {
 	uint32_t guest_flags;
 	entry_t ptr_code;
 	entry_t jmp_offset[3];
+	translated_code_t *ibtc[3];
 	uint32_t flags;
 	uint32_t size;
 	explicit translated_code_t() noexcept;
+	explicit translated_code_t(uint32_t flags) noexcept : translated_code_t() { guest_flags = flags; }
 };
 
 struct disas_ctx_t {
@@ -163,7 +165,6 @@ struct cpu_t {
 	std::unique_ptr<address_space<port_t>> io_space_tree;
 	std::list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
 	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
-	std::unordered_map<addr_t, translated_code_t *> ibtc;
 	std::unordered_map<addr_t, void *> hook_map;
 	std::vector<wp_info<addr_t>> wp_data;
 	std::vector<wp_info<port_t>> wp_io;

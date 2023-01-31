@@ -75,7 +75,7 @@ lc86_jit::create_unwind_info()
 	std::memcpy(&m_unwind_info[4], unwind_codes, sizeof(unwind_codes));
 }
 
-uint8_t *
+void
 lc86_jit::gen_exception_info(uint8_t *code_ptr, size_t code_size)
 {
 	create_unwind_info();
@@ -93,8 +93,6 @@ lc86_jit::gen_exception_info(uint8_t *code_ptr, size_t code_size)
 
 	[[maybe_unused]] auto ret = RtlAddFunctionTable(table, 1, reinterpret_cast<DWORD64>(code_ptr));
 	assert(ret);
-
-	return reinterpret_cast<uint8_t *>(table + 1);
 }
 
 #endif

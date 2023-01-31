@@ -382,11 +382,18 @@ get_pc(cpu_ctx_t *cpu_ctx)
 	return cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
 }
 
+// dummy tc only used for comparisons in the ibtc. Using the invalid hflag makes sure that comparisons with it always fail, and avoids the need to check
+// if an entry in the ibtc exists (e.g. cheking for nullptr)
+static translated_code_t dummy_tc(HFLG_INVALID);
+
 translated_code_t::translated_code_t() noexcept
 {
 	size = 0;
 	flags = 0;
 	ptr_code = nullptr;
+	for (auto &entry : ibtc) {
+		entry = &dummy_tc;
+	}
 }
 
 static inline uint32_t
@@ -399,7 +406,6 @@ template<bool remove_hook>
 void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip)
 {
 	bool halt_tc = false;
-	bool is_code;
 
 	if constexpr (!remove_hook) {
 		if (cpu_ctx->cpu->cpu_flags & CPU_ALLOW_CODE_WRITE) {
@@ -428,15 +434,50 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_
 
 			if (remove_tc) {
 				auto it_list = tc_in_page->linked_tc.begin();
-				// now unlink all other tc's which jump to this tc
+				// now unlink all other tc's that jump to this tc (aka the predecessors)
 				while (it_list != tc_in_page->linked_tc.end()) {
-					if ((*it_list)->jmp_offset[0] == tc_in_page->ptr_code) {
-						(*it_list)->jmp_offset[0] = (*it_list)->jmp_offset[2];
+					uint32_t tc_link_type = (*it_list)->flags & TC_FLG_LINK_MASK;
+					if (tc_link_type == TC_FLG_DIRECT) {
+						if ((*it_list)->jmp_offset[0] == tc_in_page->ptr_code) {
+							(*it_list)->jmp_offset[0] = (*it_list)->jmp_offset[2];
+						}
+						if ((*it_list)->jmp_offset[1] == tc_in_page->ptr_code) {
+							(*it_list)->jmp_offset[1] = (*it_list)->jmp_offset[2];
+						}
 					}
-					if ((*it_list)->jmp_offset[1] == tc_in_page->ptr_code) {
-						(*it_list)->jmp_offset[1] = (*it_list)->jmp_offset[2];
+					else {
+						assert((tc_link_type == TC_FLG_INDIRECT) || (tc_link_type == TC_FLG_RET));
+						for (auto &entry : (*it_list)->ibtc) {
+							if (entry == tc_in_page) {
+								entry = &dummy_tc;
+							}
+						}
 					}
-					it_list++;
+					++it_list;
+				}
+
+				// now update the linked_tc list of the tc's that this tc is (in)directly jumping to (aka the successors)
+				const auto update_linked_tc_lambda = [tc_in_page](translated_code_t *tc) {
+					if (tc == tc_in_page) {
+						return true;
+					}
+					return false;
+				};
+				if (tc_in_page->jmp_offset[0] != tc_in_page->jmp_offset[2]) {
+					translated_code_t *dst_tc = *reinterpret_cast<translated_code_t **>(reinterpret_cast<uint8_t *>(tc_in_page->jmp_offset[0]) - 14);
+					[[maybe_unused]] const auto erased = std::erase_if(dst_tc->linked_tc, update_linked_tc_lambda);
+					assert(erased);
+				}
+				if (tc_in_page->jmp_offset[1] != tc_in_page->jmp_offset[2]) {
+					translated_code_t *next_tc = *reinterpret_cast<translated_code_t **>(reinterpret_cast<uint8_t *>(tc_in_page->jmp_offset[1]) - 14);
+					[[maybe_unused]] const auto erased = std::erase_if(next_tc->linked_tc, update_linked_tc_lambda);
+					assert(erased);
+				}
+				for (auto &entry : tc_in_page->ibtc) {
+					if (entry->guest_flags != HFLG_INVALID) {
+						[[maybe_unused]] const auto erased = std::erase_if(entry->linked_tc, update_linked_tc_lambda);
+						assert(erased);
+					}
 				}
 
 				// delete the found tc from the code cache
@@ -461,7 +502,7 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_
 						cpu_ctx->cpu->code_cache[idx].erase(it);
 						break;
 					}
-					it++;
+					++it;
 				}
 
 				// we can't delete the tc in tc_page_map right now because it would invalidate its iterator, which is still needed below
@@ -471,19 +512,15 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_
 					break;
 				}
 			}
-			it_set++;
+			++it_set;
 		}
 
-		// delete the found tc's from tc_page_map and ibtc
+		// delete the found tc's from tc_page_map
 		for (auto &it : tc_to_delete) {
-			auto it_ibtc = cpu_ctx->cpu->ibtc.find((*it)->virt_pc);
-			if (it_ibtc != cpu_ctx->cpu->ibtc.end()) {
-				cpu_ctx->cpu->ibtc.erase(it_ibtc);
-			}
 			it_map->second.erase(it);
 		}
 
-		// if the tc_page_map for phys_addr is now empty, also clear TLB_CODE and its key in the map
+		// if the tc_page_map for phys_addr is now empty, also clear the corresponding smc bit and its key in the map
 		if (it_map->second.empty()) {
 			cpu_ctx->cpu->smc.reset(phys_addr >> PAGE_SHIFT);
 			cpu_ctx->cpu->tc_page_map.erase(it_map);
@@ -550,7 +587,6 @@ tc_cache_clear(cpu_t *cpu)
 	// Use this when you want to destroy all tc's but without affecting the actual code allocated. E.g: on x86-64, you'll want to keep the .pdata sections
 	// when this is called from a function called from the JITed code, and the current function can potentially throw an exception
 	cpu->tc_page_map.clear();
-	cpu->ibtc.clear();
 	cpu->smc.reset();
 	for (auto &bucket : cpu->code_cache) {
 		bucket.clear();
@@ -626,16 +662,43 @@ tc_link_dst_only(translated_code_t *prev_tc, translated_code_t *ptr_tc)
 	}
 }
 
+static void
+tc_link_indirect(cpu_t *cpu, translated_code_t *prev_tc, translated_code_t *ptr_tc)
+{
+	// dst pc of ptr_tc must be in the same page of prev_tc to avoid possible page faults
+	if ((ptr_tc->virt_pc & ~PAGE_MASK) == (prev_tc->virt_pc & ~PAGE_MASK)) {
+		for (auto &entry : prev_tc->ibtc) {
+			if (entry->guest_flags == HFLG_INVALID) {
+				entry = ptr_tc;
+				ptr_tc->linked_tc.push_front(prev_tc);
+				return;
+			}
+		}
+
+		// if we reach here, it means the ibtc is full. In this case we pick a random entry and replace it
+		std::uniform_int_distribution<uint32_t> dis(0, 2);
+		uint32_t idx = dis(cpu->rng_gen);
+		[[maybe_unused]] const auto erased = std::erase_if(prev_tc->ibtc[idx]->linked_tc, [prev_tc](translated_code_t *tc) {
+			if (tc == prev_tc) {
+				return true;
+			}
+			return false;
+			});
+		assert(erased);
+		prev_tc->ibtc[idx] = ptr_tc;
+		ptr_tc->linked_tc.push_front(prev_tc);
+	}
+}
+
 entry_t
 link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 {
-	const auto it = cpu_ctx->cpu->ibtc.find(get_pc(cpu_ctx));
-
-	if (it != cpu_ctx->cpu->ibtc.end()) {
-		if (it->second->cs_base == cpu_ctx->regs.cs_hidden.base &&
-			it->second->guest_flags == ((cpu_ctx->hflags & HFLG_CONST) | (cpu_ctx->regs.eflags & EFLAGS_CONST)) &&
-			((it->second->virt_pc & ~PAGE_MASK) == (tc->virt_pc & ~PAGE_MASK))) {
-			return it->second->ptr_code;
+	// NOTE: make sure to check guest_flags first, so that if we are comparing against the dummy_tc, we fail at the first comparison
+	for (const auto entry : tc->ibtc) {
+		if (entry->guest_flags == ((cpu_ctx->hflags & HFLG_CONST) | (cpu_ctx->regs.eflags & EFLAGS_CONST)) && // must have matching hidden flags
+			(entry->cs_base == cpu_ctx->regs.cs_hidden.base) && // must have same cs_base to avoid jumping to wrong pc
+			(entry->virt_pc == get_pc(cpu_ctx))) { // must match dst pc we are jumping to
+			return entry->ptr_code;
 		}
 	}
 
@@ -1517,7 +1580,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 
 			case TC_FLG_RET:
 			case TC_FLG_INDIRECT:
-				cpu->ibtc.insert_or_assign(virt_pc, ptr_tc);
+				tc_link_indirect(cpu, prev_tc, ptr_tc);
 				break;
 
 			default:

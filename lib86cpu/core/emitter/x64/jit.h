@@ -29,7 +29,7 @@ class lc86_jit : public Target {
 public:
 	lc86_jit(cpu_t *cpu);
 	void gen_code_block();
-	void gen_tc_prologue() { start_new_session(); gen_prologue_main(); }
+	void gen_tc_prologue() { start_new_session(); gen_exit_func(); gen_prologue_main(); }
 	void gen_tc_epilogue();
 	void gen_aux_funcs();
 	void gen_hook(void *hook_addr);
@@ -155,7 +155,7 @@ public:
 	void xor_(ZydisDecodedInstruction *instr);
 
 #if defined(_WIN64)
-	uint8_t *gen_exception_info(uint8_t *code_ptr, size_t code_size);
+	void gen_exception_info(uint8_t *code_ptr, size_t code_size);
 
 private:
 	void create_unwind_info();
@@ -169,6 +169,7 @@ private:
 	template<bool set_ret = true>
 	void gen_epilogue_main();
 	void gen_tail_call(x86::Gp addr);
+	void gen_exit_func();
 	void gen_block_end_checks();
 	void gen_no_link_checks();
 	bool gen_check_rf_single_step();
