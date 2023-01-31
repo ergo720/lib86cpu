@@ -44,10 +44,13 @@ uint128_t::operator uint8_t()
 uint128_t
 uint128_t::operator>>(int shift)
 {
+	// NOTE: the shift amount used by the intrinsic is expressed in bytes, not bits
+
 	__m128i val;
 	val.m128i_u64[0] = this->low;
 	val.m128i_u64[1] = this->high;
 
+	shift /= 8;
 	switch (shift)
 	{
 	case 0:
