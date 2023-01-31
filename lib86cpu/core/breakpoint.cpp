@@ -64,7 +64,7 @@ cpu_check_watchpoints(cpu_t *cpu, addr_t addr, int dr_idx, int type, uint32_t ei
 		cpu->cpu_ctx.exp_info.exp_data.code = 0;
 		cpu->cpu_ctx.exp_info.exp_data.idx = EXP_DB;
 		cpu->cpu_ctx.exp_info.exp_data.eip = eip;
-		throw host_exp_t::de_exp;
+		throw host_exp_t::db_exp;
 	}
 }
 

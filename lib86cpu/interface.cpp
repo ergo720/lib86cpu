@@ -434,7 +434,7 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 		return nullptr;
 	}
 	catch (host_exp_t type) {
-		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
+		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::db_exp));
 		set_last_error(lc86_status::guest_exp);
 		return nullptr;
 	}
@@ -719,7 +719,7 @@ lc86_status mem_read_block(cpu_t *cpu, addr_t addr, uint32_t size, uint8_t *out,
 		return lc86_status::success;
 	}
 	catch (host_exp_t type) {
-		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
+		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::db_exp));
 		if (actual_size) {
 			*actual_size = vec_offset;
 		}
@@ -825,7 +825,7 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, uint32_t size, const void
 		return lc86_status::success;
 	}
 	catch (host_exp_t type) {
-		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
+		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::db_exp));
 		if (actual_size) {
 			*actual_size = size_tot;
 		}
@@ -883,7 +883,7 @@ static lc86_status io_read_handler(cpu_t *cpu, port_t port, T &out)
 		return lc86_status::success;
 	}
 	catch (host_exp_t type) {
-		assert(type == host_exp_t::de_exp);
+		assert(type == host_exp_t::db_exp);
 		return set_last_error(lc86_status::guest_exp);
 	}
 }
@@ -921,7 +921,7 @@ static lc86_status io_write_handler(cpu_t *cpu, port_t port, T val)
 		return lc86_status::success;
 	}
 	catch (host_exp_t type) {
-		assert(type == host_exp_t::de_exp);
+		assert(type == host_exp_t::db_exp);
 		return set_last_error(lc86_status::guest_exp);
 	}
 }

@@ -725,7 +725,7 @@ cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
 		}
 		catch (host_exp_t type) {
 			// this happens on instr breakpoints (not int3)
-			assert(type == host_exp_t::de_exp);
+			assert(type == host_exp_t::db_exp);
 			cpu->jit->gen_raise_exp_inline(0, 0, EXP_DB, cpu->instr_eip);
 			disas_ctx->flags |= DISAS_FLG_DBG_FAULT;
 			return;
@@ -1457,7 +1457,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			pc = get_code_addr(cpu, virt_pc, cpu->cpu_ctx.regs.eip);
 		}
 		catch (host_exp_t type) {
-			assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
+			assert((type == host_exp_t::pf_exp) || (type == host_exp_t::db_exp));
 			cpu_suppress_trampolines<is_tramp>(cpu);
 
 			// this is either a page fault or a debug exception. In both cases, we have to call the exception handler
@@ -1467,7 +1467,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 				prev_tc = cpu_raise_exception(&cpu->cpu_ctx);
 			}
 			catch (host_exp_t type) {
-				assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
+				assert((type == host_exp_t::pf_exp) || (type == host_exp_t::db_exp));
 
 				// page fault or debug exception while delivering another exception
 				goto retry_exp;
@@ -1610,7 +1610,7 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 				return cpu_raise_exception(cpu_ctx);
 			}
 			catch (host_exp_t type) {
-				assert((type == host_exp_t::pf_exp) || (type == host_exp_t::de_exp));
+				assert((type == host_exp_t::pf_exp) || (type == host_exp_t::db_exp));
 
 				// page fault or debug exception while delivering another exception
 				goto retry_exp;
@@ -1618,7 +1618,7 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 		}
 		break;
 
-		case host_exp_t::de_exp: {
+		case host_exp_t::db_exp: {
 			// debug exception trap (mem/io r/w watch) while excecuting the translated code.
 			// We set CPU_DBG_TRAP, so that we can execute the trapped instruction without triggering again a de exp,
 			// and then jump to the debug handler. Note thate eip points to the trapped instr, so we can execute it.

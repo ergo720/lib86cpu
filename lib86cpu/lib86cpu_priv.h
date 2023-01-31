@@ -42,7 +42,7 @@ enum class mem_type {
 
 enum class host_exp_t : int {
 	pf_exp,
-	de_exp,
+	db_exp,
 	halt_tc,
 };
 
