@@ -46,6 +46,7 @@ void halt_loop(cpu_t *cpu);
 #define CR4_OSFXSR_SHIFT    9
 #define CR0_TS_SHIFT        10
 #define TIMEOUT_SHIFT       11
+#define INHIBIT_INT_SHIFT   14
 #define HFLG_INVALID        (1 << 31) // this should use a bit position that doesn't overlap with either HFLG_CONST or EFLAGS_CONST
 #define HFLG_CPL            (3 << CPL_SHIFT)
 #define HFLG_CS32           (1 << CS32_SHIFT)
@@ -55,6 +56,7 @@ void halt_loop(cpu_t *cpu);
 #define HFLG_TRAMP          (1 << TRAMP_SHIFT)
 #define HFLG_DBG_TRAP       (1 << DBG_TRAP_SHIFT)
 #define HFLG_TIMEOUT        (1 << TIMEOUT_SHIFT)
+#define HFLG_INHIBIT_INT    (1 << INHIBIT_INT_SHIFT)
 #define HFLG_CR0_TS         (1 << CR0_TS_SHIFT)
 #define HFLG_CR4_OSFXSR     (1 << CR4_OSFXSR_SHIFT)
 #define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_TIMEOUT | HFLG_CR0_TS | HFLG_CR4_OSFXSR)
@@ -76,6 +78,7 @@ void halt_loop(cpu_t *cpu);
 // disassembly context flags
 #define DISAS_FLG_CS32         (1 << 0)
 #define DISAS_FLG_PAGE_CROSS   (1 << 2)
+#define DISAS_FLG_INHIBIT_INT  (1 << 3)
 #define DISAS_FLG_FETCH_FAULT  DISAS_FLG_PAGE_CROSS
 #define DISAS_FLG_DBG_FAULT    DISAS_FLG_PAGE_CROSS
 #define DISAS_FLG_ONE_INSTR    CPU_DISAS_ONE

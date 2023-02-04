@@ -13,6 +13,7 @@
 #define CPU_CTX_EFLAGS_RES   offsetof(cpu_ctx_t, lazy_eflags.result)
 #define CPU_CTX_EFLAGS_AUX   offsetof(cpu_ctx_t, lazy_eflags.auxbits)
 #define CPU_CTX_EFLAGS_PAR   offsetof(cpu_ctx_t, lazy_eflags.parity)
+#define CPU_CTX_HFLG         offsetof(cpu_ctx_t, hflags)
 #define CPU_CTX_EXP          offsetof(cpu_ctx_t, exp_info)
 #define CPU_CTX_INT          offsetof(cpu_ctx_t, int_pending)
 #define CPU_CTX_EXIT         offsetof(cpu_ctx_t, exit_requested)

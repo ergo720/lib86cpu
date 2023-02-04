@@ -564,6 +564,14 @@ lc86_jit::gen_block_end_checks()
 void
 lc86_jit::gen_no_link_checks()
 {
+	if ((m_cpu->disas_ctx.flags & DISAS_FLG_INHIBIT_INT) && (m_cpu->cpu_ctx.hflags & HFLG_INHIBIT_INT)) {
+		assert(m_cpu->disas_ctx.flags & DISAS_FLG_ONE_INSTR);
+
+		MOV(EAX, MEMD32(RCX, CPU_CTX_HFLG));
+		AND(EAX, ~HFLG_INHIBIT_INT);
+		MOV(MEMD32(RCX, CPU_CTX_HFLG), EAX);
+	}
+
 	if (m_cpu->cpu_ctx.hflags & HFLG_DBG_TRAP) {
 		LD_R32(EAX, CPU_CTX_EIP);
 		gen_raise_exp_inline<true>(0, 0, EXP_DB, EAX);
@@ -6246,10 +6254,14 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				BR_EQ(ok);
 				RAISEin_no_param_f();
 				m_a.bind(ok);
+				MOV(EAX, MEMD32(RCX, CPU_CTX_HFLG));
+				OR(EAX, HFLG_INHIBIT_INT);
+				MOV(MEMD32(RCX, CPU_CTX_HFLG), EAX);
 				ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
 
 				gen_link_indirect();
 				m_cpu->tc->flags |= TC_FLG_INDIRECT;
+				m_cpu->cpu_flags |= CPU_FORCE_INSERT;
 				m_cpu->translate_next = 0;
 			}
 			else {
@@ -7002,10 +7014,14 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 			}
 
 			if (sel.first == SS_idx) {
+				MOV(EAX, MEMD32(RCX, CPU_CTX_HFLG));
+				OR(EAX, HFLG_INHIBIT_INT);
+				MOV(MEMD32(RCX, CPU_CTX_HFLG), EAX);
 				ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
 
 				gen_link_indirect();
 				m_cpu->tc->flags |= TC_FLG_INDIRECT;
+				m_cpu->cpu_flags |= CPU_FORCE_INSERT;
 				m_cpu->translate_next = 0;
 			}
 		}
@@ -8010,6 +8026,7 @@ lc86_jit::sti(ZydisDecodedInstruction *instr)
 	assert(instr->opcode == 0xFB);
 
 	LD_R32(EAX, CPU_CTX_EFLAGS);
+	MOV(EDX, EAX);
 	if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
 
 		// we don't support virtual 8086 mode, so we don't need to check for it
@@ -8025,6 +8042,19 @@ lc86_jit::sti(ZydisDecodedInstruction *instr)
 		OR(EAX, IF_MASK);
 		ST_R32(CPU_CTX_EFLAGS, EAX);
 	}
+	Label no_inhibition = m_a.newLabel();
+	TEST(EDX, IF_MASK);
+	BR_NE(no_inhibition);
+	MOV(EAX, MEMD32(RCX, CPU_CTX_HFLG));
+	OR(EAX, HFLG_INHIBIT_INT);
+	MOV(MEMD32(RCX, CPU_CTX_HFLG), EAX);
+	m_a.bind(no_inhibition);
+	ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
+
+	gen_link_indirect();
+	m_cpu->tc->flags |= TC_FLG_INDIRECT;
+	m_cpu->cpu_flags |= CPU_FORCE_INSERT;
+	m_cpu->translate_next = 0;
 }
 
 void

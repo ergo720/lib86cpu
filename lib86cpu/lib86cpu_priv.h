@@ -158,6 +158,7 @@ struct cpu_t {
 	uint32_t cpu_flags;
 	const char *cpu_name;
 	cpu_ctx_t cpu_ctx;
+	disas_ctx_t disas_ctx;
 	translated_code_t *tc; // tc for which we are currently generating code
 	std::mt19937 rng_gen;
 	std::unique_ptr<lc86_jit> jit;

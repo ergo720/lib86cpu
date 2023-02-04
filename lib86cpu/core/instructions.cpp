@@ -1282,7 +1282,7 @@ hlt_helper(cpu_ctx_t *cpu_ctx)
 		throw lc86_exp_abort("Received abort signal, terminating the emulation", lc86_status::success);
 	}
 
-	if (((int_flg & CPU_HW_INT) | (cpu_ctx->regs.eflags & IF_MASK)) == (CPU_HW_INT | IF_MASK)) {
+	if (((int_flg & CPU_HW_INT) | (cpu_ctx->regs.eflags & IF_MASK) | (cpu_ctx->hflags & HFLG_INHIBIT_INT)) == (CPU_HW_INT | IF_MASK)) {
 		cpu_ctx->exp_info.exp_data.fault_addr = 0;
 		cpu_ctx->exp_info.exp_data.code = 0;
 		cpu_ctx->exp_info.exp_data.idx = cpu_ctx->cpu->get_int_vec();

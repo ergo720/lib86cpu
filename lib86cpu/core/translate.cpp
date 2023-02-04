@@ -330,15 +330,9 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		cpu_ctx->regs.cs_hidden.flags = seg_flags;
 		cpu_ctx->hflags = (((seg_flags & SEG_HIDDEN_DB) >> 20) | dpl) | (cpu_ctx->hflags & ~(HFLG_CS32 | HFLG_CPL));
 		cpu_ctx->regs.eip = new_eip;
-		// always clear HFLG_DBG_TRAP
-		cpu_ctx->hflags &= ~HFLG_DBG_TRAP;
 		if (idx == EXP_PF) {
 			cpu_ctx->regs.cr2 = fault_addr;
 		}
-		if (idx == EXP_DB) {
-			cpu_ctx->regs.dr[7] &= ~DR7_GD_MASK;
-		}
-		cpu_ctx->exp_info.old_exp = EXP_INVALID;
 	}
 	else {
 		// real mode
@@ -365,12 +359,13 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		cpu_ctx->regs.cs = vec_entry >> 16;
 		cpu_ctx->regs.cs_hidden.base = cpu_ctx->regs.cs << 4;
 		cpu_ctx->regs.eip = vec_entry & 0xFFFF;
-		// always clear HFLG_DBG_TRAP
-		cpu_ctx->hflags &= ~HFLG_DBG_TRAP;
-		if (idx == EXP_DB) {
-			cpu_ctx->regs.dr[7] &= ~DR7_GD_MASK;
-		}
-		cpu_ctx->exp_info.old_exp = EXP_INVALID;
+	}
+
+	cpu_ctx->hflags &= ~HFLG_DBG_TRAP; // always clear HFLG_DBG_TRAP
+	cpu_ctx->exp_info.old_exp = EXP_INVALID;
+	cpu_ctx->hflags &= ~HFLG_INHIBIT_INT; // an exception clears the interrupt inhibition state
+	if (idx == EXP_DB) {
+		cpu_ctx->regs.dr[7] &= ~DR7_GD_MASK;
 	}
 
 	return nullptr;
@@ -706,8 +701,9 @@ link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 }
 
 static void
-cpu_translate(cpu_t *cpu, disas_ctx_t *disas_ctx)
+cpu_translate(cpu_t *cpu)
 {
+	disas_ctx_t *disas_ctx = &cpu->disas_ctx;
 	cpu->translate_next = 1;
 	cpu->virt_pc = disas_ctx->virt_pc;
 
@@ -1416,7 +1412,7 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 		return CPU_NON_HW_INT;
 	}
 
-	if (((int_flg & CPU_HW_INT) | (cpu_ctx->regs.eflags & IF_MASK)) == (IF_MASK | CPU_HW_INT)) {
+	if (((int_flg & CPU_HW_INT) | (cpu_ctx->regs.eflags & IF_MASK) | (cpu_ctx->hflags & HFLG_INHIBIT_INT)) == (IF_MASK | CPU_HW_INT)) {
 		cpu_ctx->exp_info.exp_data.fault_addr = 0;
 		cpu_ctx->exp_info.exp_data.code = 0;
 		cpu_ctx->exp_info.exp_data.idx = cpu_ctx->cpu->get_int_vec();
@@ -1491,22 +1487,23 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			cpu->jit->gen_tc_prologue();
 
 			// prepare the disas ctx
-			disas_ctx_t disas_ctx{};
-			disas_ctx.flags = ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT) |
+			cpu->disas_ctx.flags = ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT) |
 				((cpu->cpu_ctx.hflags & HFLG_PE_MODE) >> (PE_MODE_SHIFT - 1)) |
+				((cpu->cpu_ctx.hflags & HFLG_INHIBIT_INT) >> 11) |
 				(cpu->cpu_flags & CPU_DISAS_ONE) |
 				((cpu->cpu_flags & CPU_SINGLE_STEP) >> 3) |
 				((cpu->cpu_ctx.regs.eflags & RF_MASK) >> 9) | // if rf is set, we need to clear it after the first instr executed
-				((cpu->cpu_ctx.regs.eflags & TF_MASK) >> 1); // if tf is set, we need to raise a DB exp after every instruction
-			disas_ctx.virt_pc = virt_pc;
-			disas_ctx.pc = pc;
+				((cpu->cpu_ctx.regs.eflags & TF_MASK) >> 1) | // if tf is set, we need to raise a DB exp after every instruction
+				((cpu->cpu_ctx.hflags & HFLG_INHIBIT_INT) >> 7); // if interrupts are inhibited, we need to enable them after the first instr executed
+			cpu->disas_ctx.virt_pc = virt_pc;
+			cpu->disas_ctx.pc = pc;
 
 			if constexpr (is_trap) {
 				// don't take hooks if we are executing a trapped instr. Otherwise, if the trapped instr is also hooked, we will take the hook instead of executing it
-				cpu_translate(cpu, &disas_ctx);
+				cpu_translate(cpu);
 			}
 			else {
-				const auto it = cpu->hook_map.find(disas_ctx.virt_pc);
+				const auto it = cpu->hook_map.find(cpu->disas_ctx.virt_pc);
 				bool take_hook;
 				if constexpr (is_tramp) {
 					take_hook = (it != cpu->hook_map.end()) && !(cpu->cpu_ctx.hflags & HFLG_TRAMP);
@@ -1516,12 +1513,12 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 				}
 
 				if (take_hook) {
-					cpu->instr_eip = disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base;
+					cpu->instr_eip = cpu->disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base;
 					cpu->jit->gen_hook(it->second);
 				}
 				else {
 					// start guest code translation
-					cpu_translate(cpu, &disas_ctx);
+					cpu_translate(cpu);
 				}
 			}
 
@@ -1537,7 +1534,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			ptr_tc = cpu->tc;
 			cpu->tc = nullptr;
 
-			if (disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR)) {
+			if (cpu->disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR)) {
 				if (cpu->cpu_flags & CPU_FORCE_INSERT) {
 					if ((cpu->num_tc) == CODE_CACHE_MAX_SIZE) {
 						tc_cache_purge(cpu);
