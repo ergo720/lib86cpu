@@ -165,10 +165,11 @@ mem_manager::release_sys_mem(void *addr)
 	}
 
 #if defined(_WIN64)
-	if (auto it = eh_frames.find(addr); it != eh_frames.end()) {
+	void *main_addr = reinterpret_cast<uint8_t *>(addr) + 16;
+	if (auto it = eh_frames.find(main_addr); it != eh_frames.end()) {
 		[[maybe_unused]] auto ret = RtlDeleteFunctionTable(static_cast<PRUNTIME_FUNCTION>(it->second));
 		assert(ret);
-		eh_frames.erase(addr);
+		eh_frames.erase(main_addr);
 	}
 #endif
 	

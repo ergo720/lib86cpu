@@ -1543,9 +1543,13 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 					tc_cache_insert(cpu, pc, std::move(tc));
 				}
 
+				uint32_t cpu_flags = cpu->cpu_flags;
 				cpu_suppress_trampolines<is_tramp>(cpu);
 				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE | CPU_FORCE_INSERT);
 				tc_run_code(&cpu->cpu_ctx, ptr_tc);
+				if (!(cpu_flags & CPU_FORCE_INSERT)) {
+					cpu->jit->free_code_block(ptr_tc->jmp_offset[2]);
+				}
 				prev_tc = nullptr;
 				continue;
 			}
