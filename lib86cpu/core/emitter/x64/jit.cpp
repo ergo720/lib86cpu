@@ -536,7 +536,7 @@ lc86_jit::gen_exit_func()
 }
 
 void
-lc86_jit::gen_block_end_checks()
+lc86_jit::gen_interrupt_check()
 {
 	Label no_int = m_a.newLabel();
 	if (m_cpu->cpu_ctx.hflags & HFLG_TIMEOUT) {
@@ -582,7 +582,7 @@ lc86_jit::gen_no_link_checks()
 		return;
 	}
 
-	gen_block_end_checks();
+	gen_interrupt_check();
 }
 
 void

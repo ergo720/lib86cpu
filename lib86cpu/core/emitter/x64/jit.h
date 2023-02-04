@@ -170,7 +170,7 @@ private:
 	void gen_epilogue_main();
 	void gen_tail_call(x86::Gp addr);
 	void gen_exit_func();
-	void gen_block_end_checks();
+	void gen_interrupt_check();
 	void gen_no_link_checks();
 	bool gen_check_rf_single_step();
 	template<typename T>
