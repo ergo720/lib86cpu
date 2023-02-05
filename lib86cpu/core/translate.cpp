@@ -701,6 +701,36 @@ link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 }
 
 static void
+tc_link_prev(cpu_t *cpu, translated_code_t *prev_tc, translated_code_t *ptr_tc)
+{
+	// see if we can link the previous tc with the current one
+	if (prev_tc != nullptr) {
+		switch (prev_tc->flags & TC_FLG_LINK_MASK)
+		{
+		case 0:
+			break;
+
+		case TC_FLG_DST_ONLY:
+			tc_link_dst_only(prev_tc, ptr_tc);
+			break;
+
+		case TC_FLG_DIRECT:
+		case TC_FLG_DST_COND:
+			tc_link_direct(prev_tc, ptr_tc);
+			break;
+
+		case TC_FLG_RET:
+		case TC_FLG_INDIRECT:
+			tc_link_indirect(cpu, prev_tc, ptr_tc);
+			break;
+
+		default:
+			LIB86CPU_ABORT();
+		}
+	}
+}
+
+static void
 cpu_translate(cpu_t *cpu)
 {
 	disas_ctx_t *disas_ctx = &cpu->disas_ctx;
@@ -1541,16 +1571,19 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 						prev_tc = nullptr;
 					}
 					tc_cache_insert(cpu, pc, std::move(tc));
+
+					// if the tc is forcefully inserted, then we can still link it
+					tc_link_prev(cpu, prev_tc, ptr_tc);
 				}
 
 				uint32_t cpu_flags = cpu->cpu_flags;
 				cpu_suppress_trampolines<is_tramp>(cpu);
 				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE | CPU_FORCE_INSERT);
-				tc_run_code(&cpu->cpu_ctx, ptr_tc);
+				prev_tc = tc_run_code(&cpu->cpu_ctx, ptr_tc);
 				if (!(cpu_flags & CPU_FORCE_INSERT)) {
 					cpu->jit->free_code_block(ptr_tc->jmp_offset[2]);
+					prev_tc = nullptr;
 				}
-				prev_tc = nullptr;
 				continue;
 			}
 			else {
@@ -1565,30 +1598,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 		cpu_suppress_trampolines<is_tramp>(cpu);
 
 		// see if we can link the previous tc with the current one
-		if (prev_tc != nullptr) {
-			switch (prev_tc->flags & TC_FLG_LINK_MASK)
-			{
-			case 0:
-				break;
-
-			case TC_FLG_DST_ONLY:
-				tc_link_dst_only(prev_tc, ptr_tc);
-				break;
-
-			case TC_FLG_DIRECT:
-			case TC_FLG_DST_COND:
-				tc_link_direct(prev_tc, ptr_tc);
-				break;
-
-			case TC_FLG_RET:
-			case TC_FLG_INDIRECT:
-				tc_link_indirect(cpu, prev_tc, ptr_tc);
-				break;
-
-			default:
-				LIB86CPU_ABORT();
-			}
-		}
+		tc_link_prev(cpu, prev_tc, ptr_tc);
 
 		prev_tc = tc_run_code(&cpu->cpu_ctx, ptr_tc);
 	}
