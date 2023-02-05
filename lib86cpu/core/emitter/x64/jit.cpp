@@ -757,9 +757,8 @@ void lc86_jit::gen_link_direct(addr_t dst_pc, addr_t *next_pc, T target_pc)
 		if (next_pc) { // if(dst_pc) -> cond jmp dst_pc; if(next_pc) -> cond jmp next_pc
 			if (dst) {
 				MOV(RDX, &m_cpu->tc->flags);
-				MOV(R8D, MEM32(RDX));
-				MOV(EAX, ~TC_FLG_JMP_TAKEN);
-				AND(EAX, R8D);
+				MOV(EAX, MEM32(RDX));
+				AND(EAX, ~TC_FLG_JMP_TAKEN);
 				if constexpr (std::is_integral_v<T>) {
 					if (target_pc == dst_pc) {
 						MOV(MEM32(RDX), EAX);
@@ -789,9 +788,8 @@ void lc86_jit::gen_link_direct(addr_t dst_pc, addr_t *next_pc, T target_pc)
 			}
 			else {
 				MOV(RDX, &m_cpu->tc->flags);
-				MOV(R8D, MEM32(RDX));
-				MOV(EAX, ~TC_FLG_JMP_TAKEN);
-				AND(EAX, R8D);
+				MOV(EAX, MEM32(RDX));
+				AND(EAX, ~TC_FLG_JMP_TAKEN);
 				if constexpr (std::is_integral_v<T>) {
 					if (target_pc == *next_pc) {
 						OR(EAX, TC_JMP_NEXT_PC << 4);
@@ -832,9 +830,8 @@ void lc86_jit::gen_link_direct(addr_t dst_pc, addr_t *next_pc, T target_pc)
 
 	case 2: { // cond jmp next_pc + uncond jmp dst_pc
 		MOV(RDX, &m_cpu->tc->flags);
-		MOV(R8D, MEM32(RDX));
-		MOV(EAX, ~TC_FLG_JMP_TAKEN);
-		AND(EAX, R8D);
+		MOV(EAX, MEM32(RDX));
+		AND(EAX, ~TC_FLG_JMP_TAKEN);
 		if constexpr (std::is_integral_v<T>) {
 			if (target_pc == *next_pc) {
 				OR(EAX, TC_JMP_NEXT_PC << 4);
@@ -918,9 +915,8 @@ void lc86_jit::gen_link_dst_cond(T &&lambda)
 
 	if ((m_cpu->virt_pc & ~PAGE_MASK) == (m_cpu->virt_pc + m_cpu->instr_bytes & ~PAGE_MASK)) {
 		MOV(RDX, &m_cpu->tc->flags);
-		MOV(R8D, MEM32(RDX));
-		MOV(EAX, ~TC_FLG_JMP_TAKEN);
-		AND(EAX, R8D);
+		MOV(EAX, MEM32(RDX));
+		AND(EAX, ~TC_FLG_JMP_TAKEN);
 		lambda();
 		Label dst = m_a.newLabel();
 		BR_EQ(dst);
