@@ -570,6 +570,7 @@ lc86_jit::gen_no_link_checks()
 		MOV(EAX, MEMD32(RCX, CPU_CTX_HFLG));
 		AND(EAX, ~HFLG_INHIBIT_INT);
 		MOV(MEMD32(RCX, CPU_CTX_HFLG), EAX);
+		m_cpu->cpu_flags |= CPU_FORCE_INSERT;
 	}
 
 	if (m_cpu->cpu_ctx.hflags & HFLG_DBG_TRAP) {
@@ -904,6 +905,41 @@ lc86_jit::gen_link_ret()
 	// NOTE: perhaps find a way to use a return stack buffer to link to the next tc
 
 	gen_link_indirect();
+}
+
+template<typename T>
+void lc86_jit::gen_link_dst_cond(T &&lambda)
+{
+	// condition result should be in ebx; if true, jumps to dst, otherwise jumps to next
+
+	m_needs_epilogue = false;
+
+	gen_no_link_checks();
+
+	if ((m_cpu->virt_pc & ~PAGE_MASK) == (m_cpu->virt_pc + m_cpu->instr_bytes & ~PAGE_MASK)) {
+		MOV(RDX, &m_cpu->tc->flags);
+		MOV(R8D, MEM32(RDX));
+		MOV(EAX, ~TC_FLG_JMP_TAKEN);
+		AND(EAX, R8D);
+		lambda();
+		Label dst = m_a.newLabel();
+		BR_EQ(dst);
+		OR(EAX, TC_JMP_NEXT_PC << 4);
+		MOV(MEM32(RDX), EAX);
+		MOV(RDX, &m_cpu->tc->jmp_offset[1]);
+		MOV(RAX, MEM64(RDX));
+		gen_tail_call(RAX);
+		m_a.bind(dst);
+		MOV(MEM32(RDX), EAX);
+		MOV(RDX, &m_cpu->tc->jmp_offset[0]);
+		MOV(RAX, MEM64(RDX));
+		gen_tail_call(RAX);
+
+		m_cpu->tc->flags |= ((2 & TC_FLG_NUM_JMP) | TC_FLG_DST_COND);
+	}
+	else {
+		gen_epilogue_main();
+	}
 }
 
 template<bool add_seg_base>
@@ -3011,8 +3047,10 @@ void lc86_jit::lxs(ZydisDecodedInstruction *instr)
 		if constexpr (idx == SS_idx) {
 			ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
 
-			gen_link_indirect();
-			m_cpu->tc->flags |= TC_FLG_INDIRECT;
+			gen_link_dst_cond([this] {
+				MOV(EBX, MEMD32(RCX, CPU_CTX_HFLG));
+				TEST(EBX, HFLG_SS32);
+				});
 			m_cpu->translate_next = 0;
 		}
 	}
@@ -6259,9 +6297,10 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				MOV(MEMD32(RCX, CPU_CTX_HFLG), EAX);
 				ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
 
-				gen_link_indirect();
-				m_cpu->tc->flags |= TC_FLG_INDIRECT;
-				m_cpu->cpu_flags |= CPU_FORCE_INSERT;
+				gen_link_dst_cond([this] {
+					MOV(EBX, MEMD32(RCX, CPU_CTX_HFLG));
+					TEST(EBX, HFLG_SS32);
+					});
 				m_cpu->translate_next = 0;
 			}
 			else {
@@ -7019,9 +7058,10 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 				MOV(MEMD32(RCX, CPU_CTX_HFLG), EAX);
 				ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
 
-				gen_link_indirect();
-				m_cpu->tc->flags |= TC_FLG_INDIRECT;
-				m_cpu->cpu_flags |= CPU_FORCE_INSERT;
+				gen_link_dst_cond([this] {
+					MOV(EBX, MEMD32(RCX, CPU_CTX_HFLG));
+					TEST(EBX, HFLG_SS32);
+					});
 				m_cpu->translate_next = 0;
 			}
 		}
@@ -7199,8 +7239,10 @@ lc86_jit::popf(ZydisDecodedInstruction *instr)
 	MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EDX);
 	ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
 
-	gen_link_indirect();
-	m_cpu->tc->flags |= TC_FLG_INDIRECT;
+	if ((m_cpu->virt_pc & ~PAGE_MASK) == (m_cpu->virt_pc + m_cpu->instr_bytes & ~PAGE_MASK)) {
+		gen_link_indirect();
+		m_cpu->tc->flags |= TC_FLG_INDIRECT;
+	}
 	m_cpu->translate_next = 0;
 }
 
@@ -8051,9 +8093,10 @@ lc86_jit::sti(ZydisDecodedInstruction *instr)
 	m_a.bind(no_inhibition);
 	ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
 
-	gen_link_indirect();
-	m_cpu->tc->flags |= TC_FLG_INDIRECT;
-	m_cpu->cpu_flags |= CPU_FORCE_INSERT;
+	gen_link_dst_cond([this] {
+		MOV(EBX, MEMD32(RCX, CPU_CTX_HFLG));
+		TEST(EBX, HFLG_INHIBIT_INT);
+		});
 	m_cpu->translate_next = 0;
 }
 

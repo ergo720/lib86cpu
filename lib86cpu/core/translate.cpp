@@ -432,7 +432,7 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_
 				// now unlink all other tc's that jump to this tc (aka the predecessors)
 				while (it_list != tc_in_page->linked_tc.end()) {
 					uint32_t tc_link_type = (*it_list)->flags & TC_FLG_LINK_MASK;
-					if (tc_link_type == TC_FLG_DIRECT) {
+					if ((tc_link_type == TC_FLG_DIRECT) || (tc_link_type == TC_FLG_DST_COND) || (tc_link_type == TC_FLG_DST_ONLY)) {
 						if ((*it_list)->jmp_offset[0] == tc_in_page->ptr_code) {
 							(*it_list)->jmp_offset[0] = (*it_list)->jmp_offset[2];
 						}
@@ -1576,6 +1576,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 				break;
 
 			case TC_FLG_DIRECT:
+			case TC_FLG_DST_COND:
 				tc_link_direct(prev_tc, ptr_tc);
 				break;
 

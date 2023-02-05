@@ -178,6 +178,8 @@ private:
 	void gen_link_dst_only();
 	void gen_link_indirect();
 	void gen_link_ret();
+	template<typename T>
+	void gen_link_dst_cond(T &&lambda);
 	template<bool terminates, typename T1, typename T2, typename T3, typename T4>
 	void gen_raise_exp_inline(T1 fault_addr, T2 code, T3 idx, T4 eip);
 	template<bool terminates>

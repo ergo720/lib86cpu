@@ -93,7 +93,8 @@ void halt_loop(cpu_t *cpu);
 #define TC_FLG_JMP_TAKEN       (3 << 4)
 #define TC_FLG_RET             (1 << 6)
 #define TC_FLG_DST_ONLY        (1 << 7)  // jump(dest_pc)
-#define TC_FLG_LINK_MASK  (TC_FLG_INDIRECT | TC_FLG_DIRECT | TC_FLG_RET | TC_FLG_DST_ONLY)
+#define TC_FLG_DST_COND        (1 << 8)  // jump(dest_pc) based on binary condition
+#define TC_FLG_LINK_MASK  (TC_FLG_INDIRECT | TC_FLG_DIRECT | TC_FLG_RET | TC_FLG_DST_ONLY | TC_FLG_DST_COND)
 
 // segment descriptor flags
 #define SEG_DESC_TY   (15ULL << 40) // type
