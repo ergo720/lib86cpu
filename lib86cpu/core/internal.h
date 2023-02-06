@@ -77,6 +77,7 @@ void halt_loop(cpu_t *cpu);
 
 // disassembly context flags
 #define DISAS_FLG_CS32         (1 << 0)
+#define DISAS_FLG_PE_MODE      (1 << 1)
 #define DISAS_FLG_PAGE_CROSS   (1 << 2)
 #define DISAS_FLG_INHIBIT_INT  (1 << 3)
 #define DISAS_FLG_FETCH_FAULT  DISAS_FLG_PAGE_CROSS
