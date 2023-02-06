@@ -259,3 +259,79 @@ get_seg_prfx_offset(ZydisDecodedInstruction *instr)
 		LIB86CPU_ABORT();
 	}
 }
+
+uint128_t::uint128_t()
+{
+	this->low = 0;
+	this->high = 0;
+}
+
+uint128_t::uint128_t(uint64_t val)
+{
+	this->low = val;
+	this->high = 0;
+}
+
+uint128_t::operator uint8_t()
+{
+	return this->low & 0xFF;
+}
+
+uint128_t &
+uint128_t::operator|=(const uint128_t &rhs)
+{
+	this->low |= rhs.low;
+	this->high |= rhs.high;
+	return *this;
+}
+
+uint80_t::uint80_t()
+{
+	this->low = 0;
+	this->high = 0;
+}
+
+uint80_t::uint80_t(uint64_t val)
+{
+	this->low = val;
+	this->high = 0;
+}
+
+uint80_t::operator uint8_t()
+{
+	return this->low & 0xFF;
+}
+
+uint80_t::operator uint128_t()
+{
+	uint128_t converted;
+	converted.low = this->low;
+	converted.high = this->high;
+	return converted;
+}
+
+uint80_t &
+uint80_t::operator|=(const uint80_t &rhs)
+{
+	this->low |= rhs.low;
+	this->high |= rhs.high;
+	return *this;
+}
+
+uint80_t
+uint80_t::operator>>(int shift)
+{
+	uint128_t val = static_cast<uint128_t>(*this) >> shift;
+	this->low = val.low;
+	this->high = val.high;
+	return *this;
+}
+
+uint80_t
+uint80_t::operator<<(int shift)
+{
+	uint128_t val = static_cast<uint128_t>(*this) << shift;
+	this->low = val.low;
+	this->high = val.high;
+	return *this;
+}
