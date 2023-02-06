@@ -1338,6 +1338,76 @@ fxsave_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip)
 	}
 }
 
+uint32_t
+fxrstor_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip)
+{
+	// must be 16 byte aligned
+	if (addr & 15) {
+		return 1;
+	}
+
+	// PF check for the first and last byte we are going to read
+	volatile addr_t pg_check1 = get_read_addr(cpu_ctx->cpu, addr, 0, eip);
+	volatile addr_t pg_check2 = get_read_addr(cpu_ctx->cpu, addr + 288 - 1, 0, eip);
+
+	// check reserved bits of mxcsr
+	if (cpu_ctx->hflags & HFLG_CR4_OSFXSR) {
+		uint32_t temp = mem_read_helper<uint32_t>(cpu_ctx, addr + 24, eip, 0);
+		if (temp & ~MXCSR_MASK) {
+			return 1;
+		}
+		cpu_ctx->regs.mxcsr = temp;
+	}
+
+	cpu_ctx->regs.fctrl = mem_read_helper<uint16_t>(cpu_ctx, addr, eip, 0) | 0x40;
+	addr += 2;
+	write_fstatus(cpu_ctx->cpu, mem_read_helper<uint16_t>(cpu_ctx, addr, eip, 0));
+	addr += 2;
+	uint8_t ftag_abridged = mem_read_helper<uint8_t>(cpu_ctx, addr, eip, 0);
+	addr += 2;
+	cpu_ctx->regs.fop = mem_read_helper<uint16_t>(cpu_ctx, addr, eip, 0);
+	addr += 2;
+	cpu_ctx->regs.fip = mem_read_helper<uint32_t>(cpu_ctx, addr, eip, 0);
+	addr += 4;
+	cpu_ctx->regs.fcs = mem_read_helper<uint16_t>(cpu_ctx, addr, eip, 0);
+	addr += 4;
+	cpu_ctx->regs.fdp = mem_read_helper<uint32_t>(cpu_ctx, addr, eip, 0);
+	addr += 4;
+	cpu_ctx->regs.fds = mem_read_helper<uint16_t>(cpu_ctx, addr, eip, 0);
+	addr += (4 + 8);
+	for (unsigned i = 0; i < 8; ++i) {
+		cpu_ctx->regs.fr[i] = mem_read_helper<uint80_t>(cpu_ctx, addr, eip, 0);
+		addr += 16;
+	}
+	if (cpu_ctx->hflags & HFLG_CR4_OSFXSR) {
+		for (unsigned i = 0; i < 8; ++i) {
+			cpu_ctx->regs.xmm[i] = mem_read_helper<uint128_t>(cpu_ctx, addr, eip, 0);
+			addr += 16;
+		}
+	}
+	for (unsigned i = 0; i < 8; ++i) {
+		if (!(ftag_abridged & (1 << i))) { // empty
+			cpu_ctx->regs.ftags[i] = FPU_TAG_EMPTY;
+		}
+		else {
+			uint16_t exp = cpu_ctx->regs.fr[i].high & 0x7FFF;
+			uint64_t mant = cpu_ctx->regs.fr[i].low;
+			if (exp == 0 && mant == 0) { // zero
+				cpu_ctx->regs.ftags[i] = FPU_TAG_ZERO;
+			}
+			else if (exp == 0 || // denormal
+				exp == 0x7FFF) { // NaN or infinity
+				cpu_ctx->regs.ftags[i] = FPU_TAG_SPECIAL;
+			}
+			else { // normal
+				cpu_ctx->regs.ftags[i] = FPU_TAG_VALID;
+			}
+		}
+	}
+
+	return 0;
+}
+
 template uint32_t lret_pe_helper<true>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
 template uint32_t lret_pe_helper<false>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
 

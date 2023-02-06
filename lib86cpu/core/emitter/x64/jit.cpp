@@ -4877,6 +4877,32 @@ lc86_jit::fnstsw(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::fxrstor(ZydisDecodedInstruction *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		get_rm<OPNUM_SINGLE>(instr,
+			[](const op_info rm)
+			{
+				assert(0);
+			},
+			[this](const op_info rm)
+			{
+				MOV(R8D, m_cpu->instr_eip);
+				CALL_F(&fxrstor_helper);
+				Label ok = m_a.newLabel();
+				TEST(EAX, EAX);
+				BR_EQ(ok);
+				RAISEin0_f(EXP_GP);
+				m_a.bind(ok);
+				FLDCW(MEMD16(RCX, CPU_CTX_FCTRL)); // make host fctrl == guest fctrl
+			});
+	}
+}
+
+void
 lc86_jit::fxsave(ZydisDecodedInstruction *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
@@ -4893,7 +4919,7 @@ lc86_jit::fxsave(ZydisDecodedInstruction *instr)
 				Label ok = m_a.newLabel();
 				TEST(EDX, 15);
 				BR_EQ(ok);
-				RAISEin0_t(EXP_GP);
+				RAISEin0_f(EXP_GP);
 				m_a.bind(ok);
 				MOV(R8D, m_cpu->instr_eip);
 				CALL_F(&fxsave_helper);

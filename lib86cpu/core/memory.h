@@ -294,7 +294,7 @@ void mem_write_slow(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t is_p
 		}
 		while (i < sizeof(T)) {
 			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
-			as_memory_dispatch_write<uint8_t>(cpu, phys_addr, value >> (i * 8), region);
+			as_memory_dispatch_write<uint8_t>(cpu, phys_addr, static_cast<uint8_t>(value >> (i * 8)), region);
 			phys_addr++;
 			i++;
 			if (i == bytes_in_page) {

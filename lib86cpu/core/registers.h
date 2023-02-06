@@ -23,15 +23,23 @@
 PACKED(struct uint128_t {
 	uint64_t low;
 	uint64_t high;
+	uint128_t();
+	uint128_t(uint64_t val);
+	uint128_t &operator|=(const uint128_t &rhs);
 	uint128_t operator>>(int shift);
-	operator uint8_t ();
+	uint128_t operator<<(int shift);
+	explicit operator uint8_t ();
 };)
 
 PACKED(struct uint80_t {
 	uint64_t low;
 	uint16_t high;
+	uint80_t();
+	uint80_t(uint64_t val);
+	uint80_t &operator|=(const uint80_t &rhs);
 	uint80_t operator>>(int shift);
-	operator uint8_t ();
+	uint80_t operator<<(int shift);
+	explicit operator uint8_t ();
 	operator uint128_t ();
 };)
 

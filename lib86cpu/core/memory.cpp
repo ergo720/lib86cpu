@@ -683,6 +683,8 @@ template uint8_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, 
 template uint16_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
 template uint32_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
 template uint64_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
+template uint80_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
+template uint128_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
 template void mem_write_helper<uint8_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t val, uint32_t eip, uint8_t is_priv);
 template void mem_write_helper<uint16_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t val, uint32_t eip, uint8_t is_priv);
 template void mem_write_helper<uint32_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t val, uint32_t eip, uint8_t is_priv);

@@ -75,6 +75,7 @@ public:
 	void enter(ZydisDecodedInstruction *instr);
 	void fninit(ZydisDecodedInstruction *instr);
 	void fnstsw(ZydisDecodedInstruction *instr);
+	void fxrstor(ZydisDecodedInstruction *instr);
 	void fxsave(ZydisDecodedInstruction *instr);
 	void hlt(ZydisDecodedInstruction *instr);
 	void idiv(ZydisDecodedInstruction *instr);
