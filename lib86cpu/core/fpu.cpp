@@ -17,7 +17,4 @@ fpu_init(cpu_t *cpu)
 	for (auto &tag : cpu->cpu_ctx.regs.ftags) {
 		tag = FPU_TAG_ZERO;
 	}
-
-	// match host fpu control word to guest, but leave fpu exceptions masked
-	cpu->set_fctrl_fn(FPU_EXP_ALL | (FPU_SINGLE_PRECISION << 8) | (FPU_ROUND_NEAR << 10) | 0x40);
 }

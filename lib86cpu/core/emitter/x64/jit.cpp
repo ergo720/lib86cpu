@@ -289,8 +289,6 @@ get_reg_arg_offset()
 #define CMOV_EQ(dst, src) m_a.cmove(dst, src)
 #define CMOV_NE(dst, src) m_a.cmovne(dst, src)
 
-#define FLDCW(src) m_a.fldcw(src)
-
 #define LD_R8L(dst, reg_offset) MOV(dst, MEMD8(RCX, reg_offset))
 #define LD_R8H(dst, reg_offset) MOV(dst, MEMD8(RCX, reg_offset + 1))
 #define LD_R16(dst, reg_offset) MOV(dst, MEMD16(RCX, reg_offset))
@@ -461,17 +459,6 @@ lc86_jit::gen_aux_funcs()
 	m_a.lock().and_(MEMD32(RCX, CPU_CTX_INT), ~CPU_HW_INT);
 	RET();
 
-	// set host fctrl
-	size_t set_fctrl_off = m_a.offset(), set_fctrl_off_aligned16 = (set_fctrl_off + 15) & ~15;
-	if (set_fctrl_off_aligned16 > set_fctrl_off) {
-		for (unsigned i = 0; i < (set_fctrl_off_aligned16 - set_fctrl_off); ++i) {
-			INT3();
-		}
-	}
-	MOV(MEMD16(RSP, REG_ARG_off(RCX)), CX);
-	FLDCW(MEMD16(RSP, REG_ARG_off(RCX)));
-	RET();
-
 	if (auto err = m_code.flatten()) {
 		std::string err_str("Asmjit failed at flatten() with the error ");
 		err_str += DebugUtils::errorAsString(err);
@@ -515,7 +502,6 @@ lc86_jit::gen_aux_funcs()
 	m_cpu->raise_int_fn = reinterpret_cast<raise_int_t>(static_cast<uint8_t *>(block.addr) + offset + raise_int_off_aligned16);
 	m_cpu->clear_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset + clear_int_off_aligned16);
 	m_cpu->lower_hw_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset + lower_hw_int_off_aligned16);
-	m_cpu->set_fctrl_fn = reinterpret_cast<set_fctrl_t>(static_cast<uint8_t *>(block.addr) + offset + set_fctrl_off_aligned16);
 }
 
 void
@@ -4852,7 +4838,6 @@ lc86_jit::fninit(ZydisDecodedInstruction *instr)
 		ST_R16(CPU_CTX_FOP, 0);
 		ST_R16(FPU_DATA_FTSS, 0);
 		ST_R16(FPU_DATA_FES, 0);
-		FLDCW(MEMD16(RCX, CPU_CTX_FCTRL)); // make host fctrl == guest fctrl
 	}
 }
 
@@ -4897,7 +4882,6 @@ lc86_jit::fxrstor(ZydisDecodedInstruction *instr)
 				BR_EQ(ok);
 				RAISEin0_f(EXP_GP);
 				m_a.bind(ok);
-				FLDCW(MEMD16(RCX, CPU_CTX_FCTRL)); // make host fctrl == guest fctrl
 			});
 	}
 }
