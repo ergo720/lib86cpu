@@ -105,6 +105,9 @@ static_assert(ZYDIS_REGISTER_DR7 - ZYDIS_REGISTER_DR0 == 7);
 #define R8_HOME_off  24
 #define R9_HOME_off  32
 
+#define JIT_LOCAL_VARS_STACK_SIZE  0x30 // must be a multiple of 16
+#define JIT_REG_ARGS_STACK_SIZE    0x20
+
 // all x64 regs that can actually be used in the main jitted function
 enum class x64 : uint32_t {
 	rax = 0,
@@ -151,7 +154,85 @@ static const std::unordered_map<x64, x86::Gp> reg_to_sized_reg = {
 	{ x64::r11 | SIZE32,  R11D },
 };
 
+// The following calculates how much stack is needed to hold the stack arguments for any callable function from the jitted code. This value is then
+// increased of a fixed amount to hold the stack local variables of the main jitted function and the register args of the calles
+// NOTE1: the jitted main() and exit() are also called during code linking, but those only use register args
+// NOTE2: this assumes the Windows x64 calling convention
+
+template<typename R, typename... Args>
+consteval std::integral_constant<size_t, sizeof...(Args)>
+get_arg_count(R(*f)(Args...))
+{
+	return std::integral_constant<size_t, sizeof...(Args)>{};
+}
+
+template<size_t idx>
+consteval size_t
+max_stack_required_for_func()
+{
+	if constexpr (constexpr size_t num_args = decltype(get_arg_count(std::get<idx>(all_callable_funcs)))::value; num_args > 4) {
+		return (num_args - 4) * 8;
+	}
+
+	return 0;
+}
+
+template<size_t idx>
+struct max_stack_required
+{
+	static constexpr size_t stack = std::max(max_stack_required<idx - 1>::stack, max_stack_required_for_func<idx>());
+};
+
+template<>
+struct max_stack_required<0>
+{
+	static constexpr size_t stack = max_stack_required_for_func<0>();
+};
+
+consteval size_t
+get_tot_args_stack_required()
+{
+	// on WIN64, the stack is 16 byte aligned
+	return (max_stack_required<std::tuple_size_v<decltype(all_callable_funcs)> - 1>::stack + 15) & ~15;
+}
+
+constexpr size_t local_vars_size = JIT_LOCAL_VARS_STACK_SIZE;
+constexpr size_t reg_args_size = JIT_REG_ARGS_STACK_SIZE;
+constexpr size_t stack_args_size = get_tot_args_stack_required();
+constexpr size_t tot_arg_size = stack_args_size + reg_args_size + local_vars_size;
+
 size_t
+get_jit_stack_required_runtime()
+{
+	// runtime version used by x64_exceptions.cpp
+	return tot_arg_size;
+}
+static constexpr size_t
+get_jit_stack_required()
+{
+	return tot_arg_size;
+}
+
+static constexpr size_t
+get_jit_reg_args_size()
+{
+	return reg_args_size;
+}
+
+static constexpr size_t
+get_jit_stack_args_size()
+{
+	return stack_args_size;
+}
+
+static constexpr size_t
+get_jit_local_vars_size()
+{
+	return local_vars_size;
+}
+
+// calculates a stack offset at runtime
+static size_t
 get_local_var_offset(size_t idx)
 {
 	if (idx > (get_jit_local_vars_size() / 8 - 1)) {
@@ -162,15 +243,21 @@ get_local_var_offset(size_t idx)
 	}
 }
 
+// calculates a stack offset at compile time
 template<size_t idx>
-size_t
+static constexpr size_t
 get_local_var_offset()
 {
-	return get_local_var_offset(idx);
+	if (idx > (get_jit_local_vars_size() / 8 - 1)) {
+		throw std::logic_error("Attempted to use a local variable for which not enough stack was allocated for");
+	}
+	else {
+		return idx * 8 + get_jit_reg_args_size() + get_jit_stack_args_size();
+	}
 }
 
 template<x86::Gp reg>
-size_t
+constexpr size_t
 get_reg_arg_offset()
 {
 	// this adds get_jit_stack_required() to revert SUB(RSP, get_jit_stack_required()), then adds 8 to revert PUSH(RBX)

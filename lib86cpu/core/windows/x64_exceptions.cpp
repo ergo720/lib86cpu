@@ -5,12 +5,11 @@
  */
 
 #include "lib86cpu_priv.h"
-#include <assert.h>
-#include "Windows.h"
-
 #ifdef LIB86CPU_X64_EMITTER
 #include "x64/jit.h"
 #endif
+#include <assert.h>
+#include "Windows.h"
 
 #if defined(_WIN64)
 
@@ -46,7 +45,7 @@ lc86_jit::create_unwind_info()
 	uint8_t num_unwind_codes;
 
 	// Create UNWIND_CODE entries for sub rsp, imm32
-	size_t tot_stack_allocated = get_jit_stack_required();
+	size_t tot_stack_allocated = get_jit_stack_required_runtime();
 	if (tot_stack_allocated <= 128) {
 		unwind_codes[0] = 8 | (UWOP_ALLOC_SMALL << 8) | ((tot_stack_allocated / 8 - 1) << 12);
 		num_unwind_codes = 1;

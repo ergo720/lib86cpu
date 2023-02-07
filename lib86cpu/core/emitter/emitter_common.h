@@ -6,7 +6,10 @@
 
 #pragma once
 
-#include "internal.h"
+#include "instructions.h"
+#include "memory.h"
+#include "debugger.h"
+#include "clock.h"
 
 
 #define CPU_CTX_REG          offsetof(cpu_ctx_t, regs)
@@ -129,15 +132,68 @@
 
 entry_t link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc);
 size_t get_reg_offset(ZydisRegister reg);
-size_t get_seg_prfx_offset(ZydisDecodedInstruction *instr);;
+size_t get_seg_prfx_offset(ZydisDecodedInstruction *instr);
 int get_reg_idx(ZydisRegister reg);
 const std::pair<int, size_t> get_reg_pair(ZydisRegister reg);
-size_t get_jit_stack_required();
-size_t get_jit_reg_args_size();
-size_t get_jit_stack_args_size();
-size_t get_jit_local_vars_size();
+#ifdef LIB86CPU_X64_EMITTER
+size_t get_jit_stack_required_runtime();
+#endif
 
 
 inline constexpr size_t seg_base_offset = offsetof(cpu_ctx_t, regs.es_hidden.base) - offsetof(cpu_ctx_t, regs.es);
 inline constexpr size_t seg_limit_offset = offsetof(cpu_ctx_t, regs.es_hidden.limit) - offsetof(cpu_ctx_t, regs.es);
 inline constexpr size_t seg_flags_offset = offsetof(cpu_ctx_t, regs.es_hidden.flags) - offsetof(cpu_ctx_t, regs.es);
+
+// this should hold all the functions that can be called at runtime by the jit
+inline constexpr auto all_callable_funcs = std::make_tuple(
+	cpu_raise_exception<true, true>,
+	cpu_raise_exception<true, false>,
+	cpu_raise_exception<false, true>,
+	cpu_raise_exception<false, false>,
+	cpu_timer_helper,
+	cpu_do_int,
+	link_indirect_handler,
+	mem_read_helper<uint32_t>,
+	mem_read_helper<uint16_t>,
+	mem_read_helper<uint8_t>,
+	mem_write_helper<uint32_t>,
+	mem_write_helper<uint16_t>,
+	mem_write_helper<uint8_t>,
+	io_read_helper<uint32_t>,
+	io_read_helper<uint16_t>,
+	io_read_helper<uint8_t>,
+	io_write_helper<uint32_t>,
+	io_write_helper<uint16_t>,
+	io_write_helper<uint8_t>,
+	ljmp_pe_helper,
+	lcall_pe_helper,
+	lret_pe_helper<true>,
+	lret_pe_helper<false>,
+	iret_real_helper,
+	lldt_helper,
+	ltr_helper,
+	verrw_helper<true>,
+	verrw_helper<false>,
+	update_crN_helper,
+	update_drN_helper,
+	mov_sel_pe_helper<SS_idx>,
+	mov_sel_pe_helper<DS_idx>,
+	mov_sel_pe_helper<ES_idx>,
+	mov_sel_pe_helper<FS_idx>,
+	mov_sel_pe_helper<GS_idx>,
+	cpu_rdtsc_helper,
+	msr_read_helper,
+	msr_write_helper,
+	divd_helper,
+	divw_helper,
+	divb_helper,
+	idivd_helper,
+	idivw_helper,
+	idivb_helper,
+	cpuid_helper,
+	hlt_helper,
+	fxsave_helper,
+	cpu_runtime_abort,
+	dbg_update_exp_hook,
+	tlb_invalidate
+);
