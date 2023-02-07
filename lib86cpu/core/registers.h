@@ -20,7 +20,7 @@
 			uint32_t flags; \
 		} _reg ## _hidden;
 
-PACKED(struct uint128_t {
+PACKED(struct alignas(16) uint128_t {
 	uint64_t low;
 	uint64_t high;
 	uint128_t();
@@ -117,3 +117,4 @@ struct msr_t {
 
 static_assert(sizeof(uint80_t) == 10);
 static_assert(sizeof(uint128_t) == 16);
+static_assert(alignof(decltype(regs_t::xmm)) == 16);

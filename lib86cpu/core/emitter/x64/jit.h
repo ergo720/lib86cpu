@@ -105,6 +105,7 @@ public:
 	void lss(ZydisDecodedInstruction *instr);
 	void ltr(ZydisDecodedInstruction *instr);
 	void mov(ZydisDecodedInstruction *instr);
+	void movaps(ZydisDecodedInstruction *instr);
 	void movs(ZydisDecodedInstruction *instr);
 	void movsx(ZydisDecodedInstruction *instr);
 	void movzx(ZydisDecodedInstruction *instr);
@@ -242,6 +243,7 @@ private:
 	void gen_virtual_stack_push();
 	template<unsigned num, unsigned store_at = 0, bool write_esp = true>
 	void gen_stack_pop();
+	void gen_simd_mem_align_check();
 	template<unsigned idx>
 	void shift(ZydisDecodedInstruction *instr);
 	template<unsigned idx>

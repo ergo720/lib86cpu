@@ -161,6 +161,14 @@ void halt_loop(cpu_t *cpu);
 #define R5_idx      38
 #define R6_idx      39
 #define R7_idx      40
+#define XMM0_idx    41
+#define XMM1_idx    42
+#define XMM2_idx    43
+#define XMM3_idx    44
+#define XMM4_idx    45
+#define XMM5_idx    46
+#define XMM6_idx    47
+#define XMM7_idx    48
 
 #define SEG_offset  ES_idx
 #define CR_offset   CR0_idx

@@ -91,6 +91,14 @@ static_assert(ZYDIS_REGISTER_DR7 - ZYDIS_REGISTER_DR0 == 7);
 #define R13 x86::r13
 #define R14 x86::r14
 #define R15 x86::r15
+#define XMM0 x86::xmm0
+#define XMM1 x86::xmm1
+#define XMM2 x86::xmm2
+#define XMM3 x86::xmm3
+#define XMM4 x86::xmm4
+#define XMM5 x86::xmm5
+#define XMM6 x86::xmm6
+#define XMM7 x86::xmm7
 
 #define RCX_HOME_off 8  // skip ret rip that was pushed on the stack by the caller
 #define RDX_HOME_off 16
@@ -193,12 +201,14 @@ get_reg_arg_offset()
 #define MEM16(reg) x86::word_ptr(reg)
 #define MEM32(reg) x86::dword_ptr(reg)
 #define MEM64(reg) x86::qword_ptr(reg)
+#define MEM128(reg) x86::xmmword_ptr(reg)
 #define MEM(reg, size) x86::Mem(reg, size)
 // [reg + disp]
 #define MEMD8(reg, disp)  x86::byte_ptr(reg, disp)
 #define MEMD16(reg, disp) x86::word_ptr(reg, disp)
 #define MEMD32(reg, disp) x86::dword_ptr(reg, disp)
 #define MEMD64(reg, disp) x86::qword_ptr(reg, disp)
+#define MEMD128(reg, disp) x86::xmmword_ptr(reg, disp)
 #define MEMD(reg, disp, size) x86::Mem(reg, disp, size)
 // [reg + idx * scale], scale specified as 1 << n; e.g. scale = 8 -> n = 3
 #define MEMS8(reg, idx, scale)  x86::byte_ptr(reg, idx, scale)
@@ -289,6 +299,8 @@ get_reg_arg_offset()
 #define CMOV_EQ(dst, src) m_a.cmove(dst, src)
 #define CMOV_NE(dst, src) m_a.cmovne(dst, src)
 
+#define MOVAPS(dst, src) m_a.movaps(dst, src)
+
 #define LD_R8L(dst, reg_offset) MOV(dst, MEMD8(RCX, reg_offset))
 #define LD_R8H(dst, reg_offset) MOV(dst, MEMD8(RCX, reg_offset + 1))
 #define LD_R16(dst, reg_offset) MOV(dst, MEMD16(RCX, reg_offset))
@@ -308,8 +320,10 @@ get_reg_arg_offset()
 
 #define LD_MEM() load_mem(m_cpu->size_mode, 0)
 #define LD_MEMs(size) load_mem(size, 0)
+#define LD_MEM128() load_mem(SIZE128, 0)
 #define ST_MEM(val) store_mem(val, m_cpu->size_mode, 0)
 #define ST_MEMs(val, size) store_mem(val, size, 0)
+#define ST_MEM128(val) store_mem(val, SIZE128, 0)
 #define ST_MEMv(val) store_mem<decltype(val), true>(val, m_cpu->size_mode, 0)
 
 #define LD_IO() load_io(m_cpu->size_mode)
@@ -1066,6 +1080,9 @@ op_info lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opn
 		case 32:
 			return { offset, SIZE32 };
 
+		case 128:
+			return { offset, SIZE128 };
+
 		default:
 			LIB86CPU_ABORT();
 		}
@@ -1752,6 +1769,10 @@ lc86_jit::load_mem(uint8_t size, uint8_t is_priv)
 
 	switch (size)
 	{
+	case SIZE128:
+		CALL_F(&mem_read_helper<uint128_t>);
+		break;
+
 	case SIZE64:
 		CALL_F(&mem_read_helper<uint64_t>);
 		break;
@@ -1790,6 +1811,13 @@ void lc86_jit::store_mem(T val, uint8_t size, uint8_t is_priv)
 
 	switch (size)
 	{
+	case SIZE128:
+		if (!is_r8) {
+			MOV(R8, val);
+		}
+		CALL_F((&mem_write_helper<uint128_t, dont_write>));
+		break;
+
 	case SIZE64:
 		if (!is_r8) {
 			MOV(R8, val);
@@ -2195,6 +2223,16 @@ void lc86_jit::gen_stack_pop()
 	default:
 		LIB86CPU_ABORT();
 	}
+}
+
+void
+lc86_jit::gen_simd_mem_align_check()
+{
+	Label ok = m_a.newLabel();
+	TEST(EDX, 15);
+	BR_EQ(ok);
+	RAISEin0_f(EXP_GP);
+	m_a.bind(ok);
 }
 
 template<unsigned idx>
@@ -6421,6 +6459,56 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 
 	default:
 		LIB86CPU_ABORT();
+	}
+}
+
+void
+lc86_jit::movaps(ZydisDecodedInstruction *instr)
+{
+	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
+		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
+	}
+	else {
+		switch (instr->opcode)
+		{
+		case 0x28: {
+			const auto dst = GET_REG(OPNUM_DST);
+			get_rm<OPNUM_SRC>(instr,
+				[this, dst](const op_info rm)
+				{
+					MOVAPS(XMM0, MEMD128(RCX, rm.val));
+					MOVAPS(MEMD128(RCX, dst.val), XMM0);
+				},
+				[this, dst](const op_info rm)
+				{
+					gen_simd_mem_align_check();
+					LD_MEM128();
+					MOVAPS(XMM0, MEM128(RAX));
+					MOVAPS(MEMD128(RCX, dst.val), XMM0);
+				});
+		}
+		break;
+
+		case 0x29: {
+			const auto src = GET_REG(OPNUM_SRC);
+			get_rm<OPNUM_DST>(instr,
+				[this, src](const op_info rm)
+				{
+					MOVAPS(XMM0, MEMD128(RCX, src.val));
+					MOVAPS(MEMD128(RCX, rm.val), XMM0);
+				},
+				[this, src](const op_info rm)
+				{
+					gen_simd_mem_align_check();
+					LEA(R8, MEMD128(RCX, src.val));
+					ST_MEM128(R8);
+				});
+		}
+		break;
+
+		default:
+			LIB86CPU_ABORT();
+		}
 	}
 }
 
