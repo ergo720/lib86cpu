@@ -694,6 +694,8 @@ lc86_jit::gen_prologue_main()
 	// Two additions and a shift can be done with LEA and the sib addressing mode. Comparisons with zero are ususally done with TEST reg, reg instead of CMP. Left shifting
 	// by one can be done with ADD reg, reg. Reading an 8/16 bit reg and then zero/sign extending to 32 can be done with a single MOVZ/SX reg, word/byte ptr [rcx, off] instead
 	// of MOV and then MOVZ/SX. Call external C++ helper functions to implement the most difficult instructions.
+	// Guest SSE is currently emulated with host SSE. If the library is compiled with AVX support, then the jit should emit VZEROUPPER to avoid the performance penalty
+	// associated with mixing lagacy SSE with AVX, or better, it should just emit AVX instructions directly
 
 	PUSH(RBX);
 	SUB(RSP, get_jit_stack_required());
