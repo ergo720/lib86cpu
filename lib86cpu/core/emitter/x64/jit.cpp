@@ -283,6 +283,8 @@ get_reg_arg_offset()
 #define STACK_ARGS_off get_jit_reg_args_size()
 #define REG_ARG_off(reg) get_reg_arg_offset<reg>()
 
+static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that sse can work on it in lc86_jit::load_mem
+
 // [reg]
 #define MEM8(reg)  x86::byte_ptr(reg)
 #define MEM16(reg) x86::word_ptr(reg)
@@ -1850,34 +1852,44 @@ void
 lc86_jit::load_mem(uint8_t size, uint8_t is_priv)
 {
 	// RCX: cpu_ctx, EDX: addr, R8: instr_eip, R9B: is_priv
-
-	MOV(R9B, is_priv);
-	MOV(R8D, m_cpu->instr_eip);
+	// for SIZE128 -> RCX: ptr to stack-allocated uint128_t, RDX: cpu_ctx, R8: addr, R9: instr_eip, stack: is_priv
 
 	switch (size)
 	{
 	case SIZE128:
+		LEA(RCX, MEMD64(RSP, LOCAL_VARS_off(0)));
+		MOV(R8D, EDX);
+		MOV(RDX, &m_cpu->cpu_ctx);
+		MOV(R9D, m_cpu->instr_eip);
+		MOV(MEMD8(RSP, LOCAL_VARS_off(2)), is_priv);
 		CALL_F(&mem_read_helper<uint128_t>);
 		break;
 
-	case SIZE64:
-		CALL_F(&mem_read_helper<uint64_t>);
-		break;
-
-	case SIZE32:
-		CALL_F(&mem_read_helper<uint32_t>);
-		break;
-
-	case SIZE16:
-		CALL_F(&mem_read_helper<uint16_t>);
-		break;
-
-	case SIZE8:
-		CALL_F(&mem_read_helper<uint8_t>);
-		break;
-
 	default:
-		LIB86CPU_ABORT();
+		MOV(R9B, is_priv);
+		MOV(R8D, m_cpu->instr_eip);
+
+		switch (size)
+		{
+		case SIZE64:
+			CALL_F(&mem_read_helper<uint64_t>);
+			break;
+
+		case SIZE32:
+			CALL_F(&mem_read_helper<uint32_t>);
+			break;
+
+		case SIZE16:
+			CALL_F(&mem_read_helper<uint16_t>);
+			break;
+
+		case SIZE8:
+			CALL_F(&mem_read_helper<uint8_t>);
+			break;
+
+		default:
+			LIB86CPU_ABORT();
+		}
 	}
 }
 
@@ -6587,7 +6599,7 @@ lc86_jit::movaps(ZydisDecodedInstruction *instr)
 				[this, src](const op_info rm)
 				{
 					gen_simd_mem_align_check();
-					LEA(R8, MEMD128(RCX, src.val));
+					LEA(R8, MEMD64(RCX, src.val));
 					ST_MEM128(R8);
 				});
 		}
