@@ -108,8 +108,9 @@ fxrstor_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip)
 			if (exp == 0 && mant == 0) { // zero
 				cpu_ctx->regs.ftags[i] = FPU_TAG_ZERO;
 			}
-			else if (exp == 0 || // denormal
-				exp == 0x7FFF) { // NaN or infinity
+			else if ((exp == 0) || // denormal
+				(exp == 0x7FFF) || // NaN or infinity
+				((mant & (1ULL << 63)) == 0)) { // unnormal
 				cpu_ctx->regs.ftags[i] = FPU_TAG_SPECIAL;
 			}
 			else { // normal
