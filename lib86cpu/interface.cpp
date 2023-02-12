@@ -1155,9 +1155,9 @@ write_ftags(cpu_t *cpu, uint16_t value)
 uint16_t
 read_fstatus(cpu_t *cpu)
 {
-	uint16_t fstatus = (cpu->cpu_ctx.regs.fstatus & ~(FPU_FTSS_MASK | FPU_FES_MASK));
-	fstatus |= (cpu->cpu_ctx.fpu_data.ftss << FPU_FTSS_SHIFT);
-	fstatus |= (cpu->cpu_ctx.fpu_data.fes << FPU_FES_SHIFT);
+	uint16_t fstatus = (cpu->cpu_ctx.regs.fstatus & ~(FPU_FLG_TOP | FPU_FLG_ES));
+	fstatus |= (cpu->cpu_ctx.fpu_data.ftop << FPU_TOP_SHIFT);
+	fstatus |= (cpu->cpu_ctx.fpu_data.fes << FPU_ES_SHIFT);
 	return fstatus;
 }
 
@@ -1170,7 +1170,7 @@ read_fstatus(cpu_t *cpu)
 void
 write_fstatus(cpu_t *cpu, uint16_t value)
 {
-	cpu->cpu_ctx.fpu_data.ftss = (value & FPU_FTSS_MASK) >> FPU_FTSS_SHIFT;
-	cpu->cpu_ctx.fpu_data.fes = (value & FPU_FES_MASK) >> FPU_FES_SHIFT;
+	cpu->cpu_ctx.fpu_data.ftop = (value & FPU_FLG_TOP) >> FPU_TOP_SHIFT;
+	cpu->cpu_ctx.fpu_data.fes = (value & FPU_FLG_ES) >> FPU_ES_SHIFT;
 	cpu->cpu_ctx.regs.fstatus = value;
 }

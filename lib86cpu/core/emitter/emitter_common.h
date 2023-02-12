@@ -117,8 +117,9 @@
 #define CPU_CTX_XMM6         offsetof(cpu_ctx_t, regs.xmm[6].low)
 #define CPU_CTX_XMM7         offsetof(cpu_ctx_t, regs.xmm[7].low)
 
-#define FPU_DATA_FTSS        offsetof(cpu_ctx_t, fpu_data.ftss)
+#define FPU_DATA_FTOP        offsetof(cpu_ctx_t, fpu_data.ftop)
 #define FPU_DATA_FES         offsetof(cpu_ctx_t, fpu_data.fes)
+#define FPU_DATA_FRP         offsetof(cpu_ctx_t, fpu_data.frp)
 
 #define CPU_EXP_ADDR         offsetof(cpu_ctx_t, exp_info.exp_data.fault_addr)
 #define CPU_EXP_CODE         offsetof(cpu_ctx_t, exp_info.exp_data.code)
@@ -193,6 +194,8 @@ inline constexpr auto all_callable_funcs = std::make_tuple(
 	cpuid_helper,
 	hlt_helper,
 	fxsave_helper,
+	fxrstor_helper,
+	fpu_update_tag,
 	cpu_runtime_abort,
 	dbg_update_exp_hook,
 	tlb_invalidate

@@ -11,14 +11,15 @@
 #include <intrin.h>
 #endif
 
+#define FPU_SUPPORTED          (1 << 0)
 #define SSE2_SUPPORTED         (1 << 26)
-#define CPU_FEATURES_REQUIRED  (SSE2_SUPPORTED)
+#define CPU_FEATURES_REQUIRED  (FPU_SUPPORTED | SSE2_SUPPORTED)
 
 
 bool
 verify_cpu_features()
 {
-	// we require sse2 support at least
+	// we require x87 fpu and sse2 support at least
 
 #if defined(_MSC_VER)
 	int cpu_info[4];
@@ -27,7 +28,7 @@ verify_cpu_features()
 		return true;
 	}
 	else {
-		last_error = "This library requires sse2 support at least";
+		last_error = "This library requires x87 fpu and sse2 support at least";
 		return false;
 	}
 #else

@@ -994,6 +994,10 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->enter(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_FLD:
+			cpu->jit->fld(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_FNINIT:
 			cpu->jit->fninit(&instr);
 			break;

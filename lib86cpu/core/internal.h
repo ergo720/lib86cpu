@@ -22,6 +22,7 @@ template<bool is_intn = false, bool is_hw_int = false>
 translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx);
 uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 void fpu_init(cpu_t *cpu);
+void fpu_update_tag(cpu_ctx_t *cpu_ctx, uint32_t idx);
 void halt_loop(cpu_t *cpu);
 
 
@@ -360,12 +361,6 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define FPU_TAG_SPECIAL 2  // invalid (NaN, unsupported), infinity, or denormal
 #define FPU_TAG_EMPTY   3
 
-// fpu register macros
-#define FPU_FES_SHIFT    7
-#define FPU_FTSS_SHIFT   11
-#define FPU_FES_MASK     (1 << FPU_FES_SHIFT)
-#define FPU_FTSS_MASK    (7 << FPU_FTSS_SHIFT)
-
 // fpu exception macros
 #define FPU_EXP_INVALID    (1 << 0)
 #define FPU_EXP_DENORMAL   (1 << 1)
@@ -374,6 +369,35 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define FPU_EXP_UNDERFLOW  (1 << 4)
 #define FPU_EXP_PRECISION  (1 << 5)
 #define FPU_EXP_ALL        (FPU_EXP_INVALID | FPU_EXP_DENORMAL | FPU_EXP_DIVBYZERO | FPU_EXP_OVERFLOW | FPU_EXP_UNDERFLOW | FPU_EXP_PRECISION)
+
+// fpu fstatus flags and shifts
+#define FPU_FLG_IE     FPU_EXP_INVALID
+#define FPU_FLG_DE     FPU_EXP_DENORMAL
+#define FPU_FLG_ZE     FPU_EXP_DIVBYZERO
+#define FPU_FLG_OE     FPU_EXP_OVERFLOW
+#define FPU_FLG_UE     FPU_EXP_UNDERFLOW
+#define FPU_FLG_PE     FPU_EXP_PRECISION
+#define FPU_FLG_SF     (1 << 6)
+#define FPU_FLG_ES     (1 << 7)
+#define FPU_FLG_TOP    (7 << 11)
+#define FPU_FLG_BSY    (1 << 15)
+#define FPU_ES_SHIFT   7
+#define FPU_C0_SHIFT   8
+#define FPU_C1_SHIFT   9
+#define FPU_C2_SHIFT   10
+#define FPU_TOP_SHIFT  11
+#define FPU_C3_SHIFT   14
+
+
+// fpu indefinite values
+#define FPU_INTEGER_INDEFINITE8      (1 << 7)
+#define FPU_INTEGER_INDEFINITE16     (1 << 15)
+#define FPU_INTEGER_INDEFINITE32     (1 << 31)
+#define FPU_INTEGER_INDEFINITE64     (1ULL << 63)
+#define FPU_QNAN_FLOAT_INDEFINITE64  0xC000000000000000 // mantissa part
+#define FPU_QNAN_FLOAT_INDEFINITE16  0xFFFF             // exponent and sign parts
+#define FPU_BCD_INDEFINITE64         0xC000000000000000 // mantissa part
+#define FPU_BCD_INDEFINITE16         0xFFFF             // exponent and sign parts
 
 // fpu precision macros
 #define FPU_SINGLE_PRECISION      0

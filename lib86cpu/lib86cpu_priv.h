@@ -131,8 +131,9 @@ struct lazy_eflags_t {
 };
 
 struct fpu_data_t {
-	uint16_t ftss; // these are the top of stack pointer bits of fstatus
+	uint16_t ftop; // these are the top of stack pointer bits of fstatus
 	uint16_t fes; // pending unmasked exception flag that is, es bit of fstatus
+	uint16_t frp; // current rounding and precision set in fctrl | FPU_EXP_ALL
 };
 
 // this struct should contain all cpu variables which need to be visible from the jitted code

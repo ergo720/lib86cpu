@@ -73,6 +73,7 @@ fxrstor_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip)
 	}
 
 	cpu_ctx->regs.fctrl = mem_read_helper<uint16_t>(cpu_ctx, addr, eip, 0) | 0x40;
+	cpu_ctx->fpu_data.frp = cpu_ctx->regs.fctrl | FPU_EXP_ALL | 0x40;
 	addr += 2;
 	write_fstatus(cpu_ctx->cpu, mem_read_helper<uint16_t>(cpu_ctx, addr, eip, 0));
 	addr += 2;
