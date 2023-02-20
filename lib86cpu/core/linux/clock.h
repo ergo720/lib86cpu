@@ -1,7 +1,7 @@
 /*
  * cpu clock
  *
- * ergo720                Copyright (c) 2021
+ * ergo720                Copyright (c) 2023
  */
 
 #pragma once

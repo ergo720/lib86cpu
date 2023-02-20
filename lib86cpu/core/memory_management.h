@@ -9,6 +9,7 @@
 #include "lib86cpu_priv.h"
 #include "internal.h"
 #include <algorithm>
+#include <cstring>
 
 #define AS_RESOLVE_ALIAS() 	addr_t alias_offset = region->alias_offset; \
 while (region->aliased_region) { \
@@ -26,11 +27,11 @@ template<bool set_smc> addr_t get_code_addr(cpu_t * cpu, addr_t addr, uint32_t e
 template<typename T> T ram_read(cpu_t *cpu, void *ram_ptr);
 template<typename T> void ram_write(cpu_t *cpu, void *ram_ptr, T value);
 void ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer);
-size_t as_ram_dispatch_read(cpu_t *cpu, addr_t addr, size_t size, const memory_region_t<addr_t> *region, uint8_t *buffer);
-template<typename T> T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
-template<typename T, bool dont_write = false> void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint8_t is_priv);
-template<typename T> T io_read_helper(cpu_ctx_t * cpu_ctx, port_t port, uint32_t eip);
-template<typename T> void io_write_helper(cpu_ctx_t * cpu_ctx, port_t port, T val, uint32_t eip);
+uint64_t as_ram_dispatch_read(cpu_t *cpu, addr_t addr, uint64_t size, const memory_region_t<addr_t> *region, uint8_t *buffer);
+template<typename T> T JIT_API mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
+template<typename T, bool dont_write = false> void JIT_API mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint8_t is_priv);
+template<typename T> T JIT_API io_read_helper(cpu_ctx_t * cpu_ctx, port_t port, uint32_t eip);
+template<typename T> void JIT_API io_write_helper(cpu_ctx_t * cpu_ctx, port_t port, T val, uint32_t eip);
 
 inline constexpr uint64_t tlb_access[2][4] = {
 	{ TLB_SUP_READ, TLB_SUP_READ, TLB_SUP_READ, TLB_USER_READ },

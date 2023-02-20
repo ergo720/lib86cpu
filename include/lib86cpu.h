@@ -6,9 +6,6 @@
 
 #pragma once
 
-#include "config.h"
-#include "platform.h"
-#include <stdint.h>
 #include "types.h"
 #include <string>
 #include <vector>
@@ -34,6 +31,7 @@ enum class log_level {
 };
 
 using logfn_t = void(*)(log_level, const unsigned, const char *, ...);
+using hook_t = void(*)();
 
 #define LC86_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::success)
 
@@ -113,7 +111,7 @@ API_FUNC lc86_status io_write_32(cpu_t *cpu, port_t port, uint32_t value);
 API_FUNC void tlb_invalidate(cpu_t *cpu, addr_t addr);
 
 // hook api
-API_FUNC lc86_status hook_add(cpu_t *cpu, addr_t addr, void *hook_addr);
+API_FUNC lc86_status hook_add(cpu_t *cpu, addr_t addr, hook_t hook_addr);
 API_FUNC lc86_status hook_remove(cpu_t *cpu, addr_t addr);
 API_FUNC void trampoline_call(cpu_t *cpu, const uint32_t ret_eip);
 

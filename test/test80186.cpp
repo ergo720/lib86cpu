@@ -67,7 +67,7 @@ gen_test80186_test(const std::string &path, int intel_syntax, int use_dbg)
 
 		std::printf("Starting test %s\n", test_name);
 		lc86_status code = cpu_run(cpu);
-		std::printf("Emulation terminated with status %d. The error was \"%s\"\n", code, get_last_error().c_str());
+		std::printf("Emulation terminated with status %d. The error was \"%s\"\n", static_cast<int32_t>(code), get_last_error().c_str());
 
 		// special test case without result
 		if (test_name == std::string_view("jmpmov")) {

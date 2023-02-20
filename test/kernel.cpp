@@ -131,7 +131,7 @@ host_read_handler(addr_t addr, void *opaque)
 		std::printf("%s: unexpected i/o read at port %d\n", __func__, addr);
 	}
 
-	return std::numeric_limits<uint64_t>::max();
+	return 0xFFFFFFFF;
 }
 
 static void

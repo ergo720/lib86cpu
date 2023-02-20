@@ -5,7 +5,7 @@
  */
 
 #include "internal.h"
-#include "memory.h"
+#include "memory_management.h"
 #include <assert.h>
 
 
@@ -156,6 +156,12 @@ void tlb_flush(cpu_t *cpu)
 			}
 		}
 	}
+}
+
+void
+tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr)
+{
+	tlb_invalidate(cpu_ctx->cpu, addr);
 }
 
 int8_t
@@ -436,10 +442,10 @@ addr_t get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_c
 	return mmu_translate_addr<true, true, false>(cpu, addr, set_smc ? MMU_SET_CODE : 0, eip, disas_ctx);
 }
 
-size_t
-as_ram_dispatch_read(cpu_t *cpu, addr_t addr, size_t size, const memory_region_t<addr_t> *region, uint8_t *buffer)
+uint64_t
+as_ram_dispatch_read(cpu_t *cpu, addr_t addr, uint64_t size, const memory_region_t<addr_t> *region, uint8_t *buffer)
 {
-	size_t bytes_to_read = std::min((region->end - addr) + 1ULL, size);
+	uint64_t bytes_to_read = std::min((region->end - addr) + to_u64(1), size);
 
 	switch (region->type)
 	{

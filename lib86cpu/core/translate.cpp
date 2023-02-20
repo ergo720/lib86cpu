@@ -5,7 +5,7 @@
  */
 
 #include "internal.h"
-#include "memory.h"
+#include "memory_management.h"
 #include "main_wnd.h"
 #include "debugger.h"
 #include "helpers.h"
@@ -1593,7 +1593,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE | CPU_FORCE_INSERT);
 				prev_tc = tc_run_code(&cpu->cpu_ctx, ptr_tc);
 				if (!(cpu_flags & CPU_FORCE_INSERT)) {
-					cpu->jit->free_code_block(ptr_tc->jmp_offset[2]);
+					cpu->jit->free_code_block(reinterpret_cast<void *>(ptr_tc->jmp_offset[2]));
 					prev_tc = nullptr;
 				}
 				continue;
@@ -1664,6 +1664,8 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 			LIB86CPU_ABORT_msg("Unknown host exception in %s", __func__);
 		}
 	}
+
+	LIB86CPU_ABORT();
 }
 
 template<bool run_forever>

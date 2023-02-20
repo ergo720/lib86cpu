@@ -10,7 +10,19 @@
 #include <unordered_set>
 #include <bitset>
 #include <random>
+#include <memory>
+#include <list>
+#include <cinttypes>
 #include "lib86cpu.h"
+
+#ifdef LIB86CPU_X64_EMITTER
+#ifdef _MSC_VER
+#  define MS_ABI /* Nothing */
+#else
+#  define MS_ABI __attribute__((__ms_abi__))
+#endif
+#  define JIT_API MS_ABI
+#endif
 
 
 #define CODE_CACHE_MAX_SIZE (1 << 15)
@@ -107,7 +119,7 @@ struct translated_code_t {
 struct disas_ctx_t {
 	uint8_t flags;
 	addr_t virt_pc, pc;
-	size_t instr_buff_size;
+	uint64_t instr_buff_size;
 	exp_data_t exp_data;
 };
 
@@ -166,7 +178,7 @@ struct cpu_t {
 	std::unique_ptr<address_space<port_t>> io_space_tree;
 	std::list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
 	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
-	std::unordered_map<addr_t, void *> hook_map;
+	std::unordered_map<addr_t, hook_t> hook_map;
 	std::vector<wp_info<addr_t>> wp_data;
 	std::vector<wp_info<port_t>> wp_io;
 	std::vector<std::pair<bool, std::unique_ptr<memory_region_t<addr_t>>>> regions_changed;
@@ -175,11 +187,11 @@ struct cpu_t {
 	tlb_t dtlb[DTLB_NUM_SETS][DTLB_NUM_LINES]; // data tlb
 	uint16_t num_tc; // num of tc actually emitted, tc's might not be present in the code cache
 	uint8_t microcode_updated;
-	struct {
+	struct _tsc_clock {
 		uint64_t last_host_ticks;
 		static constexpr uint64_t cpu_freq = 733333333;
 	} tsc_clock;
-	struct {
+	struct _timer {
 		uint64_t last_time;
 		uint64_t host_freq;
 		uint64_t timeout_time;

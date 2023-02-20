@@ -6,11 +6,12 @@
  */
 
 #include "internal.h"
-#include "memory.h"
+#include "memory_management.h"
 #ifdef LIB86CPU_X64_EMITTER
 #include "x64/jit.h"
 #endif
 #include <fstream>
+#include <cstring>
 
 
 static uint8_t
@@ -465,7 +466,7 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, uint32_t size, bool should_int)
 
 	std::unique_ptr<memory_region_t<addr_t>> ram(new memory_region_t<addr_t>);
 	ram->start = ram->buff_off_start = start;
-	ram->end = std::min(static_cast<uint64_t>(start) + size - 1, 0xFFFFFFFFULL);
+	ram->end = std::min(static_cast<uint64_t>(start) + size - 1, to_u64(0xFFFFFFFF));
 	ram->type = mem_type::ram;
 
 	if (should_int) {
@@ -506,7 +507,7 @@ mem_init_region_io(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, io_ha
 		std::unique_ptr<memory_region_t<port_t>> io(new memory_region_t<port_t>);
 		io->start = static_cast<port_t>(start);
 		uint64_t end_io1 = io->start + size - 1;
-		io->end = std::min(end_io1, 0xFFFFULL);
+		io->end = std::min(end_io1, to_u64(0xFFFF));
 		io->type = mem_type::pmio;
 		io->handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_pmio_read_handler8;
 		io->handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_pmio_read_handler16;
@@ -521,7 +522,7 @@ mem_init_region_io(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, io_ha
 	else {
 		std::unique_ptr<memory_region_t<addr_t>> mmio(new memory_region_t<addr_t>);
 		mmio->start = start;
-		mmio->end = std::min(static_cast<uint64_t>(start) + size - 1, 0xFFFFFFFFULL);
+		mmio->end = std::min(static_cast<uint64_t>(start) + size - 1, to_u64(0xFFFFFFFF));
 		mmio->type = mem_type::mmio;
 		mmio->handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_mmio_read_handler8;
 		mmio->handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_mmio_read_handler16;
@@ -566,7 +567,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, uint32_t
 	if ((aliased_region->start <= ori_start) && (aliased_region->end >= (ori_start + ori_size - 1)) && (aliased_region->type != mem_type::unmapped)) {
 		std::unique_ptr<memory_region_t<addr_t>> alias(new memory_region_t<addr_t>);
 		alias->start = alias_start;
-		alias->end = std::min(static_cast<uint64_t>(alias_start) + ori_size - 1, 0xFFFFFFFFULL);
+		alias->end = std::min(static_cast<uint64_t>(alias_start) + ori_size - 1, to_u64(0xFFFFFFFF));
 		alias->alias_offset = ori_start - aliased_region->start;
 		alias->type = mem_type::alias;
 		alias->aliased_region = aliased_region;
@@ -604,7 +605,7 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, uint32_t size, uint8_t *buffer, bo
 
 	std::unique_ptr<memory_region_t<addr_t>> rom(new memory_region_t<addr_t>);
 	rom->start = rom->buff_off_start = start;
-	rom->end = std::min(static_cast<uint64_t>(start) + size - 1, 0xFFFFFFFFULL);
+	rom->end = std::min(static_cast<uint64_t>(start) + size - 1, to_u64(0xFFFFFFFF));
 	rom->type = mem_type::rom;
 	rom->rom_ptr = buffer;
 
@@ -635,11 +636,11 @@ mem_destroy_region(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, bool 
 	if (io_space) {
 		port_t start_io = static_cast<port_t>(start);
 		uint64_t end_io1 = start_io + size - 1;
-		port_t end_io = std::min(end_io1, 0xFFFFULL);
+		port_t end_io = std::min(end_io1, to_u64(0xFFFF));
 		cpu->io_space_tree->erase(start_io, end_io);
 	}
 	else {
-		addr_t end = std::min(static_cast<uint64_t>(start) + size - 1, 0xFFFFFFFFULL);
+		addr_t end = std::min(static_cast<uint64_t>(start) + size - 1, to_u64(0xFFFFFFFF));
 		if (should_int) {
 			cpu->regions_changed.push_back(std::make_pair(false, std::make_unique<memory_region_t<addr_t>>(start, end)));
 			cpu->raise_int_fn(&cpu->cpu_ctx, CPU_REGION_INT);
@@ -991,7 +992,7 @@ tlb_invalidate(cpu_t *cpu, addr_t addr)
 * ret: the status of the operation
 */
 lc86_status
-hook_add(cpu_t *cpu, addr_t addr, void *hook_addr)
+hook_add(cpu_t *cpu, addr_t addr, hook_t hook_addr)
 {
 	// adds a host function that is called in place of the original guest function when pc reaches addr. The client is responsible for fetching the guest arguments
 	// (if they need them) and fixing the guest stack/registers before the host function returns

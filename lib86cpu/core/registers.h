@@ -6,6 +6,9 @@
 
 #pragma once
 
+#include "config.h"
+#include "platform.h"
+
 #define DEFINE_REG32(_reg) \
 		uint32_t		_reg
 
@@ -29,7 +32,7 @@ PACKED(struct alignas(16) uint128_t {
 	uint128_t operator>>(int shift);
 	uint128_t operator<<(int shift);
 	explicit operator uint8_t ();
-};)
+});
 
 PACKED(struct uint80_t {
 	uint64_t low;
@@ -41,7 +44,7 @@ PACKED(struct uint80_t {
 	uint80_t operator<<(int shift);
 	explicit operator uint8_t ();
 	operator uint128_t ();
-};)
+});
 
 struct regs_t {
 	/* General registers */

@@ -1,6 +1,8 @@
 #pragma once
 
 #include "lib86cpu.h"
+#include <cstring>
+#include <memory>
 
 
 inline cpu_t *cpu = nullptr;

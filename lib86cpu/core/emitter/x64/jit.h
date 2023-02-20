@@ -41,7 +41,7 @@ public:
 	void gen_tc_prologue() { start_new_session(); gen_exit_func(); gen_prologue_main(); }
 	void gen_tc_epilogue();
 	void gen_aux_funcs();
-	void gen_hook(void *hook_addr);
+	void gen_hook(hook_t hook_addr);
 	void gen_raise_exp_inline(uint32_t fault_addr, uint16_t code, uint16_t idx, uint32_t eip);
 	void free_code_block(void *addr) { m_mem.release_sys_mem(addr); }
 	void destroy_all_code() { m_mem.destroy_all_blocks(); }

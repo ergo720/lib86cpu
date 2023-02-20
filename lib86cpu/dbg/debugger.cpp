@@ -4,7 +4,7 @@
  * ergo720                Copyright (c) 2022
  */
 
-#include "memory.h"
+#include "memory_management.h"
 #include "debugger.h"
 #include "instructions.h"
 #include <fstream>
@@ -305,8 +305,8 @@ dbg_add_exp_hook(cpu_ctx_t *cpu_ctx)
 		return;
 	}
 
-	hook_add(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr, &dbg_exp_handler);
-	hook_add(cpu_ctx->cpu, cpu_ctx->cpu->db_addr, &dbg_exp_handler);
+	hook_add(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr, reinterpret_cast<hook_t>(&dbg_exp_handler));
+	hook_add(cpu_ctx->cpu, cpu_ctx->cpu->db_addr, reinterpret_cast<hook_t>(&dbg_exp_handler));
 }
 
 static std::vector<std::pair<addr_t, std::string>>

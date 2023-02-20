@@ -161,7 +161,7 @@ static const std::unordered_map<x64, x86::Gp> reg_to_sized_reg = {
 
 template<typename R, typename... Args>
 consteval std::integral_constant<size_t, sizeof...(Args)>
-get_arg_count(R(*f)(Args...))
+get_arg_count(R(JIT_API *f)(Args...))
 {
 	return std::integral_constant<size_t, sizeof...(Args)>{};
 }
@@ -783,9 +783,9 @@ void lc86_jit::gen_raise_exp_inline()
 }
 
 void
-lc86_jit::gen_hook(void *hook_addr)
+lc86_jit::gen_hook(hook_t hook_addr)
 {
-	CALL_F(reinterpret_cast<uintptr_t>(hook_addr));
+	CALL_F(hook_addr);
 	gen_link_ret();
 }
 
@@ -3378,10 +3378,10 @@ void lc86_jit::bit(ZydisDecodedInstruction *instr)
 				auto src = GET_REG(OPNUM_SRC);
 				auto src_host_reg = SIZED_REG(x64::rbx, src.bits);
 				LD_REG_val(src_host_reg, src.val, src.bits);
-				lambda.operator()<true>(src_host_reg, dst_host_reg, rm);
+				lambda.template operator()<true>(src_host_reg, dst_host_reg, rm);
 			}
 			else {
-				lambda.operator()<true>(GET_IMM(), dst_host_reg, rm);
+				lambda.template operator()<true>(GET_IMM(), dst_host_reg, rm);
 			}
 		},
 		[this, instr, &lambda](const op_info rm)
@@ -3396,10 +3396,10 @@ void lc86_jit::bit(ZydisDecodedInstruction *instr)
 				auto src = GET_REG(OPNUM_SRC);
 				auto src_host_reg = SIZED_REG(x64::rbx, src.bits);
 				LD_REG_val(src_host_reg, src.val, src.bits);
-				lambda.operator()<false>(src_host_reg, dst_mem, rm);
+				lambda.template operator()<false>(src_host_reg, dst_mem, rm);
 			}
 			else {
-				lambda.operator()<false>(GET_IMM(), dst_mem, rm);
+				lambda.template operator()<false>(GET_IMM(), dst_mem, rm);
 			}
 		});
 
@@ -5741,8 +5741,7 @@ lc86_jit::invlpg(ZydisDecodedInstruction *instr)
 			},
 			[this](const op_info rm)
 			{
-				MOV(RCX, m_cpu);
-				CALL_F(&tlb_invalidate);
+				CALL_F(&tlb_invalidate_);
 			});
 	}
 }

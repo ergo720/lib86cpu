@@ -5,6 +5,7 @@
  */
 
 #include "run.h"
+#include <cinttypes>
 
 
 regs_t *regs = nullptr;
@@ -57,7 +58,7 @@ test_fastcall()
 	std::memcpy(&d, &args[12], 4);
 	a = (static_cast<uint64_t>(a_h) << 32) | a_l;
 	eflags = read_eflags(cpu);
-	std::printf("test_fastcall called with args: %llu, %hu, %u, %u\n", a, b, c, d);
+	std::printf("test_fastcall called with args: %" PRIu64 ", %hu, %u, %u\n", a, b, c, d);
 
 	std::vector<uint8_t> vec(0x3800, 0xAA);
 	mem_write_block_virt(cpu, 0x2800, 0x2000, vec.data());
@@ -66,7 +67,7 @@ test_fastcall()
 	std::printf("vec[0x0] = 0x%X, vec[0x27FF] = 0x%X, vec[0x2800] = 0x%X\n", vec[0x0], vec[0x27FF], vec[0x2800]);
 
 	trampoline_call(cpu, ret_eip);
-	std::printf("Trampoline at address 0x17 returned %llu\n", (static_cast<uint64_t>(regs->edx) << 32) | regs->eax);
+	std::printf("Trampoline at address 0x17 returned %" PRIu64 "\n", (static_cast<uint64_t>(regs->edx) << 32) | regs->eax);
 
 	// to call the trampoline again, we must restore the previous cpu state
 	// restore stack arguments and return eip
@@ -81,7 +82,7 @@ test_fastcall()
 	write_eflags(cpu, eflags);
 
 	trampoline_call(cpu, ret_eip);
-	std::printf("Trampoline at address 0x17 returned %llu\n", (static_cast<uint64_t>(regs->edx) << 32) | regs->eax);
+	std::printf("Trampoline at address 0x17 returned %" PRIu64 "\n", (static_cast<uint64_t>(regs->edx) << 32) | regs->eax);
 
 	// set the return value
 	regs->eax = 0;
@@ -116,7 +117,7 @@ test_stdcall()
 	c = temp;
 	std::memcpy(&d, &args[20], 4);
 	a = (static_cast<uint64_t>(a_h) << 32) | a_l;
-	std::printf("test_stdcall called with args: %llu, %hu, %u, %u\n", a, b, c, d);
+	std::printf("test_stdcall called with args: %" PRIu64 ", %hu, %u, %u\n", a, b, c, d);
 
 	// clean up the stack and set the eip
 	regs->esp += 24;
@@ -155,10 +156,10 @@ test_cdecl()
 	std::memcpy(&d_l, &args[16], 4);
 	std::memcpy(&d_h, &args[20], 4);
 	d = (static_cast<uint64_t>(d_h) << 32) | d_l;
-	std::printf("test_cdecl called with args: %u, %hu, %u, %llu\n", a, b, c, d);
+	std::printf("test_cdecl called with args: %u, %hu, %u, %" PRIu64 "\n", a, b, c, d);
 
 	trampoline_call(cpu, ret_eip);
-	std::printf("Trampoline at address 0x7a returned %llu\n", (static_cast<uint64_t>(regs->edx) << 32) | regs->eax);
+	std::printf("Trampoline at address 0x7a returned %" PRIu64 "\n", (static_cast<uint64_t>(regs->edx) << 32) | regs->eax);
 
 	// set the return value
 	regs->eax = d_l;

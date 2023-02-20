@@ -6,7 +6,7 @@
 
 #include "decode.h"
 #include "internal.h"
-#include "memory.h"
+#include "memory_management.h"
 #include "support.h"
 
 

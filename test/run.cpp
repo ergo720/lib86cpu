@@ -168,7 +168,7 @@ main(int argc, char **argv)
 	cpu_set_flags(cpu, (intel_syntax ? CPU_INTEL_SYNTAX : 0) | (use_dbg ? CPU_DBG_PRESENT : 0) | CPU_ABORT_ON_HLT);
 
 	lc86_status code = cpu_run(cpu);
-	std::printf("Emulation terminated with status %d. The error was \"%s\"\n", code, get_last_error().c_str());
+	std::printf("Emulation terminated with status %d. The error was \"%s\"\n", static_cast<int32_t>(code), get_last_error().c_str());
 	cpu_free(cpu);
 
 	return 0;

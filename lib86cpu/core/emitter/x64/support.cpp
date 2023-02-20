@@ -9,6 +9,8 @@
 #include <immintrin.h>
 #if defined(_MSC_VER)
 #include <intrin.h>
+#elif defined(__GNUG__)
+#include "cpuid.h"
 #endif
 
 #define FPU_SUPPORTED          (1 << 0)
@@ -27,13 +29,19 @@ verify_cpu_features()
 	if ((cpu_info[3] & CPU_FEATURES_REQUIRED) == CPU_FEATURES_REQUIRED) {
 		return true;
 	}
-	else {
-		last_error = "This library requires x87 fpu and sse2 support at least";
-		return false;
+#elif defined(__GNUG__)
+	unsigned cpu_info[4];
+	if (__get_cpuid(1, &cpu_info[0], &cpu_info[1], &cpu_info[2], &cpu_info[3])) {
+		if ((cpu_info[3] & CPU_FEATURES_REQUIRED) == CPU_FEATURES_REQUIRED) {
+			return true;
+		}
 	}
 #else
-#error Don't know how to query cpu features on this platform
+#error "Don't know how to query cpu features on this platform"
 #endif
+
+	last_error = "This library requires x87 fpu and sse2 support at least";
+	return false;
 }
 
 uint128_t
@@ -41,9 +49,7 @@ uint128_t::operator>>(int shift)
 {
 	// NOTE: the shift amount used by the intrinsic is expressed in bytes, not bits
 
-	__m128i val;
-	val.m128i_u64[0] = this->low;
-	val.m128i_u64[1] = this->high;
+	__m128i val = _mm_set_epi64x(high, low);
 
 	shift /= 8;
 	switch (shift)
@@ -116,9 +122,7 @@ uint128_t::operator>>(int shift)
 		LIB86CPU_ABORT_msg("Unsupported 128 bit shift count (count was %d", shift);
 	}
 
-
-	this->low = val.m128i_u64[0];
-	this->high = val.m128i_u64[1];
+	_mm_store_si128(reinterpret_cast<__m128i *>(&low), val);
 	return *this;
 }
 
@@ -127,9 +131,7 @@ uint128_t::operator<<(int shift)
 {
 	// NOTE: the shift amount used by the intrinsic is expressed in bytes, not bits
 
-	__m128i val;
-	val.m128i_u64[0] = this->low;
-	val.m128i_u64[1] = this->high;
+	__m128i val = _mm_set_epi64x(high, low);
 
 	shift /= 8;
 	switch (shift)
@@ -202,9 +204,7 @@ uint128_t::operator<<(int shift)
 		LIB86CPU_ABORT_msg("Unsupported 128 bit shift count (count was %d", shift);
 	}
 
-
-	this->low = val.m128i_u64[0];
-	this->high = val.m128i_u64[1];
+	_mm_store_si128(reinterpret_cast<__m128i *>(&low), val);
 	return *this;
 }
 

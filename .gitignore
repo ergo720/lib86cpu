@@ -2,4 +2,5 @@
 [Bb]uild/
 [Bb]uild-*/
 llvm/
-lib86cpu/config.h
+include/config.h
+.vscode/

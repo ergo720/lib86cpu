@@ -7,7 +7,6 @@
 #pragma once
 
 #include "instructions.h"
-#include "memory.h"
 #include "debugger.h"
 #include "clock.h"
 
@@ -131,7 +130,7 @@
 #define REG_pair(reg) get_reg_pair(reg)
 
 
-entry_t link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc);
+entry_t JIT_API link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc);
 size_t get_reg_offset(ZydisRegister reg);
 size_t get_seg_prfx_offset(ZydisDecodedInstruction *instr);
 int get_reg_idx(ZydisRegister reg);
@@ -198,5 +197,5 @@ inline constexpr auto all_callable_funcs = std::make_tuple(
 	fpu_update_tag,
 	cpu_runtime_abort,
 	dbg_update_exp_hook,
-	tlb_invalidate
+	tlb_invalidate_
 );

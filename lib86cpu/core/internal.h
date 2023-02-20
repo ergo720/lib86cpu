@@ -19,11 +19,12 @@ void tc_cache_clear(cpu_t *cpu);
 void tc_cache_purge(cpu_t *cpu);
 addr_t get_pc(cpu_ctx_t *cpu_ctx);
 template<bool is_intn = false, bool is_hw_int = false>
-translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx);
-uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
+translated_code_t * JIT_API cpu_raise_exception(cpu_ctx_t *cpu_ctx);
+uint32_t JIT_API cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 void fpu_init(cpu_t *cpu);
-void fpu_update_tag(cpu_ctx_t *cpu_ctx, uint32_t idx);
+void JIT_API fpu_update_tag(cpu_ctx_t *cpu_ctx, uint32_t idx);
 void halt_loop(cpu_t *cpu);
+void JIT_API tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 
 
 // cpu hidden flags (assumed to be constant during exec of a tc, together with a flag subset of eflags)
