@@ -1,0 +1,69 @@
+name: GitHub CI
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - '.github/*'
+      - '.github/*TEMPLATE/**'
+    branches:
+      - '**'
+  pull_request:
+    paths-ignore:
+      - '*.md'
+      - '.github/*'
+      - '.github/*TEMPLATE/**'
+
+jobs:
+  build:
+    name: ${{ matrix.platform }} (${{ matrix.arch }}, ${{ matrix.configuration }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        cmake-generator:
+          # x64 arch
+          - -A x64 # Visual Studio (latest IDE)
+          - -G "Unix Makefiles"
+          #- -G Xcode
+        configuration: [Debug, Release]
+        include:
+          - cmake-generator: -A x64
+            platform: Windows
+            os: windows-latest
+            arch: x64
+            cmake-build-param: -j $env:NUMBER_OF_PROCESSORS
+            folder: win
+          - cmake-generator: -G "Unix Makefiles"
+            platform: Linux
+            os: ubuntu-latest
+            arch: x64
+            cmake-build-param: -j $(nproc --all)
+            folder: linux
+            # NOTE: xorg-dev somehow is a requirement in order to obtain GL/gl.h header file.
+            #       Not sure how come glfw repo doesn't require this.
+            install-dep: |
+              sudo apt-get update
+              sudo apt-get install libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev libxext-dev
+              sudo apt-get install xorg-dev
+          #- cmake-generator: -G Xcode
+          #  platform: macOS
+          #  os: macos-latest
+          #  arch: x64
+          #  cmake-build-param: -j $(sysctl -n hw.ncpu)
+          #  folder: macos
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          submodules: recursive
+      - name: Install Dependencies
+        if: matrix.install-dep != 0
+        run: ${{ matrix.install-dep }}
+      - name: Generate CMake Files
+        # NOTES:
+        # -Werror=dev is used to validate CMakeLists.txt for any faults.
+        run: cmake -B build -Werror=dev ${{ matrix.cmake-generator }}
+      - name: Build
+        run: cmake --build build --config ${{ matrix.configuration }} ${{ matrix.cmake-build-param }}
+      #- name: CTests
+      #  run: ctest --test-dir build --build-config ${{ matrix.configuration }} --verbose
