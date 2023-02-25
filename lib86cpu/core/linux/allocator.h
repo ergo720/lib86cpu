@@ -33,6 +33,7 @@ public:
 	void destroy_all_blocks();
 	~mem_manager() { destroy_all_blocks(); }
 
+	std::map<void *, void *> eh_frames;
 
 private:
 	struct block_header_t {

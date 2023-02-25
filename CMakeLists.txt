@@ -62,6 +62,7 @@ set(PLATFORM_HEADERS
 set(PLATFORM_SRC
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/allocator.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/clock.cpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/x64_exceptions.cpp"
 )
 else ()
 message(FATAL_ERROR "Unsupported platform")
@@ -179,7 +180,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} \
  "
 )
 elseif (${COMPILER_IS_GNU})
-set(CMAKE_CXX_FLAGS "-m64 -msse2")
+set(CMAKE_CXX_FLAGS "-m64 -msse2 -fexceptions -funwind-tables")
 endif()
 
 if (${LIB86CPU_BUILD_SHARED_LIB})

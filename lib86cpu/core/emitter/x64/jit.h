@@ -173,6 +173,8 @@ private:
 	void create_unwind_info();
 
 	uint8_t m_unwind_info[4 + 12];
+#elif defined(__linux__)
+	void gen_exception_info(uint8_t *code_ptr, size_t code_size);
 #endif
 
 private:

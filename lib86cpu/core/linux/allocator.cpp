@@ -10,6 +10,10 @@
 #include <sys/mman.h>
 
 
+extern "C" {
+	void __deregister_frame(void *);
+}
+
 static int
 get_mem_flags(unsigned flags)
 {
@@ -87,6 +91,12 @@ mem_manager::free(void *ptr)
 void
 mem_manager::destroy_all_blocks()
 {
+	for (const auto &eh_pair : eh_frames) {
+		__deregister_frame(eh_pair.second);
+	}
+
+	eh_frames.clear();
+
 	for (auto &addr : blocks) {
 		munmap(addr, POOL_SIZE);
 	}
@@ -156,6 +166,12 @@ mem_manager::release_sys_mem(void *addr)
 		return;
 	}
 	
+	void *main_addr = reinterpret_cast<uint8_t *>(addr) + 16;
+	if (auto it = eh_frames.find(main_addr); it != eh_frames.end()) {
+		__deregister_frame(it->second);
+		eh_frames.erase(main_addr);
+	}
+
 	if (auto it = big_blocks.find(addr); it != big_blocks.end()) {
 		[[maybe_unused]] auto ret = munmap(it->first, it->second);
 		assert(!ret);

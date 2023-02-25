@@ -495,6 +495,11 @@ lc86_jit::gen_code_block()
 	// when an exception is thrown. Note that the sections need to be DWORD aligned
 	estimated_code_size += 24;
 	estimated_code_size = (estimated_code_size + 3) & ~3;
+#elif defined (__linux__)
+	// Increase estimated_code_size by 24 + 40 + 4, to accomodate the .eh_frame section required to unwind the function
+	// when an exception is thrown. Note that the section needs to be 8 byte aligned
+	estimated_code_size += (24 + 40 + 4);
+	estimated_code_size = (estimated_code_size + 7) & ~7;
 #endif
 
 	auto block = m_mem.allocate_sys_mem(estimated_code_size);
@@ -520,7 +525,7 @@ lc86_jit::gen_code_block()
 	uint8_t *main_offset = exit_offset + 16;
 	std::memcpy(exit_offset, section->data(), buff_size);
 
-#if defined(_WIN64)
+#if defined(_WIN64) || defined(__linux__)
 	// According to asmjit's source code, the code size can decrease after the relocation above, so we need to query it again
 	gen_exception_info(main_offset, m_code.codeSize() - 16);
 #endif
