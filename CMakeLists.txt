@@ -1,6 +1,6 @@
 # ergo720 Copyright (c) 2020
 
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 3.4.3)
 project(lib86cpu)
 
 if(NOT DEFINED CMAKE_RUNTIME_OUTPUT_DIRECTORY)
@@ -16,6 +16,14 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 option(LIB86CPU_BUILD_SHARED_LIB
     "Build shared library"
     OFF)
+
+if (CMAKE_HOST_SYSTEM_NAME MATCHES "Windows")
+ set(OS_IS_WIN TRUE)
+elseif (CMAKE_HOST_SYSTEM_NAME MATCHES "Linux")
+ set(OS_IS_LINUX TRUE)
+else ()
+message(FATAL_ERROR "Unsupported OS")
+endif()
 
 if (CMAKE_GENERATOR MATCHES "Visual Studio")
  set(GENERATOR_IS_VS TRUE)
@@ -40,7 +48,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE}")
 endif()
 
-if (WIN32)
+if (${OS_IS_WIN})
 message("Building for Windows")
 include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows)
 set(PLATFORM_HEADERS
@@ -52,7 +60,7 @@ set(PLATFORM_SRC
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/clock.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/x64_exceptions.cpp"
 )
-elseif (LINUX)
+elseif (${OS_IS_LINUX})
 message("Building for Linux")
 include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux)
 set(PLATFORM_HEADERS
@@ -64,8 +72,6 @@ set(PLATFORM_SRC
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/clock.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/x64_exceptions.cpp"
 )
-else ()
-message(FATAL_ERROR "Unsupported platform")
 endif()
 
 if (${LIB86CPU_X64_EMITTER})
