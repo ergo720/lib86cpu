@@ -11,7 +11,8 @@ There are no plans to support x86-32.
 ## Building
 
 Cmake version 3.4.3 or higher is required.\
-Visual Studio 2022 (Windows), Visual Studio Code (Linux, optional).
+Visual Studio 2022 (Windows), Visual Studio Code (Linux, optional).\
+NOTE: there is a known bug in a version of Visual Studio 2022 after 17.1.5, that prevents the project from building successfully, so use a version equal or prior to that.
 
 **On Windows:**
 
