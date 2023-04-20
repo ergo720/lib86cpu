@@ -52,25 +52,27 @@ if (${OS_IS_WIN})
 message("Building for Windows")
 include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows)
 set(PLATFORM_HEADERS
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/allocator.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/clock.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/os_exceptions.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/os_mem.h"
 )
 set(PLATFORM_SRC
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/allocator.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/clock.cpp"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/x64_exceptions.cpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/os_exceptions.cpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/os_mem.cpp"
 )
 elseif (${OS_IS_LINUX})
 message("Building for Linux")
 include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux)
 set(PLATFORM_HEADERS
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/allocator.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/clock.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/os_exceptions.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/os_mem.h"
 )
 set(PLATFORM_SRC
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/allocator.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/clock.cpp"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/x64_exceptions.cpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/os_exceptions.cpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/os_mem.cpp"
 )
 endif()
 
@@ -129,6 +131,7 @@ set(HEADERS
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/main_wnd.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/glad/glad.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/KHR/khrplatform.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/allocator.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/breakpoint.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/decode.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/helpers.h"
@@ -150,6 +153,7 @@ set(SOURCES
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/imgui_wnd.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/main_wnd.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/glad.c"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/allocator.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/breakpoint.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/decode.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/fpu.cpp"

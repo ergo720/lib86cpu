@@ -1,5 +1,5 @@
 /*
- * x86-64 exception support
+ * linux exception support
  *
  * ergo720                Copyright (c) 2023
  */
@@ -62,6 +62,7 @@ static_assert((sizeof(fde_t) % sizeof(void *)) == 0);
 
 extern "C" {
 	void __register_frame(void *);
+	void __deregister_frame(void *);
 }
 
 
@@ -159,4 +160,10 @@ lc86_jit::gen_exception_info(uint8_t *code_ptr, size_t code_size)
 	cie_t *cie = reinterpret_cast<cie_t *>(code_ptr + aligned_code_size);
 	write_eh_frame(cie, code_ptr, code_size);
 	m_mem.eh_frames.emplace(code_ptr, cie);
+}
+
+void
+os_delete_exp_info(void *addr)
+{
+	__deregister_frame(addr);
 }

@@ -1,5 +1,5 @@
 /*
- * x86-64 exception support
+ * x86-64 windows exception support
  *
  * ergo720                Copyright (c) 2022
  */
@@ -35,8 +35,10 @@
 #define EXP_R15_idx 15
 
 
-void
-lc86_jit::create_unwind_info()
+static uint8_t unwind_info[4 + 12];
+
+static void
+create_unwind_info()
 {
 	// The prolog of main() always uses push rbx and sub rsp, 0x20 + sizeof(stack args) + sizeof(local vars),
 	// so we can simplify the generation of the unwind table
@@ -67,11 +69,11 @@ lc86_jit::create_unwind_info()
 	++num_unwind_codes;
 
 	// Create the UNWIND_INFO table
-	m_unwind_info[0] = 1 | (0 << 3);      // version and flags
-	m_unwind_info[1] = 8;                 // size of prolog
-	m_unwind_info[2] = num_unwind_codes;  // num of unwind codes
-	m_unwind_info[3] = 0;                 // frame reg and offset
-	std::memcpy(&m_unwind_info[4], unwind_codes, sizeof(unwind_codes));
+	unwind_info[0] = 1 | (0 << 3);      // version and flags
+	unwind_info[1] = 8;                 // size of prolog
+	unwind_info[2] = num_unwind_codes;  // num of unwind codes
+	unwind_info[3] = 0;                 // frame reg and offset
+	std::memcpy(&unwind_info[4], unwind_codes, sizeof(unwind_codes));
 }
 
 void
@@ -81,16 +83,23 @@ lc86_jit::gen_exception_info(uint8_t *code_ptr, size_t code_size)
 
 	// Write .xdata
 	size_t aligned_code_size = (code_size + sizeof(DWORD) - 1) & ~(sizeof(DWORD) - 1);
-	std::memcpy(code_ptr + aligned_code_size, m_unwind_info, sizeof(m_unwind_info));
+	std::memcpy(code_ptr + aligned_code_size, unwind_info, sizeof(unwind_info));
 
 	// Write .pdata
-	RUNTIME_FUNCTION *table = reinterpret_cast<RUNTIME_FUNCTION *>(code_ptr + aligned_code_size + sizeof(m_unwind_info));
+	RUNTIME_FUNCTION *table = reinterpret_cast<RUNTIME_FUNCTION *>(code_ptr + aligned_code_size + sizeof(unwind_info));
 	table->BeginAddress = 0;
 	table->EndAddress = code_size;
 	table->UnwindInfoAddress = aligned_code_size;
 	m_mem.eh_frames.emplace(code_ptr, table);
 
 	[[maybe_unused]] auto ret = RtlAddFunctionTable(table, 1, reinterpret_cast<DWORD64>(code_ptr));
+	assert(ret);
+}
+
+void
+os_delete_exp_info(void *addr)
+{
+	[[maybe_unused]] auto ret = RtlDeleteFunctionTable(static_cast<PRUNTIME_FUNCTION>(addr));
 	assert(ret);
 }
 

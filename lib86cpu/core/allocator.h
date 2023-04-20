@@ -1,7 +1,7 @@
 /*
  * memory allocator for the jit
  *
- * ergo720                Copyright (c) 2023
+ * ergo720                Copyright (c) 2020
  */
 
 #pragma once
@@ -33,7 +33,9 @@ public:
 	void destroy_all_blocks();
 	~mem_manager() { destroy_all_blocks(); }
 
+#if defined(_WIN64) || defined(__linux__)
 	std::map<void *, void *> eh_frames;
+#endif
 
 private:
 	struct block_header_t {

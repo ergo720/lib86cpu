@@ -503,10 +503,6 @@ lc86_jit::gen_code_block()
 #endif
 
 	auto block = m_mem.allocate_sys_mem(estimated_code_size);
-	if (!block.addr) {
-		throw lc86_exp_abort("Failed to allocate memory for the generated code", lc86_status::no_memory);
-	}
-
 	if (auto err = m_code.relocateToBase(reinterpret_cast<uintptr_t>(block.addr))) {
 		std::string err_str("Asmjit failed at relocateToBase() with the error ");
 		err_str += DebugUtils::errorAsString(err);
@@ -596,10 +592,6 @@ lc86_jit::gen_aux_funcs()
 	}
 
 	auto block = m_mem.allocate_sys_mem(estimated_code_size);
-	if (!block.addr) {
-		throw lc86_exp_abort("Failed to allocate memory for the generated code", lc86_status::no_memory);
-	}
-
 	if (auto err = m_code.relocateToBase(reinterpret_cast<uintptr_t>(block.addr))) {
 		std::string err_str("Asmjit failed at relocateToBase() with the error ");
 		err_str += DebugUtils::errorAsString(err);
