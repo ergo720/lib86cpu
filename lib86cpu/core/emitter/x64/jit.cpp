@@ -6636,58 +6636,40 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				LD_MEM();
 			});
 		if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
-			if (instr->operands[OPNUM_DST].reg.value == ZYDIS_REGISTER_SS) {
-				Label ok = m_a.newLabel();
-				MOV(R8D, m_cpu->instr_eip);
-				MOV(DX, AX);
+			MOV(R8D, m_cpu->instr_eip);
+			MOV(DX, AX);
+
+			switch (REG_idx(instr->operands[OPNUM_DST].reg.value))
+			{
+			case SS_idx:
 				CALL_F(&mov_sel_pe_helper<SS_idx>);
-				TEST(EAX, EAX);
-				BR_EQ(ok);
-				RAISEin_no_param_f();
-				m_a.bind(ok);
-				MOV(EAX, MEMD32(RCX, CPU_CTX_HFLG));
-				OR(EAX, HFLG_INHIBIT_INT);
-				MOV(MEMD32(RCX, CPU_CTX_HFLG), EAX);
-				ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
+				break;
 
-				gen_link_dst_cond([this] {
-					MOV(EBX, MEMD32(RCX, CPU_CTX_HFLG));
-					TEST(EBX, HFLG_SS32);
-					});
-				m_cpu->translate_next = 0;
+			case DS_idx:
+				CALL_F(&mov_sel_pe_helper<DS_idx>);
+				break;
+
+			case ES_idx:
+				CALL_F(&mov_sel_pe_helper<ES_idx>);
+				break;
+
+			case FS_idx:
+				CALL_F(&mov_sel_pe_helper<FS_idx>);
+				break;
+
+			case GS_idx:
+				CALL_F(&mov_sel_pe_helper<GS_idx>);
+				break;
+
+			default:
+				LIB86CPU_ABORT();
 			}
-			else {
-				MOV(R8D, m_cpu->instr_eip);
-				MOV(DX, AX);
 
-				switch (REG_idx(instr->operands[OPNUM_DST].reg.value))
-				{
-				case DS_idx:
-					CALL_F(&mov_sel_pe_helper<DS_idx>);
-					break;
-
-				case ES_idx:
-					CALL_F(&mov_sel_pe_helper<ES_idx>);
-					break;
-
-				case FS_idx:
-					CALL_F(&mov_sel_pe_helper<FS_idx>);
-					break;
-
-				case GS_idx:
-					CALL_F(&mov_sel_pe_helper<GS_idx>);
-					break;
-
-				default:
-					LIB86CPU_ABORT();
-				}
-
-				Label ok = m_a.newLabel();
-				TEST(EAX, EAX);
-				BR_EQ(ok);
-				RAISEin_no_param_f();
-				m_a.bind(ok);
-			}
+			Label ok = m_a.newLabel();
+			TEST(EAX, EAX);
+			BR_EQ(ok);
+			RAISEin_no_param_f();
+			m_a.bind(ok);
 		}
 		else {
 			const size_t seg_offset = REG_off(instr->operands[OPNUM_DST].reg.value);
@@ -6695,6 +6677,19 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			MOVZX(EAX, AX);
 			SHL(EAX, 4);
 			ST_SEG_BASE(seg_offset, EAX);
+		}
+
+		if (instr->operands[OPNUM_DST].reg.value == ZYDIS_REGISTER_SS) {
+			MOV(EAX, MEMD32(RCX, CPU_CTX_HFLG));
+			OR(EAX, HFLG_INHIBIT_INT);
+			MOV(MEMD32(RCX, CPU_CTX_HFLG), EAX);
+			ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
+
+			gen_link_dst_cond([this] {
+				MOV(EBX, MEMD32(RCX, CPU_CTX_HFLG));
+				TEST(EBX, HFLG_SS32);
+				});
+			m_cpu->translate_next = 0;
 		}
 	}
 	break;
@@ -7454,19 +7449,6 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 			else {
 				ST_R16(CPU_CTX_ESP, BX);
 			}
-
-			if (sel.first == SS_idx) {
-				MOV(EAX, MEMD32(RCX, CPU_CTX_HFLG));
-				OR(EAX, HFLG_INHIBIT_INT);
-				MOV(MEMD32(RCX, CPU_CTX_HFLG), EAX);
-				ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
-
-				gen_link_dst_cond([this] {
-					MOV(EBX, MEMD32(RCX, CPU_CTX_HFLG));
-					TEST(EBX, HFLG_SS32);
-					});
-				m_cpu->translate_next = 0;
-			}
 		}
 		else {
 			ST_SEG(sel.second, R11W);
@@ -7479,6 +7461,19 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 			else {
 				ST_R16(CPU_CTX_ESP, BX);
 			}
+		}
+
+		if (sel.first == SS_idx) {
+			MOV(EAX, MEMD32(RCX, CPU_CTX_HFLG));
+			OR(EAX, HFLG_INHIBIT_INT);
+			MOV(MEMD32(RCX, CPU_CTX_HFLG), EAX);
+			ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
+
+			gen_link_dst_cond([this] {
+				MOV(EBX, MEMD32(RCX, CPU_CTX_HFLG));
+				TEST(EBX, HFLG_SS32);
+				});
+			m_cpu->translate_next = 0;
 		}
 	}
 	break;
