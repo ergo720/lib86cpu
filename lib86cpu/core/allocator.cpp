@@ -31,9 +31,6 @@ mem_manager::alloc()
 {
 	if (head == nullptr) {
 		head = create_pool();
-		if (head == nullptr) {
-			return nullptr;
-		}
 	}
 
 	block_header_t *addr = head;
@@ -99,12 +96,7 @@ mem_manager::allocate_sys_mem(size_t num_bytes)
 		return block;
 	}
 
-	void *addr = alloc();
-	if (addr == nullptr) {
-		return mem_block();
-	}
-
-	return mem_block(addr, BLOCK_SIZE);
+	return mem_block(alloc(), BLOCK_SIZE);
 }
 
 void
