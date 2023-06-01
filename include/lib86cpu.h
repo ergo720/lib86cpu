@@ -76,6 +76,8 @@ API_FUNC void cpu_exit(cpu_t *cpu);
 API_FUNC void cpu_sync_state(cpu_t *cpu);
 API_FUNC lc86_status cpu_set_flags(cpu_t *cpu, uint32_t flags);
 API_FUNC void cpu_set_a20(cpu_t *cpu, bool closed, bool should_int = false);
+API_FUNC void cpu_pause(cpu_t* cpu);
+API_FUNC void cpu_resume(cpu_t* cpu);
 API_FUNC void cpu_raise_hw_int_line(cpu_t *cpu);
 API_FUNC void cpu_lower_hw_int_line(cpu_t *cpu);
 

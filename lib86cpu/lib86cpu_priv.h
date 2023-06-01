@@ -172,6 +172,7 @@ struct cpu_t {
 	cpu_ctx_t cpu_ctx;
 	disas_ctx_t disas_ctx;
 	translated_code_t *tc; // tc for which we are currently generating code
+	std::atomic_flag suspend_flg;
 	std::mt19937 rng_gen;
 	std::unique_ptr<lc86_jit> jit;
 	std::unique_ptr<address_space<addr_t>> memory_space_tree;

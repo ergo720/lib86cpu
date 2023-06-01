@@ -349,6 +349,30 @@ cpu_set_a20(cpu_t *cpu, bool closed, bool should_int)
 }
 
 /*
+* cpu_pause -> submit a request to stop the cpu (this function is multi-thread safe)
+* cpu: a valid cpu instance
+* ret: nothing
+*/
+void
+cpu_pause(cpu_t* cpu)
+{
+	cpu->suspend_flg.test_and_set();
+	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_PAUSE_INT);
+}
+
+/*
+* cpu_resume -> submit a request to resume execution of the cpu (this function is multi-thread safe)
+* cpu: a valid cpu instance
+* ret: nothing
+*/
+void
+cpu_resume(cpu_t* cpu)
+{
+	cpu->suspend_flg.clear();
+	cpu->suspend_flg.notify_all();
+}
+
+/*
 * cpu_raise_hw_int -> raises the hardware interrupt line (this function is multi-thread safe)
 * cpu: a valid cpu instance
 * ret: nothing

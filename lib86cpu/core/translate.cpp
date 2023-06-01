@@ -1412,6 +1412,10 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 {
 	cpu_ctx->cpu->clear_int_fn(cpu_ctx);
 
+	if (int_flg & CPU_PAUSE_INT) {
+		cpu_ctx->cpu->suspend_flg.wait(true);
+	}
+
 	if (int_flg & CPU_ABORT_INT) {
 		// this also happens when the user closes the debugger window
 		throw lc86_exp_abort("Received abort signal, terminating the emulation", lc86_status::success);
