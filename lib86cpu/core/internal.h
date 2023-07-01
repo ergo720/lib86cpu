@@ -62,6 +62,7 @@ void JIT_API tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define HFLG_CR0_TS         (1 << CR0_TS_SHIFT)
 #define HFLG_CR4_OSFXSR     (1 << CR4_OSFXSR_SHIFT)
 #define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_TIMEOUT | HFLG_CR0_TS | HFLG_CR4_OSFXSR)
+#define HFLG_SAVED_MASK     (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_INHIBIT_INT | HFLG_CR0_TS | HFLG_CR4_OSFXSR)
 
 // cpu interrupt flags
 #define CPU_NO_INT      0
@@ -70,8 +71,8 @@ void JIT_API tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define CPU_A20_INT     (1 << 2)
 #define CPU_REGION_INT  (1 << 3)
 #define CPU_TIMEOUT_INT (1 << 4)
-#define CPU_PAUSE_INT   (1 << 5)
-#define CPU_NON_HW_INT  (CPU_ABORT_INT | CPU_A20_INT | CPU_REGION_INT | CPU_PAUSE_INT)
+#define CPU_SUSPEND_INT (1 << 5)
+#define CPU_NON_HW_INT  (CPU_ABORT_INT | CPU_A20_INT | CPU_REGION_INT | CPU_SUSPEND_INT)
 
 // mmu flags
 #define MMU_IS_WRITE    (1 << 0)

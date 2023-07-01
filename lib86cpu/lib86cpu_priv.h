@@ -13,6 +13,7 @@
 #include <memory>
 #include <list>
 #include <cinttypes>
+#include <thread>
 #include "lib86cpu.h"
 
 #ifdef LIB86CPU_X64_EMITTER
@@ -154,7 +155,6 @@ struct cpu_ctx_t {
 	regs_t regs;
 	lazy_eflags_t lazy_eflags;
 	uint32_t hflags;
-	uint8_t *ram;
 	exp_info_t exp_info;
 	uint32_t int_pending;
 	uint8_t exit_requested;
@@ -172,7 +172,11 @@ struct cpu_t {
 	cpu_ctx_t cpu_ctx;
 	disas_ctx_t disas_ctx;
 	translated_code_t *tc; // tc for which we are currently generating code
+	std::vector<uint8_t> ram;
 	std::atomic_flag suspend_flg;
+	std::atomic_flag is_suspended;
+	std::atomic_flag is_saving_state;
+	std::atomic<std::thread::id> cpu_thr_id;
 	std::mt19937 rng_gen;
 	std::unique_ptr<lc86_jit> jit;
 	std::unique_ptr<address_space<addr_t>> memory_space_tree;
@@ -188,7 +192,9 @@ struct cpu_t {
 	tlb_t dtlb[DTLB_NUM_SETS][DTLB_NUM_LINES]; // data tlb
 	uint16_t num_tc; // num of tc actually emitted, tc's might not be present in the code cache
 	uint8_t microcode_updated;
+	bool state_loaded;
 	struct _tsc_clock {
+		uint64_t offset;
 		uint64_t last_host_ticks;
 		static constexpr uint64_t cpu_freq = 733333333;
 	} tsc_clock;

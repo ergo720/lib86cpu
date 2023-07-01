@@ -227,7 +227,7 @@ get_rom_host_ptr(const memory_region_t<addr_t> *rom, addr_t addr)
 void *
 get_ram_host_ptr(cpu_t *cpu, const memory_region_t<addr_t> *ram, addr_t addr)
 {
-	return &cpu->cpu_ctx.ram[addr - ram->buff_off_start];
+	return &cpu->ram[addr - ram->buff_off_start];
 }
 
 template<typename T>

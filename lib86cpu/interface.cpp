@@ -105,15 +105,8 @@ default_pmio_write_handler32(addr_t addr, const uint32_t value, void *opaque)
 	LOG(log_level::warn, "Unhandled PMIO write at port %#06x with size 4", addr);
 }
 
-static uint16_t
-default_get_int_vec()
-{
-	LOG(log_level::warn, "Unexpected hardware interrupt");
-	return EXP_INVALID;
-}
-
 // NOTE: lib86cpu runs entirely on the single thread that calls cpu_run, so calling the below functions from other threads is not safe. Only call them
-// from the hook, mmio or pmio callbacks or before the emulation starts.
+// from the hook, mmio or pmio callbacks or before the emulation starts. An exception to this is for the functions explicitly marked as multi-thread safe
 
 /*
 * cpu_new -> creates a new cpu instance. Only a single instance should exist at a time
@@ -144,11 +137,18 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 
-	// allocate 8 extra bytes at then end in the case something ever does a 2,4,8 byte access on the last valid byte of ram
-	cpu->cpu_ctx.ram = new uint8_t[ramsize + 8];
-	if (cpu->cpu_ctx.ram == nullptr) {
+	try {
+		// allocate 8 extra bytes at then end in the case something ever does a 2,4,8 byte access on the last valid byte of ram
+		cpu->ram = std::vector<uint8_t>(ramsize + 8, 0);
+	}
+	catch (const std::bad_alloc &exp) {
 		cpu_free(cpu);
 		return set_last_error(lc86_status::no_memory);
+	}
+	catch (const std::length_error &exp) {
+		cpu_free(cpu);
+		last_error = exp.what();
+		return lc86_status::invalid_parameter;
 	}
 
 	cpu->cpu_name = "Intel Pentium III KC 733 (Xbox CPU)";
@@ -173,6 +173,7 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 
 	std::random_device rd;
 	cpu->rng_gen.seed(rd());
+	cpu->cpu_thr_id = std::thread::id();
 
 	LOG(log_level::info, "Created new cpu \"%s\"", cpu->cpu_name);
 
@@ -188,10 +189,6 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 void
 cpu_free(cpu_t *cpu)
 {
-	if (cpu->cpu_ctx.ram) {
-		delete[] cpu->cpu_ctx.ram;
-	}
-
 	for (auto &bucket : cpu->code_cache) {
 		bucket.clear();
 	}
@@ -274,7 +271,7 @@ cpu_set_timeout(cpu_t *cpu, uint64_t timeout_time)
 }
 
 /*
-* cpu_exit->submit to the cpu a request to terminate the emulation(this function is multi - thread safe)
+* cpu_exit->submit to the cpu a request to terminate the emulation (this function is multi - thread safe)
 * cpu: a valid cpu instance
 * ret: nothing
 */
@@ -348,16 +345,23 @@ cpu_set_a20(cpu_t *cpu, bool closed, bool should_int)
 	}
 }
 
+static void
+cpu_force_suspend(cpu_t *cpu)
+{
+	cpu->suspend_flg.test_and_set();
+	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_SUSPEND_INT);
+}
+
 /*
-* cpu_pause -> submit a request to stop the cpu (this function is multi-thread safe)
+* cpu_suspend -> submit a request to stop the cpu (this function is multi-thread safe)
 * cpu: a valid cpu instance
 * ret: nothing
 */
 void
-cpu_pause(cpu_t* cpu)
+cpu_suspend(cpu_t *cpu)
 {
-	cpu->suspend_flg.test_and_set();
-	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_PAUSE_INT);
+	cpu->is_saving_state.wait(true);
+	cpu_force_suspend(cpu);
 }
 
 /*
@@ -366,10 +370,22 @@ cpu_pause(cpu_t* cpu)
 * ret: nothing
 */
 void
-cpu_resume(cpu_t* cpu)
+cpu_resume(cpu_t *cpu)
 {
+	cpu->is_saving_state.wait(true);
 	cpu->suspend_flg.clear();
 	cpu->suspend_flg.notify_all();
+}
+
+/*
+* cpu_is_suspended -> check is the cpu is actually suspended (this function is multi-thread safe)
+* cpu: a valid cpu instance
+* ret: true if the cpu is suspended, false otherwise
+*/
+bool
+cpu_is_suspended(cpu_t *cpu)
+{
+	return cpu->is_suspended.test();
 }
 
 /*
@@ -392,6 +408,85 @@ void
 cpu_lower_hw_int_line(cpu_t *cpu)
 {
 	cpu->lower_hw_int_fn(&cpu->cpu_ctx);
+}
+
+template<bool is_save>
+static lc86_status cpu_snapshot_handler(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, fp_int int_fn = nullptr)
+{
+	if (cpu->is_saving_state.test_and_set() == true) {
+		cpu->is_saving_state.wait(true);
+	}
+
+	lc86_status ret;
+	if (cpu->cpu_thr_id == std::this_thread::get_id()) {
+		// We cannot safely save/load the cpu state from the cpu thread while it's running, because it could be executing code in the middle of a tc
+		ret = lc86_status::internal_error;
+	}
+	else if (cpu->cpu_thr_id == std::thread::id()) {
+		// We are called from the cpu thread while the cpu is not running, so we don't need to suspend the cpu
+		if constexpr (is_save) {
+			ret = cpu_save_state(cpu, cpu_state, ram_state);
+		}
+		else {
+			ret = cpu_load_state(cpu, cpu_state, ram_state, int_fn);
+		}
+	}
+	else {
+		// We are called from another thread, so we must suspend the cpu first
+		bool curr_suspend_flg = cpu->suspend_flg.test();
+		if (!curr_suspend_flg) {
+			cpu_force_suspend(cpu);
+		}
+		while (cpu_is_suspended(cpu) == false) {
+			std::this_thread::yield();
+		}
+		if constexpr (is_save) {
+			ret = cpu_save_state(cpu, cpu_state, ram_state);
+		}
+		else {
+			ret = cpu_load_state(cpu, cpu_state, ram_state, int_fn);
+			cpu->state_loaded = true;
+		}
+		if (!curr_suspend_flg) {
+			cpu_resume(cpu);
+		}
+	}
+
+	cpu->is_saving_state.clear();
+	cpu->is_saving_state.notify_all();
+
+	return ret;
+}
+
+// NOTE: this function will fail if it is called from the cpu thread while it's executing guest code
+
+/*
+* cpu_take_snapshot -> saves a snapshot of the cpu state (this function is multi-thread safe)
+* cpu: a valid cpu instance
+* cpu_state: a buffer that receives the saved cpu state (must be allocated by the client)
+* ram_state: a buffer that receives the saved ram state (must be allocated by the client)
+* ret: the status of the operation
+*/
+lc86_status
+cpu_take_snapshot(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state)
+{
+	return cpu_snapshot_handler<true>(cpu, cpu_state, ram_state);
+}
+
+// NOTE: this function will fail if it is called from the cpu thread while it's executing guest code
+
+/*
+* cpu_restore_snapshot -> restores a snapshot of the cpu state (this function is multi-thread safe)
+* cpu: a valid cpu instance
+* cpu_state: a buffer that receives the saved cpu state (must be allocated by the client)
+* ram_state: a buffer that receives the saved ram state (must be allocated by the client)
+* int_fn: function that returns the vector number when a hw interrupt is serviced. Not necessary if you never generate hw interrupts
+* ret: the status of the operation
+*/
+lc86_status
+cpu_restore_snapshot(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, fp_int int_fn)
+{
+	return cpu_snapshot_handler<false>(cpu, cpu_state, ram_state, int_fn);
 }
 
 /*
@@ -430,7 +525,7 @@ get_last_error()
 uint8_t *
 get_ram_ptr(cpu_t *cpu)
 {
-	return cpu->cpu_ctx.ram;
+	return cpu->ram.data();
 }
 
 /*

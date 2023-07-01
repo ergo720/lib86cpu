@@ -10,11 +10,12 @@
 #include "endianness.h"
 
 
-// these flags are ORed with the flags in lib86cpu.h, so avoid coflicts
+// these flags are ORed with the flags in lib86cpu.h, so avoid conflicts
 #define CPU_DISAS_ONE           (1 << 7)
 #define CPU_ALLOW_CODE_WRITE    (1 << 8)
 #define CPU_FORCE_INSERT        (1 << 9)
 #define CPU_SINGLE_STEP         (1 << 10)
+#define CPU_SAVED_FLG_MASK      (CPU_INTEL_SYNTAX | CPU_ABORT_ON_HLT)
 
 #define CPU_NUM_REGS 43
 
@@ -54,6 +55,9 @@ void discard_log(log_level lv, const unsigned count, const char *msg, ...);
 lc86_status set_last_error(lc86_status status);
 void cpu_exec_trampoline(cpu_t *cpu, const uint32_t ret_eip);
 bool verify_cpu_features();
+uint16_t default_get_int_vec();
+lc86_status cpu_save_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state);
+lc86_status cpu_load_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, fp_int int_fn);
 
 inline uint64_t
 to_u64(auto val)

@@ -1412,13 +1412,19 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 {
 	cpu_ctx->cpu->clear_int_fn(cpu_ctx);
 
-	if (int_flg & CPU_PAUSE_INT) {
-		cpu_ctx->cpu->suspend_flg.wait(true);
-	}
-
 	if (int_flg & CPU_ABORT_INT) {
 		// this also happens when the user closes the debugger window
 		throw lc86_exp_abort("Received abort signal, terminating the emulation", lc86_status::success);
+	}
+
+	if (int_flg & CPU_SUSPEND_INT) {
+		cpu_ctx->cpu->is_suspended.test_and_set();
+		cpu_ctx->cpu->suspend_flg.wait(true);
+		cpu_ctx->cpu->is_suspended.clear();
+		if (cpu_ctx->cpu->state_loaded) {
+			cpu_ctx->cpu->state_loaded = false;
+			return CPU_NON_HW_INT;
+		}
 	}
 
 	if (int_flg & (CPU_A20_INT | CPU_REGION_INT)) {
@@ -1687,6 +1693,9 @@ lc86_status cpu_start(cpu_t *cpu)
 		guest_running.wait(false);
 	}
 
+	// NOTE: doesn't place this in cpu_main_loop to prevent the thread id from being overwritten when a trampoline is called
+	cpu->cpu_thr_id = std::this_thread::get_id();
+
 	try {
 		if constexpr (run_forever) {
 			cpu_main_loop<false, false>(cpu, []() { return true; });
@@ -1706,6 +1715,7 @@ lc86_status cpu_start(cpu_t *cpu)
 			}
 			cpu_main_loop<false, false>(cpu, [cpu]() { return !cpu->cpu_ctx.exit_requested; });
 			cpu->cpu_ctx.hflags &= ~HFLG_TIMEOUT;
+			cpu->cpu_thr_id = std::thread::id();
 			return lc86_status::timeout;
 		}
 	}
@@ -1714,6 +1724,7 @@ lc86_status cpu_start(cpu_t *cpu)
 			dbg_should_close();
 		}
 
+		cpu->cpu_thr_id = std::thread::id();
 		last_error = exp.what();
 		return exp.get_code();
 	}

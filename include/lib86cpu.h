@@ -63,6 +63,29 @@ struct io_handlers_t {
 	fp_write64 fnw64;
 };
 
+struct cpu_save_state_t {
+	uint32_t id;
+	uint32_t size;
+	regs_t regs;
+	msr_t msr;
+	uint32_t eflags_res;
+	uint32_t eflags_aux;
+	uint16_t ftop;
+	uint16_t fes;
+	uint16_t frp;
+	uint8_t is_halted;
+	uint8_t microcode_updated;
+	uint32_t hflags;
+	uint32_t cpu_flags;
+	uint32_t a20_mask;
+	uint64_t tsc_offset;
+};
+
+struct ram_save_state_t {
+	uint32_t id;
+	std::vector<uint8_t> ram;
+};
+
 // forward declare
 struct cpu_t;
 
@@ -76,10 +99,13 @@ API_FUNC void cpu_exit(cpu_t *cpu);
 API_FUNC void cpu_sync_state(cpu_t *cpu);
 API_FUNC lc86_status cpu_set_flags(cpu_t *cpu, uint32_t flags);
 API_FUNC void cpu_set_a20(cpu_t *cpu, bool closed, bool should_int = false);
-API_FUNC void cpu_pause(cpu_t* cpu);
-API_FUNC void cpu_resume(cpu_t* cpu);
+API_FUNC void cpu_suspend(cpu_t *cpu);
+API_FUNC void cpu_resume(cpu_t *cpu);
+API_FUNC bool cpu_is_suspended(cpu_t *cpu);
 API_FUNC void cpu_raise_hw_int_line(cpu_t *cpu);
 API_FUNC void cpu_lower_hw_int_line(cpu_t *cpu);
+API_FUNC lc86_status cpu_take_snapshot(cpu_t* cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state);
+API_FUNC lc86_status cpu_restore_snapshot(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, fp_int int_fn);
 
 // register api
 API_FUNC regs_t *get_regs_ptr(cpu_t *cpu);

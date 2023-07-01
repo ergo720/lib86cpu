@@ -532,7 +532,7 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv
 			{
 			case TLB_RAM:
 				// it's ram, access it directly
-				return *reinterpret_cast<T *>(&cpu_ctx->ram[phys_addr - tlb->region->buff_off_start]);
+				return *reinterpret_cast<T *>(&cpu_ctx->cpu->ram[phys_addr - tlb->region->buff_off_start]);
 
 			case TLB_ROM:
 				// it's rom, tlb holds the rom region
@@ -612,7 +612,7 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint
 			{
 			case TLB_RAM:
 				// it's ram, access it directly
-				*reinterpret_cast<T *>(&cpu_ctx->ram[phys_addr - tlb->region->buff_off_start]) = val;
+				*reinterpret_cast<T *>(&cpu_ctx->cpu->ram[phys_addr - tlb->region->buff_off_start]) = val;
 				return;
 
 			case TLB_ROM:
