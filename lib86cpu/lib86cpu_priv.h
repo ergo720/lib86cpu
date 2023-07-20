@@ -176,6 +176,7 @@ struct cpu_t {
 	std::atomic_flag suspend_flg;
 	std::atomic_flag is_suspended;
 	std::atomic_flag is_saving_state;
+	std::atomic_bool suspend_should_throw;
 	std::atomic<std::thread::id> cpu_thr_id;
 	std::mt19937 rng_gen;
 	std::unique_ptr<lc86_jit> jit;

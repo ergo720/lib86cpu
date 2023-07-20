@@ -1419,7 +1419,14 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 
 	if (int_flg & CPU_SUSPEND_INT) {
 		cpu_ctx->cpu->is_suspended.test_and_set();
-		cpu_ctx->cpu->suspend_flg.wait(true);
+		if (cpu_ctx->cpu->suspend_should_throw.load() && cpu_ctx->cpu->suspend_flg.test()) {
+			// restore remaining interrupts before we abort
+			cpu_ctx->cpu->raise_int_fn(cpu_ctx, int_flg & ~(CPU_ABORT_INT | CPU_SUSPEND_INT));
+			throw lc86_exp_abort("Received pause signal, suspending the emulation", lc86_status::paused);
+		}
+		else {
+			cpu_ctx->cpu->suspend_flg.wait(true);
+		}
 		cpu_ctx->cpu->is_suspended.clear();
 		if (cpu_ctx->cpu->state_loaded) {
 			cpu_ctx->cpu->state_loaded = false;
@@ -1691,6 +1698,15 @@ lc86_status cpu_start(cpu_t *cpu)
 		}
 		// wait until the debugger continues execution, so that users have a chance to set breakpoints and/or inspect the guest code
 		guest_running.wait(false);
+	}
+
+	if (cpu->is_suspended.test()) {
+		if (cpu->suspend_flg.test()) {
+			return lc86_status::paused;
+		}
+
+		// suspend_flg was cleared by cpu_resume, so we can clear is_suspended too
+		cpu->is_suspended.clear();
 	}
 
 	// NOTE: doesn't place this in cpu_main_loop to prevent the thread id from being overwritten when a trampoline is called

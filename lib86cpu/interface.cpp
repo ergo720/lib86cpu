@@ -355,12 +355,14 @@ cpu_force_suspend(cpu_t *cpu)
 /*
 * cpu_suspend -> submit a request to stop the cpu (this function is multi-thread safe)
 * cpu: a valid cpu instance
+* should_ret: true if the cpu thread should return from cpu_run/_until when paused, false if it should block instead
 * ret: nothing
 */
 void
-cpu_suspend(cpu_t *cpu)
+cpu_suspend(cpu_t *cpu, bool should_ret)
 {
 	cpu->is_saving_state.wait(true);
+	cpu->suspend_should_throw = should_ret;
 	cpu_force_suspend(cpu);
 }
 
@@ -434,7 +436,9 @@ static lc86_status cpu_snapshot_handler(cpu_t *cpu, cpu_save_state_t *cpu_state,
 	else {
 		// We are called from another thread, so we must suspend the cpu first
 		bool curr_suspend_flg = cpu->suspend_flg.test();
+		bool curr_suspend_should_throw = cpu->suspend_should_throw.load();
 		if (!curr_suspend_flg) {
+			cpu->suspend_should_throw = false;
 			cpu_force_suspend(cpu);
 		}
 		while (cpu_is_suspended(cpu) == false) {
@@ -448,6 +452,7 @@ static lc86_status cpu_snapshot_handler(cpu_t *cpu, cpu_save_state_t *cpu_state,
 			cpu->state_loaded = true;
 		}
 		if (!curr_suspend_flg) {
+			cpu->suspend_should_throw = curr_suspend_should_throw;
 			cpu_resume(cpu);
 		}
 	}

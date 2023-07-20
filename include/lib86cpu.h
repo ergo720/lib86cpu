@@ -13,8 +13,9 @@
 
 // lib86cpu error flags
 enum class lc86_status : int32_t {
-	not_supported = -7,
+	not_supported = -8,
 	timeout,
+	paused,
 	internal_error,
 	no_memory,
 	invalid_parameter,
@@ -99,7 +100,7 @@ API_FUNC void cpu_exit(cpu_t *cpu);
 API_FUNC void cpu_sync_state(cpu_t *cpu);
 API_FUNC lc86_status cpu_set_flags(cpu_t *cpu, uint32_t flags);
 API_FUNC void cpu_set_a20(cpu_t *cpu, bool closed, bool should_int = false);
-API_FUNC void cpu_suspend(cpu_t *cpu);
+API_FUNC void cpu_suspend(cpu_t *cpu, bool should_ret = false);
 API_FUNC void cpu_resume(cpu_t *cpu);
 API_FUNC bool cpu_is_suspended(cpu_t *cpu);
 API_FUNC void cpu_raise_hw_int_line(cpu_t *cpu);
