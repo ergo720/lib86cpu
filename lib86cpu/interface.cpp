@@ -463,7 +463,8 @@ static lc86_status cpu_snapshot_handler(cpu_t *cpu, cpu_save_state_t *cpu_state,
 	return ret;
 }
 
-// NOTE: this function will fail if it is called from the cpu thread while it's executing guest code
+// NOTE1: these functions will fail if it is called from the cpu thread while it's executing guest code
+// NOTE2: if the cpu thread is not running, then don't start it again until after these functions have returned, and don't call other APIs either
 
 /*
 * cpu_take_snapshot -> saves a snapshot of the cpu state (this function is multi-thread safe)
