@@ -1086,8 +1086,8 @@ io_write_32(cpu_t *cpu, port_t port, uint32_t value)
 void
 tlb_invalidate(cpu_t *cpu, addr_t addr)
 {
-	// this relies on the fact that, even with the most restrictive permission type, if the entry is valis, then TLB_SUP_READ must be set. Note that more permissive
-	// accesses will set additional permission bits in the entry, in adition to TLB_SUP_READ
+	// this relies on the fact that, even with the most restrictive permission type, if the entry is valid, then TLB_SUP_READ must be set. Note that more permissive
+	// accesses will set additional permission bits in the entry, in addition to TLB_SUP_READ
 
 	uint32_t idx = (addr >> PAGE_SHIFT) & ITLB_IDX_MASK;
 	uint64_t tag = ((static_cast<uint64_t>(addr) << ITLB_TAG_SHIFT64) & ITLB_TAG_MASK64) | TLB_SUP_READ;
@@ -1174,7 +1174,7 @@ hook_remove(cpu_t *cpu, addr_t addr)
 void
 trampoline_call(cpu_t *cpu, const uint32_t ret_eip)
 {
-	// a trampoline calls the original guest function that was hooked, and it's only supposed to get called from the host function that hooed it.
+	// a trampoline calls the original guest function that was hooked, and it's only supposed to get called from the host function that hooked it.
 	// This assumes that the guest state (regs and stack) are in the same state that the guest has set them when it called the hook, so that we can call
 	// the trampoline without having to set this state up ourselves. The argument ret_eip is the eip to which the trampoline returns to after if finishes
 	// executing and returns, and it tipically corresponds to the eip that the call instruction pushed on the stack.

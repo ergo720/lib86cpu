@@ -319,7 +319,7 @@ ljmp_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint8_t size_mode, uint32_t jmp
 			}
 		}
 
-		// commmon path for conf/non-conf
+		// common path for conf/non-conf
 
 		if ((desc & SEG_DESC_P) == 0) { // segment not present
 			return raise_exp_helper(cpu, sel & 0xFFFC, EXP_NP, eip);
@@ -433,7 +433,7 @@ lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t siz
 			}
 		}
 
-		// commmon path for conf/non-conf
+		// common path for conf/non-conf
 
 		if ((cs_desc & SEG_DESC_P) == 0) { // segment not present
 			return raise_exp_helper(cpu, sel & 0xFFFC, EXP_NP, eip);
@@ -854,7 +854,7 @@ update_drN_helper(cpu_ctx_t *cpu_ctx, uint8_t dr_idx, uint32_t new_dr)
 			if (cpu_check_watchpoint_enabled(cpu_ctx->cpu, dr_idx) && (cpu_ctx->regs.cr4 & CR4_DE_MASK)) {
 				for (auto &io : cpu_ctx->cpu->wp_io) {
 					if (io.dr_idx == dr_idx) {
-						size_t watch_len = cpu_get_watchpoint_lenght(cpu_ctx->cpu, dr_idx);
+						size_t watch_len = cpu_get_watchpoint_length(cpu_ctx->cpu, dr_idx);
 						io.watch_addr = cpu_ctx->regs.dr[dr_idx] & ~(watch_len - 1);
 						io.watch_end = io.watch_addr + watch_len - 1;
 						break;
@@ -866,7 +866,7 @@ update_drN_helper(cpu_ctx_t *cpu_ctx, uint8_t dr_idx, uint32_t new_dr)
 			if (cpu_check_watchpoint_enabled(cpu_ctx->cpu, dr_idx)) {
 				for (auto &data : cpu_ctx->cpu->wp_data) {
 					if (data.dr_idx == dr_idx) {
-						size_t watch_len = cpu_get_watchpoint_lenght(cpu_ctx->cpu, dr_idx);
+						size_t watch_len = cpu_get_watchpoint_length(cpu_ctx->cpu, dr_idx);
 						data.watch_addr = cpu_ctx->regs.dr[dr_idx] & ~(watch_len - 1);
 						data.watch_end = data.watch_addr + watch_len - 1;
 						break;
@@ -884,7 +884,7 @@ update_drN_helper(cpu_ctx_t *cpu_ctx, uint8_t dr_idx, uint32_t new_dr)
 		cpu_ctx->regs.dr[7] = new_dr;
 		for (unsigned idx = 0; idx < 4; ++idx) {
 			if (cpu_check_watchpoint_enabled(cpu_ctx->cpu, idx)) {
-				size_t watch_len = cpu_get_watchpoint_lenght(cpu_ctx->cpu, idx);
+				size_t watch_len = cpu_get_watchpoint_length(cpu_ctx->cpu, idx);
 				if (cpu_get_watchpoint_type(cpu_ctx->cpu, idx) == DR7_TYPE_IO_RW) {
 					port_t watch_addr = cpu_ctx->regs.dr[idx] & ~(watch_len - 1);
 					port_t watch_end = watch_addr + watch_len - 1;

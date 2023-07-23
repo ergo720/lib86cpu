@@ -47,10 +47,10 @@ lc86status_to_str(lc86_status status)
 		return "The operation timed out";
 
 	case lc86_status::internal_error:
-		return "An unspecified error internal to lib86cpu has occured";
+		return "An unspecified error internal to lib86cpu has occurred";
 
 	case lc86_status::no_memory:
-		return "The operation failed because of insuffiecient memory";
+		return "The operation failed because of insufficient memory";
 
 	case lc86_status::invalid_parameter:
 		return "An invalid parameter was specified";

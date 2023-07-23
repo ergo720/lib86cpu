@@ -22,7 +22,7 @@ cpu_get_watchpoint_type(cpu_t *cpu, int idx)
 }
 
 size_t
-cpu_get_watchpoint_lenght(cpu_t *cpu, int idx)
+cpu_get_watchpoint_length(cpu_t *cpu, int idx)
 {
 	size_t len = ((cpu->cpu_ctx.regs.dr[7] >> (DR7_LEN_SHIFT + idx * 4)) & 3);
 	return (len == 2) ? 8 : len + 1;
@@ -31,7 +31,7 @@ cpu_get_watchpoint_lenght(cpu_t *cpu, int idx)
 static bool
 cpu_check_watchpoint_overlap(cpu_t *cpu, addr_t addr, size_t size, int idx)
 {
-	size_t watch_len = cpu_get_watchpoint_lenght(cpu, idx);
+	size_t watch_len = cpu_get_watchpoint_length(cpu, idx);
 	addr_t watch_addr = cpu->cpu_ctx.regs.dr[idx] & ~(watch_len - 1);
 	addr_t watch_end = watch_addr + watch_len - 1;
 	addr_t end = addr + size - 1;

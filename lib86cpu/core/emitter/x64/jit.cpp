@@ -155,7 +155,7 @@ static const std::unordered_map<x64, x86::Gp> reg_to_sized_reg = {
 };
 
 // The following calculates how much stack is needed to hold the stack arguments for any callable function from the jitted code. This value is then
-// increased of a fixed amount to hold the stack local variables of the main jitted function and the register args of the calles
+// increased of a fixed amount to hold the stack local variables of the main jitted function and the register args of the callees
 // NOTE1: the jitted main() and exit() are also called during code linking, but those only use register args
 // NOTE2: this assumes the Windows x64 calling convention
 
@@ -491,12 +491,12 @@ lc86_jit::gen_code_block()
 	}
 
 #if defined(_WIN64)
-	// Increase estimated_code_size by 12 + 12, to accomodate the .pdata and .xdata sections required to unwind the function
+	// Increase estimated_code_size by 12 + 12, to accommodate the .pdata and .xdata sections required to unwind the function
 	// when an exception is thrown. Note that the sections need to be DWORD aligned
 	estimated_code_size += 24;
 	estimated_code_size = (estimated_code_size + 3) & ~3;
 #elif defined (__linux__)
-	// Increase estimated_code_size by 24 + 40 + 4, to accomodate the .eh_frame section required to unwind the function
+	// Increase estimated_code_size by 24 + 40 + 4, to accommodate the .eh_frame section required to unwind the function
 	// when an exception is thrown. Note that the section needs to be 8 byte aligned
 	estimated_code_size += (24 + 40 + 4);
 	estimated_code_size = (estimated_code_size + 7) & ~7;
@@ -692,18 +692,18 @@ lc86_jit::gen_prologue_main()
 	//
 	// How to write the jitted function:
 	// RCX always holds the cpu_ctx arg, and should never be changed. If you still need to (e.g. after a call to an external function), you should always restore it
-	// immediately after with a MOV rcx, &m_cpu->cpu_ctx, since the cu_ctx is a constant and never changes at runtime while the emulatio is running. Prologue and
+	// immediately after with a MOV rcx, &m_cpu->cpu_ctx, since the cu_ctx is a constant and never changes at runtime while the emulation is running. Prologue and
 	// epilog always push and pop RBX, so it's volatile too. Prefer using RAX, RDX, RBX over R8, R9, R10 and R11 to reduce the code size, and only use the host stack
 	// as a last resort. Calling external functions from main() must be done with CALL(RAX), and not with rip offsets, because the function can be farther than
 	// 4 GiB from the current code.
 	// Some optimizations used in the main() function:
 	// Offsets from cpu_ctx can be calculated with displacements, to avoid having to use additional ADD instructions. Local variables on the stack are always allocated
 	// at a fixed offset computed at compile time, and the shadow area to spill registers is available too (always allocated by the caller of the jitted function).
-	// Two additions and a shift can be done with LEA and the sib addressing mode. Comparisons with zero are ususally done with TEST reg, reg instead of CMP. Left shifting
+	// Two additions and a shift can be done with LEA and the sib addressing mode. Comparisons with zero are usually done with TEST reg, reg instead of CMP. Left shifting
 	// by one can be done with ADD reg, reg. Reading an 8/16 bit reg and then zero/sign extending to 32 can be done with a single MOVZ/SX reg, word/byte ptr [rcx, off] instead
 	// of MOV and then MOVZ/SX. Call external C++ helper functions to implement the most difficult instructions.
 	// Guest SSE is currently emulated with host SSE. If the library is compiled with AVX support, then the jit should emit VZEROUPPER to avoid the performance penalty
-	// associated with mixing lagacy SSE with AVX, or better, it should just emit AVX instructions directly
+	// associated with mixing legacy SSE with AVX, or better, it should just emit AVX instructions directly
 
 	PUSH(RBX);
 	SUB(RSP, get_jit_stack_required());
@@ -828,7 +828,7 @@ void lc86_jit::gen_link_direct(addr_t dst_pc, addr_t *next_pc, T target_pc)
 {
 	// dst_pc: destination pc, next_pc: pc of next instr, target_addr: pc where instr jumps to at runtime
 	// If target_pc is an integral type, then we know already where the instr will jump, and so we can perform the comparisons at compile time
-	// and only emit the taken code path. If it's in a reg, it must be ebx because otherwise a volative reg might be trashed by the timer and
+	// and only emit the taken code path. If it's in a reg, it must be ebx because otherwise a volatile reg might be trashed by the timer and
 	// interrupt calls in gen_no_link_checks
 
 	m_needs_epilogue = false;

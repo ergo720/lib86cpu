@@ -357,7 +357,7 @@ dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num)
 		return {};
 	}
 
-	// disable debug exp since we only want to disassemble instr for displying them
+	// disable debug exp since we only want to disassemble instr for displaying them
 	std::vector<wp_info<addr_t>> wp_data;
 	std::vector<wp_info<port_t>> wp_io;
 	wp_data.swap(cpu->wp_data);

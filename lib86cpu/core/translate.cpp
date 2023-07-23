@@ -378,7 +378,7 @@ get_pc(cpu_ctx_t *cpu_ctx)
 }
 
 // dummy tc only used for comparisons in the ibtc. Using the invalid hflag makes sure that comparisons with it always fail, and avoids the need to check
-// if an entry in the ibtc exists (e.g. cheking for nullptr)
+// if an entry in the ibtc exists (e.g. checking for nullptr)
 static translated_code_t dummy_tc(HFLG_INVALID);
 
 translated_code_t::translated_code_t() noexcept
@@ -1660,9 +1660,9 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 		break;
 
 		case host_exp_t::db_exp: {
-			// debug exception trap (mem/io r/w watch) while excecuting the translated code.
+			// debug exception trap (mem/io r/w watch) while executing the translated code.
 			// We set CPU_DBG_TRAP, so that we can execute the trapped instruction without triggering again a de exp,
-			// and then jump to the debug handler. Note thate eip points to the trapped instr, so we can execute it.
+			// and then jump to the debug handler. Note that eip points to the trapped instr, so we can execute it.
 			assert(cpu_ctx->exp_info.exp_data.idx == EXP_DB);
 
 			cpu_ctx->cpu->cpu_flags |= CPU_DISAS_ONE;
