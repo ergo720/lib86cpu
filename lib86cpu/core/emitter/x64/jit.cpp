@@ -6818,6 +6818,34 @@ lc86_jit::movaps(ZydisDecodedInstruction *instr)
 }
 
 void
+lc86_jit::movntps(ZydisDecodedInstruction *instr)
+{
+	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
+		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
+	}
+	else {
+		if (instr->opcode == 0x2B) {
+			const auto src = GET_REG(OPNUM_SRC);
+			get_rm<OPNUM_DST>(instr,
+				[](const op_info rm)
+				{
+					assert(0);
+				},
+				[this, src](const op_info rm)
+				{
+					// we don't emulate the processor's caches, so we don't care about the write-combine policy that this instruction uses
+					gen_simd_mem_align_check();
+					LEA(R8, MEMD64(RCX, src.val));
+					ST_MEM128(R8);
+				});
+		}
+		else {
+			LIB86CPU_ABORT();
+		}
+	}
+}
+
+void
 lc86_jit::movs(ZydisDecodedInstruction *instr)
 {
 	switch (instr->opcode)

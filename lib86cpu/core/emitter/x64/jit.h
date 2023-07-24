@@ -116,6 +116,7 @@ public:
 	void ltr(ZydisDecodedInstruction *instr);
 	void mov(ZydisDecodedInstruction *instr);
 	void movaps(ZydisDecodedInstruction *instr);
+	void movntps(ZydisDecodedInstruction *instr);
 	void movs(ZydisDecodedInstruction *instr);
 	void movsx(ZydisDecodedInstruction *instr);
 	void movzx(ZydisDecodedInstruction *instr);

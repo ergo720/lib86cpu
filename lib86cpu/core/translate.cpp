@@ -1159,6 +1159,11 @@ cpu_translate(cpu_t *cpu)
 			break;
 
 		case ZYDIS_MNEMONIC_MOVD:BAD;
+
+		case ZYDIS_MNEMONIC_MOVNTPS:
+			cpu->jit->movntps(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_MOVSB:
 		case ZYDIS_MNEMONIC_MOVSD:
 		case ZYDIS_MNEMONIC_MOVSW:
