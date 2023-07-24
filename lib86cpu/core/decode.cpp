@@ -14,6 +14,12 @@ static ZydisFormatter formatter;
 
 static const ZydisFormatterStyle to_zydis_instr_style[] = {
 	ZYDIS_FORMATTER_STYLE_ATT,
+	ZYDIS_FORMATTER_STYLE_INTEL_MASM,
+	ZYDIS_FORMATTER_STYLE_INTEL,
+	ZYDIS_FORMATTER_STYLE_INTEL, // default to intel with anything above max supported index
+	ZYDIS_FORMATTER_STYLE_INTEL,
+	ZYDIS_FORMATTER_STYLE_INTEL,
+	ZYDIS_FORMATTER_STYLE_INTEL,
 	ZYDIS_FORMATTER_STYLE_INTEL
 };
 
@@ -34,7 +40,7 @@ static const ZydisAddressWidth to_zydis_addr_mode[] = {
 void
 set_instr_format(cpu_t *cpu)
 {
-	[[maybe_unused]] auto status = ZydisFormatterInit(&formatter, to_zydis_instr_style[(cpu->cpu_flags & CPU_INTEL_SYNTAX) >> 1]);
+	[[maybe_unused]] auto status = ZydisFormatterInit(&formatter, to_zydis_instr_style[cpu->cpu_flags & CPU_SYNTAX_MASK]);
 	assert(ZYAN_SUCCESS(status));
 	status = ZydisFormatterSetProperty(&formatter, ZYDIS_FORMATTER_PROP_FORCE_SEGMENT, ZYAN_TRUE);
 	assert(ZYAN_SUCCESS(status));

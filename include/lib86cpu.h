@@ -36,7 +36,10 @@ using hook_t = void(*)();
 
 #define LC86_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::success)
 
-#define CPU_INTEL_SYNTAX        (1 << 1)   // use intel syntax for instruction decoding
+#define CPU_ATT_SYNTAX          0  // use att syntax for instruction decoding
+#define CPU_MASM_SYNTAX         1  // use intel masm syntax for instruction decoding
+#define CPU_INTEL_SYNTAX        2  // use intel syntax for instruction decoding
+#define CPU_SYNTAX_MASK         7
 #define CPU_DBG_PRESENT         (1 << 11)  // start with the debugger attached
 #define CPU_ABORT_ON_HLT        (1 << 12)  // the HLT instruction will terminate the emulation
 

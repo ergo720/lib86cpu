@@ -169,7 +169,7 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 	}
 
 	cpu_reset(cpu);
-	// XXX: eventually, the user should be able to set the instruction formatting
+	// default to att syntax in the case the user doesn't set a format
 	set_instr_format(cpu);
 
 	std::random_device rd;
@@ -303,7 +303,18 @@ cpu_sync_state(cpu_t *cpu)
 lc86_status
 cpu_set_flags(cpu_t *cpu, uint32_t flags)
 {
-	if (flags & ~(CPU_INTEL_SYNTAX | CPU_DBG_PRESENT | CPU_ABORT_ON_HLT)) {
+	if (flags & ~(CPU_SYNTAX_MASK | CPU_DBG_PRESENT | CPU_ABORT_ON_HLT)) {
+		return set_last_error(lc86_status::invalid_parameter);
+	}
+
+	switch (flags & CPU_SYNTAX_MASK)
+	{
+	case CPU_ATT_SYNTAX:
+	case CPU_INTEL_SYNTAX:
+	case CPU_MASM_SYNTAX:
+		break;
+
+	default:
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 
@@ -312,7 +323,7 @@ cpu_set_flags(cpu_t *cpu, uint32_t flags)
 		tc_cache_clear(cpu);
 	}
 
-	cpu->cpu_flags &= ~(CPU_INTEL_SYNTAX | CPU_DBG_PRESENT | CPU_ABORT_ON_HLT);
+	cpu->cpu_flags &= ~(CPU_SYNTAX_MASK | CPU_DBG_PRESENT | CPU_ABORT_ON_HLT);
 	cpu->cpu_flags |= flags;
 	// XXX: eventually, the user should be able to set the instruction formatting
 	set_instr_format(cpu);

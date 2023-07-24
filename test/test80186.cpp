@@ -9,7 +9,7 @@
 
 
 void
-gen_test80186_test(const std::string &path, int intel_syntax, int use_dbg)
+gen_test80186_test(const std::string &path, int syntax, int use_dbg)
 {
 	for (const auto &test_name : { "rotate", "add", "sub", "jump1", "jump2", "bitwise", "control", "cmpneg", "rep", "shifts", "strings", "interrupt",
 		"jmpmov", "datatrnf", "segpr", "bcdcnv", "mul", "div" }) {
@@ -63,7 +63,7 @@ gen_test80186_test(const std::string &path, int intel_syntax, int use_dbg)
 			return;
 		}
 
-		cpu_set_flags(cpu, (intel_syntax ? CPU_INTEL_SYNTAX : 0) | (use_dbg ? CPU_DBG_PRESENT : 0) | CPU_ABORT_ON_HLT);
+		cpu_set_flags(cpu, syntax | (use_dbg ? CPU_DBG_PRESENT : 0) | CPU_ABORT_ON_HLT);
 
 		std::printf("Starting test %s\n", test_name);
 		lc86_status code = cpu_run(cpu);

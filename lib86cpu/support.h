@@ -15,7 +15,7 @@
 #define CPU_ALLOW_CODE_WRITE    (1 << 8)
 #define CPU_FORCE_INSERT        (1 << 9)
 #define CPU_SINGLE_STEP         (1 << 10)
-#define CPU_SAVED_FLG_MASK      (CPU_INTEL_SYNTAX | CPU_ABORT_ON_HLT)
+#define CPU_SAVED_FLG_MASK      (CPU_SYNTAX_MASK | CPU_ABORT_ON_HLT)
 
 #define CPU_NUM_REGS 43
 

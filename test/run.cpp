@@ -15,7 +15,7 @@ print_help()
 	static const char *help =
 		"usage: [options] <path of the binary to run (if required)>\n\
 options: \n\
--i         Use Intel syntax (default is AT&T)\n\
+-s <num>   Specify assembly syntax (default is AT&T)\n\
 -d         Start with debugger\n\
 -t <num>   Run a test specified by num\n\
 -h         Print this message\n";
@@ -57,9 +57,10 @@ int
 main(int argc, char **argv)
 {
 	std::string executable;
-	int intel_syntax = 0;
+	int syntax = CPU_ATT_SYNTAX;
 	int use_dbg = 0;
 	int test_num = -1;
+	char option = ' ';
 
 	/* parameter parsing */
 	if (argc < 2) {
@@ -69,12 +70,27 @@ main(int argc, char **argv)
 
 	for (int idx = 1; idx < argc; idx++) {
 		try {
+			option = ' ';
 			std::string arg_str(argv[idx]);
 			if (arg_str.size() == 2 && arg_str.front() == '-') {
-				switch (arg_str.at(1))
+				switch (option = arg_str.at(1))
 				{
-				case 'i':
-					intel_syntax = 1;
+				case 's':
+					if (++idx == argc || argv[idx][0] == '-') {
+						printf("Missing argument for option \"s\"\n");
+						return 0;
+					}
+					switch (syntax = std::stoi(std::string(argv[idx]), nullptr, 0))
+					{
+					case CPU_ATT_SYNTAX:
+					case CPU_INTEL_SYNTAX:
+					case CPU_MASM_SYNTAX:
+						break;
+
+					default:
+						printf("Unknown syntax specified by option \"%c\"\n", option);
+						return 0;
+					}
 					break;
 
 				case 'd':
@@ -83,7 +99,7 @@ main(int argc, char **argv)
 
 				case 't':
 					if (++idx == argc || argv[idx][0] == '-') {
-						printf("Missing argument for option \"t\"\n");
+						printf("Missing argument for option \"%c\"\n", option);
 						return 0;
 					}
 					test_num = std::stoi(std::string(argv[idx]), nullptr, 0);
@@ -110,8 +126,8 @@ main(int argc, char **argv)
 			}
 		}
 		/* handle possible exceptions thrown by std::stoi */
-		catch (std::exception &e) {
-			printf("Failed to parse \"t\" option. The error was: %s\n", e.what());
+		catch (const std::exception &e) {
+			printf("Failed to parse \"%c\" option. The error was: %s\n", option, e.what());
 			return 1;
 		}
 	}
@@ -157,7 +173,7 @@ main(int argc, char **argv)
 		break;
 
 	case 4:
-		gen_test80186_test(executable, intel_syntax, use_dbg);
+		gen_test80186_test(executable, syntax, use_dbg);
 		return 0;
 
 	default:
@@ -165,7 +181,7 @@ main(int argc, char **argv)
 		return 1;
 	}
 
-	cpu_set_flags(cpu, (intel_syntax ? CPU_INTEL_SYNTAX : 0) | (use_dbg ? CPU_DBG_PRESENT : 0) | CPU_ABORT_ON_HLT);
+	cpu_set_flags(cpu, syntax | (use_dbg ? CPU_DBG_PRESENT : 0) | CPU_ABORT_ON_HLT);
 
 	lc86_status code = cpu_run(cpu);
 	std::printf("Emulation terminated with status %d. The error was \"%s\"\n", static_cast<int32_t>(code), get_last_error().c_str());
