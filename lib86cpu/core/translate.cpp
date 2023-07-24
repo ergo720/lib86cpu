@@ -1307,6 +1307,10 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->setcc(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_SFENCE:
+			// ignored, because we don't reorder instructions
+			break;
+
 		case ZYDIS_MNEMONIC_SGDT:
 			cpu->jit->sgdt(&instr);
 			break;
