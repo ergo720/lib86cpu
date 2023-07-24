@@ -1694,6 +1694,7 @@ lc86_status cpu_start(cpu_t *cpu)
 		std::thread(dbg_main_wnd, cpu, std::ref(promise)).detach();
 		bool has_err = fut.get();
 		if (has_err) {
+			// When this fails, last_error is set to a custom message
 			return lc86_status::internal_error;
 		}
 		// wait until the debugger continues execution, so that users have a chance to set breakpoints and/or inspect the guest code
@@ -1702,7 +1703,7 @@ lc86_status cpu_start(cpu_t *cpu)
 
 	if (cpu->is_suspended.test()) {
 		if (cpu->suspend_flg.test()) {
-			return lc86_status::paused;
+			return set_last_error(lc86_status::paused);
 		}
 
 		// suspend_flg was cleared by cpu_resume, so we can clear is_suspended too
@@ -1726,13 +1727,13 @@ lc86_status cpu_start(cpu_t *cpu)
 				if (cpu->cpu_ctx.is_halted) {
 					// if it is still halted, then it must be a timeout
 					cpu->cpu_ctx.hflags &= ~HFLG_TIMEOUT;
-					return lc86_status::timeout;
+					return set_last_error(lc86_status::timeout);
 				}
 			}
 			cpu_main_loop<false, false>(cpu, [cpu]() { return !cpu->cpu_ctx.exit_requested; });
 			cpu->cpu_ctx.hflags &= ~HFLG_TIMEOUT;
 			cpu->cpu_thr_id = std::thread::id();
-			return lc86_status::timeout;
+			return set_last_error(lc86_status::timeout);
 		}
 	}
 	catch (lc86_exp_abort &exp) {

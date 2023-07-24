@@ -35,7 +35,7 @@ cpu_abort(int32_t code, const char *msg, ...)
 void
 discard_log(log_level lv, const unsigned count, const char *msg, ...) {}
 
-std::string
+static std::string_view
 lc86status_to_str(lc86_status status)
 {
 	switch (status)
@@ -45,6 +45,9 @@ lc86status_to_str(lc86_status status)
 
 	case lc86_status::timeout:
 		return "The operation timed out";
+
+	case lc86_status::paused:
+		return "The emulation is suspended";
 
 	case lc86_status::internal_error:
 		return "An unspecified error internal to lib86cpu has occurred";
@@ -117,7 +120,7 @@ lc86_status
 cpu_load_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, fp_int int_fn)
 {
 	if ((cpu_state->id != SAVE_STATE_ID) || (ram_state->id != SAVE_STATE_ID) || (cpu_state->size != sizeof(cpu_save_state_t))) {
-		return lc86_status::invalid_parameter;
+		return set_last_error(lc86_status::invalid_parameter);
 	}
 
 	cpu->cpu_ctx.regs = cpu_state->regs;

@@ -124,7 +124,7 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 	out = nullptr;
 
 	if (!verify_cpu_features()) {
-		return lc86_status::not_supported;
+		return set_last_error(lc86_status::not_supported);
 	}
 
 	cpu_t *cpu = new cpu_t();
@@ -422,7 +422,7 @@ static lc86_status cpu_snapshot_handler(cpu_t *cpu, cpu_save_state_t *cpu_state,
 	lc86_status ret;
 	if (cpu->cpu_thr_id == std::this_thread::get_id()) {
 		// We cannot safely save/load the cpu state from the cpu thread while it's running, because it could be executing code in the middle of a tc
-		ret = lc86_status::internal_error;
+		ret = set_last_error(lc86_status::internal_error);
 	}
 	else if (cpu->cpu_thr_id == std::thread::id()) {
 		// We are called from the cpu thread while the cpu is not running, so we don't need to suspend the cpu
