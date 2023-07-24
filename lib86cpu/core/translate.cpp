@@ -1397,6 +1397,10 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->xor_(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_XORPS:
+			cpu->jit->xorps(&instr);
+			break;
+
 		default:
 			BAD;
 		}

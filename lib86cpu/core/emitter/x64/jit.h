@@ -165,6 +165,7 @@ public:
 	void xchg(ZydisDecodedInstruction *instr);
 	void xlat(ZydisDecodedInstruction *instr);
 	void xor_(ZydisDecodedInstruction *instr);
+	void xorps(ZydisDecodedInstruction *instr);
 
 #if defined(_WIN64) || defined (__linux__)
 	void gen_exception_info(uint8_t *code_ptr, size_t code_size);

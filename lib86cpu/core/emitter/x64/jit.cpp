@@ -399,6 +399,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define FSTP(dst) m_a.fstp(dst)
 
 #define MOVAPS(dst, src) m_a.movaps(dst, src)
+#define XORPS(dst, src) m_a.xorps(dst, src)
 
 #define LD_R8L(dst, reg_offset) MOV(dst, MEMD8(RCX, reg_offset))
 #define LD_R8H(dst, reg_offset) MOV(dst, MEMD8(RCX, reg_offset + 1))
@@ -8975,6 +8976,37 @@ lc86_jit::xor_(ZydisDecodedInstruction *instr)
 
 	default:
 		LIB86CPU_ABORT();
+	}
+}
+
+void
+lc86_jit::xorps(ZydisDecodedInstruction *instr)
+{
+	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
+		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
+	}
+	else {
+		if (instr->opcode == 0x57) {
+			const auto dst = GET_REG(OPNUM_DST);
+			get_rm<OPNUM_SRC>(instr,
+				[this, dst](const op_info rm)
+				{
+					MOVAPS(XMM0, MEMD128(RCX, dst.val));
+					XORPS(XMM0, MEMD128(RCX, rm.val));
+					MOVAPS(MEMD128(RCX, dst.val), XMM0);
+				},
+				[this, dst](const op_info rm)
+				{
+					gen_simd_mem_align_check();
+					LD_MEM128();
+					MOVAPS(XMM0, MEMD128(RCX, dst.val));
+					XORPS(XMM0, MEM128(RAX));
+					MOVAPS(MEMD128(RCX, dst.val), XMM0);
+				});
+		}
+		else {
+			LIB86CPU_ABORT();
+		}
 	}
 }
 
