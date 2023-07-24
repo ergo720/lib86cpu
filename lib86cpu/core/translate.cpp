@@ -1689,6 +1689,8 @@ template<bool run_forever>
 lc86_status cpu_start(cpu_t *cpu)
 {
 	if (cpu->cpu_flags & CPU_DBG_PRESENT) {
+		// XXX this is not right to be put here. If the user uses cpu_run_until, this will create a new debugger thread every time the function is called. This should
+		// probably go to cpu_new instead + the pause below should be removed then
 		std::promise<bool> promise;
 		std::future<bool> fut = promise.get_future();
 		std::thread(dbg_main_wnd, cpu, std::ref(promise)).detach();
