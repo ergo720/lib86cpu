@@ -40,6 +40,7 @@ verify_cpu_features()
 #error "Don't know how to query cpu features on this platform"
 #endif
 
+	last_error = "This library requires x87 fpu and sse2 support at least";
 	return false;
 }
 

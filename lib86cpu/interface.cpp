@@ -124,7 +124,8 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 	out = nullptr;
 
 	if (!verify_cpu_features()) {
-		return set_last_error(lc86_status::not_supported);
+		// When this fails, last_error is set to a custom message
+		return lc86_status::not_supported;
 	}
 
 	cpu_t *cpu = new cpu_t();
