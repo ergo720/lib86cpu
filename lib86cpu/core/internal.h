@@ -318,6 +318,9 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define IA32_SYSENTER_CS           0x174
 #define IA32_SYSENTER_ESP          0x175
 #define IA32_SYSENTER_EIP          0x176
+#define IA32_MCG_CAP               0x179
+#define IA32_MCG_STATUS            0x17A
+#define IA32_MCG_CTL               0x17B
 #define IA32_MTRR_PHYSBASE_base    0x200
 #define IA32_MTRR_PHYSMASK_base    0x201
 #define IA32_MTRR_FIX64K_00000     0x250
@@ -335,6 +338,7 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define IA32_MTRR_DEF_TYPE         0x2FF
 #define IA32_MTRR_PHYSBASE(n)      (IA32_MTRR_PHYSBASE_base + (n * 2))
 #define IA32_MTRR_PHYSMASK(n)      (IA32_MTRR_PHYSMASK_base + (n * 2))
+#define IA32_MC0_CTL               0x400
 
 // msr macros
 #define MSR_BIOS_SIGN_ID_RES       0x00000000FFFFFFFF
@@ -347,6 +351,17 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define MSR_MTRR_PHYSMASK_RES      0xFFFFFFF0000007FF
 #define MSR_MTRR_DEF_TYPE_RES      0xFFFFFFFFFFFFF300
 #define MSR_PAT_RES                0xF8F8F8F8F8F8F8F8
+#define MCG_NUM_BANKS              (sizeof(msr_t::mca_banks) / sizeof(msr_t::mca_banks[0]))
+#define MCG_CTL_P                  (1 << 8)
+#define MCG_SER_P                  (1 << 24)
+#define MCG_CTL_ENABLE             ~0ULL
+#define MCG_CTL_DISABLE            0ULL
+#define MCG_STATUS_RES             0xFFFFFFFFFFFFFFF0
+#define MCi_CTL_ENABLE             MCG_CTL_ENABLE
+#define MCi_CTL                    0
+#define MCi_STATUS                 1
+#define MCi_ADDR                   2
+#define MCi_MISC                   3
 
 // pat macros
 #define PAT_TYPE_UC    0 // Uncacheable

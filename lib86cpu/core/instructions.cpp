@@ -947,6 +947,23 @@ msr_read_helper(cpu_ctx_t *cpu_ctx)
 		val = cpu_ctx->cpu->msr.sys_eip;
 		break;
 
+	case IA32_MCG_CAP:
+		val = cpu_ctx->cpu->msr.mcg_cap;
+		break;
+
+	case IA32_MCG_STATUS:
+		val = cpu_ctx->cpu->msr.mcg_status;
+		break;
+
+	case IA32_MCG_CTL:
+		if (cpu_ctx->cpu->msr.mcg_cap & MCG_CTL_P) {
+			val = cpu_ctx->cpu->msr.mcg_ctl;
+		}
+		else {
+			val = 0;
+		}
+		break;
+
 	case IA32_MTRR_PHYSBASE(0):
 	case IA32_MTRR_PHYSBASE(1):
 	case IA32_MTRR_PHYSBASE(2):
@@ -998,6 +1015,13 @@ msr_read_helper(cpu_ctx_t *cpu_ctx)
 		break;
 
 	default:
+		if ((cpu_ctx->regs.ecx >= IA32_MC0_CTL) && (cpu_ctx->regs.ecx < (IA32_MC0_CTL + MCG_NUM_BANKS * 4))) {
+			uint32_t bank_offset = (cpu_ctx->regs.ecx - IA32_MC0_CTL) / 4;
+			uint32_t reg_offset = (cpu_ctx->regs.ecx - IA32_MC0_CTL) & 3;
+			val = cpu_ctx->cpu->msr.mca_banks[bank_offset][reg_offset];
+			break;
+		}
+
 		LIB86CPU_ABORT_msg("Unhandled msr read to register at address 0x%X", cpu_ctx->regs.ecx);
 	}
 
@@ -1044,6 +1068,22 @@ msr_write_helper(cpu_ctx_t *cpu_ctx)
 
 	case IA32_SYSENTER_EIP:
 		cpu_ctx->cpu->msr.sys_eip = val;
+		break;
+
+	case IA32_MCG_CAP:
+		break;
+
+	case IA32_MCG_STATUS:
+		if (MCG_STATUS_RES) {
+			return 1;
+		}
+		cpu_ctx->cpu->msr.mcg_status = val;
+		break;
+
+	case IA32_MCG_CTL:
+		if ((cpu_ctx->cpu->msr.mcg_cap & MCG_CTL_P) && ((val == MCG_CTL_ENABLE) || (val == MCG_CTL_DISABLE))) {
+			cpu_ctx->cpu->msr.mcg_ctl = val;
+		}
 		break;
 
 	case IA32_MTRR_PHYSBASE(0):
@@ -1115,6 +1155,28 @@ msr_write_helper(cpu_ctx_t *cpu_ctx)
 		break;
 
 	default:
+		if ((cpu_ctx->regs.ecx >= IA32_MC0_CTL) && (cpu_ctx->regs.ecx < (IA32_MC0_CTL + MCG_NUM_BANKS * 4))) {
+			uint32_t bank_offset = (cpu_ctx->regs.ecx - IA32_MC0_CTL) / 4;
+			uint32_t reg_offset = (cpu_ctx->regs.ecx - IA32_MC0_CTL) & 3;
+			switch (reg_offset)
+			{
+			case MCi_CTL:
+				if ((val != MCG_CTL_ENABLE) && (val != MCG_CTL_DISABLE)) {
+					return 0;
+				}
+				break;
+
+			case MCi_STATUS:
+			case MCi_ADDR:
+			case MCi_MISC:
+				if (val) {
+					return 1;
+				}
+			}
+			cpu_ctx->cpu->msr.mca_banks[reg_offset][reg_offset] = val;
+			break;
+		}
+
 		LIB86CPU_ABORT_msg("Unhandled msr write to register at address 0x%X", cpu_ctx->regs.ecx);
 	}
 

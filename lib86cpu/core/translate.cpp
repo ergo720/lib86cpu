@@ -17,11 +17,16 @@
 
 #define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(disas_ctx->virt_pc - cpu->instr_bytes, &instr).c_str())
 
+// Make sure we can safely use memset on the register structs
+static_assert(std::is_trivially_copyable_v<regs_t>);
+static_assert(std::is_trivially_copyable_v<msr_t>);
+
 
 void
 cpu_reset(cpu_t *cpu)
 {
 	std::memset(&cpu->cpu_ctx.regs, 0, sizeof(regs_t));
+	std::memset(&cpu->msr, 0, sizeof(msr_t));
 	cpu->cpu_ctx.regs.eip = 0x0000FFF0;
 	cpu->cpu_ctx.regs.edx = 0x0000068A;
 	cpu->cpu_ctx.regs.cs = 0xF000;
@@ -43,9 +48,11 @@ cpu_reset(cpu_t *cpu)
 	cpu->cpu_ctx.lazy_eflags.result = 0x100; // make zf=0
 	cpu->a20_mask = 0xFFFFFFFF; // gate closed
 	cpu->cpu_ctx.exp_info.old_exp = EXP_INVALID;
-	cpu->msr.mtrr.def_type = 0;
-	std::memset(cpu->msr.mtrr.phys_var, 0, sizeof(cpu->msr.mtrr.phys_var));
-	std::memset(cpu->msr.mtrr.phys_fixed, 0, sizeof(cpu->msr.mtrr.phys_fixed));
+	cpu->msr.mcg_cap = (MCG_NUM_BANKS | MCG_CTL_P | MCG_SER_P);
+	cpu->msr.mcg_ctl = MCG_CTL_ENABLE;
+	for (unsigned i = 0; i < MCG_NUM_BANKS; ++i) {
+		cpu->msr.mca_banks[i][MCi_CTL] = MCi_CTL_ENABLE;
+	}
 	tsc_init(cpu);
 	fpu_init(cpu);
 }

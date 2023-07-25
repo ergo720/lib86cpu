@@ -11,7 +11,7 @@
 #include <cstdarg>
 
 // This should be updated whenever cpu members that need to be saved are added/removed
-#define SAVE_STATE_ID 1
+#define SAVE_STATE_ID 2
 
 
 void

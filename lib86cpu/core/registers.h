@@ -90,7 +90,7 @@ struct regs_t {
 	uint80_t fr[8];
 	DEFINE_REG16(fctrl);
 	DEFINE_REG16(fstatus);
-	uint8_t ftags[8]; // two tag bits of tag reg splitted in their own reg
+	uint8_t ftags[8]; // two tag bits of tag reg split in their own reg
 	DEFINE_REG16(fcs);
 	DEFINE_REG32(fip);
 	DEFINE_REG16(fds);
@@ -116,6 +116,10 @@ struct msr_t {
 	uint64_t sys_cs;
 	uint64_t sys_esp;
 	uint64_t sys_eip;
+	uint64_t mcg_cap;
+	uint64_t mcg_status;
+	uint64_t mcg_ctl;
+	uint64_t mca_banks[10][4];
 };
 
 static_assert(sizeof(uint80_t) == 10);
