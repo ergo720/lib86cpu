@@ -28,10 +28,11 @@ struct mem_block {
 class mem_manager {
 public:
 	mem_block allocate_sys_mem(size_t num_bytes);
+	mem_block allocate_non_pooled_sys_mem(size_t num_bytes);
 	void protect_sys_mem(const mem_block &block, unsigned flags);
 	void release_sys_mem(void *addr);
 	void destroy_all_blocks();
-	~mem_manager() { destroy_all_blocks(); }
+	~mem_manager() { purge_all_blocks(); }
 
 #if defined(_WIN64) || defined(__linux__)
 	std::map<void *, void *> eh_frames;
@@ -44,8 +45,10 @@ private:
 	block_header_t *head = nullptr;
 	std::vector<void *> blocks;
 	std::map<void *, size_t> big_blocks;
+	std::map<void *, size_t> hidden_blocks;
 
 	block_header_t *create_pool();
 	void *alloc();
 	void free(void *ptr);
+	void purge_all_blocks();
 };

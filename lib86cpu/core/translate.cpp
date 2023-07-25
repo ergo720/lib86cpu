@@ -602,7 +602,6 @@ tc_cache_purge(cpu_t *cpu)
 	// necessary to unwind the stack of the JITed functions
 	tc_cache_clear(cpu);
 	cpu->jit->destroy_all_code();
-	cpu->jit->gen_aux_funcs();
 	cpu->num_tc = 0;
 }
 
@@ -1607,11 +1606,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			cpu->tc->virt_pc = virt_pc;
 			cpu->tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
 			cpu->tc->guest_flags = (cpu->cpu_ctx.hflags & HFLG_CONST) | (cpu->cpu_ctx.regs.eflags & EFLAGS_CONST);
-			cpu->jit->gen_code_block();
-
-			// we are done with code generation for this block, so we null the tc and bb pointers to prevent accidental usage
 			ptr_tc = cpu->tc;
-			cpu->tc = nullptr;
 
 			if (cpu->disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR)) {
 				if (cpu->cpu_flags & CPU_FORCE_INSERT) {
@@ -1619,10 +1614,14 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 						tc_cache_purge(cpu);
 						prev_tc = nullptr;
 					}
+					cpu->jit->gen_code_block();
 					tc_cache_insert(cpu, pc, std::move(tc));
 
 					// if the tc is forcefully inserted, then we can still link it
 					tc_link_prev(cpu, prev_tc, ptr_tc);
+				}
+				else {
+					cpu->jit->gen_code_block();
 				}
 
 				uint32_t cpu_flags = cpu->cpu_flags;
@@ -1640,6 +1639,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 					tc_cache_purge(cpu);
 					prev_tc = nullptr;
 				}
+				cpu->jit->gen_code_block();
 				tc_cache_insert(cpu, pc, std::move(tc));
 			}
 		}

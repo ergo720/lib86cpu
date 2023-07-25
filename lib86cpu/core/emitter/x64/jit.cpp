@@ -532,6 +532,9 @@ lc86_jit::gen_code_block()
 
 	tc->ptr_code = reinterpret_cast<entry_t>(main_offset);
 	tc->jmp_offset[0] = tc->jmp_offset[1] = tc->jmp_offset[2] = reinterpret_cast<entry_t>(exit_offset);
+
+	// we are done with code generation for this block, so we null the tc pointer to prevent accidental usage
+	m_cpu->tc = nullptr;
 }
 
 void
@@ -592,7 +595,7 @@ lc86_jit::gen_aux_funcs()
 		throw lc86_exp_abort("The generated code has a zero size", lc86_status::internal_error);
 	}
 
-	auto block = m_mem.allocate_sys_mem(estimated_code_size);
+	auto block = m_mem.allocate_non_pooled_sys_mem(estimated_code_size);
 	if (auto err = m_code.relocateToBase(reinterpret_cast<uintptr_t>(block.addr))) {
 		std::string err_str("Asmjit failed at relocateToBase() with the error ");
 		err_str += DebugUtils::errorAsString(err);

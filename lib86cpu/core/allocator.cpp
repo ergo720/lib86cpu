@@ -81,6 +81,24 @@ mem_manager::destroy_all_blocks()
 	head = nullptr;
 }
 
+void
+mem_manager::purge_all_blocks()
+{
+	destroy_all_blocks();
+
+#if defined(_WIN64)
+	for (auto &block : hidden_blocks) {
+		os_free(block.first);
+	}
+#elif defined(__linux__)
+	for (auto &block : hidden_blocks) {
+		os_free(block.first, block.second);
+	}
+#endif
+
+	hidden_blocks.clear();
+}
+
 mem_block
 mem_manager::allocate_sys_mem(size_t num_bytes)
 {
@@ -97,6 +115,20 @@ mem_manager::allocate_sys_mem(size_t num_bytes)
 	}
 
 	return mem_block(alloc(), BLOCK_SIZE);
+}
+
+mem_block
+mem_manager::allocate_non_pooled_sys_mem(size_t num_bytes)
+{
+	if (num_bytes == 0) {
+		return mem_block();
+	}
+
+	size_t block_size = (num_bytes + PAGE_MASK) & ~PAGE_MASK;
+	void *addr = os_alloc(block_size);
+	mem_block block(addr, block_size);
+	hidden_blocks.emplace(addr, block_size);
+	return block;
 }
 
 void
@@ -126,6 +158,10 @@ void
 mem_manager::release_sys_mem(void *addr)
 {
 	if (addr == nullptr) {
+		return;
+	}
+
+	if (auto it = hidden_blocks.find(addr); it != hidden_blocks.end()) {
 		return;
 	}
 
