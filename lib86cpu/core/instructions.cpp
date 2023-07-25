@@ -1173,7 +1173,7 @@ msr_write_helper(cpu_ctx_t *cpu_ctx)
 					return 1;
 				}
 			}
-			cpu_ctx->cpu->msr.mca_banks[reg_offset][reg_offset] = val;
+			cpu_ctx->cpu->msr.mca_banks[bank_offset][reg_offset] = val;
 			break;
 		}
 
