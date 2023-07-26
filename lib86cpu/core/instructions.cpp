@@ -19,7 +19,7 @@ write_seg_reg_helper(cpu_t *cpu, uint16_t sel, uint32_t base, uint32_t limit, ui
 		cpu->cpu_ctx.regs.cs_hidden.base = base;
 		cpu->cpu_ctx.regs.cs_hidden.limit = limit;
 		cpu->cpu_ctx.regs.cs_hidden.flags = flags;
-		cpu->cpu_ctx.hflags = (((cpu->cpu_ctx.regs.cs_hidden.flags & SEG_HIDDEN_DB) >> 20) | sel) | (cpu->cpu_ctx.hflags & ~(HFLG_CS32 | HFLG_CPL));
+		cpu->cpu_ctx.hflags = (((cpu->cpu_ctx.regs.cs_hidden.flags & SEG_HIDDEN_DB) >> 20) | (sel & HFLG_CPL)) | (cpu->cpu_ctx.hflags & ~(HFLG_CS32 | HFLG_CPL));
 		break;
 
 	case SS_idx:
@@ -79,6 +79,14 @@ write_seg_reg_helper(cpu_t *cpu, uint16_t sel, uint32_t base, uint32_t limit, ui
 
 template<unsigned reg>
 static void
+write_seg_reg_vm86_helper(cpu_t *cpu, uint16_t sel)
+{
+	constexpr uint64_t code_seg = (reg == CS_idx) ? SEG_DESC_DC : 0;
+	write_seg_reg_helper<reg>(cpu, sel, sel << 4, 0xFFFF, (SEG_DESC_A | SEG_DESC_W | code_seg | SEG_DESC_S | SEG_DESC_DPL | SEG_DESC_P) >> 32);
+}
+
+template<unsigned reg>
+static void
 validate_seg_helper(cpu_t *cpu)
 {
 	uint32_t flags;
@@ -133,9 +141,17 @@ uint32_t lret_pe_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
 
 	if constexpr (is_iret) {
 		uint32_t eflags = cpu_ctx->regs.eflags;
+
 		if (eflags & VM_MASK) {
-			LIB86CPU_ABORT_msg("Virtual 8086 mode is not supported in iret instructions yet");
+			// return from vm86 mode
+			if (((eflags & IOPL_MASK) >> 12) == 3) {
+				iret_real_helper(cpu_ctx, size_mode, eip);
+				return 0;
+			}
+
+			return raise_exp_helper(cpu, 0, EXP_GP, eip);
 		}
+
 		if (eflags & NT_MASK) {
 			LIB86CPU_ABORT_msg("Task returns are not supported in iret instructions yet");
 		}
@@ -145,7 +161,31 @@ uint32_t lret_pe_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
 		temp_eflags = stack_pop_helper(cpu, size_mode, esp, eip);
 
 		if (temp_eflags & VM_MASK) {
-			LIB86CPU_ABORT_msg("Virtual 8086 mode returns are not supported in iret instructions yet");
+			// return to vm86 mode
+			uint32_t new_esp, ss, es, ds, fs, gs;
+
+			new_esp = stack_pop_helper(cpu, SIZE32, esp, eip);
+			ss = stack_pop_helper(cpu, SIZE32, esp, eip);
+			es = stack_pop_helper(cpu, SIZE32, esp, eip);
+			ds = stack_pop_helper(cpu, SIZE32, esp, eip);
+			fs = stack_pop_helper(cpu, SIZE32, esp, eip);
+			gs = stack_pop_helper(cpu, SIZE32, esp, eip);
+
+			write_eflags_helper(cpu, temp_eflags, TF_MASK | AC_MASK | ID_MASK |
+				IF_MASK | IOPL_MASK | VM_MASK | NT_MASK | VIF_MASK | VIP_MASK);
+
+			write_seg_reg_vm86_helper<CS_idx>(cpu, cs);
+			write_seg_reg_vm86_helper<SS_idx>(cpu, ss);
+			write_seg_reg_vm86_helper<ES_idx>(cpu, es);
+			write_seg_reg_vm86_helper<DS_idx>(cpu, ds);
+			write_seg_reg_vm86_helper<FS_idx>(cpu, fs);
+			write_seg_reg_vm86_helper<GS_idx>(cpu, gs);
+
+			cpu->cpu_ctx.regs.esp = new_esp;
+			cpu->cpu_ctx.regs.eip = ret_eip;
+			cpu->cpu_ctx.hflags = ((cpu->cpu_ctx.hflags & ~HFLG_CPL) | 3);
+
+			return 0;
 		}
 
 		if (size_mode == SIZE16) {
@@ -264,11 +304,17 @@ iret_real_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip)
 	uint16_t cs = stack_pop_helper(cpu, size_mode, esp, eip);
 	uint32_t temp_eflags = stack_pop_helper(cpu, size_mode, esp, eip);
 
-	if (size_mode == SIZE16) {
-		eflags_mask = NT_MASK | IOPL_MASK | DF_MASK | IF_MASK | TF_MASK;
+	if (cpu->cpu_ctx.regs.eflags & VM_MASK) {
+		// vm86 mode masks iopl, real mode doesn't
+		eflags_mask = TF_MASK | IF_MASK | DF_MASK | NT_MASK | RF_MASK | AC_MASK | ID_MASK;
 	}
 	else {
-		eflags_mask = ID_MASK | AC_MASK | RF_MASK | NT_MASK | IOPL_MASK | DF_MASK | IF_MASK | TF_MASK;
+		eflags_mask = TF_MASK | IF_MASK | DF_MASK | IOPL_MASK | NT_MASK | RF_MASK | AC_MASK | ID_MASK;
+	}
+
+	if (size_mode == SIZE16) {
+		// mask out flags in the upper word
+		eflags_mask &= 0xFFFF;
 	}
 
 	cpu->cpu_ctx.regs.esp = (cpu->cpu_ctx.regs.esp & ~0xFFFF) | (esp & 0xFFFF);

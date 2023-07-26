@@ -198,7 +198,7 @@ void JIT_API tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define VIF_MASK       (1 << 19)
 #define VIP_MASK       (1 << 20)
 #define ID_MASK        (1 << 21)
-#define EFLAGS_CONST   (TF_MASK | IOPL_MASK | RF_MASK | AC_MASK)
+#define EFLAGS_CONST   (TF_MASK | IOPL_MASK | RF_MASK | VM_MASK | AC_MASK)
 
 // exception numbers
 #define EXP_DE  0   // divide error
