@@ -448,6 +448,10 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define GET_OP(op) get_operand(instr, op)
 #define GET_IMM() get_immediate_op(instr, OPNUM_SRC)
 
+#define IS_PE() (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE)
+#define IS_VM86() (m_cpu->cpu_ctx.regs.eflags & VM_MASK)
+#define IS_PE_NOT_VM86() (IS_PE() | IS_VM86()) == HFLG_PE_MODE
+
 #define RELOAD_RCX_CTX() MOV(RCX, &m_cpu->cpu_ctx)
 #define RESTORE_FPU_CTX() FLDCW(MEMD16(RSP, LOCAL_VARS_off(5)))
 #define CALL_F(func) MOV(RAX, func); CALL(RAX); RELOAD_RCX_CTX()
@@ -2032,7 +2036,7 @@ bool lc86_jit::gen_check_io_priv(T port)
 
 	static const uint8_t op_size_to_mem_size[3] = { 4, 2, 1 };
 
-	if (((m_cpu->cpu_ctx.hflags & HFLG_CPL) > ((m_cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12)) || (m_cpu->cpu_ctx.regs.eflags & VM_MASK)) {
+	if (((m_cpu->cpu_ctx.hflags & HFLG_CPL) > ((m_cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12)) || (IS_VM86())) {
 		Label exp = m_a.newLabel();
 		LD_SEG_BASE(R10D, CPU_CTX_TR);
 		LD_SEG_LIMIT(R11D, CPU_CTX_TR);
@@ -3127,7 +3131,7 @@ void lc86_jit::load_sys_seg_reg(ZydisDecodedInstruction *instr)
 		}
 	}
 	else {
-		uint32_t is_vm86 = m_cpu->cpu_ctx.regs.eflags & VM_MASK;
+		uint32_t is_vm86 = IS_VM86();
 		if (is_vm86 | (m_cpu->cpu_ctx.hflags & HFLG_CPL)) {
 			RAISEin0_t(is_vm86 ? EXP_UD : EXP_GP);
 			return;
@@ -3217,7 +3221,7 @@ void lc86_jit::store_sys_seg_reg(ZydisDecodedInstruction *instr)
 			});
 	}
 	else if constexpr ((idx == TR_idx) || (idx == LDTR_idx)) {
-		if (m_cpu->cpu_ctx.regs.eflags & VM_MASK) {
+		if (IS_VM86()) {
 			RAISEin0_t(EXP_UD);
 			return;
 		}
@@ -3247,7 +3251,7 @@ void lc86_jit::verx(ZydisDecodedInstruction *instr)
 {
 	assert(instr->operands[OPNUM_SINGLE].size == 16);
 
-	if (m_cpu->cpu_ctx.regs.eflags & VM_MASK) {
+	if (IS_VM86()) {
 		RAISEin0_t(EXP_UD);
 		return;
 	}
@@ -3293,7 +3297,7 @@ void lc86_jit::lxs(ZydisDecodedInstruction *instr)
 	MOV(rbx_host_reg, offset_host_reg);
 	LD_MEMs(SIZE16);
 
-	if (((m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) | (m_cpu->cpu_ctx.regs.eflags & VM_MASK)) == HFLG_PE_MODE) {
+	if (IS_PE_NOT_VM86()) {
 		MOV(R8D, m_cpu->instr_eip);
 		MOV(DX, AX);
 
@@ -3861,7 +3865,7 @@ lc86_jit::arpl(ZydisDecodedInstruction *instr)
 {
 	assert((instr->operands[OPNUM_DST].size == 16) && (instr->operands[OPNUM_SRC].size == 16));
 
-	if (m_cpu->cpu_ctx.regs.eflags & VM_MASK) {
+	if (IS_VM86()) {
 		RAISEin0_t(EXP_UD);
 		return;
 	}
@@ -4070,7 +4074,7 @@ lc86_jit::call(ZydisDecodedInstruction *instr)
 			call_eip &= 0x0000FFFF;
 		}
 
-		if (((m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) | (m_cpu->cpu_ctx.regs.eflags & VM_MASK)) == HFLG_PE_MODE) {
+		if (IS_PE_NOT_VM86()) {
 			Label exp = m_a.newLabel();
 			MOV(MEMD32(RSP, STACK_ARGS_off + 8), m_cpu->instr_eip);
 			MOV(MEMD32(RSP, STACK_ARGS_off), ret_eip);
@@ -4153,7 +4157,7 @@ lc86_jit::call(ZydisDecodedInstruction *instr)
 			MOV(EDX, EBX);
 			MOV(EBX, EAX);
 			LD_MEMs(SIZE16);
-			if (((m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) | (m_cpu->cpu_ctx.regs.eflags & VM_MASK)) == HFLG_PE_MODE) {
+			if (IS_PE_NOT_VM86()) {
 				Label exp = m_a.newLabel();
 				MOV(MEMD32(RSP, STACK_ARGS_off + 8), m_cpu->instr_eip);
 				MOV(MEMD32(RSP, STACK_ARGS_off), ret_eip);
@@ -4239,7 +4243,7 @@ lc86_jit::cli(ZydisDecodedInstruction *instr)
 	assert(instr->opcode == 0xFA);
 
 	uint32_t mask;
-	if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
+	if (IS_PE()) {
 		if (((m_cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12) >= (m_cpu->cpu_ctx.hflags & HFLG_CPL)) {
 			mask = IF_MASK;
 		}
@@ -5783,7 +5787,7 @@ lc86_jit::iret(ZydisDecodedInstruction *instr)
 {
 	assert(instr->opcode == 0xCF);
 
-	if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
+	if (IS_PE()) {
 		Label exp = m_a.newLabel();
 		MOV(R8D, m_cpu->instr_eip);
 		MOV(DL, m_cpu->size_mode);
@@ -6075,7 +6079,7 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 	case 0xEA: {
 		addr_t new_eip = instr->operands[OPNUM_SINGLE].ptr.offset;
 		uint16_t new_sel = instr->operands[OPNUM_SINGLE].ptr.segment;
-		if (((m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) | (m_cpu->cpu_ctx.regs.eflags & VM_MASK)) == HFLG_PE_MODE) {
+		if (IS_PE_NOT_VM86()) {
 			Label exp = m_a.newLabel();
 			MOV(MEMD32(RSP, STACK_ARGS_off), m_cpu->instr_eip);
 			MOV(R9D, new_eip);
@@ -6135,7 +6139,7 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 			MOV(EBX, EAX);
 			LD_MEMs(SIZE16);
 
-			if (((m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) | (m_cpu->cpu_ctx.regs.eflags & VM_MASK)) == HFLG_PE_MODE) {
+			if (IS_PE_NOT_VM86()) {
 				Label exp = m_a.newLabel();
 				MOV(MEMD32(RSP, STACK_ARGS_off), m_cpu->instr_eip);
 				MOV(R9D, EBX);
@@ -6670,7 +6674,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			{
 				LD_MEM();
 			});
-		if (((m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) | (m_cpu->cpu_ctx.regs.eflags & VM_MASK)) == HFLG_PE_MODE) {
+		if (IS_PE_NOT_VM86()) {
 			MOV(R8D, m_cpu->instr_eip);
 			MOV(DX, AX);
 
@@ -7471,7 +7475,7 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 		const auto sel = get_reg_pair(instr->operands[OPNUM_SINGLE].reg.value);
 		gen_stack_pop<1, 0, false>();
 
-		if (((m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) | (m_cpu->cpu_ctx.regs.eflags & VM_MASK)) == HFLG_PE_MODE) {
+		if (IS_PE_NOT_VM86()) {
 			MOV(R8D, m_cpu->instr_eip);
 			MOV(DX, R11W);
 
@@ -7648,7 +7652,7 @@ lc86_jit::popf(ZydisDecodedInstruction *instr)
 	uint32_t mask = TF_MASK | DF_MASK | NT_MASK;
 	uint32_t cpl = m_cpu->cpu_ctx.hflags & HFLG_CPL;
 	uint32_t iopl = (m_cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12;
-	if (m_cpu->cpu_ctx.regs.eflags & VM_MASK) {
+	if (IS_VM86()) {
 		if (iopl == 3) {
 			gen_stack_pop<1>();
 			if (m_cpu->size_mode == SIZE32) {
@@ -7912,7 +7916,7 @@ lc86_jit::pushf(ZydisDecodedInstruction *instr)
 	// NOTE: this is optimized code generated by MSVC from a custom C++ implementation
 
 	bool vm86_handling = false;
-	if ((m_cpu->cpu_ctx.regs.eflags & VM_MASK) && (((m_cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12) < 3)) {
+	if ((IS_VM86()) && (((m_cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12) < 3)) {
 		if ((m_cpu->size_mode | (m_cpu->cpu_ctx.hflags & HFLG_CR4_VME)) == (SIZE16 | HFLG_CR4_VME)) {
 			vm86_handling = true;
 		}
@@ -8059,7 +8063,7 @@ lc86_jit::ret(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0xCB: {
-		if (((m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) | (m_cpu->cpu_ctx.regs.eflags & VM_MASK)) == HFLG_PE_MODE) {
+		if (IS_PE_NOT_VM86()) {
 			Label ok = m_a.newLabel();
 			MOV(R8D, m_cpu->instr_eip);
 			MOV(DL, m_cpu->size_mode);
@@ -8602,7 +8606,7 @@ lc86_jit::sti(ZydisDecodedInstruction *instr)
 
 	LD_R32(EAX, CPU_CTX_EFLAGS);
 	MOV(EDX, EAX);
-	if (m_cpu->cpu_ctx.hflags & HFLG_PE_MODE) {
+	if (IS_PE()) {
 		if (((m_cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12) >= (m_cpu->cpu_ctx.hflags & HFLG_CPL)) {
 			OR(EAX, IF_MASK);
 			ST_R32(CPU_CTX_EFLAGS, EAX);
