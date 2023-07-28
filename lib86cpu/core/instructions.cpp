@@ -860,7 +860,7 @@ update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 			return 1;
 		}
 
-		if (new_cr & (CR4_VME_MASK | CR4_PAE_MASK)) {
+		if (new_cr & CR4_PAE_MASK) {
 			LIB86CPU_ABORT_msg("Attempted to set an unsupported bit in cr4, new_cr was 0x%08X", new_cr);
 		}
 
@@ -868,7 +868,8 @@ update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 			tlb_flush(cpu_ctx->cpu);
 		}
 
-		cpu_ctx->hflags = ((new_cr & CR4_OSFXSR_MASK) | (cpu_ctx->hflags & ~HFLG_CR4_OSFXSR));
+		cpu_ctx->hflags = ((new_cr & CR4_OSFXSR_MASK) | ((new_cr & (CR4_VME_MASK | CR4_PVI_MASK)) << 19) |
+			(cpu_ctx->hflags & ~(HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI)));
 		cpu_ctx->regs.cr4 = new_cr;
 	}
 	break;

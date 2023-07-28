@@ -232,6 +232,12 @@ static void cpu_sync_state(cpu_t *cpu)
 	if (cpu->cpu_ctx.regs.cr4 & CR4_OSFXSR_MASK) {
 		cpu->cpu_ctx.hflags |= HFLG_CR4_OSFXSR;
 	}
+	if (cpu->cpu_ctx.regs.cr4 & CR4_VME_MASK) {
+		cpu->cpu_ctx.hflags |= HFLG_CR4_VME;
+	}
+	if (cpu->cpu_ctx.regs.cr4 & CR4_PVI_MASK) {
+		cpu->cpu_ctx.hflags |= HFLG_CR4_PVI;
+	}
 }
 
 /*

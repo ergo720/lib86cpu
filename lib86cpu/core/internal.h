@@ -38,6 +38,8 @@ void JIT_API tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 // HFLG_CR4_OSFXSR: osfxsr flag of cr4
 // HFLG_CR0_TS: ts flag of cr0
 // HFLG_TIMEOUT: timeout check was emitted
+// HFLG_CR0_VME: vme flag of cr4
+// HFLG_CR0_PVI: pvi flag of cr4
 #define CPL_SHIFT           0
 #define CS32_SHIFT          2
 #define SS32_SHIFT          3
@@ -49,6 +51,8 @@ void JIT_API tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define CR0_TS_SHIFT        10
 #define TIMEOUT_SHIFT       11
 #define INHIBIT_INT_SHIFT   14
+#define CR4_VME_SHIFT       19
+#define CR4_PVI_SHIFT       20
 #define HFLG_INVALID        (1 << 31) // this should use a bit position that doesn't overlap with either HFLG_CONST or EFLAGS_CONST
 #define HFLG_CPL            (3 << CPL_SHIFT)
 #define HFLG_CS32           (1 << CS32_SHIFT)
@@ -61,8 +65,11 @@ void JIT_API tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define HFLG_INHIBIT_INT    (1 << INHIBIT_INT_SHIFT)
 #define HFLG_CR0_TS         (1 << CR0_TS_SHIFT)
 #define HFLG_CR4_OSFXSR     (1 << CR4_OSFXSR_SHIFT)
-#define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_TIMEOUT | HFLG_CR0_TS | HFLG_CR4_OSFXSR)
-#define HFLG_SAVED_MASK     (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_INHIBIT_INT | HFLG_CR0_TS | HFLG_CR4_OSFXSR)
+#define HFLG_CR4_VME        (1 << CR4_VME_SHIFT)
+#define HFLG_CR4_PVI        (1 << CR4_PVI_SHIFT)
+#define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_TIMEOUT | HFLG_INHIBIT_INT | HFLG_CR0_TS \
+| HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI)
+#define HFLG_SAVED_MASK     (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_INHIBIT_INT | HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI)
 
 // cpu interrupt flags
 #define CPU_NO_INT      0
@@ -280,6 +287,7 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define CR3_PWT_MASK (1 << 3)
 #define CR3_FLG_MASK (CR3_PD_MASK | CR3_PCD_MASK | CR3_PWT_MASK)
 #define CR4_VME_MASK    (1 << 0)
+#define CR4_PVI_MASK    (1 << 1)
 #define CR4_TSD_MASK    (1 << 2)
 #define CR4_DE_MASK     (1 << 3)
 #define CR4_PSE_MASK    (1 << 4)

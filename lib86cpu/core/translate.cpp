@@ -1098,6 +1098,10 @@ cpu_translate(cpu_t *cpu)
 			break;
 
 		case ZYDIS_MNEMONIC_LAR:         BAD;
+		case ZYDIS_MNEMONIC_LDS:
+			cpu->jit->lds(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_LEA:
 			cpu->jit->lea(&instr);
 			break;
@@ -1106,8 +1110,20 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->leave(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_LES:
+			cpu->jit->les(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_LFS:
+			cpu->jit->lfs(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_LGDT:
 			cpu->jit->lgdt(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_LGS:
+			cpu->jit->lgs(&instr);
 			break;
 
 		case ZYDIS_MNEMONIC_LIDT:
@@ -1132,22 +1148,6 @@ cpu_translate(cpu_t *cpu)
 			break;
 
 		case ZYDIS_MNEMONIC_LSL:         BAD;
-		case ZYDIS_MNEMONIC_LDS:
-			cpu->jit->lds(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LES:
-			cpu->jit->les(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LFS:
-			cpu->jit->lfs(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LGS:
-			cpu->jit->lgs(&instr);
-			break;
-
 		case ZYDIS_MNEMONIC_LSS:
 			cpu->jit->lss(&instr);
 			break;
