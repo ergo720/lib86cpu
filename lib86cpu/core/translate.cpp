@@ -83,12 +83,14 @@ check_dbl_exp(cpu_ctx_t *cpu_ctx)
 	cpu_ctx->exp_info.exp_data.idx = idx;
 }
 
-template<bool is_intn, bool is_hw_int>
+template<unsigned is_intn, bool is_hw_int>
 translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 {
-	// is_intn -> int3, into or intn instruction, is_hw_int -> hardware interrupt
+	// is_intn -> not a int instruction(0), int3(1), intn(2), into(3), is_hw_int -> hardware interrupt
 
-	check_dbl_exp(cpu_ctx);
+	if constexpr (!(is_intn) && !(is_hw_int)) {
+		check_dbl_exp(cpu_ctx);
+	}
 
 	cpu_t *cpu = cpu_ctx->cpu;
 	uint32_t fault_addr = cpu_ctx->exp_info.exp_data.fault_addr;
@@ -101,6 +103,60 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		// protected mode
 
 		constexpr uint16_t ext_flg = is_intn ? 0 : 1; // EXT flag clear for INT instructions, set otherwise
+
+		uint32_t iopl = (cpu_ctx->regs.eflags & IOPL_MASK) >> 12;
+		if ((is_intn == 2) && (((cpu_ctx->regs.eflags & VM_MASK) | (cpu_ctx->hflags & HFLG_CR4_VME)) == VM_MASK) &&
+			(((cpu_ctx->regs.eflags & IOPL_MASK) >> 12) < 3)) {
+			cpu_ctx->exp_info.exp_data.code = 0;
+			cpu_ctx->exp_info.exp_data.idx = EXP_GP;
+			return cpu_raise_exception(cpu_ctx);
+		}
+
+		if ((is_intn == 2) && (((cpu_ctx->regs.eflags & VM_MASK) | (cpu_ctx->hflags & HFLG_CR4_VME)) == (VM_MASK | HFLG_CR4_VME))) {
+			uint16_t offset = mem_read_helper<uint16_t>(cpu_ctx, cpu_ctx->regs.tr_hidden.base + 102, eip, 0);
+			uint8_t io_int_table_byte = mem_read_helper<uint8_t>(cpu_ctx, cpu_ctx->regs.tr_hidden.base + offset - 32 + idx / 8, eip, 0);
+			if ((io_int_table_byte & (1 << (idx % 8))) == 0) {
+				if (iopl < 3) {
+					old_eflags = ((old_eflags & VIF_MASK) >> 10) | (old_eflags & ~(IF_MASK | IOPL_MASK)) | IOPL_MASK;
+				}
+				uint32_t esp = cpu_ctx->regs.esp;
+				uint32_t stack_mask = cpu_ctx->hflags & HFLG_SS32 ? 0xFFFFFFFF : 0xFFFF;
+				uint32_t stack_base = cpu_ctx->regs.ss_hidden.base;
+				esp -= 2;
+				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, eip, 0);
+				esp -= 2;
+				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 0);
+				esp -= 2;
+				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), eip, eip, 0);
+				uint32_t vec_entry = mem_read_helper<uint32_t>(cpu_ctx, idx * 4, eip, 0);
+				uint32_t eflags_mask = TF_MASK;
+				cpu_ctx->regs.esp = (cpu_ctx->regs.esp & ~stack_mask) | (esp & stack_mask);
+				cpu_ctx->regs.cs = vec_entry >> 16;
+				cpu_ctx->regs.cs_hidden.base = cpu_ctx->regs.cs << 4;
+				cpu_ctx->regs.eip = vec_entry & 0xFFFF;
+				if (iopl == 3) {
+					eflags_mask |= (IF_MASK | VIF_MASK);
+				}
+				cpu_ctx->regs.eflags &= ~eflags_mask;
+				cpu_ctx->hflags &= ~(HFLG_DBG_TRAP | HFLG_INHIBIT_INT);
+				cpu_ctx->exp_info.old_exp = EXP_INVALID;
+				if (idx == EXP_PF) {
+					cpu_ctx->regs.cr2 = fault_addr;
+				}
+				if (idx == EXP_DB) {
+					cpu_ctx->regs.dr[7] &= ~DR7_GD_MASK;
+				}
+
+				return nullptr;
+			}
+			else {
+				if (iopl != 3) {
+					cpu_ctx->exp_info.exp_data.code = 0;
+					cpu_ctx->exp_info.exp_data.idx = EXP_GP;
+					return cpu_raise_exception(cpu_ctx);
+				}
+			}
+		}
 
 		if (idx * 8 + 7 > cpu_ctx->regs.idtr_hidden.limit) {
 			cpu_ctx->exp_info.exp_data.code = idx * 8 + 2 + ext_flg;
@@ -188,53 +244,159 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		uint32_t stack_switch, stack_mask, stack_base, esp;
 		uint32_t new_esp;
 		uint16_t new_ss;
-		addr_t ss_desc_addr;
 		uint64_t ss_desc;
 
 		if (dpl < cpl) {
 			// more privileged
 
-			if (read_stack_ptr_from_tss_helper(cpu, dpl, new_esp, new_ss, eip)) {
-				cpu_ctx->exp_info.exp_data.code += ext_flg;
-				return cpu_raise_exception(cpu_ctx);
+			const auto &check_ss_desc = [eip, cpu]<bool is_vm86>(cpu_ctx_t *cpu_ctx, uint32_t dpl, uint32_t &new_esp, uint16_t &new_ss, uint64_t &ss_desc)
+			{
+				addr_t ss_desc_addr;
+
+				if (read_stack_ptr_from_tss_helper(cpu, dpl, new_esp, new_ss, eip, is_vm86 ? 2 : 0)) {
+					cpu_ctx->exp_info.exp_data.code += ext_flg;
+					cpu_raise_exception(cpu_ctx);
+					return true;
+				}
+
+				if ((new_ss >> 2) == 0) {
+					cpu_ctx->exp_info.exp_data.code = ext_flg;
+					cpu_ctx->exp_info.exp_data.idx = EXP_TS;
+					cpu_raise_exception(cpu_ctx);
+					return true;
+				}
+
+				if (read_seg_desc_helper(cpu, new_ss, ss_desc_addr, ss_desc, eip)) {
+					cpu_ctx->exp_info.exp_data.code += ext_flg;
+					cpu_ctx->exp_info.exp_data.idx = EXP_TS;
+					cpu_raise_exception(cpu_ctx);
+					return true;
+				}
+
+				uint32_t p = (ss_desc & SEG_DESC_P) >> 40;
+				uint32_t s = (ss_desc & SEG_DESC_S) >> 44;
+				uint32_t d = (ss_desc & SEG_DESC_DC) >> 42;
+				uint32_t w = (ss_desc & SEG_DESC_W) >> 39;
+				uint32_t ss_dpl = (ss_desc & SEG_DESC_DPL) >> 42;
+				uint32_t ss_rpl = (new_ss & 3) << 5;
+				uint32_t dpl_compare = is_vm86 ? 0 : dpl;
+				if ((s | d | w | ss_dpl | ss_rpl | p) ^ ((0x85 | (dpl_compare << 3)) | (dpl_compare << 5))) {
+					cpu_ctx->exp_info.exp_data.code = (new_ss & 0xFFFC) + ext_flg;
+					cpu_ctx->exp_info.exp_data.idx = EXP_TS;
+					cpu_raise_exception(cpu_ctx);
+					return true;
+				}
+
+				set_access_flg_seg_desc_helper(cpu, ss_desc, ss_desc_addr, eip);
+
+				return false;
+			};
+
+			if (cpu_ctx->regs.eflags & VM_MASK) {
+				if (dpl) {
+					cpu_ctx->exp_info.exp_data.code = (sel & 0xFFFC) + ext_flg;
+					cpu_ctx->exp_info.exp_data.idx = EXP_GP;
+					return cpu_raise_exception(cpu_ctx);
+				}
+
+				if (check_ss_desc.template operator()<true>(cpu_ctx, dpl, new_esp, new_ss, ss_desc)) {
+					return nullptr;
+				}
+
+				uint32_t esp = new_esp;
+				uint32_t stack_mask = ss_desc & SEG_DESC_DB ? 0xFFFFFFFF : 0xFFFF;
+				uint32_t stack_base = read_seg_desc_base_helper(cpu, ss_desc);
+
+				const auto &push_regs = [old_eflags, eip]<bool is_idt32>(cpu_ctx_t *cpu_ctx, uint32_t &esp, uint32_t stack_mask, uint32_t stack_base)
+				{
+					using T = std::conditional_t<is_idt32, uint32_t, uint16_t>;
+					uint32_t push_size = sizeof(T);
+
+					esp -= push_size;
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.gs, eip, 2);
+					esp -= push_size;
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.fs, eip, 2);
+					esp -= push_size;
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.ds, eip, 2);
+					esp -= push_size;
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.es, eip, 2);
+					esp -= push_size;
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.ss, eip, 2);
+					esp -= push_size;
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.esp, eip, 2);
+					esp -= push_size;
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, eip, 2);
+					esp -= push_size;
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 2);
+					esp -= push_size;
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), eip, eip, 2);
+				};
+
+				if ((type == 14) || (type == 15)) {
+					push_regs.template operator()<true>(cpu_ctx, esp, stack_mask, stack_base);
+				}
+				else {
+					push_regs.template operator()<false>(cpu_ctx, esp, stack_mask, stack_base);
+					new_eip &= 0xFFFF;
+				}
+
+				cpu_ctx->regs.gs = cpu_ctx->regs.fs = cpu_ctx->regs.ds = cpu_ctx->regs.es = 0;
+				cpu_ctx->regs.gs_hidden.base = cpu_ctx->regs.fs_hidden.base = cpu_ctx->regs.ds_hidden.base = cpu_ctx->regs.es_hidden.base = 0;
+				cpu_ctx->regs.gs_hidden.limit = cpu_ctx->regs.fs_hidden.limit = cpu_ctx->regs.ds_hidden.limit = cpu_ctx->regs.es_hidden.limit = 0;
+				cpu_ctx->regs.gs_hidden.flags = cpu_ctx->regs.fs_hidden.flags = cpu_ctx->regs.ds_hidden.flags = cpu_ctx->regs.es_hidden.flags = 0;
+				cpu_ctx->regs.cs = sel & 0xFFC;
+				cpu_ctx->regs.cs_hidden.base = seg_base;
+				cpu_ctx->regs.cs_hidden.limit = seg_limit;
+				cpu_ctx->regs.cs_hidden.flags = seg_flags;
+				cpu_ctx->hflags = ((cpu_ctx->regs.cs_hidden.flags & SEG_HIDDEN_DB) >> 20) | (cpu_ctx->hflags & ~(HFLG_CS32 | HFLG_CPL));
+				cpu_ctx->regs.ss = new_ss;
+				cpu_ctx->regs.ss_hidden.base = stack_base;
+				cpu_ctx->regs.ss_hidden.limit = read_seg_desc_limit_helper(cpu, ss_desc);
+				cpu_ctx->regs.ss_hidden.flags = read_seg_desc_flags_helper(cpu, ss_desc);
+				cpu_ctx->hflags = ((cpu_ctx->regs.ss_hidden.flags & SEG_HIDDEN_DB) >> 19) | (cpu_ctx->hflags & ~HFLG_SS32);
+				cpu_ctx->regs.eflags = (eflags & ~(VM_MASK | RF_MASK | NT_MASK | TF_MASK));
+				cpu_ctx->regs.esp = (cpu_ctx->regs.esp & ~stack_mask) | (esp & stack_mask);
+				cpu_ctx->regs.eip = new_eip;
+				cpu_ctx->hflags &= ~(HFLG_DBG_TRAP | HFLG_INHIBIT_INT);
+				cpu_ctx->exp_info.old_exp = EXP_INVALID;
+				if (idx == EXP_PF) {
+					cpu_ctx->regs.cr2 = fault_addr;
+				}
+				if (idx == EXP_DB) {
+					cpu_ctx->regs.dr[7] &= ~DR7_GD_MASK;
+				}
+
+				return nullptr;
 			}
 
-			if ((new_ss >> 2) == 0) {
-				cpu_ctx->exp_info.exp_data.code = ext_flg;
-				cpu_ctx->exp_info.exp_data.idx = EXP_TS;
-				return cpu_raise_exception(cpu_ctx);
+			if (check_ss_desc.template operator()<false>(cpu_ctx, dpl, new_esp, new_ss, ss_desc)) {
+				return nullptr;
 			}
-
-			if (read_seg_desc_helper(cpu, new_ss, ss_desc_addr, ss_desc, eip)) {
-				cpu_ctx->exp_info.exp_data.code += ext_flg;
-				cpu_ctx->exp_info.exp_data.idx = EXP_TS;
-				return cpu_raise_exception(cpu_ctx);
-			}
-
-			uint32_t p = (ss_desc & SEG_DESC_P) >> 40;
-			uint32_t s = (ss_desc & SEG_DESC_S) >> 44;
-			uint32_t d = (ss_desc & SEG_DESC_DC) >> 42;
-			uint32_t w = (ss_desc & SEG_DESC_W) >> 39;
-			uint32_t ss_dpl = (ss_desc & SEG_DESC_DPL) >> 42;
-			uint32_t ss_rpl = (new_ss & 3) << 5;
-			if ((s | d | w | ss_dpl | ss_rpl | p) ^ ((0x85 | (dpl << 3)) | (dpl << 5))) {
-				cpu_ctx->exp_info.exp_data.code = (new_ss & 0xFFFC) + ext_flg;
-				cpu_ctx->exp_info.exp_data.idx = EXP_TS;
-				return cpu_raise_exception(cpu_ctx);
-			}
-
-			set_access_flg_seg_desc_helper(cpu, ss_desc, ss_desc_addr, eip);
 
 			stack_switch = 1;
 			stack_mask = ss_desc & SEG_DESC_DB ? 0xFFFFFFFF : 0xFFFF;
 			stack_base = read_seg_desc_base_helper(cpu, ss_desc);
 			esp = new_esp;
 		}
-		else { // same privilege
-			stack_switch = 0;
-			stack_mask = cpu_ctx->hflags & HFLG_SS32 ? 0xFFFFFFFF : 0xFFFF;
-			stack_base = cpu_ctx->regs.ss_hidden.base;
-			esp = cpu_ctx->regs.esp;
+		else {
+			if (cpu_ctx->regs.eflags & VM_MASK) {
+				cpu_ctx->exp_info.exp_data.code = (sel & 0xFFFC) + ext_flg;
+				cpu_ctx->exp_info.exp_data.idx = EXP_GP;
+				return cpu_raise_exception(cpu_ctx);
+			}
+			else if (dpl == cpl) {
+				// same privilege
+
+				stack_switch = 0;
+				stack_mask = cpu_ctx->hflags & HFLG_SS32 ? 0xFFFFFFFF : 0xFFFF;
+				stack_base = cpu_ctx->regs.ss_hidden.base;
+				esp = cpu_ctx->regs.esp;
+			}
+			else {
+				cpu_ctx->exp_info.exp_data.code = (sel & 0xFFFC) + ext_flg;
+				cpu_ctx->exp_info.exp_data.idx = EXP_GP;
+				return cpu_raise_exception(cpu_ctx);
+			}
 		}
 
 		uint8_t has_code;
@@ -260,39 +422,37 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 			}
 		}
 
+		const auto &push_regs = [old_eflags, eip, has_code, code]<bool is_push32, bool stack_switch>(cpu_ctx_t *cpu_ctx, uint32_t &esp, uint32_t stack_mask,
+			uint32_t stack_base, uint8_t is_priv)
+		{
+			using T = std::conditional_t<is_push32, uint32_t, uint16_t>;
+			uint32_t push_size = sizeof(T);
+
+			if constexpr (stack_switch) {
+				esp -= push_size;
+				mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.ss, eip, is_priv);
+				esp -= push_size;
+				mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.esp, eip, is_priv);
+			}
+			esp -= push_size;
+			mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, eip, is_priv);
+			esp -= push_size;
+			mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, is_priv);
+			esp -= push_size;
+			mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), eip, eip, is_priv);
+			if (has_code) {
+				esp -= push_size;
+				mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), code, eip, is_priv);
+			}
+		};
+
 		type >>= 3;
 		if (stack_switch) {
 			if (type) { // push 32, priv
-				esp -= 4;
-				mem_write_helper<uint32_t>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.ss, eip, 2);
-				esp -= 4;
-				mem_write_helper<uint32_t>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.esp, eip, 2);
-				esp -= 4;
-				mem_write_helper<uint32_t>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, eip, 2);
-				esp -= 4;
-				mem_write_helper<uint32_t>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 2);
-				esp -= 4;
-				mem_write_helper<uint32_t>(cpu_ctx, stack_base + (esp & stack_mask), eip, eip, 2);
-				if (has_code) {
-					esp -= 4;
-					mem_write_helper<uint32_t>(cpu_ctx, stack_base + (esp & stack_mask), code, eip, 2);
-				}
+				push_regs.template operator()<true, true>(cpu_ctx, esp, stack_mask, stack_base, 2);
 			}
 			else { // push 16, priv
-				esp -= 2;
-				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.ss, eip, 2);
-				esp -= 2;
-				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.esp, eip, 2);
-				esp -= 2;
-				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, eip, 2);
-				esp -= 2;
-				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 2);
-				esp -= 2;
-				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), eip, eip, 2);
-				if (has_code) {
-					esp -= 2;
-					mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), code, eip, 2);
-				}
+				push_regs.template operator()<false, true>(cpu_ctx, esp, stack_mask, stack_base, 2);
 			}
 
 			uint32_t ss_flags = read_seg_desc_flags_helper(cpu, ss_desc);
@@ -304,28 +464,10 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		}
 		else {
 			if (type) { // push 32, not priv
-				esp -= 4;
-				mem_write_helper<uint32_t>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, eip, 0);
-				esp -= 4;
-				mem_write_helper<uint32_t>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 0);
-				esp -= 4;
-				mem_write_helper<uint32_t>(cpu_ctx, stack_base + (esp & stack_mask), eip, eip, 0);
-				if (has_code) {
-					esp -= 4;
-					mem_write_helper<uint32_t>(cpu_ctx, stack_base + (esp & stack_mask), code, eip, 0);
-				}
+				push_regs.template operator()<true, false>(cpu_ctx, esp, stack_mask, stack_base, 0);
 			}
 			else { // push 16, not priv
-				esp -= 2;
-				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, eip, 0);
-				esp -= 2;
-				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 0);
-				esp -= 2;
-				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), eip, eip, 0);
-				if (has_code) {
-					esp -= 2;
-					mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), code, eip, 0);
-				}
+				push_regs.template operator()<false, false>(cpu_ctx, esp, stack_mask, stack_base, 0);
 			}
 		}
 
@@ -368,9 +510,8 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		cpu_ctx->regs.eip = vec_entry & 0xFFFF;
 	}
 
-	cpu_ctx->hflags &= ~HFLG_DBG_TRAP; // always clear HFLG_DBG_TRAP
+	cpu_ctx->hflags &= ~(HFLG_DBG_TRAP | HFLG_INHIBIT_INT);
 	cpu_ctx->exp_info.old_exp = EXP_INVALID;
-	cpu_ctx->hflags &= ~HFLG_INHIBIT_INT; // an exception clears the interrupt inhibition state
 	if (idx == EXP_DB) {
 		cpu_ctx->regs.dr[7] &= ~DR7_GD_MASK;
 	}
@@ -1781,10 +1922,14 @@ cpu_exec_trampoline(cpu_t *cpu, const uint32_t ret_eip)
 	cpu_main_loop<true, false>(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
 }
 
-template translated_code_t *cpu_raise_exception<true, true>(cpu_ctx_t *cpu_ctx);
-template translated_code_t *cpu_raise_exception<true, false>(cpu_ctx_t *cpu_ctx);
-template translated_code_t *cpu_raise_exception<false, true>(cpu_ctx_t *cpu_ctx);
-template translated_code_t *cpu_raise_exception<false, false>(cpu_ctx_t *cpu_ctx);
+template translated_code_t *cpu_raise_exception<0, true>(cpu_ctx_t *cpu_ctx);
+template translated_code_t *cpu_raise_exception<1, true>(cpu_ctx_t *cpu_ctx);
+template translated_code_t *cpu_raise_exception<2, true>(cpu_ctx_t *cpu_ctx);
+template translated_code_t *cpu_raise_exception<3, true>(cpu_ctx_t *cpu_ctx);
+template translated_code_t *cpu_raise_exception<0, false>(cpu_ctx_t *cpu_ctx);
+template translated_code_t *cpu_raise_exception<1, false>(cpu_ctx_t *cpu_ctx);
+template translated_code_t *cpu_raise_exception<2, false>(cpu_ctx_t *cpu_ctx);
+template translated_code_t *cpu_raise_exception<3, false>(cpu_ctx_t *cpu_ctx);
 template void tc_should_clear_cache_and_tlb<true>(cpu_t *cpu, addr_t start, addr_t end);
 template lc86_status cpu_start<true>(cpu_t *cpu);
 template lc86_status cpu_start<false>(cpu_t *cpu);

@@ -146,10 +146,14 @@ inline constexpr size_t seg_flags_offset = offsetof(cpu_ctx_t, regs.es_hidden.fl
 
 // this should hold all the functions that can be called at runtime by the jit
 inline constexpr auto all_callable_funcs = std::make_tuple(
-	cpu_raise_exception<true, true>,
-	cpu_raise_exception<true, false>,
-	cpu_raise_exception<false, true>,
-	cpu_raise_exception<false, false>,
+	cpu_raise_exception<0, true>,
+	cpu_raise_exception<1, true>,
+	cpu_raise_exception<2, true>,
+	cpu_raise_exception<3, true>,
+	cpu_raise_exception<0, false>,
+	cpu_raise_exception<1, false>,
+	cpu_raise_exception<2, false>,
+	cpu_raise_exception<3, false>,
 	cpu_timer_helper,
 	cpu_do_int,
 	link_indirect_handler,

@@ -18,4 +18,4 @@ uint32_t read_seg_desc_limit_helper(cpu_t *cpu, uint64_t desc);
 uint8_t check_ss_desc_priv_helper(cpu_t *cpu, uint16_t sel, uint16_t *cs, addr_t &desc_addr, uint64_t &desc, uint32_t eip);
 uint8_t check_seg_desc_priv_helper(cpu_t *cpu, uint16_t sel, addr_t &desc_addr, uint64_t &desc, uint32_t eip);
 void write_eflags_helper(cpu_t *cpu, uint32_t eflags, uint32_t mask);
-uint8_t read_stack_ptr_from_tss_helper(cpu_t *cpu, uint32_t dpl, uint32_t &esp, uint16_t &ss, uint32_t eip);
+uint8_t read_stack_ptr_from_tss_helper(cpu_t *cpu, uint32_t dpl, uint32_t &esp, uint16_t &ss, uint32_t eip, uint8_t is_priv = 0);

@@ -3438,9 +3438,9 @@ void lc86_jit::bit(ZydisDecodedInstruction *instr)
 template<unsigned idx>
 void lc86_jit::int_(ZydisDecodedInstruction *instr)
 {
-	// idx 0 -> int3, 1 -> int n, 2 -> into
+	// idx 1 -> int3, 2 -> int n, 3 -> into
 
-	if constexpr (idx == 2) {
+	if constexpr (idx == 3) {
 		Label no_exp = m_a.newLabel();
 		MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
 		LD_OF(EDX, EAX);
@@ -3450,7 +3450,7 @@ void lc86_jit::int_(ZydisDecodedInstruction *instr)
 		MOV(MEMD16(RCX, CPU_EXP_CODE), 0);
 		MOV(MEMD16(RCX, CPU_EXP_IDX), EXP_OF);
 		MOV(MEMD32(RCX, CPU_EXP_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
-		MOV(RAX, &cpu_raise_exception<true>);
+		MOV(RAX, &cpu_raise_exception<idx>);
 		CALL(RAX);
 		gen_epilogue_main<false>();
 		m_a.bind(no_exp);
@@ -3458,10 +3458,10 @@ void lc86_jit::int_(ZydisDecodedInstruction *instr)
 	else {
 		MOV(MEMD32(RCX, CPU_EXP_ADDR), 0);
 		MOV(MEMD16(RCX, CPU_EXP_CODE), 0);
-		if constexpr (idx == 0) {
+		if constexpr (idx == 1) {
 			MOV(MEMD16(RCX, CPU_EXP_IDX), EXP_BP);
 		}
-		else if constexpr (idx == 1) {
+		else if constexpr (idx == 2) {
 			MOV(MEMD16(RCX, CPU_EXP_IDX), static_cast<uint8_t>(instr->operands[OPNUM_SINGLE].imm.value.u));
 		}
 		else {
@@ -3469,7 +3469,7 @@ void lc86_jit::int_(ZydisDecodedInstruction *instr)
 		}
 
 		MOV(MEMD32(RCX, CPU_EXP_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
-		MOV(RAX, &cpu_raise_exception<true>);
+		MOV(RAX, &cpu_raise_exception<idx>);
 		CALL(RAX);
 		gen_epilogue_main<false>();
 
@@ -5748,19 +5748,19 @@ lc86_jit::ins(ZydisDecodedInstruction *instr)
 void
 lc86_jit::int3(ZydisDecodedInstruction *instr)
 {
-	int_<0>(instr);
+	int_<1>(instr);
 }
 
 void
 lc86_jit::intn(ZydisDecodedInstruction *instr)
 {
-	int_<1>(instr);
+	int_<2>(instr);
 }
 
 void
 lc86_jit::into(ZydisDecodedInstruction *instr)
 {
-	int_<2>(instr);
+	int_<3>(instr);
 }
 
 void

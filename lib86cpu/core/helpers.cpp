@@ -256,7 +256,7 @@ write_eflags_helper(cpu_t *cpu, uint32_t eflags, uint32_t mask)
 }
 
 uint8_t
-read_stack_ptr_from_tss_helper(cpu_t *cpu, uint32_t dpl, uint32_t &esp, uint16_t &ss, uint32_t eip)
+read_stack_ptr_from_tss_helper(cpu_t *cpu, uint32_t dpl, uint32_t &esp, uint16_t &ss, uint32_t eip, uint8_t is_priv)
 {
 	uint32_t type = (cpu->cpu_ctx.regs.tr_hidden.flags & SEG_HIDDEN_TSS_TY) >> 11;
 	uint32_t idx = (2 << type) + dpl * (4 << type);
@@ -265,12 +265,12 @@ read_stack_ptr_from_tss_helper(cpu_t *cpu, uint32_t dpl, uint32_t &esp, uint16_t
 	}
 
 	if (type) {
-		esp = mem_read_helper<uint32_t>(&cpu->cpu_ctx, cpu->cpu_ctx.regs.tr_hidden.base + idx, eip, 0);
-		ss = mem_read_helper<uint16_t>(&cpu->cpu_ctx, cpu->cpu_ctx.regs.tr_hidden.base + idx + 4, eip, 0);
+		esp = mem_read_helper<uint32_t>(&cpu->cpu_ctx, cpu->cpu_ctx.regs.tr_hidden.base + idx, eip, is_priv);
+		ss = mem_read_helper<uint16_t>(&cpu->cpu_ctx, cpu->cpu_ctx.regs.tr_hidden.base + idx + 4, eip, is_priv);
 	}
 	else {
-		esp = mem_read_helper<uint16_t>(&cpu->cpu_ctx, cpu->cpu_ctx.regs.tr_hidden.base + idx, eip, 0);
-		ss = mem_read_helper<uint16_t>(&cpu->cpu_ctx, cpu->cpu_ctx.regs.tr_hidden.base + idx + 2, eip, 0);
+		esp = mem_read_helper<uint16_t>(&cpu->cpu_ctx, cpu->cpu_ctx.regs.tr_hidden.base + idx, eip, is_priv);
+		ss = mem_read_helper<uint16_t>(&cpu->cpu_ctx, cpu->cpu_ctx.regs.tr_hidden.base + idx + 2, eip, is_priv);
 	}
 
 	return 0;

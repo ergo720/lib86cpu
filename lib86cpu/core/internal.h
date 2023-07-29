@@ -18,7 +18,7 @@ void tc_should_clear_cache_and_tlb(cpu_t *cpu, addr_t start, addr_t end);
 void tc_cache_clear(cpu_t *cpu);
 void tc_cache_purge(cpu_t *cpu);
 addr_t get_pc(cpu_ctx_t *cpu_ctx);
-template<bool is_intn = false, bool is_hw_int = false>
+template<unsigned is_intn = 0, bool is_hw_int = false>
 translated_code_t * JIT_API cpu_raise_exception(cpu_ctx_t *cpu_ctx);
 uint32_t JIT_API cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 void fpu_init(cpu_t *cpu);
