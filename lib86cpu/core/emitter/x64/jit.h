@@ -45,127 +45,127 @@ public:
 	void free_code_block(void *addr) { m_mem.release_sys_mem(addr); }
 	void destroy_all_code() { m_mem.destroy_all_blocks(); }
 
-	void aaa(ZydisDecodedInstruction *instr);
-	void aad(ZydisDecodedInstruction *instr);
-	void aam(ZydisDecodedInstruction *instr);
-	void aas(ZydisDecodedInstruction *instr);
-	void adc(ZydisDecodedInstruction *instr);
-	void add(ZydisDecodedInstruction *instr);
-	void and_(ZydisDecodedInstruction *instr);
-	void arpl(ZydisDecodedInstruction *instr);
-	void bound(ZydisDecodedInstruction *instr);
-	void bsf(ZydisDecodedInstruction *instr);
-	void bsr(ZydisDecodedInstruction *instr);
-	void bswap(ZydisDecodedInstruction *instr);
-	void bt(ZydisDecodedInstruction *instr);
-	void btc(ZydisDecodedInstruction *instr);
-	void btr(ZydisDecodedInstruction *instr);
-	void bts(ZydisDecodedInstruction *instr);
-	void call(ZydisDecodedInstruction *instr);
-	void clc(ZydisDecodedInstruction *instr);
-	void cbw(ZydisDecodedInstruction *instr);
-	void cdq(ZydisDecodedInstruction *instr);
-	void cld(ZydisDecodedInstruction *instr);
-	void cli(ZydisDecodedInstruction *instr);
-	void cmc(ZydisDecodedInstruction *instr);
-	void cmovcc(ZydisDecodedInstruction *instr);
-	void cmp(ZydisDecodedInstruction *instr);
-	void cmps(ZydisDecodedInstruction *instr);
-	void cmpxchg(ZydisDecodedInstruction *instr);
-	void cmpxchg8b(ZydisDecodedInstruction *instr);
-	void cpuid(ZydisDecodedInstruction *instr);
-	void cwd(ZydisDecodedInstruction *instr);
-	void cwde(ZydisDecodedInstruction *instr);
-	void daa(ZydisDecodedInstruction *instr);
-	void das(ZydisDecodedInstruction *instr);
-	void dec(ZydisDecodedInstruction *instr);
-	void div(ZydisDecodedInstruction *instr);
-	void enter(ZydisDecodedInstruction *instr);
-	void fld(ZydisDecodedInstruction *instr);
-	void fninit(ZydisDecodedInstruction *instr);
-	void fnstsw(ZydisDecodedInstruction *instr);
-	void fxrstor(ZydisDecodedInstruction *instr);
-	void fxsave(ZydisDecodedInstruction *instr);
-	void hlt(ZydisDecodedInstruction *instr);
-	void idiv(ZydisDecodedInstruction *instr);
-	void imul(ZydisDecodedInstruction *instr);
-	void in(ZydisDecodedInstruction *instr);
-	void inc(ZydisDecodedInstruction *instr);
-	void ins(ZydisDecodedInstruction *instr);
-	void int3(ZydisDecodedInstruction *instr);
-	void intn(ZydisDecodedInstruction *instr);
-	void into(ZydisDecodedInstruction *instr);
-	void invlpg(ZydisDecodedInstruction *instr);
-	void iret(ZydisDecodedInstruction *instr);
-	void jcc(ZydisDecodedInstruction *instr);
-	void jmp(ZydisDecodedInstruction *instr);
-	void lahf(ZydisDecodedInstruction *instr);
-	void lea(ZydisDecodedInstruction *instr);
-	void leave(ZydisDecodedInstruction *instr);
-	void lgdt(ZydisDecodedInstruction *instr);
-	void lidt(ZydisDecodedInstruction *instr);
-	void lldt(ZydisDecodedInstruction *instr);
-	void lods(ZydisDecodedInstruction *instr);
-	void loop(ZydisDecodedInstruction *instr);
-	void lds(ZydisDecodedInstruction *instr);
-	void les(ZydisDecodedInstruction *instr);
-	void lfs(ZydisDecodedInstruction *instr);
-	void lgs(ZydisDecodedInstruction *instr);
-	void lss(ZydisDecodedInstruction *instr);
-	void ltr(ZydisDecodedInstruction *instr);
-	void mov(ZydisDecodedInstruction *instr);
-	void movaps(ZydisDecodedInstruction *instr);
-	void movntps(ZydisDecodedInstruction *instr);
-	void movs(ZydisDecodedInstruction *instr);
-	void movsx(ZydisDecodedInstruction *instr);
-	void movzx(ZydisDecodedInstruction *instr);
-	void mul(ZydisDecodedInstruction *instr);
-	void neg(ZydisDecodedInstruction *instr);
-	void not_(ZydisDecodedInstruction *instr);
-	void or_(ZydisDecodedInstruction *instr);
-	void out(ZydisDecodedInstruction *instr);
-	void outs(ZydisDecodedInstruction *instr);
-	void pop(ZydisDecodedInstruction *instr);
-	void popa(ZydisDecodedInstruction *instr);
-	void popf(ZydisDecodedInstruction *instr);
-	void push(ZydisDecodedInstruction *instr);
-	void pusha(ZydisDecodedInstruction *instr);
-	void pushf(ZydisDecodedInstruction *instr);
-	void rcl(ZydisDecodedInstruction *instr);
-	void rcr(ZydisDecodedInstruction *instr);
-	void rdmsr(ZydisDecodedInstruction *instr);
-	void rdtsc(ZydisDecodedInstruction *instr);
-	void ret(ZydisDecodedInstruction *instr);
-	void rol(ZydisDecodedInstruction *instr);
-	void ror(ZydisDecodedInstruction *instr);
-	void sahf(ZydisDecodedInstruction *instr);
-	void sar(ZydisDecodedInstruction *instr);
-	void sbb(ZydisDecodedInstruction *instr);
-	void scas(ZydisDecodedInstruction *instr);
-	void setcc(ZydisDecodedInstruction *instr);
-	void sgdt(ZydisDecodedInstruction *instr);
-	void shl(ZydisDecodedInstruction *instr);
-	void shld(ZydisDecodedInstruction *instr);
-	void shr(ZydisDecodedInstruction *instr);
-	void shrd(ZydisDecodedInstruction *instr);
-	void sidt(ZydisDecodedInstruction *instr);
-	void sldt(ZydisDecodedInstruction *instr);
-	void stc(ZydisDecodedInstruction *instr);
-	void std(ZydisDecodedInstruction *instr);
-	void sti(ZydisDecodedInstruction *instr);
-	void stos(ZydisDecodedInstruction *instr);
-	void str(ZydisDecodedInstruction *instr);
-	void sub(ZydisDecodedInstruction *instr);
-	void test(ZydisDecodedInstruction *instr);
-	void verr(ZydisDecodedInstruction *instr);
-	void verw(ZydisDecodedInstruction *instr);
-	void wbinvd(ZydisDecodedInstruction *instr);
-	void wrmsr(ZydisDecodedInstruction *instr);
-	void xadd(ZydisDecodedInstruction *instr);
-	void xchg(ZydisDecodedInstruction *instr);
-	void xlat(ZydisDecodedInstruction *instr);
-	void xor_(ZydisDecodedInstruction *instr);
-	void xorps(ZydisDecodedInstruction *instr);
+	void aaa(decoded_instr *instr);
+	void aad(decoded_instr *instr);
+	void aam(decoded_instr *instr);
+	void aas(decoded_instr *instr);
+	void adc(decoded_instr *instr);
+	void add(decoded_instr *instr);
+	void and_(decoded_instr *instr);
+	void arpl(decoded_instr *instr);
+	void bound(decoded_instr *instr);
+	void bsf(decoded_instr *instr);
+	void bsr(decoded_instr *instr);
+	void bswap(decoded_instr *instr);
+	void bt(decoded_instr *instr);
+	void btc(decoded_instr *instr);
+	void btr(decoded_instr *instr);
+	void bts(decoded_instr *instr);
+	void call(decoded_instr *instr);
+	void clc(decoded_instr *instr);
+	void cbw(decoded_instr *instr);
+	void cdq(decoded_instr *instr);
+	void cld(decoded_instr *instr);
+	void cli(decoded_instr *instr);
+	void cmc(decoded_instr *instr);
+	void cmovcc(decoded_instr *instr);
+	void cmp(decoded_instr *instr);
+	void cmps(decoded_instr *instr);
+	void cmpxchg(decoded_instr *instr);
+	void cmpxchg8b(decoded_instr *instr);
+	void cpuid(decoded_instr *instr);
+	void cwd(decoded_instr *instr);
+	void cwde(decoded_instr *instr);
+	void daa(decoded_instr *instr);
+	void das(decoded_instr *instr);
+	void dec(decoded_instr *instr);
+	void div(decoded_instr *instr);
+	void enter(decoded_instr *instr);
+	void fld(decoded_instr *instr);
+	void fninit(decoded_instr *instr);
+	void fnstsw(decoded_instr *instr);
+	void fxrstor(decoded_instr *instr);
+	void fxsave(decoded_instr *instr);
+	void hlt(decoded_instr *instr);
+	void idiv(decoded_instr *instr);
+	void imul(decoded_instr *instr);
+	void in(decoded_instr *instr);
+	void inc(decoded_instr *instr);
+	void ins(decoded_instr *instr);
+	void int3(decoded_instr *instr);
+	void intn(decoded_instr *instr);
+	void into(decoded_instr *instr);
+	void invlpg(decoded_instr *instr);
+	void iret(decoded_instr *instr);
+	void jcc(decoded_instr *instr);
+	void jmp(decoded_instr *instr);
+	void lahf(decoded_instr *instr);
+	void lea(decoded_instr *instr);
+	void leave(decoded_instr *instr);
+	void lgdt(decoded_instr *instr);
+	void lidt(decoded_instr *instr);
+	void lldt(decoded_instr *instr);
+	void lods(decoded_instr *instr);
+	void loop(decoded_instr *instr);
+	void lds(decoded_instr *instr);
+	void les(decoded_instr *instr);
+	void lfs(decoded_instr *instr);
+	void lgs(decoded_instr *instr);
+	void lss(decoded_instr *instr);
+	void ltr(decoded_instr *instr);
+	void mov(decoded_instr *instr);
+	void movaps(decoded_instr *instr);
+	void movntps(decoded_instr *instr);
+	void movs(decoded_instr *instr);
+	void movsx(decoded_instr *instr);
+	void movzx(decoded_instr *instr);
+	void mul(decoded_instr *instr);
+	void neg(decoded_instr *instr);
+	void not_(decoded_instr *instr);
+	void or_(decoded_instr *instr);
+	void out(decoded_instr *instr);
+	void outs(decoded_instr *instr);
+	void pop(decoded_instr *instr);
+	void popa(decoded_instr *instr);
+	void popf(decoded_instr *instr);
+	void push(decoded_instr *instr);
+	void pusha(decoded_instr *instr);
+	void pushf(decoded_instr *instr);
+	void rcl(decoded_instr *instr);
+	void rcr(decoded_instr *instr);
+	void rdmsr(decoded_instr *instr);
+	void rdtsc(decoded_instr *instr);
+	void ret(decoded_instr *instr);
+	void rol(decoded_instr *instr);
+	void ror(decoded_instr *instr);
+	void sahf(decoded_instr *instr);
+	void sar(decoded_instr *instr);
+	void sbb(decoded_instr *instr);
+	void scas(decoded_instr *instr);
+	void setcc(decoded_instr *instr);
+	void sgdt(decoded_instr *instr);
+	void shl(decoded_instr *instr);
+	void shld(decoded_instr *instr);
+	void shr(decoded_instr *instr);
+	void shrd(decoded_instr *instr);
+	void sidt(decoded_instr *instr);
+	void sldt(decoded_instr *instr);
+	void stc(decoded_instr *instr);
+	void std(decoded_instr *instr);
+	void sti(decoded_instr *instr);
+	void stos(decoded_instr *instr);
+	void str(decoded_instr *instr);
+	void sub(decoded_instr *instr);
+	void test(decoded_instr *instr);
+	void verr(decoded_instr *instr);
+	void verw(decoded_instr *instr);
+	void wbinvd(decoded_instr *instr);
+	void wrmsr(decoded_instr *instr);
+	void xadd(decoded_instr *instr);
+	void xchg(decoded_instr *instr);
+	void xlat(decoded_instr *instr);
+	void xor_(decoded_instr *instr);
+	void xorps(decoded_instr *instr);
 
 #if defined(_WIN64) || defined (__linux__)
 	void gen_exception_info(uint8_t *code_ptr, size_t code_size);
@@ -194,27 +194,27 @@ private:
 	template<bool terminates>
 	void gen_raise_exp_inline();
 	template<bool add_seg_base = true>
-	op_info get_operand(ZydisDecodedInstruction *instr, const unsigned opnum);
-	op_info get_register_op(ZydisDecodedInstruction *instr, const unsigned opnum);
-	uint32_t get_immediate_op(ZydisDecodedInstruction *instr, const unsigned opnum);
+	op_info get_operand(decoded_instr *instr, const unsigned opnum);
+	op_info get_register_op(decoded_instr *instr, const unsigned opnum);
+	uint32_t get_immediate_op(decoded_instr *instr, const unsigned opnum);
 	template<unsigned opnum, typename T1, typename T2>
-	auto get_rm(ZydisDecodedInstruction *instr, T1 &&reg, T2 &&mem);
+	auto get_rm(decoded_instr *instr, T1 &&reg, T2 &&mem);
 	template<bool write_dst = true, typename T>
-	void r_to_rm(ZydisDecodedInstruction *instr, T &&lambda);
+	void r_to_rm(decoded_instr *instr, T &&lambda);
 	template<bool is_sum, bool write_dst = true, typename T>
-	void r_to_rm_flags(ZydisDecodedInstruction *instr, T &&lambda);
+	void r_to_rm_flags(decoded_instr *instr, T &&lambda);
 	template<bool write_dst = true, typename T>
-	void rm_to_r(ZydisDecodedInstruction *instr, T &&lambda);
+	void rm_to_r(decoded_instr *instr, T &&lambda);
 	template<bool is_sum, bool write_dst = true, typename T>
-	void rm_to_r_flags(ZydisDecodedInstruction *instr, T &&lambda);
+	void rm_to_r_flags(decoded_instr *instr, T &&lambda);
 	template<bool write_dst = true, typename T>
-	void imm_to_eax(ZydisDecodedInstruction *instr, T &&lambda);
+	void imm_to_eax(decoded_instr *instr, T &&lambda);
 	template<bool is_sum, bool write_dst = true, typename T>
-	void imm_to_eax_flags(ZydisDecodedInstruction *instr, T &&lambda);
+	void imm_to_eax_flags(decoded_instr *instr, T &&lambda);
 	template<typename Imm, bool write_dst = true, typename T>
-	void imm_to_rm(ZydisDecodedInstruction *instr, Imm src_imm, T &&lambda);
+	void imm_to_rm(decoded_instr *instr, Imm src_imm, T &&lambda);
 	template<bool is_sum, typename Imm, bool write_dst = true, typename T>
-	void imm_to_rm_flags(ZydisDecodedInstruction *instr, Imm src_imm, T &&lambda);
+	void imm_to_rm_flags(decoded_instr *instr, Imm src_imm, T &&lambda);
 	template<unsigned size, typename T>
 	void gen_sum_vec16_8(T b, x86::Gp sum);
 	template<typename T>
@@ -256,25 +256,25 @@ private:
 	void gen_fpu_exp_post_check();
 	void gen_set_host_fpu_ctx();
 	template<bool update_fdp>
-	void gen_update_fpu_ptr(ZydisDecodedInstruction *instr);
+	void gen_update_fpu_ptr(decoded_instr *instr);
 	template<unsigned idx>
-	void shift(ZydisDecodedInstruction *instr);
+	void shift(decoded_instr *instr);
 	template<unsigned idx>
-	void double_shift(ZydisDecodedInstruction *instr);
+	void double_shift(decoded_instr *instr);
 	template<unsigned idx>
-	void rotate(ZydisDecodedInstruction *instr);
+	void rotate(decoded_instr *instr);
 	template<unsigned idx>
-	void load_sys_seg_reg(ZydisDecodedInstruction *instr);
+	void load_sys_seg_reg(decoded_instr *instr);
 	template<unsigned idx>
-	void store_sys_seg_reg(ZydisDecodedInstruction *instr);
+	void store_sys_seg_reg(decoded_instr *instr);
 	template<bool is_verr>
-	void verx(ZydisDecodedInstruction *instr);
+	void verx(decoded_instr *instr);
 	template<unsigned idx>
-	void lxs(ZydisDecodedInstruction *instr);
+	void lxs(decoded_instr *instr);
 	template<unsigned idx>
-	void bit(ZydisDecodedInstruction *instr);
+	void bit(decoded_instr *instr);
 	template<unsigned idx>
-	void int_(ZydisDecodedInstruction *instr);
+	void int_(decoded_instr *instr);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;

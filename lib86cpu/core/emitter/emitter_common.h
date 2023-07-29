@@ -132,7 +132,7 @@
 
 entry_t JIT_API link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc);
 size_t get_reg_offset(ZydisRegister reg);
-size_t get_seg_prfx_offset(ZydisDecodedInstruction *instr);
+size_t get_seg_prfx_offset(decoded_instr *instr);
 int get_reg_idx(ZydisRegister reg);
 const std::pair<int, size_t> get_reg_pair(ZydisRegister reg);
 #ifdef LIB86CPU_X64_EMITTER

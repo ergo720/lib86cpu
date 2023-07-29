@@ -1046,9 +1046,9 @@ void lc86_jit::gen_link_dst_cond(T &&lambda)
 }
 
 template<bool add_seg_base>
-op_info lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opnum)
+op_info lc86_jit::get_operand(decoded_instr *instr, const unsigned opnum)
 {
-	ZydisDecodedOperand *operand = &instr->operands[opnum];
+	ZydisDecodedOperand *operand = &instr->o[opnum];
 
 	switch (operand->type)
 	{
@@ -1057,7 +1057,7 @@ op_info lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opn
 		switch (operand->encoding)
 		{
 		case ZYDIS_OPERAND_ENCODING_DISP16_32_64: {
-			uint32_t disp = instr->address_width == 32 ? operand->mem.disp.value : operand->mem.disp.value & 0xFFFF;
+			uint32_t disp = instr->i.address_width == 32 ? operand->mem.disp.value : operand->mem.disp.value & 0xFFFF;
 			if constexpr (add_seg_base) {
 				LD_SEG_BASE(EDX, REG_off(operand->mem.segment));
 				ADD(EDX, disp);
@@ -1069,7 +1069,7 @@ op_info lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opn
 		return {};
 
 		case ZYDIS_OPERAND_ENCODING_MODRM_RM: {
-			if (instr->address_width == 32) {
+			if (instr->i.address_width == 32) {
 				if (operand->mem.base != ZYDIS_REGISTER_NONE) {
 					LD_R32(R10D, REG_off(operand->mem.base));
 				}
@@ -1080,13 +1080,13 @@ op_info lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opn
 				if (operand->mem.scale) {
 					// asmjit wants the scale expressed as indexed value scale = 1 << n, so don't use operand->mem.scale
 					LD_R32(R11D, REG_off(operand->mem.index));
-					LEA(R10D, MEMS32(R10D, R11D, instr->raw.sib.scale));
+					LEA(R10D, MEMS32(R10D, R11D, instr->i.raw.sib.scale));
 				}
 
 				if (operand->mem.disp.has_displacement) {
 					if constexpr (add_seg_base) {
 						LD_SEG_BASE(EDX, REG_off(operand->mem.segment));
-						if (instr->raw.modrm.mod == 1) {
+						if (instr->i.raw.modrm.mod == 1) {
 							LEA(EDX, MEMSD32(EDX, R10D, 0, static_cast<int32_t>(static_cast<int8_t>(operand->mem.disp.value))));
 						}
 						else {
@@ -1094,7 +1094,7 @@ op_info lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opn
 						}
 					}
 					else {
-						if (instr->raw.modrm.mod == 1) {
+						if (instr->i.raw.modrm.mod == 1) {
 							LEA(EDX, MEMSb32(R10D, 0, static_cast<int32_t>(static_cast<int8_t>(operand->mem.disp.value))));
 						}
 						else {
@@ -1124,14 +1124,14 @@ op_info lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opn
 				if (operand->mem.scale) {
 					// asmjit wants the scale expressed as indexed value scale = 1 << n, so don't use operand->mem.scale
 					LD_R16(R11W, REG_off(operand->mem.index));
-					SHL(R11W, instr->raw.sib.scale);
+					SHL(R11W, instr->i.raw.sib.scale);
 					ADD(R10W, R11W);
 				}
 
 				if (operand->mem.disp.has_displacement) {
 					if constexpr (add_seg_base) {
 						LD_SEG_BASE(EDX, REG_off(operand->mem.segment));
-						if (instr->raw.modrm.mod == 1) {
+						if (instr->i.raw.modrm.mod == 1) {
 							ADD(R10W, static_cast<int16_t>(static_cast<int8_t>(operand->mem.disp.value)));
 							MOVZX(R10D, R10W);
 							ADD(EDX, R10D);
@@ -1143,7 +1143,7 @@ op_info lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opn
 						}
 					}
 					else {
-						if (instr->raw.modrm.mod == 1) {
+						if (instr->i.raw.modrm.mod == 1) {
 							ADD(R10W, static_cast<int16_t>(static_cast<int8_t>(operand->mem.disp.value)));
 							MOVZX(EDX, R10W);
 						}
@@ -1229,24 +1229,24 @@ op_info lc86_jit::get_operand(ZydisDecodedInstruction *instr, const unsigned opn
 }
 
 op_info
-lc86_jit::get_register_op(ZydisDecodedInstruction *instr, const unsigned opnum)
+lc86_jit::get_register_op(decoded_instr *instr, const unsigned opnum)
 {
-	assert(instr->operands[opnum].type == ZYDIS_OPERAND_TYPE_REGISTER);
+	assert(instr->o[opnum].type == ZYDIS_OPERAND_TYPE_REGISTER);
 	return get_operand(instr, opnum);
 }
 
 uint32_t
-lc86_jit::get_immediate_op(ZydisDecodedInstruction *instr, const unsigned opnum)
+lc86_jit::get_immediate_op(decoded_instr *instr, const unsigned opnum)
 {
-	assert(instr->operands[opnum].type == ZYDIS_OPERAND_TYPE_IMMEDIATE);
-	return instr->operands[opnum].imm.value.u;
+	assert(instr->o[opnum].type == ZYDIS_OPERAND_TYPE_IMMEDIATE);
+	return instr->o[opnum].imm.value.u;
 }
 
 template<unsigned opnum, typename T1, typename T2>
-auto lc86_jit::get_rm(ZydisDecodedInstruction *instr, T1 &&reg, T2 &&mem)
+auto lc86_jit::get_rm(decoded_instr *instr, T1 &&reg, T2 &&mem)
 {
 	const op_info rm = GET_OP(opnum);
-	switch (instr->operands[opnum].type)
+	switch (instr->o[opnum].type)
 	{
 	case ZYDIS_OPERAND_TYPE_REGISTER:
 		return reg(rm);
@@ -1260,7 +1260,7 @@ auto lc86_jit::get_rm(ZydisDecodedInstruction *instr, T1 &&reg, T2 &&mem)
 }
 
 template<bool write_dst, typename T>
-void lc86_jit::r_to_rm(ZydisDecodedInstruction *instr, T &&lambda)
+void lc86_jit::r_to_rm(decoded_instr *instr, T &&lambda)
 {
 	get_rm<OPNUM_DST>(instr,
 		[this, instr, &lambda](const op_info rm)
@@ -1302,7 +1302,7 @@ void lc86_jit::r_to_rm(ZydisDecodedInstruction *instr, T &&lambda)
 }
 
 template<bool is_sum, bool write_dst, typename T>
-void lc86_jit::r_to_rm_flags(ZydisDecodedInstruction *instr, T &&lambda)
+void lc86_jit::r_to_rm_flags(decoded_instr *instr, T &&lambda)
 {
 	get_rm<OPNUM_DST>(instr,
 		[this, instr, &lambda](const op_info rm)
@@ -1360,7 +1360,7 @@ void lc86_jit::r_to_rm_flags(ZydisDecodedInstruction *instr, T &&lambda)
 }
 
 template<bool write_dst, typename T>
-void lc86_jit::rm_to_r(ZydisDecodedInstruction *instr, T &&lambda)
+void lc86_jit::rm_to_r(decoded_instr *instr, T &&lambda)
 {
 	const auto dst = GET_REG(OPNUM_DST);
 	auto dst_host_reg = SIZED_REG(x64::rbx, dst.bits);
@@ -1388,7 +1388,7 @@ void lc86_jit::rm_to_r(ZydisDecodedInstruction *instr, T &&lambda)
 }
 
 template<bool is_sum, bool write_dst, typename T>
-void lc86_jit::rm_to_r_flags(ZydisDecodedInstruction *instr, T &&lambda)
+void lc86_jit::rm_to_r_flags(decoded_instr *instr, T &&lambda)
 {
 	get_rm<OPNUM_SRC>(instr,
 		[this, instr, &lambda](const op_info rm)
@@ -1436,7 +1436,7 @@ void lc86_jit::rm_to_r_flags(ZydisDecodedInstruction *instr, T &&lambda)
 }
 
 template<bool write_dst, typename T>
-void lc86_jit::imm_to_eax(ZydisDecodedInstruction *instr, T &&lambda)
+void lc86_jit::imm_to_eax(decoded_instr *instr, T &&lambda)
 {
 	const auto dst = GET_REG(OPNUM_DST);
 	auto dst_host_reg = SIZED_REG(x64::rax, dst.bits);
@@ -1449,7 +1449,7 @@ void lc86_jit::imm_to_eax(ZydisDecodedInstruction *instr, T &&lambda)
 }
 
 template<bool is_sum, bool write_dst, typename T>
-void lc86_jit::imm_to_eax_flags(ZydisDecodedInstruction *instr, T &&lambda)
+void lc86_jit::imm_to_eax_flags(decoded_instr *instr, T &&lambda)
 {
 	auto dst = GET_REG(OPNUM_DST);
 	auto dst_host_reg = SIZED_REG(x64::rax, dst.bits);
@@ -1470,7 +1470,7 @@ void lc86_jit::imm_to_eax_flags(ZydisDecodedInstruction *instr, T &&lambda)
 }
 
 template<typename Imm, bool write_dst, typename T>
-void lc86_jit::imm_to_rm(ZydisDecodedInstruction *instr, Imm src_imm, T &&lambda)
+void lc86_jit::imm_to_rm(decoded_instr *instr, Imm src_imm, T &&lambda)
 {
 	get_rm<OPNUM_DST>(instr,
 		[this, src_imm, instr, &lambda](const op_info rm)
@@ -1505,7 +1505,7 @@ void lc86_jit::imm_to_rm(ZydisDecodedInstruction *instr, Imm src_imm, T &&lambda
 }
 
 template<bool is_sum, typename Imm, bool write_dst, typename T>
-void lc86_jit::imm_to_rm_flags(ZydisDecodedInstruction *instr, Imm src_imm, T &&lambda)
+void lc86_jit::imm_to_rm_flags(decoded_instr *instr, Imm src_imm, T &&lambda)
 {
 	get_rm<OPNUM_DST>(instr,
 		[this, src_imm, &lambda](const op_info rm)
@@ -2472,24 +2472,24 @@ lc86_jit::gen_set_host_fpu_ctx()
 }
 
 template<bool update_fdp>
-void lc86_jit::gen_update_fpu_ptr(ZydisDecodedInstruction *instr)
+void lc86_jit::gen_update_fpu_ptr(decoded_instr *instr)
 {
 	ST_R16(CPU_CTX_FCS, m_cpu->cpu_ctx.regs.cs);
 	ST_R32(CPU_CTX_FIP, m_cpu->instr_eip);
 	MOV(AX, MEMD16(RCX, CPU_CTX_DS));
 	ST_R16(CPU_CTX_FDS, AX);
 	if constexpr (update_fdp) {
-		ST_R32(CPU_CTX_FDP, m_cpu->instr_eip + instr->raw.modrm.offset);
+		ST_R32(CPU_CTX_FDP, m_cpu->instr_eip + instr->i.raw.modrm.offset);
 	}
 }
 
 template<unsigned idx>
-void lc86_jit::shift(ZydisDecodedInstruction *instr)
+void lc86_jit::shift(decoded_instr *instr)
 {
 	// idx 0 -> shl, 1 -> shr, 2 -> sar
 
 	std::optional<uint64_t> imm_count;
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xD2:
 		m_cpu->size_mode = SIZE8;
@@ -2513,7 +2513,7 @@ void lc86_jit::shift(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0xC1:
-		imm_count = instr->operands[OPNUM_SRC].imm.value.u & 0x1F;
+		imm_count = instr->o[OPNUM_SRC].imm.value.u & 0x1F;
 		break;
 
 	default:
@@ -2660,16 +2660,16 @@ void lc86_jit::shift(ZydisDecodedInstruction *instr)
 }
 
 template<unsigned idx>
-void lc86_jit::double_shift(ZydisDecodedInstruction *instr)
+void lc86_jit::double_shift(decoded_instr *instr)
 {
 	// idx 0 -> shld, 1 -> shrd
 
 	std::optional<uint64_t> imm_count;
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xA4:
 	case 0xAC:
-		imm_count = instr->operands[OPNUM_THIRD].imm.value.u & 0x1F;
+		imm_count = instr->o[OPNUM_THIRD].imm.value.u & 0x1F;
 		break;
 
 	case 0xA5:
@@ -2819,12 +2819,12 @@ void lc86_jit::double_shift(ZydisDecodedInstruction *instr)
 }
 
 template<unsigned idx>
-void lc86_jit::rotate(ZydisDecodedInstruction *instr)
+void lc86_jit::rotate(decoded_instr *instr)
 {
 	// idx 0 -> rcl, 1 -> rcr, 2 -> rol, 3 -> ror
 
 	std::optional<uint64_t> imm_count;
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xD2:
 		m_cpu->size_mode = SIZE8;
@@ -2848,7 +2848,7 @@ void lc86_jit::rotate(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0xC1:
-		imm_count = instr->operands[OPNUM_SRC].imm.value.u & 0x1F;
+		imm_count = instr->o[OPNUM_SRC].imm.value.u & 0x1F;
 		break;
 
 	default:
@@ -3067,24 +3067,24 @@ void lc86_jit::rotate(ZydisDecodedInstruction *instr)
 }
 
 template<unsigned idx>
-void lc86_jit::load_sys_seg_reg(ZydisDecodedInstruction *instr)
+void lc86_jit::load_sys_seg_reg(decoded_instr *instr)
 {
 	switch (idx)
 	{
 	case GDTR_idx:
-		assert(instr->raw.modrm.reg == 2);
+		assert(instr->i.raw.modrm.reg == 2);
 		break;
 
 	case IDTR_idx:
-		assert(instr->raw.modrm.reg == 3);
+		assert(instr->i.raw.modrm.reg == 3);
 		break;
 
 	case LDTR_idx:
-		assert(instr->raw.modrm.reg == 2);
+		assert(instr->i.raw.modrm.reg == 2);
 		break;
 
 	case TR_idx:
-		assert(instr->raw.modrm.reg == 3);
+		assert(instr->i.raw.modrm.reg == 3);
 		break;
 
 	default:
@@ -3164,24 +3164,24 @@ void lc86_jit::load_sys_seg_reg(ZydisDecodedInstruction *instr)
 }
 
 template<unsigned idx>
-void lc86_jit::store_sys_seg_reg(ZydisDecodedInstruction *instr)
+void lc86_jit::store_sys_seg_reg(decoded_instr *instr)
 {
 	switch (idx)
 	{
 	case GDTR_idx:
-		assert(instr->raw.modrm.reg == 0);
+		assert(instr->i.raw.modrm.reg == 0);
 		break;
 
 	case LDTR_idx:
-		assert(instr->raw.modrm.reg == 0);
+		assert(instr->i.raw.modrm.reg == 0);
 		break;
 
 	case IDTR_idx:
-		assert(instr->raw.modrm.reg == 1);
+		assert(instr->i.raw.modrm.reg == 1);
 		break;
 
 	case TR_idx:
-		assert(instr->raw.modrm.reg == 1);
+		assert(instr->i.raw.modrm.reg == 1);
 		break;
 
 	default:
@@ -3247,9 +3247,9 @@ void lc86_jit::store_sys_seg_reg(ZydisDecodedInstruction *instr)
 }
 
 template<bool is_verr>
-void lc86_jit::verx(ZydisDecodedInstruction *instr)
+void lc86_jit::verx(decoded_instr *instr)
 {
-	assert(instr->operands[OPNUM_SINGLE].size == 16);
+	assert(instr->o[OPNUM_SINGLE].size == 16);
 
 	if (IS_VM86()) {
 		RAISEin0_t(EXP_UD);
@@ -3277,7 +3277,7 @@ void lc86_jit::verx(ZydisDecodedInstruction *instr)
 }
 
 template<unsigned idx>
-void lc86_jit::lxs(ZydisDecodedInstruction *instr)
+void lc86_jit::lxs(decoded_instr *instr)
 {
 	auto dst = GET_REG(OPNUM_DST);
 	auto offset_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
@@ -3345,7 +3345,7 @@ void lc86_jit::lxs(ZydisDecodedInstruction *instr)
 		}
 	}
 	else {
-		size_t seg_offset = get_reg_offset(instr->operands[OPNUM_THIRD].reg.value);
+		size_t seg_offset = get_reg_offset(instr->o[OPNUM_THIRD].reg.value);
 		ST_SEG(seg_offset, AX);
 		MOVZX(EAX, AX);
 		SHL(EAX, 4);
@@ -3355,7 +3355,7 @@ void lc86_jit::lxs(ZydisDecodedInstruction *instr)
 }
 
 template<unsigned idx>
-void lc86_jit::bit(ZydisDecodedInstruction *instr)
+void lc86_jit::bit(decoded_instr *instr)
 {
 	// idx 0 -> bt, 1 -> btc, 2 -> btr, 3 -> bts
 
@@ -3401,7 +3401,7 @@ void lc86_jit::bit(ZydisDecodedInstruction *instr)
 		{
 			auto dst_host_reg = SIZED_REG(x64::rax, rm.bits);
 			LD_REG_val(dst_host_reg, rm.val, rm.bits);
-			if (instr->opcode != 0xBA) {
+			if (instr->i.opcode != 0xBA) {
 				auto src = GET_REG(OPNUM_SRC);
 				auto src_host_reg = SIZED_REG(x64::rbx, src.bits);
 				LD_REG_val(src_host_reg, src.val, src.bits);
@@ -3419,7 +3419,7 @@ void lc86_jit::bit(ZydisDecodedInstruction *instr)
 			MOV(EDX, EBX);
 			auto dst_mem = MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode);
 			MOV(dst_mem, dst_host_reg);
-			if (instr->opcode != 0xBA) {
+			if (instr->i.opcode != 0xBA) {
 				auto src = GET_REG(OPNUM_SRC);
 				auto src_host_reg = SIZED_REG(x64::rbx, src.bits);
 				LD_REG_val(src_host_reg, src.val, src.bits);
@@ -3436,7 +3436,7 @@ void lc86_jit::bit(ZydisDecodedInstruction *instr)
 }
 
 template<unsigned idx>
-void lc86_jit::int_(ZydisDecodedInstruction *instr)
+void lc86_jit::int_(decoded_instr *instr)
 {
 	// idx 1 -> int3, 2 -> int n, 3 -> into
 
@@ -3462,7 +3462,7 @@ void lc86_jit::int_(ZydisDecodedInstruction *instr)
 			MOV(MEMD16(RCX, CPU_EXP_IDX), EXP_BP);
 		}
 		else if constexpr (idx == 2) {
-			MOV(MEMD16(RCX, CPU_EXP_IDX), static_cast<uint8_t>(instr->operands[OPNUM_SINGLE].imm.value.u));
+			MOV(MEMD16(RCX, CPU_EXP_IDX), static_cast<uint8_t>(instr->o[OPNUM_SINGLE].imm.value.u));
 		}
 		else {
 			LIB86CPU_ABORT_msg("Unknown int instruction specified with index %u", idx);
@@ -3479,7 +3479,7 @@ void lc86_jit::int_(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::aaa(ZydisDecodedInstruction *instr)
+lc86_jit::aaa(decoded_instr *instr)
 {
 	Label al = m_a.newLabel();
 	Label add = m_a.newLabel();
@@ -3506,11 +3506,11 @@ lc86_jit::aaa(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::aad(ZydisDecodedInstruction *instr)
+lc86_jit::aad(decoded_instr *instr)
 {
 	LD_R8L(BL, CPU_CTX_EAX);
 	LD_R8H(DL, CPU_CTX_EAX);
-	MOV(EAX, instr->operands[OPNUM_SINGLE].imm.value.u);
+	MOV(EAX, instr->o[OPNUM_SINGLE].imm.value.u);
 	MOVZX(EDX, DL);
 	IMUL2(EDX, EAX);
 	ADD(DL, BL);
@@ -3522,15 +3522,15 @@ lc86_jit::aad(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::aam(ZydisDecodedInstruction *instr)
+lc86_jit::aam(decoded_instr *instr)
 {
-	if (instr->operands[OPNUM_SINGLE].imm.value.u == 0) {
+	if (instr->o[OPNUM_SINGLE].imm.value.u == 0) {
 		RAISEin0_t(EXP_DE);
 	}
 	else {
 		MOVZX(EAX, MEMD8(RCX, CPU_CTX_EAX));
 		XOR(EDX, EDX);
-		MOV(EBX, instr->operands[OPNUM_SINGLE].imm.value.u);
+		MOV(EBX, instr->o[OPNUM_SINGLE].imm.value.u);
 		DIV(EBX);
 		ST_R8L(CPU_CTX_EAX, DL);
 		ST_R8H(CPU_CTX_EAX, AL);
@@ -3541,7 +3541,7 @@ lc86_jit::aam(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::aas(ZydisDecodedInstruction *instr)
+lc86_jit::aas(decoded_instr *instr)
 {
 	Label al = m_a.newLabel();
 	Label sub = m_a.newLabel();
@@ -3576,9 +3576,9 @@ lc86_jit::aas(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::adc(ZydisDecodedInstruction *instr)
+lc86_jit::adc(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x10:
 		m_cpu->size_mode = SIZE8;
@@ -3636,7 +3636,7 @@ lc86_jit::adc(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0x81: {
-		assert(instr->raw.modrm.reg == 2);
+		assert(instr->i.raw.modrm.reg == 2);
 
 		uint32_t src_imm = GET_IMM();
 		imm_to_rm_flags<true, uint32_t>(instr, src_imm,
@@ -3652,7 +3652,7 @@ lc86_jit::adc(ZydisDecodedInstruction *instr)
 	break;
 
 	case 0x83: {
-		assert(instr->raw.modrm.reg == 2);
+		assert(instr->i.raw.modrm.reg == 2);
 
 		if (m_cpu->size_mode == SIZE16) {
 			int16_t src_imm = static_cast<int16_t>(static_cast<int8_t>(GET_IMM()));
@@ -3687,9 +3687,9 @@ lc86_jit::adc(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::add(ZydisDecodedInstruction *instr)
+lc86_jit::add(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x00:
 		m_cpu->size_mode = SIZE8;
@@ -3735,7 +3735,7 @@ lc86_jit::add(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0x81: {
-		assert(instr->raw.modrm.reg == 0);
+		assert(instr->i.raw.modrm.reg == 0);
 
 		uint32_t src_imm = GET_IMM();
 		imm_to_rm_flags<true, uint32_t>(instr, src_imm,
@@ -3747,7 +3747,7 @@ lc86_jit::add(ZydisDecodedInstruction *instr)
 	break;
 
 	case 0x83: {
-		assert(instr->raw.modrm.reg == 0);
+		assert(instr->i.raw.modrm.reg == 0);
 
 		if (m_cpu->size_mode == SIZE16) {
 			int16_t src_imm = static_cast<int16_t>(static_cast<int8_t>(GET_IMM()));
@@ -3774,9 +3774,9 @@ lc86_jit::add(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::and_(ZydisDecodedInstruction *instr)
+lc86_jit::and_(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x20:
 		m_cpu->size_mode = SIZE8;
@@ -3822,7 +3822,7 @@ lc86_jit::and_(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0x81: {
-		assert(instr->raw.modrm.reg == 4);
+		assert(instr->i.raw.modrm.reg == 4);
 
 		uint32_t src_imm = GET_IMM();
 		imm_to_rm<uint32_t>(instr, src_imm,
@@ -3834,7 +3834,7 @@ lc86_jit::and_(ZydisDecodedInstruction *instr)
 	break;
 
 	case 0x83: {
-		assert(instr->raw.modrm.reg == 4);
+		assert(instr->i.raw.modrm.reg == 4);
 
 		if (m_cpu->size_mode == SIZE16) {
 			int16_t src_imm = static_cast<int16_t>(static_cast<int8_t>(GET_IMM()));
@@ -3861,9 +3861,9 @@ lc86_jit::and_(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::arpl(ZydisDecodedInstruction *instr)
+lc86_jit::arpl(decoded_instr *instr)
 {
-	assert((instr->operands[OPNUM_DST].size == 16) && (instr->operands[OPNUM_SRC].size == 16));
+	assert((instr->o[OPNUM_DST].size == 16) && (instr->o[OPNUM_SRC].size == 16));
 
 	if (IS_VM86()) {
 		RAISEin0_t(EXP_UD);
@@ -3943,7 +3943,7 @@ lc86_jit::arpl(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::bound(ZydisDecodedInstruction *instr)
+lc86_jit::bound(decoded_instr *instr)
 {
 	Label ok = m_a.newLabel();
 	auto dst = GET_REG(OPNUM_DST);
@@ -3972,7 +3972,7 @@ lc86_jit::bound(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::bsf(ZydisDecodedInstruction *instr)
+lc86_jit::bsf(decoded_instr *instr)
 {
 	auto dst = GET_REG(OPNUM_DST);
 	get_rm<OPNUM_SRC>(instr,
@@ -4000,7 +4000,7 @@ lc86_jit::bsf(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::bsr(ZydisDecodedInstruction *instr)
+lc86_jit::bsr(decoded_instr *instr)
 {
 	auto dst = GET_REG(OPNUM_DST);
 	get_rm<OPNUM_SRC>(instr,
@@ -4028,48 +4028,48 @@ lc86_jit::bsr(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::bswap(ZydisDecodedInstruction *instr)
+lc86_jit::bswap(decoded_instr *instr)
 {
-	auto reg = GET_REG(instr->operands[OPNUM_SINGLE].reg.value);
+	auto reg = GET_REG(instr->o[OPNUM_SINGLE].reg.value);
 	LD_R32(EAX, reg.val);
 	BSWAP(EAX);
 	ST_R32(reg.val, EAX);
 }
 
 void
-lc86_jit::bt(ZydisDecodedInstruction *instr)
+lc86_jit::bt(decoded_instr *instr)
 {
 	bit<0>(instr);
 }
 
 void
-lc86_jit::btc(ZydisDecodedInstruction *instr)
+lc86_jit::btc(decoded_instr *instr)
 {
 	bit<1>(instr);
 }
 
 void
-lc86_jit::btr(ZydisDecodedInstruction *instr)
+lc86_jit::btr(decoded_instr *instr)
 {
 	bit<2>(instr);
 }
 
 void
-lc86_jit::bts(ZydisDecodedInstruction *instr)
+lc86_jit::bts(decoded_instr *instr)
 {
 	bit<3>(instr);
 }
 
 void
-lc86_jit::call(ZydisDecodedInstruction *instr)
+lc86_jit::call(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x9A: {
 		// cs holds the cpl, so it can be assumed a constant
 		addr_t ret_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
-		addr_t call_eip = instr->operands[OPNUM_SINGLE].ptr.offset;
-		uint16_t new_sel = instr->operands[OPNUM_SINGLE].ptr.segment;
+		addr_t call_eip = instr->o[OPNUM_SINGLE].ptr.offset;
+		uint16_t new_sel = instr->o[OPNUM_SINGLE].ptr.segment;
 		if (m_cpu->size_mode == SIZE16) {
 			call_eip &= 0x0000FFFF;
 		}
@@ -4103,7 +4103,7 @@ lc86_jit::call(ZydisDecodedInstruction *instr)
 
 	case 0xE8: {
 		addr_t ret_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
-		addr_t call_eip = ret_eip + instr->operands[OPNUM_SINGLE].imm.value.s;
+		addr_t call_eip = ret_eip + instr->o[OPNUM_SINGLE].imm.value.s;
 		if (m_cpu->size_mode == SIZE16) {
 			call_eip &= 0x0000FFFF;
 		}
@@ -4117,7 +4117,7 @@ lc86_jit::call(ZydisDecodedInstruction *instr)
 	break;
 
 	case 0xFF: {
-		if (instr->raw.modrm.reg == 2) {
+		if (instr->i.raw.modrm.reg == 2) {
 			addr_t ret_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
 			get_rm<OPNUM_SINGLE>(instr,
 				[this](const op_info rm)
@@ -4139,8 +4139,8 @@ lc86_jit::call(ZydisDecodedInstruction *instr)
 			gen_link_indirect();
 			m_cpu->tc->flags |= TC_FLG_INDIRECT;
 		}
-		else if (instr->raw.modrm.reg == 3) {
-			assert(instr->operands[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_MEMORY);
+		else if (instr->i.raw.modrm.reg == 3) {
+			assert(instr->o[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_MEMORY);
 
 			// cs holds the cpl, so it can be assumed a constant
 			addr_t ret_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
@@ -4200,14 +4200,14 @@ lc86_jit::call(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::cbw(ZydisDecodedInstruction *instr)
+lc86_jit::cbw(decoded_instr *instr)
 {
 	MOVSX(EDX, MEMD8(RCX, CPU_CTX_EAX));
 	ST_R16(CPU_CTX_EAX, DX);
 }
 
 void
-lc86_jit::cdq(ZydisDecodedInstruction *instr)
+lc86_jit::cdq(decoded_instr *instr)
 {
 	MOVSXD(RDX, MEMD32(RCX, CPU_CTX_EAX));
 	SHR(RDX, 32);
@@ -4215,9 +4215,9 @@ lc86_jit::cdq(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::clc(ZydisDecodedInstruction *instr)
+lc86_jit::clc(decoded_instr *instr)
 {
-	assert(instr->opcode == 0xF8);
+	assert(instr->i.opcode == 0xF8);
 
 	MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
 	LD_OF(EDX, EAX);
@@ -4228,9 +4228,9 @@ lc86_jit::clc(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::cld(ZydisDecodedInstruction *instr)
+lc86_jit::cld(decoded_instr *instr)
 {
-	assert(instr->opcode == 0xFC);
+	assert(instr->i.opcode == 0xFC);
 
 	LD_R32(EDX, CPU_CTX_EFLAGS);
 	AND(EDX, ~DF_MASK);
@@ -4238,9 +4238,9 @@ lc86_jit::cld(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::cli(ZydisDecodedInstruction *instr)
+lc86_jit::cli(decoded_instr *instr)
 {
-	assert(instr->opcode == 0xFA);
+	assert(instr->i.opcode == 0xFA);
 
 	uint32_t mask;
 	if (IS_PE()) {
@@ -4267,9 +4267,9 @@ lc86_jit::cli(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::cmc(ZydisDecodedInstruction *instr)
+lc86_jit::cmc(decoded_instr *instr)
 {
-	assert(instr->opcode == 0xF5);
+	assert(instr->i.opcode == 0xF5);
 
 	MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
 	MOV(EDX, EAX);
@@ -4285,9 +4285,9 @@ lc86_jit::cmc(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::cmovcc(ZydisDecodedInstruction *instr)
+lc86_jit::cmovcc(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x40:
 		MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
@@ -4466,9 +4466,9 @@ lc86_jit::cmovcc(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::cmp(ZydisDecodedInstruction *instr)
+lc86_jit::cmp(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x38:
 		m_cpu->size_mode = SIZE8;
@@ -4550,9 +4550,9 @@ lc86_jit::cmp(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::cmps(ZydisDecodedInstruction *instr)
+lc86_jit::cmps(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xA6:
 		m_cpu->size_mode = SIZE8;
@@ -4560,7 +4560,7 @@ lc86_jit::cmps(ZydisDecodedInstruction *instr)
 
 	case 0xA7: {
 		Label start, end = m_a.newLabel();
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
 			start = rep_start(end);
 		}
 
@@ -4615,8 +4615,8 @@ lc86_jit::cmps(ZydisDecodedInstruction *instr)
 			ST_R32(CPU_CTX_EDI, EDX);
 			ST_R32(CPU_CTX_ESI, EAX);
 		}
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
-			if (instr->attributes & ZYDIS_ATTRIB_HAS_REPNZ) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
+			if (instr->i.attributes & ZYDIS_ATTRIB_HAS_REPNZ) {
 				rep<ZYDIS_ATTRIB_HAS_REPNZ>(start, end);
 			}
 			else {
@@ -4638,8 +4638,8 @@ lc86_jit::cmps(ZydisDecodedInstruction *instr)
 			ST_R32(CPU_CTX_EDI, EDX);
 			ST_R32(CPU_CTX_ESI, EAX);
 		}
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
-			if (instr->attributes & ZYDIS_ATTRIB_HAS_REPNZ) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
+			if (instr->i.attributes & ZYDIS_ATTRIB_HAS_REPNZ) {
 				rep<ZYDIS_ATTRIB_HAS_REPNZ>(start, end);
 			}
 			else {
@@ -4657,9 +4657,9 @@ lc86_jit::cmps(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::cmpxchg(ZydisDecodedInstruction *instr)
+lc86_jit::cmpxchg(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xB0:
 		m_cpu->size_mode = SIZE8;
@@ -4722,7 +4722,7 @@ lc86_jit::cmpxchg(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::cmpxchg8b(ZydisDecodedInstruction *instr)
+lc86_jit::cmpxchg8b(decoded_instr *instr)
 {
 	get_rm<OPNUM_SINGLE>(instr,
 		[](const op_info rm)
@@ -4774,13 +4774,13 @@ lc86_jit::cmpxchg8b(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::cpuid(ZydisDecodedInstruction *instr)
+lc86_jit::cpuid(decoded_instr *instr)
 {
 	CALL_F(&cpuid_helper);
 }
 
 void
-lc86_jit::cwd(ZydisDecodedInstruction *instr)
+lc86_jit::cwd(decoded_instr *instr)
 {
 	MOVSX(EDX, MEMD16(RCX, CPU_CTX_EAX));
 	SHR(EDX, 16);
@@ -4788,14 +4788,14 @@ lc86_jit::cwd(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::cwde(ZydisDecodedInstruction *instr)
+lc86_jit::cwde(decoded_instr *instr)
 {
 	MOVSX(EDX, MEMD16(RCX, CPU_CTX_EAX));
 	ST_R32(CPU_CTX_EAX, EDX);
 }
 
 void
-lc86_jit::daa(ZydisDecodedInstruction *instr)
+lc86_jit::daa(decoded_instr *instr)
 {
 	Label jmp1 = m_a.newLabel();
 	Label jmp2 = m_a.newLabel();
@@ -4858,7 +4858,7 @@ lc86_jit::daa(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::das(ZydisDecodedInstruction *instr)
+lc86_jit::das(decoded_instr *instr)
 {
 	Label jmp1 = m_a.newLabel();
 	Label jmp2 = m_a.newLabel();
@@ -4914,9 +4914,9 @@ lc86_jit::das(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::dec(ZydisDecodedInstruction *instr)
+lc86_jit::dec(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xFE:
 		m_cpu->size_mode = SIZE8;
@@ -4978,16 +4978,16 @@ lc86_jit::dec(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::div(ZydisDecodedInstruction *instr)
+lc86_jit::div(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xF6:
 		m_cpu->size_mode = SIZE8;
 		[[fallthrough]];
 
 	case 0xF7: {
-		assert(instr->raw.modrm.reg == 6);
+		assert(instr->i.raw.modrm.reg == 6);
 
 		switch (m_cpu->size_mode)
 		{
@@ -5054,9 +5054,9 @@ lc86_jit::div(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::enter(ZydisDecodedInstruction *instr)
+lc86_jit::enter(decoded_instr *instr)
 {
-	uint32_t stack_sub, nesting_lv = instr->operands[OPNUM_SRC].imm.value.u & 0x1F;
+	uint32_t stack_sub, nesting_lv = instr->o[OPNUM_SRC].imm.value.u & 0x1F;
 	auto rax_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
 	auto r10_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
 
@@ -5123,12 +5123,12 @@ lc86_jit::enter(ZydisDecodedInstruction *instr)
 	}
 
 	if (m_cpu->cpu_ctx.hflags & HFLG_SS32) {
-		SUB(EBX, instr->operands[OPNUM_DST].imm.value.u);
+		SUB(EBX, instr->o[OPNUM_DST].imm.value.u);
 		gen_virtual_stack_push();
 		ST_R32(CPU_CTX_ESP, EBX);
 	}
 	else {
-		SUB(BX, instr->operands[OPNUM_DST].imm.value.u);
+		SUB(BX, instr->o[OPNUM_DST].imm.value.u);
 		gen_virtual_stack_push();
 		ST_R16(CPU_CTX_ESP, BX);
 	}
@@ -5138,7 +5138,7 @@ lc86_jit::enter(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::fld(ZydisDecodedInstruction *instr)
+lc86_jit::fld(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
 		RAISEin0_t(EXP_NM);
@@ -5150,7 +5150,7 @@ lc86_jit::fld(ZydisDecodedInstruction *instr)
 			{
 				gen_fpu_stack_check<true, fpu_instr_t::float_>();
 				gen_set_host_fpu_ctx();
-				MOV(EDX, instr->raw.modrm.rm);
+				MOV(EDX, instr->i.raw.modrm.rm);
 				MOV(EAX, sizeof(uint80_t));
 				MUL(DX);
 				FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0));
@@ -5163,7 +5163,7 @@ lc86_jit::fld(ZydisDecodedInstruction *instr)
 			},
 			[this, instr](const op_info rm)
 			{
-				switch (instr->opcode)
+				switch (instr->i.opcode)
 				{
 				case 0xD9:
 					LD_MEMs(SIZE32);
@@ -5207,7 +5207,7 @@ lc86_jit::fld(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::fninit(ZydisDecodedInstruction *instr)
+lc86_jit::fninit(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
 		RAISEin0_t(EXP_NM);
@@ -5229,7 +5229,7 @@ lc86_jit::fninit(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::fnstsw(ZydisDecodedInstruction *instr)
+lc86_jit::fnstsw(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
 		RAISEin0_t(EXP_NM);
@@ -5249,7 +5249,7 @@ lc86_jit::fnstsw(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::fxrstor(ZydisDecodedInstruction *instr)
+lc86_jit::fxrstor(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
 		RAISEin0_t(EXP_NM);
@@ -5274,7 +5274,7 @@ lc86_jit::fxrstor(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::fxsave(ZydisDecodedInstruction *instr)
+lc86_jit::fxsave(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
 		RAISEin0_t(EXP_NM);
@@ -5299,7 +5299,7 @@ lc86_jit::fxsave(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::hlt(ZydisDecodedInstruction *instr)
+lc86_jit::hlt(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
 		RAISEin0_t(EXP_GP);
@@ -5352,16 +5352,16 @@ lc86_jit::hlt(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::idiv(ZydisDecodedInstruction *instr)
+lc86_jit::idiv(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xF6:
 		m_cpu->size_mode = SIZE8;
 		[[fallthrough]];
 
 	case 0xF7: {
-		assert(instr->raw.modrm.reg == 7);
+		assert(instr->i.raw.modrm.reg == 7);
 
 		switch (m_cpu->size_mode)
 		{
@@ -5428,16 +5428,16 @@ lc86_jit::idiv(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::imul(ZydisDecodedInstruction *instr)
+lc86_jit::imul(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xF6:
 		m_cpu->size_mode = SIZE8;
 		[[fallthrough]];
 
 	case 0xF7: {
-		assert(instr->raw.modrm.reg == 5);
+		assert(instr->i.raw.modrm.reg == 5);
 
 		switch (m_cpu->size_mode)
 		{
@@ -5539,12 +5539,12 @@ lc86_jit::imul(ZydisDecodedInstruction *instr)
 				LD_MEM();
 				return src_host_reg;
 			});
-		if (instr->opcode == 0x6B) {
-			IMUL3(dst_host_reg, src_host_reg, m_cpu->size_mode == SIZE16 ? static_cast<int16_t>(static_cast<int8_t>(instr->operands[OPNUM_THIRD].imm.value.u)) :
-				static_cast<int32_t>(static_cast<int8_t>(instr->operands[OPNUM_THIRD].imm.value.u)));
+		if (instr->i.opcode == 0x6B) {
+			IMUL3(dst_host_reg, src_host_reg, m_cpu->size_mode == SIZE16 ? static_cast<int16_t>(static_cast<int8_t>(instr->o[OPNUM_THIRD].imm.value.u)) :
+				static_cast<int32_t>(static_cast<int8_t>(instr->o[OPNUM_THIRD].imm.value.u)));
 		}
 		else {
-			IMUL3(dst_host_reg, src_host_reg, instr->operands[OPNUM_THIRD].imm.value.u);
+			IMUL3(dst_host_reg, src_host_reg, instr->o[OPNUM_THIRD].imm.value.u);
 		}
 		ST_REG_val(dst_host_reg, dst.val, dst.bits);
 	}
@@ -5566,9 +5566,9 @@ lc86_jit::imul(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::in(ZydisDecodedInstruction *instr)
+lc86_jit::in(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xE4:
 		m_cpu->size_mode = SIZE8;
@@ -5605,9 +5605,9 @@ lc86_jit::in(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::inc(ZydisDecodedInstruction *instr)
+lc86_jit::inc(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xFE:
 		m_cpu->size_mode = SIZE8;
@@ -5669,9 +5669,9 @@ lc86_jit::inc(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::ins(ZydisDecodedInstruction *instr)
+lc86_jit::ins(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x6C:
 		m_cpu->size_mode = SIZE8;
@@ -5681,7 +5681,7 @@ lc86_jit::ins(ZydisDecodedInstruction *instr)
 		// technically, the effect of repnz on instructions that don't support it is officially undefined, but test80186 relies on it
 		// https://en.wikipedia.org/wiki/X86_instruction_listings#Undocumented_instructions
 		Label start, end = m_a.newLabel();
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			start = rep_start(end);
 		}
 
@@ -5717,7 +5717,7 @@ lc86_jit::ins(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_EDI, EBX);
 		}
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 		else {
@@ -5732,7 +5732,7 @@ lc86_jit::ins(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_EDI, EBX);
 		}
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 
@@ -5746,25 +5746,25 @@ lc86_jit::ins(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::int3(ZydisDecodedInstruction *instr)
+lc86_jit::int3(decoded_instr *instr)
 {
 	int_<1>(instr);
 }
 
 void
-lc86_jit::intn(ZydisDecodedInstruction *instr)
+lc86_jit::intn(decoded_instr *instr)
 {
 	int_<2>(instr);
 }
 
 void
-lc86_jit::into(ZydisDecodedInstruction *instr)
+lc86_jit::into(decoded_instr *instr)
 {
 	int_<3>(instr);
 }
 
 void
-lc86_jit::invlpg(ZydisDecodedInstruction *instr)
+lc86_jit::invlpg(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
 		RAISEin0_t(EXP_GP);
@@ -5783,9 +5783,9 @@ lc86_jit::invlpg(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::iret(ZydisDecodedInstruction *instr)
+lc86_jit::iret(decoded_instr *instr)
 {
-	assert(instr->opcode == 0xCF);
+	assert(instr->i.opcode == 0xCF);
 
 	if (IS_PE()) {
 		Label exp = m_a.newLabel();
@@ -5810,17 +5810,17 @@ lc86_jit::iret(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::jcc(ZydisDecodedInstruction *instr)
+lc86_jit::jcc(decoded_instr *instr)
 {
 	addr_t next_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
-	addr_t jmp_eip = next_eip + instr->operands[OPNUM_SINGLE].imm.value.s;
+	addr_t jmp_eip = next_eip + instr->o[OPNUM_SINGLE].imm.value.s;
 	if (m_cpu->size_mode == SIZE16) {
 		jmp_eip &= 0x0000FFFF;
 	}
 	addr_t next_pc = next_eip + m_cpu->cpu_ctx.regs.cs_hidden.base;
 	addr_t dst_pc = jmp_eip + m_cpu->cpu_ctx.regs.cs_hidden.base;
 
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x70:
 	case 0x80:
@@ -6060,13 +6060,13 @@ lc86_jit::jcc(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::jmp(ZydisDecodedInstruction *instr)
+lc86_jit::jmp(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xE9:
 	case 0xEB: {
-		addr_t new_eip = (m_cpu->virt_pc - m_cpu->cpu_ctx.regs.cs_hidden.base) + m_cpu->instr_bytes + instr->operands[OPNUM_SINGLE].imm.value.s;
+		addr_t new_eip = (m_cpu->virt_pc - m_cpu->cpu_ctx.regs.cs_hidden.base) + m_cpu->instr_bytes + instr->o[OPNUM_SINGLE].imm.value.s;
 		if (m_cpu->size_mode == SIZE16) {
 			new_eip &= 0x0000FFFF;
 		}
@@ -6077,8 +6077,8 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 	break;
 
 	case 0xEA: {
-		addr_t new_eip = instr->operands[OPNUM_SINGLE].ptr.offset;
-		uint16_t new_sel = instr->operands[OPNUM_SINGLE].ptr.segment;
+		addr_t new_eip = instr->o[OPNUM_SINGLE].ptr.offset;
+		uint16_t new_sel = instr->o[OPNUM_SINGLE].ptr.segment;
 		if (IS_PE_NOT_VM86()) {
 			Label exp = m_a.newLabel();
 			MOV(MEMD32(RSP, STACK_ARGS_off), m_cpu->instr_eip);
@@ -6105,7 +6105,7 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 	break;
 
 	case 0xFF: {
-		if (instr->raw.modrm.reg == 4) {
+		if (instr->i.raw.modrm.reg == 4) {
 			get_rm<OPNUM_SINGLE>(instr,
 				[this](const op_info rm)
 				{
@@ -6122,8 +6122,8 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 			gen_link_indirect();
 			m_cpu->tc->flags |= TC_FLG_INDIRECT;
 		}
-		else if (instr->raw.modrm.reg == 5) {
-			assert(instr->operands[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_MEMORY);
+		else if (instr->i.raw.modrm.reg == 5) {
+			assert(instr->o[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_MEMORY);
 
 			GET_OP(OPNUM_SINGLE);
 			MOV(EBX, EDX);
@@ -6177,7 +6177,7 @@ lc86_jit::jmp(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::lahf(ZydisDecodedInstruction *instr)
+lc86_jit::lahf(decoded_instr *instr)
 {
 	// NOTE: this is optimized code generated by MSVC from a custom C++ implementation
 
@@ -6213,9 +6213,9 @@ lc86_jit::lahf(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::lea(ZydisDecodedInstruction *instr)
+lc86_jit::lea(decoded_instr *instr)
 {
-	assert(instr->operands[OPNUM_SRC].type == ZYDIS_OPERAND_TYPE_MEMORY);
+	assert(instr->o[OPNUM_SRC].type == ZYDIS_OPERAND_TYPE_MEMORY);
 
 	get_operand<false>(instr, OPNUM_SRC);
 	auto dst = GET_REG(OPNUM_DST);
@@ -6228,7 +6228,7 @@ lc86_jit::lea(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::leave(ZydisDecodedInstruction *instr)
+lc86_jit::leave(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & HFLG_SS32) {
 		LD_R32(EAX, CPU_CTX_EBP);
@@ -6250,27 +6250,27 @@ lc86_jit::leave(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::lgdt(ZydisDecodedInstruction *instr)
+lc86_jit::lgdt(decoded_instr *instr)
 {
 	load_sys_seg_reg<GDTR_idx>(instr);
 }
 
 void
-lc86_jit::lidt(ZydisDecodedInstruction *instr)
+lc86_jit::lidt(decoded_instr *instr)
 {
 	load_sys_seg_reg<IDTR_idx>(instr);
 }
 
 void
-lc86_jit::lldt(ZydisDecodedInstruction *instr)
+lc86_jit::lldt(decoded_instr *instr)
 {
 	load_sys_seg_reg<LDTR_idx>(instr);
 }
 
 void
-lc86_jit::lods(ZydisDecodedInstruction *instr)
+lc86_jit::lods(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xAC:
 		m_cpu->size_mode = SIZE8;
@@ -6280,7 +6280,7 @@ lc86_jit::lods(ZydisDecodedInstruction *instr)
 		// technically, the effect of repnz on instructions that don't support it is officially undefined, but test80186 relies on it
 		// https://en.wikipedia.org/wiki/X86_instruction_listings#Undocumented_instructions
 		Label start, end = m_a.newLabel();
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			start = rep_start(end);
 		}
 
@@ -6312,7 +6312,7 @@ lc86_jit::lods(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_ESI, EBX);
 		}
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 		else {
@@ -6327,7 +6327,7 @@ lc86_jit::lods(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_ESI, EBX);
 		}
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 
@@ -6341,7 +6341,7 @@ lc86_jit::lods(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::loop(ZydisDecodedInstruction *instr)
+lc86_jit::loop(decoded_instr *instr)
 {
 	switch (m_cpu->addr_mode)
 	{
@@ -6366,7 +6366,7 @@ lc86_jit::loop(ZydisDecodedInstruction *instr)
 	TEST(EBX, EBX);
 	BR_EQ(next);
 
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xE0:
 		LD_ZF(EDX);
@@ -6388,7 +6388,7 @@ lc86_jit::loop(ZydisDecodedInstruction *instr)
 	}
 
 	addr_t next_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
-	addr_t loop_eip = next_eip + instr->operands[OPNUM_SINGLE].imm.value.s;
+	addr_t loop_eip = next_eip + instr->o[OPNUM_SINGLE].imm.value.s;
 	if (m_cpu->size_mode == SIZE16) {
 		loop_eip &= 0x0000FFFF;
 	}
@@ -6409,45 +6409,45 @@ lc86_jit::loop(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::lds(ZydisDecodedInstruction *instr)
+lc86_jit::lds(decoded_instr *instr)
 {
 	lxs<DS_idx>(instr);
 }
 
 void
-lc86_jit::les(ZydisDecodedInstruction *instr)
+lc86_jit::les(decoded_instr *instr)
 {
 	lxs<ES_idx>(instr);
 }
 
 void
-lc86_jit::lfs(ZydisDecodedInstruction *instr)
+lc86_jit::lfs(decoded_instr *instr)
 {
 	lxs<FS_idx>(instr);
 }
 
 void
-lc86_jit::lgs(ZydisDecodedInstruction *instr)
+lc86_jit::lgs(decoded_instr *instr)
 {
 	lxs<GS_idx>(instr);
 }
 
 void
-lc86_jit::lss(ZydisDecodedInstruction *instr)
+lc86_jit::lss(decoded_instr *instr)
 {
 	lxs<SS_idx>(instr);
 }
 
 void
-lc86_jit::ltr(ZydisDecodedInstruction *instr)
+lc86_jit::ltr(decoded_instr *instr)
 {
 	load_sys_seg_reg<TR_idx>(instr);
 }
 
 void
-lc86_jit::mov(ZydisDecodedInstruction *instr)
+lc86_jit::mov(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x20: {
 		if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
@@ -6457,7 +6457,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			op_info src = GET_REG(OPNUM_SRC);
 			auto src_host_reg = SIZED_REG(x64::rax, src.bits);
 			LD_REG_val(src_host_reg, src.val, src.bits);
-			ST_REG_val(src_host_reg, REG_off(instr->operands[OPNUM_DST].reg.value), src.bits);
+			ST_REG_val(src_host_reg, REG_off(instr->o[OPNUM_DST].reg.value), src.bits);
 		}
 	}
 	break;
@@ -6476,8 +6476,8 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			RAISEin0_t(EXP_GP);
 		}
 		else {
-			size_t dr_offset = REG_off(instr->operands[OPNUM_SRC].reg.value);
-			if (((instr->operands[OPNUM_SRC].reg.value == ZYDIS_REGISTER_DR4) || (instr->operands[OPNUM_SRC].reg.value == ZYDIS_REGISTER_DR5))) {
+			size_t dr_offset = REG_off(instr->o[OPNUM_SRC].reg.value);
+			if (((instr->o[OPNUM_SRC].reg.value == ZYDIS_REGISTER_DR4) || (instr->o[OPNUM_SRC].reg.value == ZYDIS_REGISTER_DR5))) {
 				Label ok2 = m_a.newLabel();
 				LD_R32(EDX, CPU_CTX_CR4);
 				AND(EDX, CR4_DE_MASK);
@@ -6485,10 +6485,10 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 				RAISEin0_f(EXP_UD);
 				m_a.bind(ok2);
 				// turns dr4/5 to dr6/7
-				dr_offset = REG_off((instr->operands[OPNUM_SRC].reg.value == ZYDIS_REGISTER_DR4 ? ZYDIS_REGISTER_DR6 : ZYDIS_REGISTER_DR7));
+				dr_offset = REG_off((instr->o[OPNUM_SRC].reg.value == ZYDIS_REGISTER_DR4 ? ZYDIS_REGISTER_DR6 : ZYDIS_REGISTER_DR7));
 			}
 			LD_R32(EAX, dr_offset);
-			ST_R32(REG_off(instr->operands[OPNUM_DST].reg.value), EAX);
+			ST_R32(REG_off(instr->o[OPNUM_DST].reg.value), EAX);
 		}
 	}
 	break;
@@ -6498,8 +6498,8 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			RAISEin0_t(EXP_GP);
 		}
 		else {
-			LD_R32(EDX, REG_off(instr->operands[OPNUM_SRC].reg.value));
-			int cr_idx = REG_idx(instr->operands[OPNUM_DST].reg.value);
+			LD_R32(EDX, REG_off(instr->o[OPNUM_SRC].reg.value));
+			int cr_idx = REG_idx(instr->o[OPNUM_DST].reg.value);
 			switch (cr_idx)
 			{
 			case CR0_idx:
@@ -6547,9 +6547,9 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			RAISEin0_t(EXP_GP);
 		}
 		else {
-			auto dr_pair = REG_pair(instr->operands[OPNUM_DST].reg.value);
+			auto dr_pair = REG_pair(instr->o[OPNUM_DST].reg.value);
 			int dr_idx = dr_pair.first;
-			LD_R32(R8D, REG_off(instr->operands[OPNUM_SRC].reg.value));
+			LD_R32(R8D, REG_off(instr->o[OPNUM_SRC].reg.value));
 			switch (dr_idx)
 			{
 			case DR0_idx:
@@ -6650,7 +6650,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 	break;
 
 	case 0x8C: {
-		LD_SEG(AX, REG_off(instr->operands[OPNUM_SRC].reg.value));
+		LD_SEG(AX, REG_off(instr->o[OPNUM_SRC].reg.value));
 		get_rm<OPNUM_DST>(instr,
 			[this](const op_info rm)
 			{
@@ -6678,7 +6678,7 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			MOV(R8D, m_cpu->instr_eip);
 			MOV(DX, AX);
 
-			switch (REG_idx(instr->operands[OPNUM_DST].reg.value))
+			switch (REG_idx(instr->o[OPNUM_DST].reg.value))
 			{
 			case SS_idx:
 				CALL_F(&mov_sel_pe_helper<SS_idx>);
@@ -6711,14 +6711,14 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 			m_a.bind(ok);
 		}
 		else {
-			const size_t seg_offset = REG_off(instr->operands[OPNUM_DST].reg.value);
+			const size_t seg_offset = REG_off(instr->o[OPNUM_DST].reg.value);
 			ST_SEG(seg_offset, AX);
 			MOVZX(EAX, AX);
 			SHL(EAX, 4);
 			ST_SEG_BASE(seg_offset, EAX);
 		}
 
-		if (instr->operands[OPNUM_DST].reg.value == ZYDIS_REGISTER_SS) {
+		if (instr->o[OPNUM_DST].reg.value == ZYDIS_REGISTER_SS) {
 			MOV(EAX, MEMD32(RCX, CPU_CTX_HFLG));
 			OR(EAX, HFLG_INHIBIT_INT);
 			MOV(MEMD32(RCX, CPU_CTX_HFLG), EAX);
@@ -6806,13 +6806,13 @@ lc86_jit::mov(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::movaps(ZydisDecodedInstruction *instr)
+lc86_jit::movaps(decoded_instr *instr)
 {
 	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
 		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
 	}
 	else {
-		switch (instr->opcode)
+		switch (instr->i.opcode)
 		{
 		case 0x28: {
 			const auto dst = GET_REG(OPNUM_DST);
@@ -6856,13 +6856,13 @@ lc86_jit::movaps(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::movntps(ZydisDecodedInstruction *instr)
+lc86_jit::movntps(decoded_instr *instr)
 {
 	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
 		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
 	}
 	else {
-		if (instr->opcode == 0x2B) {
+		if (instr->i.opcode == 0x2B) {
 			const auto src = GET_REG(OPNUM_SRC);
 			get_rm<OPNUM_DST>(instr,
 				[](const op_info rm)
@@ -6884,9 +6884,9 @@ lc86_jit::movntps(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::movs(ZydisDecodedInstruction *instr)
+lc86_jit::movs(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xA4:
 		m_cpu->size_mode = SIZE8;
@@ -6896,7 +6896,7 @@ lc86_jit::movs(ZydisDecodedInstruction *instr)
 		// technically, the effect of repnz on instructions that don't support it is officially undefined, but test80186 relies on it
 		// https://en.wikipedia.org/wiki/X86_instruction_listings#Undocumented_instructions
 		Label start, end = m_a.newLabel();
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			start = rep_start(end);
 		}
 
@@ -6943,7 +6943,7 @@ lc86_jit::movs(ZydisDecodedInstruction *instr)
 			ST_R32(CPU_CTX_EDI, EBX);
 			ST_R32(CPU_CTX_ESI, EAX);
 		}
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 		else {
@@ -6961,7 +6961,7 @@ lc86_jit::movs(ZydisDecodedInstruction *instr)
 			ST_R32(CPU_CTX_EDI, EBX);
 			ST_R32(CPU_CTX_ESI, EAX);
 		}
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 
@@ -6975,9 +6975,9 @@ lc86_jit::movs(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::movsx(ZydisDecodedInstruction *instr)
+lc86_jit::movsx(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xBE:
 		m_cpu->size_mode = SIZE8;
@@ -7010,9 +7010,9 @@ lc86_jit::movsx(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::movzx(ZydisDecodedInstruction *instr)
+lc86_jit::movzx(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xB6:
 		m_cpu->size_mode = SIZE8;
@@ -7045,16 +7045,16 @@ lc86_jit::movzx(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::mul(ZydisDecodedInstruction *instr)
+lc86_jit::mul(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xF6:
 		m_cpu->size_mode = SIZE8;
 		[[fallthrough]];
 
 	case 0xF7: {
-		assert(instr->raw.modrm.reg == 4);
+		assert(instr->i.raw.modrm.reg == 4);
 
 		switch (m_cpu->size_mode)
 		{
@@ -7131,16 +7131,16 @@ lc86_jit::mul(ZydisDecodedInstruction *instr)
 
 
 void
-lc86_jit::neg(ZydisDecodedInstruction *instr)
+lc86_jit::neg(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xF6:
 		m_cpu->size_mode = SIZE8;
 		[[fallthrough]];
 
 	case 0xF7:
-		assert(instr->raw.modrm.reg == 3);
+		assert(instr->i.raw.modrm.reg == 3);
 
 		get_rm<OPNUM_SINGLE>(instr,
 			[this](const op_info rm)
@@ -7176,16 +7176,16 @@ lc86_jit::neg(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::not_(ZydisDecodedInstruction *instr)
+lc86_jit::not_(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xF6:
 		m_cpu->size_mode = SIZE8;
 		[[fallthrough]];
 
 	case 0xF7:
-		assert(instr->raw.modrm.reg == 2);
+		assert(instr->i.raw.modrm.reg == 2);
 
 		get_rm<OPNUM_SINGLE>(instr,
 			[this](const op_info rm)
@@ -7212,9 +7212,9 @@ lc86_jit::not_(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::or_(ZydisDecodedInstruction *instr)
+lc86_jit::or_(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x08:
 		m_cpu->size_mode = SIZE8;
@@ -7260,7 +7260,7 @@ lc86_jit::or_(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0x81: {
-		assert(instr->raw.modrm.reg == 1);
+		assert(instr->i.raw.modrm.reg == 1);
 
 		uint32_t src_imm = GET_IMM();
 		imm_to_rm<uint32_t>(instr, src_imm,
@@ -7272,7 +7272,7 @@ lc86_jit::or_(ZydisDecodedInstruction *instr)
 	break;
 
 	case 0x83: {
-		assert(instr->raw.modrm.reg == 1);
+		assert(instr->i.raw.modrm.reg == 1);
 
 		if (m_cpu->size_mode == SIZE16) {
 			int16_t src_imm = static_cast<int16_t>(static_cast<int8_t>(GET_IMM()));
@@ -7299,16 +7299,16 @@ lc86_jit::or_(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::out(ZydisDecodedInstruction *instr)
+lc86_jit::out(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xE6:
 		m_cpu->size_mode = SIZE8;
 		[[fallthrough]];
 
 	case 0xE7: {
-		uint8_t port = instr->operands[OPNUM_DST].imm.value.u;
+		uint8_t port = instr->o[OPNUM_DST].imm.value.u;
 		gen_check_io_priv(port);
 		MOV(EDX, port);
 		LD_REG_val(SIZED_REG(x64::r8, m_cpu->size_mode), CPU_CTX_EAX, m_cpu->size_mode);
@@ -7336,9 +7336,9 @@ lc86_jit::out(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::outs(ZydisDecodedInstruction *instr)
+lc86_jit::outs(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x6E:
 		m_cpu->size_mode = SIZE8;
@@ -7348,7 +7348,7 @@ lc86_jit::outs(ZydisDecodedInstruction *instr)
 		// technically, the effect of repnz on instructions that don't support it is officially undefined, but test80186 relies on it
 		// https://en.wikipedia.org/wiki/X86_instruction_listings#Undocumented_instructions
 		Label start, end = m_a.newLabel();
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			start = rep_start(end);
 		}
 
@@ -7387,7 +7387,7 @@ lc86_jit::outs(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_ESI, EBX);
 		}
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 		else {
@@ -7402,7 +7402,7 @@ lc86_jit::outs(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_ESI, EBX);
 		}
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 
@@ -7416,9 +7416,9 @@ lc86_jit::outs(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::pop(ZydisDecodedInstruction *instr)
+lc86_jit::pop(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x58:
 	case 0x59:
@@ -7428,20 +7428,20 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 	case 0x5D:
 	case 0x5E:
 	case 0x5F:
-		assert(instr->operands[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_REGISTER);
+		assert(instr->o[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_REGISTER);
 
 		if (m_cpu->size_mode == SIZE16) {
 			gen_stack_pop<1>();
-			ST_R16(get_reg_offset(instr->operands[OPNUM_SINGLE].reg.value), R11W);
+			ST_R16(get_reg_offset(instr->o[OPNUM_SINGLE].reg.value), R11W);
 		}
 		else {
 			gen_stack_pop<1>();
-			ST_R32(get_reg_offset(instr->operands[OPNUM_SINGLE].reg.value), R11D);
+			ST_R32(get_reg_offset(instr->o[OPNUM_SINGLE].reg.value), R11D);
 		}
 		break;
 
 	case 0x8F: {
-		assert(instr->raw.modrm.reg == 0);
+		assert(instr->i.raw.modrm.reg == 0);
 
 		get_rm<OPNUM_SINGLE>(instr,
 			[this](const op_info rm)
@@ -7472,7 +7472,7 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 	case 0x17:
 	case 0xA1:
 	case 0xA9: {
-		const auto sel = get_reg_pair(instr->operands[OPNUM_SINGLE].reg.value);
+		const auto sel = get_reg_pair(instr->o[OPNUM_SINGLE].reg.value);
 		gen_stack_pop<1, 0, false>();
 
 		if (IS_PE_NOT_VM86()) {
@@ -7551,7 +7551,7 @@ lc86_jit::pop(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::popa(ZydisDecodedInstruction *instr)
+lc86_jit::popa(decoded_instr *instr)
 {
 	switch ((m_cpu->size_mode << 1) | ((m_cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
@@ -7562,7 +7562,7 @@ lc86_jit::popa(ZydisDecodedInstruction *instr)
 			MOVZX(EBX, BX);
 			ADD(EDX, EBX);
 			LD_MEM();
-			ST_R32(get_reg_offset(instr->operands[i].reg.value), EAX);
+			ST_R32(get_reg_offset(instr->o[i].reg.value), EAX);
 			ADD(BX, 4);
 		}
 		ADD(BX, 4);
@@ -7571,7 +7571,7 @@ lc86_jit::popa(ZydisDecodedInstruction *instr)
 			MOVZX(EBX, BX);
 			ADD(EDX, EBX);
 			LD_MEM();
-			ST_R32(get_reg_offset(instr->operands[i].reg.value), EAX);
+			ST_R32(get_reg_offset(instr->o[i].reg.value), EAX);
 			ADD(BX, 4);
 		}
 		ST_R16(CPU_CTX_ESP, BX);
@@ -7583,7 +7583,7 @@ lc86_jit::popa(ZydisDecodedInstruction *instr)
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			ADD(EDX, EBX);
 			LD_MEM();
-			ST_R32(get_reg_offset(instr->operands[i].reg.value), EAX);
+			ST_R32(get_reg_offset(instr->o[i].reg.value), EAX);
 			ADD(EBX, 4);
 		}
 		ADD(EBX, 4);
@@ -7591,7 +7591,7 @@ lc86_jit::popa(ZydisDecodedInstruction *instr)
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			ADD(EDX, EBX);
 			LD_MEM();
-			ST_R32(get_reg_offset(instr->operands[i].reg.value), EAX);
+			ST_R32(get_reg_offset(instr->o[i].reg.value), EAX);
 			ADD(EBX, 4);
 		}
 		ST_R32(CPU_CTX_ESP, EBX);
@@ -7604,7 +7604,7 @@ lc86_jit::popa(ZydisDecodedInstruction *instr)
 			MOVZX(EBX, BX);
 			ADD(EDX, EBX);
 			LD_MEM();
-			ST_R16(get_reg_offset(instr->operands[i].reg.value), AX);
+			ST_R16(get_reg_offset(instr->o[i].reg.value), AX);
 			ADD(BX, 2);
 		}
 		ADD(BX, 2);
@@ -7613,7 +7613,7 @@ lc86_jit::popa(ZydisDecodedInstruction *instr)
 			MOVZX(EBX, BX);
 			ADD(EDX, EBX);
 			LD_MEM();
-			ST_R16(get_reg_offset(instr->operands[i].reg.value), AX);
+			ST_R16(get_reg_offset(instr->o[i].reg.value), AX);
 			ADD(BX, 2);
 		}
 		ST_R16(CPU_CTX_ESP, BX);
@@ -7625,7 +7625,7 @@ lc86_jit::popa(ZydisDecodedInstruction *instr)
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			ADD(EDX, EBX);
 			LD_MEM();
-			ST_R16(get_reg_offset(instr->operands[i].reg.value), AX);
+			ST_R16(get_reg_offset(instr->o[i].reg.value), AX);
 			ADD(EBX, 2);
 		}
 		ADD(EBX, 2);
@@ -7633,7 +7633,7 @@ lc86_jit::popa(ZydisDecodedInstruction *instr)
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			ADD(EDX, EBX);
 			LD_MEM();
-			ST_R16(get_reg_offset(instr->operands[i].reg.value), AX);
+			ST_R16(get_reg_offset(instr->o[i].reg.value), AX);
 			ADD(EBX, 2);
 		}
 		ST_R32(CPU_CTX_ESP, EBX);
@@ -7645,7 +7645,7 @@ lc86_jit::popa(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::popf(ZydisDecodedInstruction *instr)
+lc86_jit::popf(decoded_instr *instr)
 {
 	// NOTE: this is optimized code generated by MSVC from a custom C++ implementation
 
@@ -7762,9 +7762,9 @@ lc86_jit::popf(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::push(ZydisDecodedInstruction *instr)
+lc86_jit::push(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x50:
 	case 0x51:
@@ -7774,35 +7774,35 @@ lc86_jit::push(ZydisDecodedInstruction *instr)
 	case 0x55:
 	case 0x56:
 	case 0x57:
-		assert(instr->operands[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_REGISTER);
+		assert(instr->o[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_REGISTER);
 
 		if (m_cpu->size_mode == SIZE16) {
-			LD_R16(R8W, get_reg_offset(instr->operands[OPNUM_SINGLE].reg.value));
+			LD_R16(R8W, get_reg_offset(instr->o[OPNUM_SINGLE].reg.value));
 			gen_stack_push(R8W);
 		}
 		else {
-			LD_R32(R8D, get_reg_offset(instr->operands[OPNUM_SINGLE].reg.value));
+			LD_R32(R8D, get_reg_offset(instr->o[OPNUM_SINGLE].reg.value));
 			gen_stack_push(R8D);
 		}
 		break;
 
 	case 0x68:
-		gen_stack_push(instr->operands[OPNUM_SINGLE].imm.value.u);
+		gen_stack_push(instr->o[OPNUM_SINGLE].imm.value.u);
 		break;
 
 	case 0x6A:
 		if (m_cpu->size_mode == SIZE16) {
-			int16_t imm = static_cast<int16_t>(static_cast<int8_t>(instr->operands[OPNUM_SINGLE].imm.value.u));
+			int16_t imm = static_cast<int16_t>(static_cast<int8_t>(instr->o[OPNUM_SINGLE].imm.value.u));
 			gen_stack_push(imm);
 		}
 		else {
-			int32_t imm = static_cast<int32_t>(static_cast<int8_t>(instr->operands[OPNUM_SINGLE].imm.value.u));
+			int32_t imm = static_cast<int32_t>(static_cast<int8_t>(instr->o[OPNUM_SINGLE].imm.value.u));
 			gen_stack_push(imm);
 		}
 		break;
 
 	case 0xFF: {
-		assert(instr->raw.modrm.reg == 6);
+		assert(instr->i.raw.modrm.reg == 6);
 
 		auto r8_host_reg = get_rm<OPNUM_SINGLE>(instr,
 			[this](const op_info rm)
@@ -7829,14 +7829,14 @@ lc86_jit::push(ZydisDecodedInstruction *instr)
 	case 0x1E:
 	case 0xA0:
 	case 0xA8:
-		assert(instr->operands[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_REGISTER);
+		assert(instr->o[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_REGISTER);
 
 		if (m_cpu->size_mode == SIZE32) {
-			MOVZX(R8D, MEMD16(RCX, get_reg_offset(instr->operands[OPNUM_SINGLE].reg.value)));
+			MOVZX(R8D, MEMD16(RCX, get_reg_offset(instr->o[OPNUM_SINGLE].reg.value)));
 			gen_stack_push(R8D);
 		}
 		else {
-			LD_R16(R8W, get_reg_offset(instr->operands[OPNUM_SINGLE].reg.value));
+			LD_R16(R8W, get_reg_offset(instr->o[OPNUM_SINGLE].reg.value));
 			gen_stack_push(R8W);
 		}
 		break;
@@ -7847,7 +7847,7 @@ lc86_jit::push(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::pusha(ZydisDecodedInstruction *instr)
+lc86_jit::pusha(decoded_instr *instr)
 {
 	switch ((m_cpu->size_mode << 1) | ((m_cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
@@ -7858,7 +7858,7 @@ lc86_jit::pusha(ZydisDecodedInstruction *instr)
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			MOVZX(EBX, BX);
 			ADD(EDX, EBX);
-			LD_R32(R8D, get_reg_offset(instr->operands[i].reg.value));
+			LD_R32(R8D, get_reg_offset(instr->o[i].reg.value));
 			ST_MEM(R8D);
 		}
 		ST_R16(CPU_CTX_ESP, BX);
@@ -7871,7 +7871,7 @@ lc86_jit::pusha(ZydisDecodedInstruction *instr)
 			SUB(EBX, 4);
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			ADD(EDX, EBX);
-			LD_R32(R8D, get_reg_offset(instr->operands[i].reg.value));
+			LD_R32(R8D, get_reg_offset(instr->o[i].reg.value));
 			ST_MEM(R8D);
 		}
 		ST_R32(CPU_CTX_ESP, EBX);
@@ -7885,7 +7885,7 @@ lc86_jit::pusha(ZydisDecodedInstruction *instr)
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			MOVZX(EBX, BX);
 			ADD(EDX, EBX);
-			LD_R16(R8W, get_reg_offset(instr->operands[i].reg.value));
+			LD_R16(R8W, get_reg_offset(instr->o[i].reg.value));
 			ST_MEM(R8W);
 		}
 		ST_R16(CPU_CTX_ESP, BX);
@@ -7898,7 +7898,7 @@ lc86_jit::pusha(ZydisDecodedInstruction *instr)
 			SUB(EBX, 2);
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			ADD(EDX, EBX);
-			LD_R16(R8W, get_reg_offset(instr->operands[i].reg.value));
+			LD_R16(R8W, get_reg_offset(instr->o[i].reg.value));
 			ST_MEM(R8W);
 		}
 		ST_R32(CPU_CTX_ESP, EBX);
@@ -7911,7 +7911,7 @@ lc86_jit::pusha(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::pushf(ZydisDecodedInstruction *instr)
+lc86_jit::pushf(decoded_instr *instr)
 {
 	// NOTE: this is optimized code generated by MSVC from a custom C++ implementation
 
@@ -7984,19 +7984,19 @@ lc86_jit::pushf(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::rcl(ZydisDecodedInstruction *instr)
+lc86_jit::rcl(decoded_instr *instr)
 {
 	rotate<0>(instr);
 }
 
 void
-lc86_jit::rcr(ZydisDecodedInstruction *instr)
+lc86_jit::rcr(decoded_instr *instr)
 {
 	rotate<1>(instr);
 }
 
 void
-lc86_jit::rdmsr(ZydisDecodedInstruction *instr)
+lc86_jit::rdmsr(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
 		RAISEin0_t(EXP_GP);
@@ -8012,7 +8012,7 @@ lc86_jit::rdmsr(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::rdtsc(ZydisDecodedInstruction *instr)
+lc86_jit::rdtsc(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
 		Label ok = m_a.newLabel();
@@ -8028,10 +8028,10 @@ lc86_jit::rdtsc(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::ret(ZydisDecodedInstruction *instr)
+lc86_jit::ret(decoded_instr *instr)
 {
 	bool has_imm_op = false;
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xC2:
 		has_imm_op = true;
@@ -8046,12 +8046,12 @@ lc86_jit::ret(ZydisDecodedInstruction *instr)
 		if (has_imm_op) {
 			if (m_cpu->cpu_ctx.hflags & HFLG_SS32) {
 				LD_R32(EAX, CPU_CTX_ESP);
-				ADD(EAX, instr->operands[OPNUM_SINGLE].imm.value.u);
+				ADD(EAX, instr->o[OPNUM_SINGLE].imm.value.u);
 				ST_R32(CPU_CTX_ESP, EAX);
 			}
 			else {
 				LD_R16(AX, CPU_CTX_ESP);
-				ADD(AX, instr->operands[OPNUM_SINGLE].imm.value.u);
+				ADD(AX, instr->o[OPNUM_SINGLE].imm.value.u);
 				ST_R16(CPU_CTX_ESP, AX);
 			}
 		}
@@ -8091,12 +8091,12 @@ lc86_jit::ret(ZydisDecodedInstruction *instr)
 		if (has_imm_op) {
 			if (m_cpu->cpu_ctx.hflags & HFLG_SS32) {
 				LD_R32(EAX, CPU_CTX_ESP);
-				ADD(EAX, instr->operands[OPNUM_SINGLE].imm.value.u);
+				ADD(EAX, instr->o[OPNUM_SINGLE].imm.value.u);
 				ST_R32(CPU_CTX_ESP, EAX);
 			}
 			else {
 				LD_R16(AX, CPU_CTX_ESP);
-				ADD(AX, instr->operands[OPNUM_SINGLE].imm.value.u);
+				ADD(AX, instr->o[OPNUM_SINGLE].imm.value.u);
 				ST_R16(CPU_CTX_ESP, AX);
 			}
 		}
@@ -8113,19 +8113,19 @@ lc86_jit::ret(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::rol(ZydisDecodedInstruction *instr)
+lc86_jit::rol(decoded_instr *instr)
 {
 	rotate<2>(instr);
 }
 
 void
-lc86_jit::ror(ZydisDecodedInstruction *instr)
+lc86_jit::ror(decoded_instr *instr)
 {
 	rotate<3>(instr);
 }
 
 void
-lc86_jit::sahf(ZydisDecodedInstruction *instr)
+lc86_jit::sahf(decoded_instr *instr)
 {
 	// NOTE: this is optimized code generated by MSVC from a custom C++ implementation
 
@@ -8159,16 +8159,16 @@ lc86_jit::sahf(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::sar(ZydisDecodedInstruction *instr)
+lc86_jit::sar(decoded_instr *instr)
 {
-	assert(instr->raw.modrm.reg == 7);
+	assert(instr->i.raw.modrm.reg == 7);
 	shift<2>(instr);
 }
 
 void
-lc86_jit::sbb(ZydisDecodedInstruction *instr)
+lc86_jit::sbb(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x18:
 		m_cpu->size_mode = SIZE8;
@@ -8226,7 +8226,7 @@ lc86_jit::sbb(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0x81: {
-		assert(instr->raw.modrm.reg == 3);
+		assert(instr->i.raw.modrm.reg == 3);
 
 		uint32_t src_imm = GET_IMM();
 		imm_to_rm_flags<false, uint32_t>(instr, src_imm,
@@ -8242,7 +8242,7 @@ lc86_jit::sbb(ZydisDecodedInstruction *instr)
 	break;
 
 	case 0x83: {
-		assert(instr->raw.modrm.reg == 3);
+		assert(instr->i.raw.modrm.reg == 3);
 
 		if (m_cpu->size_mode == SIZE16) {
 			int16_t src_imm = static_cast<int16_t>(static_cast<int8_t>(GET_IMM()));
@@ -8277,9 +8277,9 @@ lc86_jit::sbb(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::scas(ZydisDecodedInstruction *instr)
+lc86_jit::scas(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xAE:
 		m_cpu->size_mode = SIZE8;
@@ -8287,7 +8287,7 @@ lc86_jit::scas(ZydisDecodedInstruction *instr)
 
 	case 0xAF: {
 		Label start, end = m_a.newLabel();
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
 			start = rep_start(end);
 		}
 
@@ -8325,8 +8325,8 @@ lc86_jit::scas(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_EDI, EBX);
 		}
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
-			if (instr->attributes & ZYDIS_ATTRIB_HAS_REPNZ) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
+			if (instr->i.attributes & ZYDIS_ATTRIB_HAS_REPNZ) {
 				rep<ZYDIS_ATTRIB_HAS_REPNZ>(start, end);
 			}
 			else {
@@ -8345,8 +8345,8 @@ lc86_jit::scas(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_EDI, EBX);
 		}
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
-			if (instr->attributes & ZYDIS_ATTRIB_HAS_REPNZ) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REPNZ | ZYDIS_ATTRIB_HAS_REPZ)) {
+			if (instr->i.attributes & ZYDIS_ATTRIB_HAS_REPNZ) {
 				rep<ZYDIS_ATTRIB_HAS_REPNZ>(start, end);
 			}
 			else {
@@ -8364,9 +8364,9 @@ lc86_jit::scas(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::setcc(ZydisDecodedInstruction *instr)
+lc86_jit::setcc(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x90:
 		MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
@@ -8532,53 +8532,53 @@ lc86_jit::setcc(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::sgdt(ZydisDecodedInstruction *instr)
+lc86_jit::sgdt(decoded_instr *instr)
 {
 	store_sys_seg_reg<GDTR_idx>(instr);
 }
 
 void
-lc86_jit::shl(ZydisDecodedInstruction *instr)
+lc86_jit::shl(decoded_instr *instr)
 {
-	assert(instr->raw.modrm.reg == 4);
+	assert(instr->i.raw.modrm.reg == 4);
 	shift<0>(instr);
 }
 
 void
-lc86_jit::shld(ZydisDecodedInstruction *instr)
+lc86_jit::shld(decoded_instr *instr)
 {
 	double_shift<0>(instr);
 }
 
 void
-lc86_jit::shr(ZydisDecodedInstruction *instr)
+lc86_jit::shr(decoded_instr *instr)
 {
-	assert(instr->raw.modrm.reg == 5);
+	assert(instr->i.raw.modrm.reg == 5);
 	shift<1>(instr);
 }
 
 void
-lc86_jit::shrd(ZydisDecodedInstruction *instr)
+lc86_jit::shrd(decoded_instr *instr)
 {
 	double_shift<1>(instr);
 }
 
 void
-lc86_jit::sidt(ZydisDecodedInstruction *instr)
+lc86_jit::sidt(decoded_instr *instr)
 {
 	store_sys_seg_reg<IDTR_idx>(instr);
 }
 
 void
-lc86_jit::sldt(ZydisDecodedInstruction *instr)
+lc86_jit::sldt(decoded_instr *instr)
 {
 	store_sys_seg_reg<LDTR_idx>(instr);
 }
 
 void
-lc86_jit::stc(ZydisDecodedInstruction *instr)
+lc86_jit::stc(decoded_instr *instr)
 {
-	assert(instr->opcode == 0xF9);
+	assert(instr->i.opcode == 0xF9);
 
 	MOV(EDX, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
 	LD_OF(EAX, EDX);
@@ -8590,9 +8590,9 @@ lc86_jit::stc(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::std(ZydisDecodedInstruction *instr)
+lc86_jit::std(decoded_instr *instr)
 {
-	assert(instr->opcode == 0xFD);
+	assert(instr->i.opcode == 0xFD);
 
 	LD_R32(EDX, CPU_CTX_EFLAGS);
 	OR(EDX, DF_MASK);
@@ -8600,9 +8600,9 @@ lc86_jit::std(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::sti(ZydisDecodedInstruction *instr)
+lc86_jit::sti(decoded_instr *instr)
 {
-	assert(instr->opcode == 0xFB);
+	assert(instr->i.opcode == 0xFB);
 
 	LD_R32(EAX, CPU_CTX_EFLAGS);
 	MOV(EDX, EAX);
@@ -8648,9 +8648,9 @@ lc86_jit::sti(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::stos(ZydisDecodedInstruction *instr)
+lc86_jit::stos(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xAA:
 		m_cpu->size_mode = SIZE8;
@@ -8660,7 +8660,7 @@ lc86_jit::stos(ZydisDecodedInstruction *instr)
 		// technically, the effect of repnz on instructions that don't support it is officially undefined, but test80186 relies on it
 		// https://en.wikipedia.org/wiki/X86_instruction_listings#Undocumented_instructions
 		Label start, end = m_a.newLabel();
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			start = rep_start(end);
 		}
 
@@ -8712,7 +8712,7 @@ lc86_jit::stos(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_EDI, EBX);
 		}
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 		else {
@@ -8727,7 +8727,7 @@ lc86_jit::stos(ZydisDecodedInstruction *instr)
 		else {
 			ST_R32(CPU_CTX_EDI, EBX);
 		}
-		if (instr->attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
+		if (instr->i.attributes & (ZYDIS_ATTRIB_HAS_REP | ZYDIS_ATTRIB_HAS_REPNZ)) {
 			rep<ZYDIS_ATTRIB_HAS_REP>(start, end);
 		}
 
@@ -8741,15 +8741,15 @@ lc86_jit::stos(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::str(ZydisDecodedInstruction *instr)
+lc86_jit::str(decoded_instr *instr)
 {
 	store_sys_seg_reg<TR_idx>(instr);
 }
 
 void
-lc86_jit::sub(ZydisDecodedInstruction *instr)
+lc86_jit::sub(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x28:
 		m_cpu->size_mode = SIZE8;
@@ -8795,7 +8795,7 @@ lc86_jit::sub(ZydisDecodedInstruction *instr)
 		[[fallthrough]];
 
 	case 0x81: {
-		assert(instr->raw.modrm.reg == 5);
+		assert(instr->i.raw.modrm.reg == 5);
 
 		uint32_t src_imm = GET_IMM();
 		imm_to_rm_flags<false, uint32_t>(instr, src_imm,
@@ -8807,7 +8807,7 @@ lc86_jit::sub(ZydisDecodedInstruction *instr)
 	break;
 
 	case 0x83: {
-		assert(instr->raw.modrm.reg == 5);
+		assert(instr->i.raw.modrm.reg == 5);
 
 		if (m_cpu->size_mode == SIZE16) {
 			int16_t src_imm = static_cast<int16_t>(static_cast<int8_t>(GET_IMM()));
@@ -8834,9 +8834,9 @@ lc86_jit::sub(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::test(ZydisDecodedInstruction *instr)
+lc86_jit::test(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x84:
 		m_cpu->size_mode = SIZE8;
@@ -8884,19 +8884,19 @@ lc86_jit::test(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::verr(ZydisDecodedInstruction *instr)
+lc86_jit::verr(decoded_instr *instr)
 {
 	verx<true>(instr);
 }
 
 void
-lc86_jit::verw(ZydisDecodedInstruction *instr)
+lc86_jit::verw(decoded_instr *instr)
 {
 	verx<false>(instr);
 }
 
 void
-lc86_jit::wbinvd(ZydisDecodedInstruction *instr)
+lc86_jit::wbinvd(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
 		RAISEin0_t(EXP_GP);
@@ -8906,7 +8906,7 @@ lc86_jit::wbinvd(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::wrmsr(ZydisDecodedInstruction *instr)
+lc86_jit::wrmsr(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
 		RAISEin0_t(EXP_GP);
@@ -8922,9 +8922,9 @@ lc86_jit::wrmsr(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::xadd(ZydisDecodedInstruction *instr)
+lc86_jit::xadd(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0xC0:
 		m_cpu->size_mode = SIZE8;
@@ -8972,9 +8972,9 @@ lc86_jit::xadd(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::xchg(ZydisDecodedInstruction *instr)
+lc86_jit::xchg(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x86:
 		m_cpu->size_mode = SIZE8;
@@ -9028,7 +9028,7 @@ lc86_jit::xchg(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::xlat(ZydisDecodedInstruction *instr)
+lc86_jit::xlat(decoded_instr *instr)
 {
 	LD_SEG_BASE(EAX, get_seg_prfx_offset(instr));
 	if (m_cpu->addr_mode == ADDR16) {
@@ -9045,9 +9045,9 @@ lc86_jit::xlat(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::xor_(ZydisDecodedInstruction *instr)
+lc86_jit::xor_(decoded_instr *instr)
 {
-	switch (instr->opcode)
+	switch (instr->i.opcode)
 	{
 	case 0x30:
 		m_cpu->size_mode = SIZE8;
@@ -9128,13 +9128,13 @@ lc86_jit::xor_(ZydisDecodedInstruction *instr)
 }
 
 void
-lc86_jit::xorps(ZydisDecodedInstruction *instr)
+lc86_jit::xorps(decoded_instr *instr)
 {
 	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
 		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
 	}
 	else {
-		if (instr->opcode == 0x57) {
+		if (instr->i.opcode == 0x57) {
 			const auto dst = GET_REG(OPNUM_DST);
 			get_rm<OPNUM_SRC>(instr,
 				[this, dst](const op_info rm)

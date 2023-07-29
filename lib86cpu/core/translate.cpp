@@ -884,7 +884,7 @@ cpu_translate(cpu_t *cpu)
 	cpu->translate_next = 1;
 	cpu->virt_pc = disas_ctx->virt_pc;
 
-	ZydisDecodedInstruction instr;
+	decoded_instr instr;
 	ZydisDecoder decoder;
 	ZyanStatus status;
 
@@ -907,7 +907,7 @@ cpu_translate(cpu_t *cpu)
 		if (ZYAN_SUCCESS(status)) {
 			// successfully decoded
 
-			cpu->instr_bytes = instr.length;
+			cpu->instr_bytes = instr.i.length;
 			disas_ctx->flags |= ((disas_ctx->virt_pc & ~PAGE_MASK) != ((disas_ctx->virt_pc + cpu->instr_bytes - 1) & ~PAGE_MASK)) << 2;
 			disas_ctx->pc += cpu->instr_bytes;
 			disas_ctx->virt_pc += cpu->instr_bytes;
@@ -963,21 +963,21 @@ cpu_translate(cpu_t *cpu)
 		}
 
 
-		if ((disas_ctx->flags & DISAS_FLG_CS32) ^ ((instr.attributes & ZYDIS_ATTRIB_HAS_OPERANDSIZE) >> 34)) {
+		if ((disas_ctx->flags & DISAS_FLG_CS32) ^ ((instr.i.attributes & ZYDIS_ATTRIB_HAS_OPERANDSIZE) >> 43)) {
 			cpu->size_mode = SIZE32;
 		}
 		else {
 			cpu->size_mode = SIZE16;
 		}
 
-		if ((disas_ctx->flags & DISAS_FLG_CS32) ^ ((instr.attributes & ZYDIS_ATTRIB_HAS_ADDRESSSIZE) >> 35)) {
+		if ((disas_ctx->flags & DISAS_FLG_CS32) ^ ((instr.i.attributes & ZYDIS_ATTRIB_HAS_ADDRESSSIZE) >> 44)) {
 			cpu->addr_mode = ADDR32;
 		}
 		else {
 			cpu->addr_mode = ADDR16;
 		}
 
-		switch (instr.mnemonic)
+		switch (instr.i.mnemonic)
 		{
 		case ZYDIS_MNEMONIC_AAA:
 			cpu->jit->aaa(&instr);
@@ -1707,7 +1707,8 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 
 			// prepare the disas ctx
 			cpu->disas_ctx.flags = ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT) |
-				((cpu->cpu_ctx.hflags & HFLG_PE_MODE) >> (PE_MODE_SHIFT - 1)) |
+				((cpu->cpu_ctx.hflags & HFLG_SS32) >> (SS32_SHIFT - 1)) |
+				(cpu->cpu_ctx.hflags & HFLG_PE_MODE) |
 				((cpu->cpu_ctx.hflags & HFLG_INHIBIT_INT) >> 11) |
 				(cpu->cpu_flags & CPU_DISAS_ONE) |
 				((cpu->cpu_flags & CPU_SINGLE_STEP) >> 3) |

@@ -314,12 +314,12 @@ dbg_disas_code_block(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, 
 {
 	std::vector<std::pair<addr_t, std::string>> disas_data;
 	while (instr_num) {
-		ZydisDecodedInstruction instr;
+		decoded_instr instr;
 		ZyanStatus status = decode_instr(cpu, disas_ctx, decoder, &instr);
 		if (ZYAN_SUCCESS(status)) {
 			disas_data.push_back(std::make_pair(disas_ctx->virt_pc, log_instr(disas_ctx->virt_pc, &instr)));
 			--instr_num;
-			size_t bytes = instr.length;
+			size_t bytes = instr.i.length;
 			addr_t next_pc = disas_ctx->virt_pc + bytes;
 			if ((disas_ctx->virt_pc & ~PAGE_MASK) != ((next_pc - 1) & ~PAGE_MASK)) {
 				// page crossing, needs to translate virt_pc again

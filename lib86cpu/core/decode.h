@@ -30,11 +30,16 @@ enum {
 	OPNUM_SINGLE = 0
 };
 
-void set_instr_format(cpu_t *cpu);
-std::string log_instr(addr_t addr, ZydisDecodedInstruction *instr);
-std::string discard_instr_log(addr_t addr, ZydisDecodedInstruction *instr);
-void init_instr_decoder(disas_ctx_t *disas_ctx, ZydisDecoder *decoder);
-ZyanStatus decode_instr(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, ZydisDecodedInstruction *instr);
+struct decoded_instr {
+	ZydisDecodedInstruction i;
+	ZydisDecodedOperand o[ZYDIS_MAX_OPERAND_COUNT];
+};
 
-using instr_logfn_t = std::string(*)(addr_t, ZydisDecodedInstruction *);
+void set_instr_format(cpu_t *cpu);
+std::string log_instr(addr_t addr, decoded_instr *instr);
+std::string discard_instr_log(addr_t addr, decoded_instr *instr);
+void init_instr_decoder(disas_ctx_t *disas_ctx, ZydisDecoder *decoder);
+ZyanStatus decode_instr(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, decoded_instr *instr);
+
+using instr_logfn_t = std::string(*)(addr_t, decoded_instr *);
 inline instr_logfn_t instr_logfn = &discard_instr_log;
