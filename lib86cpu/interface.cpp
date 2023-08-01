@@ -427,7 +427,7 @@ cpu_raise_hw_int_line(cpu_t *cpu)
 void
 cpu_lower_hw_int_line(cpu_t *cpu)
 {
-	cpu->lower_hw_int_fn(&cpu->cpu_ctx);
+	cpu->clear_int_fn(&cpu->cpu_ctx, CPU_HW_INT);
 }
 
 template<bool is_save>

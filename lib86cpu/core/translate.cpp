@@ -1570,18 +1570,16 @@ cpu_translate(cpu_t *cpu)
 uint32_t
 cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 {
-	cpu_ctx->cpu->clear_int_fn(cpu_ctx);
-
 	if (int_flg & CPU_ABORT_INT) {
 		// this also happens when the user closes the debugger window
+		cpu_ctx->cpu->clear_int_fn(cpu_ctx, CPU_ABORT_INT);
 		throw lc86_exp_abort("Received abort signal, terminating the emulation", lc86_status::success);
 	}
 
 	if (int_flg & CPU_SUSPEND_INT) {
+		cpu_ctx->cpu->clear_int_fn(cpu_ctx, CPU_SUSPEND_INT);
 		cpu_ctx->cpu->is_suspended.test_and_set();
 		if (cpu_ctx->cpu->suspend_should_throw.load() && cpu_ctx->cpu->suspend_flg.test()) {
-			// restore remaining interrupts before we abort
-			cpu_ctx->cpu->raise_int_fn(cpu_ctx, int_flg & ~(CPU_ABORT_INT | CPU_SUSPEND_INT));
 			throw lc86_exp_abort("Received pause signal, suspending the emulation", lc86_status::paused);
 		}
 		else {
@@ -1596,12 +1594,15 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 
 	if (int_flg & (CPU_A20_INT | CPU_REGION_INT)) {
 		cpu_t *cpu = cpu_ctx->cpu;
+		uint32_t int_clear_flg;
 		if (int_flg & CPU_A20_INT) {
+			int_clear_flg = CPU_A20_INT;
 			cpu->a20_mask = cpu->new_a20;
 			tlb_flush(cpu);
 			tc_cache_clear(cpu);
 			if (int_flg & CPU_REGION_INT) {
 				// the a20 interrupt has already flushed the tlb and the code cache, so just update the as object
+				int_clear_flg |= CPU_REGION_INT;
 				std::for_each(cpu->regions_changed.begin(), cpu->regions_changed.end(), [cpu](auto &pair) {
 					if (pair.first) {
 						cpu->memory_space_tree->insert(std::move(pair.second));
@@ -1614,6 +1615,7 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 			}
 		}
 		else {
+			int_clear_flg = CPU_REGION_INT;
 			std::for_each(cpu->regions_changed.begin(), cpu->regions_changed.end(), [cpu](auto &pair) {
 				addr_t start = pair.second->start, end = pair.second->end;
 				if (pair.first) {
@@ -1628,6 +1630,7 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 			tlb_flush(cpu);
 			cpu->regions_changed.clear();
 		}
+		cpu_ctx->cpu->clear_int_fn(cpu_ctx, int_clear_flg);
 		return CPU_NON_HW_INT;
 	}
 

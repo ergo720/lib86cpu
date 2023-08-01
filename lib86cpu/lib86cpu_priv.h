@@ -98,8 +98,8 @@ struct cpu_ctx_t;
 struct translated_code_t;
 using entry_t = translated_code_t *(JIT_API *)(cpu_ctx_t *cpu_ctx);
 using read_int_t = uint32_t(JIT_API *)(cpu_ctx_t *cpu_ctx);
-using clear_int_t = void(JIT_API *)(cpu_ctx_t *cpu_ctx);
 using raise_int_t = void(JIT_API *)(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
+using clear_int_t = void(JIT_API *)(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 
 // jmp_offset functions: 0,1 -> used for direct linking (either points to exit or &next_tc), 2 -> exit
 struct translated_code_t {
@@ -206,9 +206,8 @@ struct cpu_t {
 	} timer;
 	msr_t msr;
 	read_int_t read_int_fn;
-	clear_int_t clear_int_fn;
 	raise_int_t raise_int_fn;
-	clear_int_t lower_hw_int_fn;
+	clear_int_t clear_int_fn;
 	fp_int get_int_vec;
 	std::string dbg_name;
 	addr_t bp_addr;

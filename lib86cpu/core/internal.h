@@ -77,9 +77,10 @@ void JIT_API tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define CPU_ABORT_INT   (1 << 1)
 #define CPU_A20_INT     (1 << 2)
 #define CPU_REGION_INT  (1 << 3)
-#define CPU_TIMEOUT_INT (1 << 4)
+#define CPU_TIMEOUT_INT (1 << 4)  // never set, only returned as a status
 #define CPU_SUSPEND_INT (1 << 5)
 #define CPU_NON_HW_INT  (CPU_ABORT_INT | CPU_A20_INT | CPU_REGION_INT | CPU_SUSPEND_INT)
+#define CPU_ALL_INT     (CPU_HW_INT | CPU_NON_HW_INT)
 
 // mmu flags
 #define MMU_IS_WRITE    (1 << 0)

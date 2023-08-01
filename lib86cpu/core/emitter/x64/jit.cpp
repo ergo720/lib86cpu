@@ -562,24 +562,15 @@ lc86_jit::gen_aux_funcs()
 	m_a.lock().or_(MEMD32(RCX, CPU_CTX_INT), EDX);
 	RET();
 
-	// clear non hw int
+	// clear any int
 	size_t clear_int_off = m_a.offset(), clear_int_off_aligned16 = (clear_int_off + 15) & ~15;
 	if (clear_int_off_aligned16 > clear_int_off) {
 		for (unsigned i = 0; i < (clear_int_off_aligned16 - clear_int_off); ++i) {
 			INT3();
 		}
 	}
-	m_a.lock().and_(MEMD32(RCX, CPU_CTX_INT), ~CPU_NON_HW_INT);
-	RET();
-
-	// clear hw int
-	size_t lower_hw_int_off = m_a.offset(), lower_hw_int_off_aligned16 = (lower_hw_int_off + 15) & ~15;
-	if (lower_hw_int_off_aligned16 > lower_hw_int_off) {
-		for (unsigned i = 0; i < (lower_hw_int_off_aligned16 - lower_hw_int_off); ++i) {
-			INT3();
-		}
-	}
-	m_a.lock().and_(MEMD32(RCX, CPU_CTX_INT), ~CPU_HW_INT);
+	NOT(EDX);
+	m_a.lock().and_(MEMD32(RCX, CPU_CTX_INT), EDX);
 	RET();
 
 	if (auto err = m_code.flatten()) {
@@ -620,7 +611,6 @@ lc86_jit::gen_aux_funcs()
 	m_cpu->read_int_fn = reinterpret_cast<read_int_t>(static_cast<uint8_t *>(block.addr) + offset);
 	m_cpu->raise_int_fn = reinterpret_cast<raise_int_t>(static_cast<uint8_t *>(block.addr) + offset + raise_int_off_aligned16);
 	m_cpu->clear_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset + clear_int_off_aligned16);
-	m_cpu->lower_hw_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset + lower_hw_int_off_aligned16);
 }
 
 void

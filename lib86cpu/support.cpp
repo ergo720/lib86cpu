@@ -141,7 +141,7 @@ cpu_load_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_st
 	cpu->ram = ram_state->ram;
 
 	cpu->get_int_vec = int_fn ? int_fn : default_get_int_vec;
-	cpu->clear_int_fn(&cpu->cpu_ctx);
+	cpu->clear_int_fn(&cpu->cpu_ctx, CPU_ALL_INT);
 	update_drN_helper(&cpu->cpu_ctx, 0, cpu->cpu_ctx.regs.dr[0]);
 	update_drN_helper(&cpu->cpu_ctx, 1, cpu->cpu_ctx.regs.dr[1]);
 	update_drN_helper(&cpu->cpu_ctx, 2, cpu->cpu_ctx.regs.dr[2]);
