@@ -278,21 +278,18 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 
 				if (read_stack_ptr_from_tss_helper(cpu, dpl, new_esp, new_ss, eip, is_vm86 ? 2 : 0)) {
 					cpu_ctx->exp_info.exp_data.code += ext_flg;
-					cpu_raise_exception(cpu_ctx);
 					return true;
 				}
 
 				if ((new_ss >> 2) == 0) {
 					cpu_ctx->exp_info.exp_data.code = ext_flg;
 					cpu_ctx->exp_info.exp_data.idx = EXP_TS;
-					cpu_raise_exception(cpu_ctx);
 					return true;
 				}
 
 				if (read_seg_desc_helper(cpu, new_ss, ss_desc_addr, ss_desc, eip)) {
 					cpu_ctx->exp_info.exp_data.code += ext_flg;
 					cpu_ctx->exp_info.exp_data.idx = EXP_TS;
-					cpu_raise_exception(cpu_ctx);
 					return true;
 				}
 
@@ -306,7 +303,6 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 				if ((s | d | w | ss_dpl | ss_rpl | p) ^ ((0x85 | (dpl_compare << 3)) | (dpl_compare << 5))) {
 					cpu_ctx->exp_info.exp_data.code = (new_ss & 0xFFFC) + ext_flg;
 					cpu_ctx->exp_info.exp_data.idx = EXP_TS;
-					cpu_raise_exception(cpu_ctx);
 					return true;
 				}
 
@@ -323,7 +319,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 				}
 
 				if (check_ss_desc.template operator()<true>(cpu_ctx, dpl, new_esp, new_ss, ss_desc)) {
-					return nullptr;
+					return cpu_raise_exception(cpu_ctx);
 				}
 
 				uint32_t esp = new_esp;
@@ -333,7 +329,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 				const auto &push_regs = [old_eflags, eip, exp_has_code, code]<bool is_idt32>(cpu_ctx_t *cpu_ctx, uint32_t &esp, uint32_t stack_mask, uint32_t stack_base)
 				{
 					using T = std::conditional_t<is_idt32, uint32_t, uint16_t>;
-					uint32_t push_size = sizeof(T);
+					constexpr uint32_t push_size = sizeof(T);
 
 					esp -= push_size;
 					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.gs, eip, 2);
@@ -397,7 +393,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 			}
 
 			if (check_ss_desc.template operator()<false>(cpu_ctx, dpl, new_esp, new_ss, ss_desc)) {
-				return nullptr;
+				return cpu_raise_exception(cpu_ctx);
 			}
 
 			stack_switch = 1;
@@ -432,7 +428,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 			uint32_t stack_base, uint8_t is_priv)
 		{
 			using T = std::conditional_t<is_push32, uint32_t, uint16_t>;
-			uint32_t push_size = sizeof(T);
+			constexpr uint32_t push_size = sizeof(T);
 
 			if constexpr (stack_switch) {
 				esp -= push_size;
