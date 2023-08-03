@@ -238,6 +238,29 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 
 		set_access_flg_seg_desc_helper(cpu, code_desc, code_desc_addr, eip);
 
+		const auto &exp_has_code = [idx]() -> uint8_t
+		{
+			if constexpr (is_intn || is_hw_int) {
+				// INT instructions and hw interrupts don't push error codes
+				return 0;
+			}
+			else {
+				switch (idx)
+				{
+				case EXP_DF:
+				case EXP_TS:
+				case EXP_NP:
+				case EXP_SS:
+				case EXP_GP:
+				case EXP_PF:
+				case EXP_AC:
+					return 1;
+				}
+
+				return 0;
+			}
+		};
+
 		uint32_t seg_base = read_seg_desc_base_helper(cpu, code_desc);
 		uint32_t seg_limit = read_seg_desc_limit_helper(cpu, code_desc);
 		uint32_t seg_flags = read_seg_desc_flags_helper(cpu, code_desc);
@@ -307,7 +330,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 				uint32_t stack_mask = ss_desc & SEG_DESC_DB ? 0xFFFFFFFF : 0xFFFF;
 				uint32_t stack_base = read_seg_desc_base_helper(cpu, ss_desc);
 
-				const auto &push_regs = [old_eflags, eip]<bool is_idt32>(cpu_ctx_t *cpu_ctx, uint32_t &esp, uint32_t stack_mask, uint32_t stack_base)
+				const auto &push_regs = [old_eflags, eip, exp_has_code, code]<bool is_idt32>(cpu_ctx_t *cpu_ctx, uint32_t &esp, uint32_t stack_mask, uint32_t stack_base)
 				{
 					using T = std::conditional_t<is_idt32, uint32_t, uint16_t>;
 					uint32_t push_size = sizeof(T);
@@ -330,6 +353,10 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 2);
 					esp -= push_size;
 					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), eip, eip, 2);
+					if (exp_has_code()) {
+						esp -= push_size;
+						mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), code, eip, 2);
+					}
 				};
 
 				if ((type == 14) || (type == 15)) {
@@ -399,28 +426,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 			}
 		}
 
-		uint8_t has_code;
-		if constexpr (is_intn || is_hw_int) {
-			// INT instructions and hw interrupts don't push error codes
-			has_code = 0;
-		}
-		else {
-			switch (idx)
-			{
-			case EXP_DF:
-			case EXP_TS:
-			case EXP_NP:
-			case EXP_SS:
-			case EXP_GP:
-			case EXP_PF:
-			case EXP_AC:
-				has_code = 1;
-				break;
-
-			default:
-				has_code = 0;
-			}
-		}
+		uint8_t has_code = exp_has_code();
 
 		const auto &push_regs = [old_eflags, eip, has_code, code]<bool is_push32, bool stack_switch>(cpu_ctx_t *cpu_ctx, uint32_t &esp, uint32_t stack_mask,
 			uint32_t stack_base, uint8_t is_priv)
