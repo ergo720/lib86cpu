@@ -363,6 +363,12 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, uint32_t eip,
 // These functions below only get the address of a single byte and thus do not need to check for a page boundary crossing. They return a corrected
 // physical address taking into account memory aliasing and region start offset
 addr_t
+get_read_addr_slow(cpu_t* cpu, addr_t addr, uint8_t is_priv, uint32_t eip)
+{
+	return mmu_translate_addr<false>(cpu, addr, is_priv, eip);
+}
+
+addr_t
 get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip)
 {
 	uint32_t idx = (addr >> PAGE_SHIFT) & DTLB_IDX_MASK;
@@ -375,7 +381,15 @@ get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip)
 		}
 	}
 
-	return mmu_translate_addr<false>(cpu, addr, is_priv, eip);
+	return get_read_addr_slow(cpu, addr, is_priv, eip);
+}
+
+addr_t
+get_write_addr_slow(cpu_t* cpu, addr_t addr, uint8_t is_priv, uint32_t eip, bool* is_code)
+{
+	addr_t phys_addr = mmu_translate_addr<false>(cpu, addr, MMU_IS_WRITE | is_priv, eip);
+	*is_code = cpu->smc[phys_addr >> PAGE_SHIFT];
+	return phys_addr;
 }
 
 addr_t
@@ -400,9 +414,7 @@ get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, bool *is_
 		}
 	}
 
-	addr_t phys_addr = mmu_translate_addr<false>(cpu, addr, MMU_IS_WRITE | is_priv, eip);
-	*is_code = cpu->smc[phys_addr >> PAGE_SHIFT];
-	return phys_addr;
+	return get_write_addr_slow(cpu, addr, MMU_IS_WRITE | is_priv, eip, is_code);
 }
 
 addr_t
