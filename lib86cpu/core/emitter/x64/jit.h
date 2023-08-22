@@ -67,6 +67,7 @@ public:
 	void cdq(decoded_instr *instr);
 	void cld(decoded_instr *instr);
 	void cli(decoded_instr *instr);
+	void clts(decoded_instr* instr);
 	void cmc(decoded_instr *instr);
 	void cmovcc(decoded_instr *instr);
 	void cmp(decoded_instr *instr);

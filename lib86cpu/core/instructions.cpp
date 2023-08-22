@@ -796,7 +796,7 @@ lldt_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
 template<unsigned idx1>
 uint32_t update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 {
-	// idx1 0 -> mov, 1 -> lmsw
+	// idx1 0 -> mov, 1 -> lmsw, 2 -> clts
 
 	switch (idx)
 	{
@@ -814,32 +814,36 @@ uint32_t update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 			}
 		}
 
-		cpu_ctx->hflags = (((new_cr & CR0_EM_MASK) << 3) | (cpu_ctx->hflags & ~HFLG_CR0_EM));
+		if constexpr (idx1 != 2) {
+			cpu_ctx->hflags = (((new_cr & CR0_EM_MASK) << 3) | (cpu_ctx->hflags & ~HFLG_CR0_EM));
+		}
 		cpu_ctx->hflags = (((new_cr & CR0_TS_MASK) << 7) | (cpu_ctx->hflags & ~HFLG_CR0_TS));
 
-		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
-			if (new_cr & CR0_PE_MASK) {
-				// real -> protected
-				if (cpu_ctx->regs.cs_hidden.flags & SEG_HIDDEN_DB) {
-					cpu_ctx->hflags |= HFLG_CS32;
+		if constexpr (idx1 != 2) {
+			if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
+				if (new_cr & CR0_PE_MASK) {
+					// real -> protected
+					if (cpu_ctx->regs.cs_hidden.flags & SEG_HIDDEN_DB) {
+						cpu_ctx->hflags |= HFLG_CS32;
+					}
+					if (cpu_ctx->regs.ss_hidden.flags & SEG_HIDDEN_DB) {
+						cpu_ctx->hflags |= HFLG_SS32;
+					}
+					cpu_ctx->hflags |= (HFLG_PE_MODE | (cpu_ctx->regs.cs & HFLG_CPL));
 				}
-				if (cpu_ctx->regs.ss_hidden.flags & SEG_HIDDEN_DB) {
-					cpu_ctx->hflags |= HFLG_SS32;
+				else {
+					// protected -> real
+					cpu_ctx->hflags &= ~(HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE);
 				}
-				cpu_ctx->hflags |= (HFLG_PE_MODE | (cpu_ctx->regs.cs & HFLG_CPL));
-			}
-			else {
-				// protected -> real
-				cpu_ctx->hflags &= ~(HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE);
-			}
 
-			// remove all breakpoints if the debugger is present
-			if (cpu_ctx->cpu->cpu_flags & CPU_DBG_PRESENT) {
-				hook_remove(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr);
-				hook_remove(cpu_ctx->cpu, cpu_ctx->cpu->db_addr);
-				dbg_remove_sw_breakpoints(cpu_ctx->cpu);
-				break_list.clear();
-				LOG(log_level::info, "Removed all breakpoints because cpu mode changed");
+				// remove all breakpoints if the debugger is present
+				if (cpu_ctx->cpu->cpu_flags & CPU_DBG_PRESENT) {
+					hook_remove(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr);
+					hook_remove(cpu_ctx->cpu, cpu_ctx->cpu->db_addr);
+					dbg_remove_sw_breakpoints(cpu_ctx->cpu);
+					break_list.clear();
+					LOG(log_level::info, "Removed all breakpoints because cpu mode changed");
+				}
 			}
 		}
 
@@ -848,6 +852,9 @@ uint32_t update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 		}
 		else if constexpr (idx1 == 1) {
 			cpu_ctx->regs.cr0 = (((cpu_ctx->regs.cr0 & ~CR0_LMSW_MASK) | (new_cr & CR0_LMSW_MASK)) | CR0_ET_MASK);
+		}
+		else if constexpr (idx1 == 2) {
+			cpu_ctx->regs.cr0 &= ~CR0_TS_MASK;
 		}
 		else {
 			LIB86CPU_ABORT_msg("Unknown instruction specified with index %u", idx1);
@@ -1429,3 +1436,4 @@ template uint32_t mov_sel_pe_helper<GS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, ui
 
 template uint32_t update_crN_helper<0>(cpu_ctx_t* cpu_ctx, uint32_t new_cr, uint8_t idx);
 template uint32_t update_crN_helper<1>(cpu_ctx_t* cpu_ctx, uint32_t new_cr, uint8_t idx);
+template uint32_t update_crN_helper<2>(cpu_ctx_t* cpu_ctx, uint32_t new_cr, uint8_t idx);

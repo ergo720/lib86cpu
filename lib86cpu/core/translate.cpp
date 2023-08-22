@@ -1069,7 +1069,10 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->cli(&instr);
 			break;
 
-		case ZYDIS_MNEMONIC_CLTS:        BAD;
+		case ZYDIS_MNEMONIC_CLTS:
+			cpu->jit->clts(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_CMC:
 			cpu->jit->cmc(&instr);
 			break;

@@ -180,6 +180,7 @@ inline constexpr auto all_callable_funcs = std::make_tuple(
 	verrw_helper<false>,
 	update_crN_helper<0>,
 	update_crN_helper<1>,
+	update_crN_helper<2>,
 	update_drN_helper,
 	mov_sel_pe_helper<SS_idx>,
 	mov_sel_pe_helper<DS_idx>,

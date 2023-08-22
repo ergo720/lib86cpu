@@ -4257,6 +4257,25 @@ lc86_jit::cli(decoded_instr *instr)
 }
 
 void
+lc86_jit::clts(decoded_instr* instr)
+{
+	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
+		RAISEin0_t(EXP_GP);
+	}
+	else {
+		MOV(EDX, 0);
+		MOV(R8D, CR0_idx - CR_offset);
+		CALL_F(&update_crN_helper<2>);
+
+		addr_t dst_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
+		ST_R32(CPU_CTX_EIP, dst_eip);
+		gen_link_direct(dst_eip + m_cpu->cpu_ctx.regs.cs_hidden.base, nullptr, 0);
+		m_cpu->tc->flags |= TC_FLG_DIRECT;
+		m_cpu->translate_next = 0;
+	}
+}
+
+void
 lc86_jit::cmc(decoded_instr *instr)
 {
 	assert(instr->i.opcode == 0xF5);
