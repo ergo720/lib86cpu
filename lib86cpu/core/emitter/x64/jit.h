@@ -105,6 +105,7 @@ public:
 	void lgdt(decoded_instr *instr);
 	void lidt(decoded_instr *instr);
 	void lldt(decoded_instr *instr);
+	void lmsw(decoded_instr* instr);
 	void lods(decoded_instr *instr);
 	void loop(decoded_instr *instr);
 	void lds(decoded_instr *instr);

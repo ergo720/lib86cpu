@@ -1277,7 +1277,10 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->lldt(&instr);
 			break;
 
-		case ZYDIS_MNEMONIC_LMSW:        BAD;
+		case ZYDIS_MNEMONIC_LMSW:
+			cpu->jit->lmsw(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_LODSB:
 		case ZYDIS_MNEMONIC_LODSD:
 		case ZYDIS_MNEMONIC_LODSW:

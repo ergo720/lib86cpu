@@ -6258,6 +6258,37 @@ lc86_jit::lldt(decoded_instr *instr)
 }
 
 void
+lc86_jit::lmsw(decoded_instr* instr)
+{
+	if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
+		RAISEin0_t(EXP_GP);
+	}
+	else {
+		get_rm<OPNUM_SINGLE>(instr,
+			[this](const op_info rm)
+			{
+				LD_R16(AX, rm.val);
+			},
+			[this](const op_info rm)
+			{
+				LD_MEMs(SIZE16);
+			});
+
+		if (IS_PE()) {
+			OR(AX, CR0_PE_MASK);
+		}
+
+		MOVZX(EDX, AX);
+		MOV(R8D, CR0_idx - CR_offset);
+		CALL_F(&update_crN_helper<1>);
+
+		ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
+		gen_no_link_checks();
+		m_cpu->translate_next = 0;
+	}
+}
+
+void
 lc86_jit::lods(decoded_instr *instr)
 {
 	switch (instr->i.opcode)
@@ -6500,7 +6531,7 @@ lc86_jit::mov(decoded_instr *instr)
 			case CR3_idx: {
 				Label ok = m_a.newLabel();
 				MOV(R8D, cr_idx - CR_offset);
-				CALL_F(&update_crN_helper);
+				CALL_F(&update_crN_helper<0>);
 				TEST(EAX, EAX);
 				BR_EQ(ok);
 				RAISEin0_f(EXP_GP);

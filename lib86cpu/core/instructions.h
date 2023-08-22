@@ -15,7 +15,7 @@ template<bool is_verr> void JIT_API verrw_helper(cpu_ctx_t *cpu_ctx, uint16_t se
 template<unsigned reg> uint32_t JIT_API mov_sel_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
 uint32_t JIT_API ltr_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
 uint32_t JIT_API lldt_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
-uint32_t JIT_API update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx);
+template<unsigned idx1> uint32_t JIT_API update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx);
 void JIT_API update_drN_helper(cpu_ctx_t *cpu_ctx, uint8_t dr_idx, uint32_t new_dr);
 uint32_t JIT_API divd_helper(cpu_ctx_t *cpu_ctx, uint32_t d, uint32_t eip);
 uint32_t JIT_API divw_helper(cpu_ctx_t *cpu_ctx, uint16_t d, uint32_t eip);

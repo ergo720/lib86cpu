@@ -793,25 +793,29 @@ lldt_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip)
 	return 0;
 }
 
-uint32_t
-update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
+template<unsigned idx1>
+uint32_t update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 {
+	// idx1 0 -> mov, 1 -> lmsw
+
 	switch (idx)
 	{
 	case 0:
-		if (((new_cr & CR0_PE_MASK) == 0 && (new_cr & CR0_PG_MASK) >> 31 == 1) ||
-			((new_cr & CR0_CD_MASK) == 0 && (new_cr & CR0_NW_MASK) >> 29 == 1)) {
-			return 1;
+		if constexpr (idx1 == 0) {
+			if (((new_cr & CR0_PE_MASK) == 0 && (new_cr & CR0_PG_MASK) >> 31 == 1) ||
+				((new_cr & CR0_CD_MASK) == 0 && (new_cr & CR0_NW_MASK) >> 29 == 1)) {
+				return 1;
+			}
+
+			// only flush the tlb if pg changed or wp changed and pg=1
+			if (((cpu_ctx->regs.cr0 & CR0_PG_MASK) != (new_cr & CR0_PG_MASK)) ||
+				(((cpu_ctx->regs.cr0 & CR0_WP_MASK) != (new_cr & CR0_WP_MASK)) && (new_cr & CR0_PG_MASK))) {
+				tlb_flush(cpu_ctx->cpu);
+			}
 		}
 
 		cpu_ctx->hflags = (((new_cr & CR0_EM_MASK) << 3) | (cpu_ctx->hflags & ~HFLG_CR0_EM));
 		cpu_ctx->hflags = (((new_cr & CR0_TS_MASK) << 7) | (cpu_ctx->hflags & ~HFLG_CR0_TS));
-
-		// only flush the tlb if pg changed or wp changed and pg=1
-		if (((cpu_ctx->regs.cr0 & CR0_PG_MASK) != (new_cr & CR0_PG_MASK)) ||
-			(((cpu_ctx->regs.cr0 & CR0_WP_MASK) != (new_cr & CR0_WP_MASK)) && (new_cr & CR0_PG_MASK))) {
-			tlb_flush(cpu_ctx->cpu);
-		}
 
 		if ((cpu_ctx->regs.cr0 & CR0_PE_MASK) != (new_cr & CR0_PE_MASK)) {
 			if (new_cr & CR0_PE_MASK) {
@@ -839,7 +843,15 @@ update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 			}
 		}
 
-		cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
+		if constexpr (idx1 == 0) {
+			cpu_ctx->regs.cr0 = ((new_cr & CR0_FLG_MASK) | CR0_ET_MASK);
+		}
+		else if constexpr (idx1 == 1) {
+			cpu_ctx->regs.cr0 = (((cpu_ctx->regs.cr0 & ~CR0_LMSW_MASK) | (new_cr & CR0_LMSW_MASK)) | CR0_ET_MASK);
+		}
+		else {
+			LIB86CPU_ABORT_msg("Unknown instruction specified with index %u", idx1);
+		}
 		break;
 
 	case 3:
@@ -1414,3 +1426,6 @@ template uint32_t mov_sel_pe_helper<ES_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, ui
 template uint32_t mov_sel_pe_helper<SS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
 template uint32_t mov_sel_pe_helper<FS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
 template uint32_t mov_sel_pe_helper<GS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+
+template uint32_t update_crN_helper<0>(cpu_ctx_t* cpu_ctx, uint32_t new_cr, uint8_t idx);
+template uint32_t update_crN_helper<1>(cpu_ctx_t* cpu_ctx, uint32_t new_cr, uint8_t idx);

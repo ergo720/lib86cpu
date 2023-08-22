@@ -284,6 +284,7 @@ void JIT_API tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define CR0_PE_MASK (1 << 0)
 #define CR0_FLG_MASK (CR0_PG_MASK | CR0_CD_MASK | CR0_NW_MASK | CR0_AM_MASK | CR0_WP_MASK | CR0_NE_MASK | CR0_ET_MASK |\
 CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
+#define CR0_LMSW_MASK (CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define CR3_PD_MASK 0xFFFFF000
 #define CR3_PCD_MASK (1 << 4)
 #define CR3_PWT_MASK (1 << 3)
