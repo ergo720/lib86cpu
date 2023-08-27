@@ -11,8 +11,14 @@
 
 #define CONTIGUOUS_MEMORY_BASE 0x80000000
 
-#define DBG_STR_PORT 0x200
-#define SYS_TYPE_PORT 0x204
+enum KERNEL_IO {
+	KERNEL_IO_BASE = 0X200,
+	DBG_STR,
+	SYS_TYPE,
+	ABORT,
+	KERNEL_IO_END = ABORT
+};
+constexpr size_t KERNEL_IO_SIZE = KERNEL_IO_END - KERNEL_IO_BASE;
 
 // Windows PE format definitions
 #define IMAGE_DOS_SIGNATURE 0x5A4D
@@ -123,7 +129,7 @@ host_read_handler(addr_t addr, void *opaque)
 {
 	switch (addr)
 	{
-	case SYS_TYPE_PORT:
+	case SYS_TYPE:
 		// For now, we always want an xbox system. 0: xbox, 1: chihiro, 2: devkit
 		return 0;
 
@@ -139,10 +145,14 @@ host_write_handler(addr_t addr, const uint32_t value, void* opaque)
 {
 	switch (addr)
 	{
-	case DBG_STR_PORT:
+	case DBG_STR:
 		// NOTE: get_host_ptr will only work if the string is allocated with a contiguous allocation in physical memory, to avoid
 		// issues with allocations spanning pages; cxbxrkrnl should guarantee this
 		std::printf("Received a new debug string from kernel:\n%s", get_host_ptr(static_cast<cpu_t *>(opaque), static_cast<addr_t>(value)));
+		break;
+
+	case ABORT:
+		cpu_exit(cpu);
 		break;
 
 	default:
@@ -220,7 +230,7 @@ gen_cxbxrkrnl_test(const std::string &executable)
 		return false;
 	}
 
-	if (!LC86_SUCCESS(mem_init_region_io(cpu, DBG_STR_PORT, 8, true, io_handlers_t{ .fnr32 = host_read_handler, .fnw32 = host_write_handler }, cpu))) {
+	if (!LC86_SUCCESS(mem_init_region_io(cpu, KERNEL_IO_BASE, KERNEL_IO_SIZE, true, io_handlers_t{ .fnr32 = host_read_handler, .fnw32 = host_write_handler }, cpu))) {
 		std::printf("Failed to initialize host communication i/o ports!\n");
 		return false;
 	}
