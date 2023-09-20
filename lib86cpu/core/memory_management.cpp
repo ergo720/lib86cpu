@@ -91,9 +91,9 @@ static addr_t tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 	}
 
 	const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
+	phys_addr = correct_phys_addr(cpu, phys_addr, region);
 	addr_t start_page = phys_addr & ~PAGE_MASK;
 	addr_t end_page = ((static_cast<uint64_t>(phys_addr) + PAGE_SIZE) & ~PAGE_MASK) - 1; // the cast avoids overflow on the last page at 0xFFFFF000
-	phys_addr = correct_phys_addr(cpu, phys_addr, region);
 
 	if (prot & MMU_SET_CODE) {
 		prot &= ~MMU_SET_CODE;
