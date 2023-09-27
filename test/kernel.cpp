@@ -1,5 +1,5 @@
 /*
- * lib86cpu cxbxrkrnl app test generator (https://github.com/ergo720/cxbxrkrnl)
+ * lib86cpu nboxkrnl app test generator (https://github.com/ergo720/nboxkrnl)
  * Demonstrates running a kernel inside lib86cpu
  *
  * ergo720                Copyright (c) 2022
@@ -147,7 +147,7 @@ host_write_handler(addr_t addr, const uint32_t value, void* opaque)
 	{
 	case DBG_STR:
 		// NOTE: get_host_ptr will only work if the string is allocated with a contiguous allocation in physical memory, to avoid
-		// issues with allocations spanning pages; cxbxrkrnl should guarantee this
+		// issues with allocations spanning pages; nboxkrnl should guarantee this
 		std::printf("Received a new debug string from kernel:\n%s", get_host_ptr(static_cast<cpu_t *>(opaque), static_cast<addr_t>(value)));
 		break;
 
@@ -161,7 +161,7 @@ host_write_handler(addr_t addr, const uint32_t value, void* opaque)
 }
 
 bool
-gen_cxbxrkrnl_test(const std::string &executable)
+gen_nboxkrnl_test(const std::string &executable)
 {
 	size_t ramsize = 64 * 1024 * 1024;
 
@@ -215,7 +215,7 @@ gen_cxbxrkrnl_test(const std::string &executable)
 	}
 
 	// Init lib86cpu
-	if (!LC86_SUCCESS(cpu_new(ramsize, cpu, nullptr, "cxbxrkrnl"))) {
+	if (!LC86_SUCCESS(cpu_new(ramsize, cpu, nullptr, "nboxkrnl"))) {
 		std::printf("Failed to create cpu!\n");
 		return false;
 	}

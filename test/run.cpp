@@ -164,7 +164,7 @@ main(int argc, char **argv)
 		break;
 
 	case 3:
-		if (gen_cxbxrkrnl_test(executable) == false) {
+		if (gen_nboxkrnl_test(executable) == false) {
 			if (cpu) {
 				cpu_free(cpu);
 			}
