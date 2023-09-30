@@ -145,11 +145,14 @@ host_write_handler(addr_t addr, const uint32_t value, void* opaque)
 {
 	switch (addr)
 	{
-	case DBG_STR:
-		// NOTE: get_host_ptr will only work if the string is allocated with a contiguous allocation in physical memory, to avoid
-		// issues with allocations spanning pages; nboxkrnl should guarantee this
-		std::printf("Received a new debug string from kernel:\n%s", get_host_ptr(static_cast<cpu_t *>(opaque), static_cast<addr_t>(value)));
-		break;
+	case DBG_STR: {
+		// The debug strings from nboxkrnl are 512 byte long at most
+		// Also, they might not be contiguous in physical memory, so we use mem_read_block_virt to avoid issues with allocations spanning pages
+		uint8_t buff[512];
+		mem_read_block_virt(static_cast<cpu_t *>(opaque), value, sizeof(buff), buff);
+		std::printf("Received a new debug string from kernel:\n%s", buff);
+	}
+	break;
 
 	case ABORT:
 		cpu_exit(cpu);
@@ -200,7 +203,7 @@ gen_nboxkrnl_test(const std::string &executable)
 		return false;
 	}
 
-	PIMAGE_NT_HEADERS32 peHeader = reinterpret_cast<PIMAGE_NT_HEADERS32>(reinterpret_cast<uint8_t*>(dosHeader) + dosHeader->e_lfanew);
+	PIMAGE_NT_HEADERS32 peHeader = reinterpret_cast<PIMAGE_NT_HEADERS32>(reinterpret_cast<uint8_t *>(dosHeader) + dosHeader->e_lfanew);
 	if (peHeader->Signature != IMAGE_NT_SIGNATURE ||
 		peHeader->FileHeader.Machine != IMAGE_FILE_MACHINE_I386 ||
 		peHeader->OptionalHeader.Magic != IMAGE_NT_OPTIONAL_HDR32_MAGIC ||
@@ -241,8 +244,8 @@ gen_nboxkrnl_test(const std::string &executable)
 
 	PIMAGE_SECTION_HEADER sections = reinterpret_cast<PIMAGE_SECTION_HEADER>(reinterpret_cast<uint8_t *>(peHeader) + sizeof(IMAGE_NT_HEADERS32));
 	for (uint16_t i = 0; i < peHeader->FileHeader.NumberOfSections; ++i) {
-		uint8_t* dest = &ram[peHeader->OptionalHeader.ImageBase - CONTIGUOUS_MEMORY_BASE + sections[i].VirtualAddress];
-		std::memcpy(dest, reinterpret_cast<uint8_t*>(dosHeader) + sections[i].PointerToRawData, sections[i].SizeOfRawData);
+		uint8_t *dest = &ram[peHeader->OptionalHeader.ImageBase - CONTIGUOUS_MEMORY_BASE + sections[i].VirtualAddress];
+		std::memcpy(dest, reinterpret_cast<uint8_t *>(dosHeader) + sections[i].PointerToRawData, sections[i].SizeOfRawData);
 		if (sections[i].SizeOfRawData < sections[i].Misc.VirtualSize) {
 			std::memset(dest + sections[i].SizeOfRawData, 0, sections[i].Misc.VirtualSize - sections[i].SizeOfRawData);
 		}
