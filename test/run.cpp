@@ -163,15 +163,6 @@ main(int argc, char **argv)
 		}
 		break;
 
-	case 3:
-		if (gen_nboxkrnl_test(executable) == false) {
-			if (cpu) {
-				cpu_free(cpu);
-			}
-			return 1;
-		}
-		break;
-
 	case 4:
 		gen_test80186_test(executable, syntax, use_dbg);
 		return 0;
