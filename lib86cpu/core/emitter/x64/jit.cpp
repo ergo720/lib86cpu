@@ -7020,9 +7020,6 @@ lc86_jit::movsx(decoded_instr *instr)
 	switch (instr->i.opcode)
 	{
 	case 0xBE:
-		m_cpu->size_mode = SIZE8;
-		[[fallthrough]];
-
 	case 0xBF: {
 		const auto dst = GET_REG(OPNUM_DST);
 		auto dst_host_reg = SIZED_REG(x64::rbx, dst.bits);
@@ -7034,8 +7031,9 @@ lc86_jit::movsx(decoded_instr *instr)
 				MOVSX(dst_host_reg, src_host_reg);
 				ST_REG_val(dst_host_reg, dst.val, dst.bits);
 			},
-			[this, dst_host_reg, dst](const op_info rm)
+			[this, dst_host_reg, dst, instr](const op_info rm)
 			{
+				m_cpu->size_mode = instr->i.opcode == 0xBE ? SIZE8 : SIZE16;
 				auto src_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
 				LD_MEM();
 				MOVSX(dst_host_reg, src_host_reg);
@@ -7055,9 +7053,6 @@ lc86_jit::movzx(decoded_instr *instr)
 	switch (instr->i.opcode)
 	{
 	case 0xB6:
-		m_cpu->size_mode = SIZE8;
-		[[fallthrough]];
-
 	case 0xB7: {
 		const auto dst = GET_REG(OPNUM_DST);
 		auto dst_host_reg = SIZED_REG(x64::rbx, dst.bits);
@@ -7069,8 +7064,9 @@ lc86_jit::movzx(decoded_instr *instr)
 				MOVZX(dst_host_reg, src_host_reg);
 				ST_REG_val(dst_host_reg, dst.val, dst.bits);
 			},
-			[this, dst_host_reg, dst](const op_info rm)
+			[this, dst_host_reg, dst, instr](const op_info rm)
 			{
+				m_cpu->size_mode = instr->i.opcode == 0xB6 ? SIZE8 : SIZE16;
 				auto src_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
 				LD_MEM();
 				MOVZX(dst_host_reg, src_host_reg);
