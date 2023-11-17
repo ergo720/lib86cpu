@@ -4020,7 +4020,7 @@ lc86_jit::bsr(decoded_instr *instr)
 void
 lc86_jit::bswap(decoded_instr *instr)
 {
-	auto reg = GET_REG(instr->o[OPNUM_SINGLE].reg.value);
+	auto reg = GET_REG(OPNUM_SINGLE);
 	LD_R32(EAX, reg.val);
 	BSWAP(EAX);
 	ST_R32(reg.val, EAX);
