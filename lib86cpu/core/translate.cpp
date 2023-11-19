@@ -909,8 +909,12 @@ cpu_translate(cpu_t *cpu)
 		if (ZYAN_SUCCESS(status)) {
 			// successfully decoded
 
+			// NOTE: the second OR for disas_ctx->flags is to handle the edge case where the last byte of the current instructions ends exactly at a page boundary. In this case,
+			// the current block can be added to the code cache (so DISAS_FLG_PAGE_CROSS should not be set), but the translation of this block must terminate now (so
+			// DISAS_FLG_PAGE_CROSS_NEXT should be set)
 			cpu->instr_bytes = instr.i.length;
 			disas_ctx->flags |= ((disas_ctx->virt_pc & ~PAGE_MASK) != ((disas_ctx->virt_pc + cpu->instr_bytes - 1) & ~PAGE_MASK)) << 2;
+			disas_ctx->flags |= ((disas_ctx->virt_pc & ~PAGE_MASK) != ((disas_ctx->virt_pc + cpu->instr_bytes) & ~PAGE_MASK)) << 5;
 			disas_ctx->pc += cpu->instr_bytes;
 			disas_ctx->virt_pc += cpu->instr_bytes;
 
@@ -1572,7 +1576,7 @@ cpu_translate(cpu_t *cpu)
 		cpu->virt_pc += cpu->instr_bytes;
 		cpu->tc->size += cpu->instr_bytes;
 
-	} while ((cpu->translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR))) == 1);
+	} while ((cpu->translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR | DISAS_FLG_PAGE_CROSS_NEXT))) == 1);
 }
 
 uint32_t

@@ -733,7 +733,7 @@ lc86_jit::gen_tc_epilogue()
 {
 	// update the eip if we stopped decoding without a terminating instr
 	if (m_cpu->translate_next == 1) {
-		assert((DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR) != 0);
+		assert((m_cpu->disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_PAGE_CROSS_NEXT | DISAS_FLG_ONE_INSTR)) != 0);
 		assert((m_cpu->tc->flags & TC_FLG_LINK_MASK) == 0);
 
 		MOV(MEMD32(RCX, CPU_CTX_EIP), m_cpu->virt_pc - m_cpu->cpu_ctx.regs.cs_hidden.base);

@@ -88,14 +88,15 @@ void JIT_API tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define MMU_SET_CODE    (1 << 4)
 
 // disassembly context flags
-#define DISAS_FLG_CS32         (1 << 0)
-#define DISAS_FLG_SS32         (1 << 1)
-#define DISAS_FLG_PAGE_CROSS   (1 << 2)
-#define DISAS_FLG_INHIBIT_INT  (1 << 3)
-#define DISAS_FLG_PE           HFLG_PE_MODE          // (1 << 4)
-#define DISAS_FLG_FETCH_FAULT  DISAS_FLG_PAGE_CROSS  // (1 << 2)
-#define DISAS_FLG_DBG_FAULT    DISAS_FLG_PAGE_CROSS  // (1 << 2)
-#define DISAS_FLG_ONE_INSTR    CPU_DISAS_ONE         // (1 << 7)
+#define DISAS_FLG_CS32             (1 << 0)
+#define DISAS_FLG_SS32             (1 << 1)
+#define DISAS_FLG_PAGE_CROSS       (1 << 2)
+#define DISAS_FLG_INHIBIT_INT      (1 << 3)
+#define DISAS_FLG_PAGE_CROSS_NEXT  (1 << 5)
+#define DISAS_FLG_PE               HFLG_PE_MODE          // (1 << 4)
+#define DISAS_FLG_FETCH_FAULT      DISAS_FLG_PAGE_CROSS  // (1 << 2)
+#define DISAS_FLG_DBG_FAULT        DISAS_FLG_PAGE_CROSS  // (1 << 2)
+#define DISAS_FLG_ONE_INSTR        CPU_DISAS_ONE         // (1 << 7)
 
 // tc struct flags/offsets
 #define TC_JMP_DST_PC     0
