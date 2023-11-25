@@ -30,13 +30,9 @@ void
 cpu_rdtsc_helper(cpu_ctx_t *cpu_ctx)
 {
 	uint64_t elapsed_us = get_current_time() - cpu_ctx->cpu->tsc_clock.last_host_ticks;
-	elapsed_us *= 1000000;
-	elapsed_us /= cpu_ctx->cpu->timer.host_freq;
-	uint64_t elapsed_ticks = elapsed_us / 1000000;
-	elapsed_ticks *= cpu_ctx->cpu->tsc_clock.cpu_freq;
-	elapsed_ticks += cpu_ctx->cpu->tsc_clock.offset;
-	cpu_ctx->regs.edx = (elapsed_ticks >> 32);
-	cpu_ctx->regs.eax = elapsed_ticks;
+	elapsed_us = muldiv128(elapsed_us, cpu_ctx->cpu->tsc_clock.cpu_freq, cpu_ctx->cpu->timer.host_freq) + cpu_ctx->cpu->tsc_clock.offset;
+	cpu_ctx->regs.edx = (elapsed_us >> 32);
+	cpu_ctx->regs.eax = elapsed_us;
 }
 
 void
