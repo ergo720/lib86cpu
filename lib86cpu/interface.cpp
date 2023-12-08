@@ -175,6 +175,7 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 	std::random_device rd;
 	cpu->rng_gen.seed(rd());
 	cpu->cpu_thr_id = std::thread::id();
+	cpu->dbg_first_run = true;
 
 	LOG(log_level::info, "Created new cpu \"%s\"", cpu->cpu_name);
 

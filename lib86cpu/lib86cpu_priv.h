@@ -193,7 +193,7 @@ struct cpu_t {
 	tlb_t dtlb[DTLB_NUM_SETS][DTLB_NUM_LINES]; // data tlb
 	uint16_t num_tc; // num of tc actually emitted, tc's might not be present in the code cache
 	uint8_t microcode_updated;
-	bool state_loaded;
+	bool state_loaded, dbg_first_run;
 	struct _tsc_clock {
 		uint64_t offset;
 		uint64_t last_host_ticks;
