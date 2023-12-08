@@ -305,8 +305,15 @@ dbg_add_exp_hook(cpu_ctx_t *cpu_ctx)
 		return;
 	}
 
-	hook_add(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr, reinterpret_cast<hook_t>(&dbg_exp_handler));
-	hook_add(cpu_ctx->cpu, cpu_ctx->cpu->db_addr, reinterpret_cast<hook_t>(&dbg_exp_handler));
+	uint8_t status = (hook_add(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr, reinterpret_cast<hook_t>(&dbg_exp_handler)) == lc86_status::success);
+	status &= (hook_add(cpu_ctx->cpu, cpu_ctx->cpu->db_addr, reinterpret_cast<hook_t>(&dbg_exp_handler)) == lc86_status::success);
+
+	if (status) {
+		LOG(log_level::info, "Successfully installed hook for the exception handler");
+	}
+	else {
+		LOG(log_level::warn, "Failed to install hook for the exception handler: hook_add failed");
+	}
 }
 
 static std::vector<std::pair<addr_t, std::string>>
