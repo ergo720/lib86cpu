@@ -1144,8 +1144,7 @@ hook_add(cpu_t *cpu, addr_t addr, hook_t hook_addr)
 	// of the translation of a new code block)
 
 	try {
-		bool is_code;
-		addr_t phys_addr = get_write_addr(cpu, addr, 2, cpu->cpu_ctx.regs.eip, &is_code);
+		addr_t phys_addr = get_code_addr(cpu, addr, cpu->cpu_ctx.regs.eip);
 		tc_invalidate(&cpu->cpu_ctx, phys_addr, 1, cpu->cpu_ctx.regs.eip);
 	}
 	catch (host_exp_t type) {
