@@ -349,7 +349,8 @@ dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num)
 	// setup common disas context
 	disas_ctx_t disas_ctx;
 	disas_ctx.flags = ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT) |
-		((cpu->cpu_ctx.hflags & HFLG_PE_MODE) >> (PE_MODE_SHIFT - 1));
+		((cpu->cpu_ctx.hflags & HFLG_SS32) >> (SS32_SHIFT - 1)) |
+		(cpu->cpu_ctx.hflags & HFLG_PE_MODE);
 	disas_ctx.virt_pc = pc;
 	disas_ctx.pc = get_code_addr<false>(cpu, disas_ctx.virt_pc, cpu->cpu_ctx.regs.eip, &disas_ctx);
 	if (disas_ctx.exp_data.idx == EXP_PF) {
