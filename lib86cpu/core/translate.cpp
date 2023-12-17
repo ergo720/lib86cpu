@@ -1937,6 +1937,15 @@ cpu_exec_trampoline(cpu_t *cpu, const uint32_t ret_eip)
 	cpu_main_loop<true, false>(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
 }
 
+void
+dbg_exec_original_instr(cpu_t *cpu)
+{
+	cpu->cpu_flags |= CPU_DISAS_ONE;
+	// run the main loop only once, since we only execute the original instr that was replaced by int3
+	int i = 0;
+	cpu_main_loop<false, false>(cpu, [&i]() { return i++ == 0; });
+}
+
 template translated_code_t *cpu_raise_exception<0, true>(cpu_ctx_t *cpu_ctx);
 template translated_code_t *cpu_raise_exception<1, true>(cpu_ctx_t *cpu_ctx);
 template translated_code_t *cpu_raise_exception<2, true>(cpu_ctx_t *cpu_ctx);

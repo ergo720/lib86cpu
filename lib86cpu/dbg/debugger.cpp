@@ -515,6 +515,9 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 				iret_real_helper(cpu_ctx, (cpu_ctx->hflags & HFLG_CS32) ? SIZE32 : SIZE16, cpu_ctx->regs.eip);
 			}
 			cpu_ctx->regs.eip = ret_eip - 1;
+			dbg_remove_sw_breakpoints(cpu_ctx->cpu, pc);
+			dbg_exec_original_instr(cpu_ctx->cpu);
+			dbg_apply_sw_breakpoints(cpu_ctx->cpu, pc);
 		}
 		catch (host_exp_t type) {
 			// we can't handle an exception here, so abort
@@ -573,8 +576,8 @@ dbg_insert_sw_breakpoint(cpu_t *cpu, addr_t addr)
 	return inserted;
 }
 
-void
-dbg_apply_sw_breakpoints(cpu_t *cpu)
+template<typename T>
+static void dbg_update_sw_breakpoints(cpu_t *cpu, T &&lambda)
 {
 	// set cpl to zero and clear wp of cr0, so that we can write to read-only pages
 	uint8_t old_cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
@@ -588,14 +591,7 @@ dbg_apply_sw_breakpoints(cpu_t *cpu)
 	wp_data.swap(cpu->wp_data);
 	wp_io.swap(cpu->wp_io);
 
-	for (const auto &elem : break_list) {
-		addr_t addr = elem.first;
-
-		// the mem accesses below cannot raise page faults since break_list can only contain valid pages because of the checks done in insert_sw_breakpoint
-		uint8_t original_byte = mem_read_helper<uint8_t>(&cpu->cpu_ctx, addr, cpu->cpu_ctx.regs.eip, 0);
-		mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, 0xCC, cpu->cpu_ctx.regs.eip, 0);
-		break_list.insert_or_assign(addr, original_byte);
-	}
+	lambda(cpu);
 
 	(cpu->cpu_ctx.hflags &= ~HFLG_CPL) |= old_cpl;
 	(cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK) |= old_wp;
@@ -604,33 +600,59 @@ dbg_apply_sw_breakpoints(cpu_t *cpu)
 }
 
 void
+dbg_apply_sw_breakpoints(cpu_t *cpu)
+{
+	dbg_update_sw_breakpoints(cpu, [](cpu_t *cpu) {
+		for (const auto &elem : break_list) {
+			addr_t addr = elem.first;
+
+			// the mem accesses below cannot raise page faults since break_list can only contain valid pages because of the checks done in dbg_insert_sw_breakpoint
+			uint8_t original_byte = mem_read_helper<uint8_t>(&cpu->cpu_ctx, addr, cpu->cpu_ctx.regs.eip, 0);
+			mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, 0xCC, cpu->cpu_ctx.regs.eip, 0);
+			break_list.insert_or_assign(addr, original_byte);
+		}
+		});
+}
+
+void
+dbg_apply_sw_breakpoints(cpu_t *cpu, addr_t addr)
+{
+	dbg_update_sw_breakpoints(cpu, [addr](cpu_t *cpu) {
+		// the mem accesses below cannot raise page faults since break_list can only contain valid pages because of the checks done in dbg_insert_sw_breakpoint
+		uint8_t original_byte = mem_read_helper<uint8_t>(&cpu->cpu_ctx, addr, cpu->cpu_ctx.regs.eip, 0);
+		mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, 0xCC, cpu->cpu_ctx.regs.eip, 0);
+		break_list.insert_or_assign(addr, original_byte);
+		});
+}
+
+void
 dbg_remove_sw_breakpoints(cpu_t *cpu)
 {
-	// set cpl to zero and clear wp of cr0, so that we can write to read-only pages
-	uint8_t old_cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
-	cpu->cpu_ctx.hflags &= ~HFLG_CPL;
-	uint32_t old_wp = cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK;
-	cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK;
+	dbg_update_sw_breakpoints(cpu, [](cpu_t *cpu) {
+		for (const auto &elem : break_list) {
+			const auto &[addr, original_byte] = elem;
 
-	// disable debug exp since we only want to remove a breakpoint
-	std::vector<wp_info<addr_t>> wp_data;
-	std::vector<wp_info<port_t>> wp_io;
-	wp_data.swap(cpu->wp_data);
-	wp_io.swap(cpu->wp_io);
-
-	for (const auto &elem : break_list) {
-		const auto &[addr, original_byte] = elem;
-
-		try {
-			mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, original_byte, cpu->cpu_ctx.regs.eip, 0);
+			try {
+				mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, original_byte, cpu->cpu_ctx.regs.eip, 0);
+			}
+			catch (host_exp_t type) {
+				LIB86CPU_ABORT_msg("Unhandled page fault while removing a sw breakpoint");
+			}
 		}
-		catch (host_exp_t type) {
-			// this can only happen when the page is invalid
-		}
-	}
+		});
+}
 
-	(cpu->cpu_ctx.hflags &= ~HFLG_CPL) |= old_cpl;
-	(cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK) |= old_wp;
-	wp_data.swap(cpu->wp_data);
-	wp_io.swap(cpu->wp_io);
+void
+dbg_remove_sw_breakpoints(cpu_t *cpu, addr_t addr)
+{
+	dbg_update_sw_breakpoints(cpu, [addr](cpu_t *cpu) {
+		if (auto it = break_list.find(addr); it != break_list.end()) {
+			try {
+				mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, it->second, cpu->cpu_ctx.regs.eip, 0);
+			}
+			catch (host_exp_t type) {
+				LIB86CPU_ABORT_msg("Unhandled page fault while removing a sw breakpoint");
+			}
+		}
+		});
 }
