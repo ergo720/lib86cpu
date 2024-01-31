@@ -25,14 +25,6 @@ struct op_info {
 	op_info(size_t val_, size_t bits_) : val(val_), bits(bits_) {}
 };
 
-enum class fpu_instr_t : int {
-	integer8,
-	integer16,
-	integer32,
-	integer64,
-	float_,
-	bcd,
-};
 
 class lc86_jit : public Target {
 public:
@@ -253,8 +245,6 @@ private:
 	template<unsigned num, unsigned store_at = 0, bool write_esp = true>
 	void gen_stack_pop();
 	void gen_simd_mem_align_check();
-	template<bool is_push, fpu_instr_t instr_type>
-	void gen_fpu_stack_check();
 	void gen_fpu_exp_post_check();
 	void gen_set_host_fpu_ctx();
 	template<bool update_fdp>

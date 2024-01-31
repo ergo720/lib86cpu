@@ -9,6 +9,7 @@
 #include "decode.h"
 #include "support.h"
 #include "breakpoint.h"
+#include "fpu.h"
 
 
 template<bool remove_hook = false>
@@ -21,8 +22,6 @@ addr_t get_pc(cpu_ctx_t *cpu_ctx);
 template<unsigned is_intn = 0, bool is_hw_int = false>
 translated_code_t * JIT_API cpu_raise_exception(cpu_ctx_t *cpu_ctx);
 uint32_t JIT_API cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
-void fpu_init(cpu_t *cpu);
-void JIT_API fpu_update_tag(cpu_ctx_t *cpu_ctx, uint32_t idx);
 void halt_loop(cpu_t *cpu);
 void JIT_API tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 
@@ -422,7 +421,7 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 // fpu indefinite values
 #define FPU_INTEGER_INDEFINITE8      (1 << 7)
 #define FPU_INTEGER_INDEFINITE16     (1 << 15)
-#define FPU_INTEGER_INDEFINITE32     (1 << 31)
+#define FPU_INTEGER_INDEFINITE32     (1UL << 31)
 #define FPU_INTEGER_INDEFINITE64     (1ULL << 63)
 #define FPU_QNAN_FLOAT_INDEFINITE64  0xC000000000000000 // mantissa part
 #define FPU_QNAN_FLOAT_INDEFINITE16  0xFFFF             // exponent and sign parts

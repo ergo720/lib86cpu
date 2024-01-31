@@ -126,6 +126,7 @@ set(HEADERS
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/allocator.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/breakpoint.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/decode.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/fpu.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/helpers.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/instructions.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/internal.h"
