@@ -5214,6 +5214,30 @@ lc86_jit::fnstsw(decoded_instr *instr)
 }
 
 void
+lc86_jit::fwait(decoded_instr *instr)
+{
+	if ((m_cpu->cpu_ctx.hflags & (HFLG_CR0_MP | HFLG_CR0_TS)) == (HFLG_CR0_MP | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		Label no_exp = m_a.newLabel();
+		LD_R16(AX, CPU_CTX_FSTATUS);
+		TEST(AX, FPU_EXP_ALL);
+		BR_EQ(no_exp);
+		LD_R16(AX, CPU_CTX_FCTRL);
+		AND(AX, FPU_EXP_ALL);
+		CMP(AX, FPU_EXP_ALL);
+		BR_EQ(no_exp);
+		static const char *abort_msg = "Unmasked fpu exceptions are not supported";
+		MOV(RCX, abort_msg);
+		MOV(RAX, &cpu_runtime_abort);
+		CALL(RAX); // won't return
+		INT3();
+		m_a.bind(no_exp);
+	}
+}
+
+void
 lc86_jit::fxrstor(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
