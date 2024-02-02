@@ -1158,6 +1158,10 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->fninit(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_FNSTCW:
+			cpu->jit->fnstcw(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_FNSTSW:
 			cpu->jit->fnstsw(&instr);
 			break;

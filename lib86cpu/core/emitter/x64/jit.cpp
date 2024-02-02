@@ -5194,6 +5194,31 @@ lc86_jit::fninit(decoded_instr *instr)
 }
 
 void
+lc86_jit::fnstcw(decoded_instr *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		LD_R16(R8W, CPU_CTX_FCTRL);
+		LD_R16(AX, FPU_DATA_FRP);
+		AND(R8W, FPU_EXP_ALL);
+		AND(AX, FPU_FLG_PC | FPU_FLG_RC);
+		OR(R8W, AX);
+		OR(R8W, 0x40);
+		get_rm<OPNUM_SINGLE>(instr,
+			[](const op_info rm)
+			{
+				assert(0);
+			},
+			[this](const op_info rm)
+			{
+				ST_MEMs(R8W, SIZE16);
+			});
+	}
+}
+
+void
 lc86_jit::fnstsw(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {

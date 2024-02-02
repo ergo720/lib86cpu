@@ -420,6 +420,9 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define FPU_TOP_SHIFT  11
 #define FPU_C3_SHIFT   14
 
+// fpu cctrl flags
+#define FPU_FLG_PC     (3 << 8)
+#define FPU_FLG_RC     (3 << 10)
 
 // fpu indefinite values
 #define FPU_INTEGER_INDEFINITE8      (1 << 7)
