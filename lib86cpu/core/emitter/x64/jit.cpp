@@ -5198,6 +5198,19 @@ lc86_jit::fldcw(decoded_instr *instr)
 }
 
 void
+lc86_jit::fnclex(decoded_instr *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		LD_R16(AX, CPU_CTX_FSTATUS);
+		AND(AX, ~(FPU_FLG_SF | FPU_FLG_ES | FPU_FLG_BSY | FPU_EXP_ALL));
+		ST_R16(CPU_CTX_FSTATUS, AX);
+	}
+}
+
+void
 lc86_jit::fninit(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
