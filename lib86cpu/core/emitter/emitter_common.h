@@ -117,7 +117,6 @@
 #define CPU_CTX_XMM7         offsetof(cpu_ctx_t, regs.xmm[7].low)
 
 #define FPU_DATA_FTOP        offsetof(cpu_ctx_t, fpu_data.ftop)
-#define FPU_DATA_FES         offsetof(cpu_ctx_t, fpu_data.fes)
 #define FPU_DATA_FRP         offsetof(cpu_ctx_t, fpu_data.frp)
 
 #define CPU_EXP_ADDR         offsetof(cpu_ctx_t, exp_info.exp_data.fault_addr)

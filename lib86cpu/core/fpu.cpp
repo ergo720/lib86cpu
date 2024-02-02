@@ -12,8 +12,8 @@ fpu_init(cpu_t *cpu)
 {
 	// other fpu regs are already zeroed out by cpu_reset
 	cpu->cpu_ctx.regs.fctrl = 0x40;
+	cpu->cpu_ctx.regs.fstatus = 0;
 	cpu->cpu_ctx.fpu_data.ftop = 0;
-	cpu->cpu_ctx.fpu_data.fes = 0;
 	cpu->cpu_ctx.fpu_data.frp = cpu->cpu_ctx.regs.fctrl | FPU_EXP_ALL;
 	for (auto &tag : cpu->cpu_ctx.regs.ftags) {
 		tag = FPU_TAG_ZERO;
@@ -45,8 +45,8 @@ uint32_t fpu_stack_check(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val)
 	// an appropriate indefinite value when it detects a masked stack exception
 	// NOTE: we only support masked stack exceptions for now
 
-	*sw = 0;
-	uint32_t ftop;
+	uint32_t ftop, fstatus = cpu_ctx->regs.fstatus;
+	*sw = fstatus;
 	bool no_stack_fault;
 	if constexpr (is_push) {
 		// detect stack overflow
@@ -71,7 +71,6 @@ uint32_t fpu_stack_check(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val)
 			cpu_runtime_abort(abort_msg); // won't return
 		}
 		// stack fault exception masked, write an indefinite value, so that the fpu instr uses it
-		uint32_t fstatus = cpu_ctx->regs.fstatus;
 		fstatus |= (FPU_FLG_IE | FPU_FLG_SF | (is_push ? (1 << FPU_C1_SHIFT) : (0 << FPU_C1_SHIFT)));
 		*sw = fstatus;
 

@@ -5214,7 +5214,6 @@ lc86_jit::fninit(decoded_instr *instr)
 		ST_R32(CPU_CTX_FDP, 0);
 		ST_R16(CPU_CTX_FOP, 0);
 		ST_R16(FPU_DATA_FTOP, 0);
-		ST_R16(FPU_DATA_FES, 0);
 		ST_R16(FPU_DATA_FRP, 0x37F);
 	}
 }
@@ -5252,6 +5251,10 @@ lc86_jit::fnstsw(decoded_instr *instr)
 	}
 	else {
 		LD_R16(R8W, CPU_CTX_FSTATUS);
+		LD_R16(AX, FPU_DATA_FTOP);
+		AND(R8W, ~(3 << 11));
+		SHL(AX, 11);
+		OR(R8W, AX);
 		get_rm<OPNUM_SINGLE>(instr,
 			[this](const op_info rm)
 			{
@@ -5273,11 +5276,7 @@ lc86_jit::fwait(decoded_instr *instr)
 	else {
 		Label no_exp = m_a.newLabel();
 		LD_R16(AX, CPU_CTX_FSTATUS);
-		TEST(AX, FPU_EXP_ALL);
-		BR_EQ(no_exp);
-		LD_R16(AX, CPU_CTX_FCTRL);
-		AND(AX, FPU_EXP_ALL);
-		CMP(AX, FPU_EXP_ALL);
+		TEST(AX, FPU_FLG_ES);
 		BR_EQ(no_exp);
 		static const char *abort_msg = "Unmasked fpu exceptions are not supported";
 		MOV(RCX, abort_msg);
