@@ -20,21 +20,26 @@ fpu_init(cpu_t *cpu)
 	}
 }
 
-void
-fpu_update_tag(cpu_ctx_t *cpu_ctx, uint32_t idx)
+template<bool is_push>
+void fpu_update_tag(cpu_ctx_t *cpu_ctx, uint32_t idx)
 {
-	uint16_t exp = cpu_ctx->regs.fr[idx].high & 0x7FFF;
-	uint64_t mant = cpu_ctx->regs.fr[idx].low;
-	if (exp == 0 && mant == 0) { // zero
-		cpu_ctx->regs.ftags[idx] = FPU_TAG_ZERO;
+	if constexpr (is_push) {
+		uint16_t exp = cpu_ctx->regs.fr[idx].high & 0x7FFF;
+		uint64_t mant = cpu_ctx->regs.fr[idx].low;
+		if (exp == 0 && mant == 0) { // zero
+			cpu_ctx->regs.ftags[idx] = FPU_TAG_ZERO;
+		}
+		else if ((exp == 0) || // denormal
+			(exp == 0x7FFF) || // NaN or infinity
+			((mant & (1ULL << 63)) == 0)) { // unnormal
+			cpu_ctx->regs.ftags[idx] = FPU_TAG_SPECIAL;
+		}
+		else { // normal
+			cpu_ctx->regs.ftags[idx] = FPU_TAG_VALID;
+		}
 	}
-	else if ((exp == 0) || // denormal
-		(exp == 0x7FFF) || // NaN or infinity
-		((mant & (1ULL << 63)) == 0)) { // unnormal
-		cpu_ctx->regs.ftags[idx] = FPU_TAG_SPECIAL;
-	}
-	else { // normal
-		cpu_ctx->regs.ftags[idx] = FPU_TAG_VALID;
+	else {
+		cpu_ctx->regs.ftags[idx] = FPU_TAG_EMPTY;
 	}
 }
 
@@ -58,9 +63,9 @@ uint32_t fpu_stack_check(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val)
 	else {
 		// detect stack underflow
 		ftop = cpu_ctx->fpu_data.ftop;
+		no_stack_fault = cpu_ctx->regs.ftags[ftop] != FPU_TAG_EMPTY;
 		ftop += 1;
 		ftop &= 7;
-		no_stack_fault = cpu_ctx->regs.ftags[ftop] != FPU_TAG_EMPTY;
 	}
 
 	if (!no_stack_fault) {
@@ -122,3 +127,5 @@ template uint32_t fpu_stack_check<true, fpu_instr_t::float_>(cpu_ctx_t *cpu_ctx,
 template uint32_t fpu_stack_check<false, fpu_instr_t::float_>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
 template uint32_t fpu_stack_check<true, fpu_instr_t::bcd>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
 template uint32_t fpu_stack_check<false, fpu_instr_t::bcd>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
+template void fpu_update_tag<true>(cpu_ctx_t *cpu_ctx, uint32_t idx);
+template void fpu_update_tag<false>(cpu_ctx_t *cpu_ctx, uint32_t idx);

@@ -3482,7 +3482,7 @@ void lc86_jit::float_load_constant(decoded_instr *instr)
 		gen_update_fpu_ptr<false>(instr);
 		RESTORE_FPU_CTX();
 		MOV(EDX, EBX);
-		CALL_F(&fpu_update_tag);
+		CALL_F(&fpu_update_tag<true>);
 	}
 }
 
@@ -5236,7 +5236,7 @@ lc86_jit::fld(decoded_instr *instr)
 
 		RESTORE_FPU_CTX();
 		MOV(EDX, EBX);
-		CALL_F(&fpu_update_tag);
+		CALL_F(&fpu_update_tag<true>);
 	}
 }
 
@@ -5461,7 +5461,7 @@ lc86_jit::fstp(decoded_instr *instr)
 
 		RESTORE_FPU_CTX();
 		MOV(EDX, R9D);
-		CALL_F(&fpu_update_tag);
+		CALL_F(&fpu_update_tag<false>);
 	}
 }
 
