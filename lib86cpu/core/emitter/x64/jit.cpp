@@ -349,6 +349,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define TEST(dst, src) m_a.test(dst, src)
 #define ADD(dst, src) m_a.add(dst, src)
 #define SUB(dst, src) m_a.sub(dst, src)
+#define INC(dst) m_a.inc(dst)
 #define DEC(dst) m_a.dec(dst)
 #define CMP(dst, src) m_a.cmp(dst, src)
 #define MUL(op) m_a.mul(op)
@@ -2378,9 +2379,9 @@ lc86_jit::gen_fpu_exp_post_check()
 	FNSTSW(AX);
 	TEST(AX, FPU_EXP_ALL);
 	BR_EQ(no_exp);
-	LD_R16(DX, CPU_CTX_FCTRL);
-	AND(DX, FPU_EXP_ALL);
-	CMP(DX, FPU_EXP_ALL);
+	LD_R16(R9W, CPU_CTX_FCTRL);
+	AND(R9W, FPU_EXP_ALL);
+	CMP(R9W, FPU_EXP_ALL);
 	BR_EQ(no_exp);
 	static const char *abort_msg = "Unmasked fpu exceptions are not supported";
 	MOV(RCX, abort_msg);
@@ -5389,11 +5390,12 @@ lc86_jit::fstp(decoded_instr *instr)
 		MOV(MEMD64(RSP, LOCAL_VARS_off(0)), 0);
 		gen_fpu_stack_fault_check<false, fpu_instr_t::float_>();
 		gen_set_host_fpu_ctx();
-		MOV(R9D, EAX);
-		DEC(R9D);
+		MOV(EDX, EAX);
+		MOV(MEMD32(RSP, LOCAL_VARS_off(4)), EAX);
+		INC(EBX);
+		AND(EBX, 7);
 		TEST(MEMD64(RSP, LOCAL_VARS_off(0)), 0);
 		BR_NE(stack_fault);
-		MOV(EDX, R9D);
 		MOV(EAX, sizeof(uint80_t));
 		MUL(DX);
 		FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0));
@@ -5427,8 +5429,8 @@ lc86_jit::fstp(decoded_instr *instr)
 				case 0xDD:
 					FSTP(MEMD64(RSP, LOCAL_VARS_off(0)));
 					gen_fpu_exp_post_check();
-					MOV(R8D, MEMD64(RSP, LOCAL_VARS_off(0)));
-					ST_MEMs(R8D, SIZE64);
+					MOV(R8, MEMD64(RSP, LOCAL_VARS_off(0)));
+					ST_MEMs(R8, SIZE64);
 					break;
 
 				case 0xDB:
@@ -5447,7 +5449,7 @@ lc86_jit::fstp(decoded_instr *instr)
 			});
 
 		RESTORE_FPU_CTX();
-		MOV(EDX, R9D);
+		MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(4)));
 		CALL_F(&fpu_update_tag<false>);
 	}
 }

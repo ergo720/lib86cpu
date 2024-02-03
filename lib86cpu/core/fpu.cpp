@@ -46,8 +46,8 @@ void fpu_update_tag(cpu_ctx_t *cpu_ctx, uint32_t idx)
 template<bool is_push, fpu_instr_t instr_type>
 uint32_t fpu_stack_check(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val)
 {
-	// this function returns the fpu stack top after the push/pop, and the flags of the status word following a stack fault. It also writes
-	// an appropriate indefinite value when it detects a masked stack exception
+	// this function returns the fpu stack pointer to the value modified by the push/pop, and the flags of the status word following a stack fault.
+	// It also writes an appropriate indefinite value when it detects a masked stack exception
 	// NOTE: we only support masked stack exceptions for now
 
 	uint32_t ftop, fstatus = cpu_ctx->regs.fstatus;
@@ -64,8 +64,6 @@ uint32_t fpu_stack_check(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val)
 		// detect stack underflow
 		ftop = cpu_ctx->fpu_data.ftop;
 		no_stack_fault = cpu_ctx->regs.ftags[ftop] != FPU_TAG_EMPTY;
-		ftop += 1;
-		ftop &= 7;
 	}
 
 	if (!no_stack_fault) {
