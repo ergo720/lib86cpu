@@ -1154,8 +1154,36 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->fld(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_FLD1:
+			cpu->jit->fld1(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_FLDCW:
 			cpu->jit->fldcw(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_FLDL2E:
+			cpu->jit->fldl2e(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_FLDL2T:
+			cpu->jit->fldl2t(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_FLDLG2:
+			cpu->jit->fldlg2(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_FLDLN2:
+			cpu->jit->fldln2(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_FLDPI:
+			cpu->jit->fldpi(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_FLDZ:
+			cpu->jit->fldz(&instr);
 			break;
 
 		case ZYDIS_MNEMONIC_FNCLEX:

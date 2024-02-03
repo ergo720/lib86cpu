@@ -397,6 +397,13 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define FNCLEX() m_a.fnclex()
 #define FLD(src) m_a.fld(src)
 #define FSTP(dst) m_a.fstp(dst)
+#define FLD1(dst) m_a.fld1(dst)
+#define FLDL2T(dst) m_a.fldl2t(dst)
+#define FLDL2E(dst) m_a.fldl2e(dst)
+#define FLDPI(dst) m_a.fldpi(dst)
+#define FLDLG2(dst) m_a.fldlg2(dst)
+#define FLDLN2(dst) m_a.fldln2(dst)
+#define FLDZ(dst) m_a.fldz(dst)
 
 #define MOVAPS(dst, src) m_a.movaps(dst, src)
 #define XORPS(dst, src) m_a.xorps(dst, src)
@@ -3417,6 +3424,60 @@ void lc86_jit::int_(decoded_instr *instr)
 	}
 }
 
+template<unsigned idx>
+void lc86_jit::float_load_constant(decoded_instr *instr)
+{
+	// idx 0 -> fld1, 1 -> fldl2e, 2 -> fldl2t, 3 -> fldlg2, 4 -> fldln2, 5 -> fldpi, 6 -> fldz
+
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		Label stack_fault = m_a.newLabel(), ok = m_a.newLabel();
+		MOV(MEMD64(RSP, LOCAL_VARS_off(0)), 0);
+		CALL_FPU_STACK_CHK(true, fpu_instr_t::float_);
+		CALL_FPU_SET_CTX();
+		TEST(MEMD64(RSP, LOCAL_VARS_off(0)), 0);
+		BR_NE(stack_fault);
+		if constexpr (idx == 0) {
+			FLD1();
+		}
+		else if constexpr (idx == 1) {
+			FLDL2E();
+		}
+		else if constexpr (idx == 2) {
+			FLDL2T();
+		}
+		else if constexpr (idx == 3) {
+			FLDLG2();
+		}
+		else if constexpr (idx == 4) {
+			FLDLN2();
+		}
+		else if constexpr (idx == 5) {
+			FLDPI();
+		}
+		else if constexpr (idx == 6) {
+			FLDZ();
+		}
+		else {
+			LIB86CPU_ABORT_msg("%s: unknown instruction specified with index %u", __func__, idx);
+		}
+		BR_UNCOND(ok);
+		m_a.bind(stack_fault);
+		FLD(MEMD80(RSP, LOCAL_VARS_off(0)));
+		m_a.bind(ok);
+		MOV(EAX, sizeof(uint80_t));
+		ST_R16(FPU_DATA_FTOP, BX);
+		MUL(BX);
+		FSTP(MEMSD80(RCX, RAX, 0, CPU_CTX_R0));
+		gen_update_fpu_ptr<false>(instr);
+		RESTORE_FPU_CTX();
+		MOV(EDX, EBX);
+		CALL_F(&fpu_update_tag);
+	}
+}
+
 void
 lc86_jit::aaa(decoded_instr *instr)
 {
@@ -5172,6 +5233,12 @@ lc86_jit::fld(decoded_instr *instr)
 }
 
 void
+lc86_jit::fld1(decoded_instr *instr)
+{
+	float_load_constant<0>(instr);
+}
+
+void
 lc86_jit::fldcw(decoded_instr *instr)
 {
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
@@ -5195,6 +5262,42 @@ lc86_jit::fldcw(decoded_instr *instr)
 				ST_R16(FPU_DATA_FRP, DX);
 			});
 	}
+}
+
+void
+lc86_jit::fldl2e(decoded_instr *instr)
+{
+	float_load_constant<1>(instr);
+}
+
+void
+lc86_jit::fldl2t(decoded_instr *instr)
+{
+	float_load_constant<2>(instr);
+}
+
+void
+lc86_jit::fldlg2(decoded_instr *instr)
+{
+	float_load_constant<3>(instr);
+}
+
+void
+lc86_jit::fldln2(decoded_instr *instr)
+{
+	float_load_constant<4>(instr);
+}
+
+void
+lc86_jit::fldpi(decoded_instr *instr)
+{
+	float_load_constant<5>(instr);
+}
+
+void
+lc86_jit::fldz(decoded_instr *instr)
+{
+	float_load_constant<6>(instr);
 }
 
 void

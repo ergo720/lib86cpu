@@ -75,7 +75,14 @@ public:
 	void div(decoded_instr *instr);
 	void enter(decoded_instr *instr);
 	void fld(decoded_instr *instr);
+	void fld1(decoded_instr *instr);
 	void fldcw(decoded_instr *instr);
+	void fldl2e(decoded_instr *instr);
+	void fldl2t(decoded_instr *instr);
+	void fldlg2(decoded_instr *instr);
+	void fldln2(decoded_instr *instr);
+	void fldpi(decoded_instr *instr);
+	void fldz(decoded_instr *instr);
 	void fnclex(decoded_instr *instr);
 	void fninit(decoded_instr *instr);
 	void fnstcw(decoded_instr *instr);
@@ -271,6 +278,8 @@ private:
 	void bit(decoded_instr *instr);
 	template<unsigned idx>
 	void int_(decoded_instr *instr);
+	template<unsigned idx>
+	void float_load_constant(decoded_instr *instr);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;
