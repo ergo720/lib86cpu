@@ -431,6 +431,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define LD_MEM128() load_mem(SIZE128, 0)
 #define ST_MEM(val) store_mem(val, m_cpu->size_mode, 0)
 #define ST_MEMs(val, size) store_mem(val, size, 0)
+#define ST_MEM80(val) store_mem(val, SIZE80, 0)
 #define ST_MEM128(val) store_mem(val, SIZE128, 0)
 #define ST_MEMv(val) store_mem<decltype(val), true>(val, m_cpu->size_mode, 0)
 
@@ -1963,6 +1964,13 @@ void lc86_jit::store_mem(T val, uint8_t size, uint8_t is_priv)
 			MOV(R8, val);
 		}
 		CALL_F((&mem_write_helper<uint128_t, dont_write>));
+		break;
+
+	case SIZE80:
+		if (!is_r8) {
+			MOV(R8, val);
+		}
+		CALL_F((&mem_write_helper<uint80_t, dont_write>));
 		break;
 
 	case SIZE64:
@@ -5380,6 +5388,80 @@ lc86_jit::fnstsw(decoded_instr *instr)
 			{
 				ST_MEMs(R8W, SIZE16);
 			});
+	}
+}
+
+void
+lc86_jit::fstp(decoded_instr *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		Label stack_fault = m_a.newLabel(), ok = m_a.newLabel();
+		MOV(MEMD64(RSP, LOCAL_VARS_off(0)), 0);
+		CALL_FPU_STACK_CHK(false, fpu_instr_t::float_);
+		CALL_FPU_SET_CTX();
+		MOV(R9D, EAX);
+		DEC(R9D);
+		TEST(MEMD64(RSP, LOCAL_VARS_off(0)), 0);
+		BR_NE(stack_fault);
+		MOV(EDX, R9D);
+		MOV(EAX, sizeof(uint80_t));
+		MUL(DX);
+		FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0));
+		BR_UNCOND(ok);
+		m_a.bind(stack_fault);
+		FLD(MEMD32(RSP, LOCAL_VARS_off(0)));
+		m_a.bind(ok);
+
+		get_rm<OPNUM_DST>(instr,
+			[this, instr](const op_info rm)
+			{
+				MOV(EDX, instr->i.raw.modrm.rm);
+				MOV(EAX, sizeof(uint80_t));
+				MUL(DX);
+				FSTP(MEMSD80(RCX, RAX, 0, CPU_CTX_R0));
+				CALL_FPU_EXP_CHK();
+				ST_R16(FPU_DATA_FTOP, BX);
+				gen_update_fpu_ptr<false>(instr);
+			},
+			[this, instr](const op_info rm)
+			{
+				switch (instr->i.opcode)
+				{
+				case 0xD9:
+					FSTP(MEMD32(RSP, LOCAL_VARS_off(0)));
+					CALL_FPU_EXP_CHK();
+					MOV(R8D, MEMD32(RSP, LOCAL_VARS_off(0)));
+					ST_MEMs(R8D, SIZE32);
+					break;
+
+				case 0xDD:
+					FSTP(MEMD64(RSP, LOCAL_VARS_off(0)));
+					CALL_FPU_EXP_CHK();
+					MOV(R8D, MEMD64(RSP, LOCAL_VARS_off(0)));
+					ST_MEMs(R8D, SIZE64);
+					break;
+
+				case 0xDB:
+					FSTP(MEMD80(RSP, LOCAL_VARS_off(0)));
+					CALL_FPU_EXP_CHK();
+					LEA(R8, MEMD64(RSP, LOCAL_VARS_off(0)));
+					ST_MEM80(R8);
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+
+				ST_R16(FPU_DATA_FTOP, BX);
+				gen_update_fpu_ptr<true>(instr);
+			});
+
+		RESTORE_FPU_CTX();
+		MOV(EDX, R9D);
+		CALL_F(&fpu_update_tag);
 	}
 }
 

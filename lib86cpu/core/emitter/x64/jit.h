@@ -87,6 +87,7 @@ public:
 	void fninit(decoded_instr *instr);
 	void fnstcw(decoded_instr *instr);
 	void fnstsw(decoded_instr *instr);
+	void fstp(decoded_instr *instr);
 	void fwait(decoded_instr *instr);
 	void fxrstor(decoded_instr *instr);
 	void fxsave(decoded_instr *instr);
