@@ -261,6 +261,8 @@ private:
 	void gen_set_host_fpu_ctx();
 	template<bool update_fdp>
 	void gen_update_fpu_ptr(decoded_instr *instr);
+	template<bool is_push, fpu_instr_t fpu_instr>
+	void gen_fpu_stack_fault_check();
 	template<unsigned idx>
 	void shift(decoded_instr *instr);
 	template<unsigned idx>

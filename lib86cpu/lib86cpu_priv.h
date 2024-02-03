@@ -100,7 +100,6 @@ using entry_t = translated_code_t *(JIT_API *)(cpu_ctx_t *cpu_ctx);
 using read_int_t = uint32_t(JIT_API *)(cpu_ctx_t *cpu_ctx);
 using raise_int_t = void(JIT_API *)(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 using clear_int_t = void(JIT_API *)(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
-using fpu_func_t = void(*)();
 
 // jmp_offset functions: 0,1 -> used for direct linking (either points to exit or &next_tc), 2 -> exit
 struct translated_code_t {
@@ -208,9 +207,6 @@ struct cpu_t {
 	read_int_t read_int_fn;
 	raise_int_t raise_int_fn;
 	clear_int_t clear_int_fn;
-	// don't call these fpu functions from the host, they won't work correctly. Only call them from the jitted code
-	fpu_func_t set_host_fpu_ctx_fn;
-	fpu_func_t fpu_exp_post_check_fn;
 	fp_int get_int_vec;
 	std::string dbg_name;
 	addr_t bp_addr;

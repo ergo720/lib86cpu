@@ -465,13 +465,6 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define RESTORE_FPU_CTX() FLDCW(MEMD16(RSP, LOCAL_VARS_off(5)))
 #define CALL_F(func) MOV(RAX, func); CALL(RAX); RELOAD_RCX_CTX()
 
-#define CALL_FPU_SET_CTX() MOV(RAX, m_cpu->set_host_fpu_ctx_fn); CALL(RAX)
-#define CALL_FPU_EXP_CHK() MOV(RAX, m_cpu->fpu_exp_post_check_fn); CALL(RAX)
-#define CALL_FPU_STACK_CHK(is_push, instr_ty) LEA(R8, MEMD64(RSP, LOCAL_VARS_off(0))); \
-LEA(RDX, MEMD64(RSP, LOCAL_VARS_off(2))); \
-CALL_F((&fpu_stack_check<is_push, instr_ty>)); \
-MOV(EBX, EAX); \
-MOV(R8D, MEMD32(RSP, LOCAL_VARS_off(2)));
 
 lc86_jit::lc86_jit(cpu_t *cpu)
 {
@@ -589,20 +582,6 @@ lc86_jit::gen_aux_funcs()
 	m_a.lock().and_(MEMD32(RCX, CPU_CTX_INT), EDX);
 	RET();
 
-	// We generate the following fpu related functions once here, to avoid having to generate them at every guest fpu encountered. We cannot use host helpers for these
-	// because the host needs to mirror the guest control word state to the host when it emulates a guest fpu instruction, and the WIN64 calling convention
-	// states that the control word is non-volatile across function calls
-
-	// gen_set_host_fpu_ctx
-	size_t gen_set_host_fpu_ctx_off_aligned16 = align_next_func_start();
-	gen_set_host_fpu_ctx();
-	RET();
-
-	// gen_fpu_exp_post_check
-	size_t gen_fpu_exp_post_check_off_aligned16 = align_next_func_start();
-	gen_fpu_exp_post_check();
-	RET();
-
 	if (auto err = m_code.flatten()) {
 		std::string err_str("Asmjit failed at flatten() with the error ");
 		err_str += DebugUtils::errorAsString(err);
@@ -641,8 +620,6 @@ lc86_jit::gen_aux_funcs()
 	m_cpu->read_int_fn = reinterpret_cast<read_int_t>(static_cast<uint8_t *>(block.addr) + offset);
 	m_cpu->raise_int_fn = reinterpret_cast<raise_int_t>(static_cast<uint8_t *>(block.addr) + offset + raise_int_off_aligned16);
 	m_cpu->clear_int_fn = reinterpret_cast<clear_int_t>(static_cast<uint8_t *>(block.addr) + offset + clear_int_off_aligned16);
-	m_cpu->set_host_fpu_ctx_fn = reinterpret_cast<fpu_func_t>(static_cast<uint8_t *>(block.addr) + offset + gen_set_host_fpu_ctx_off_aligned16);
-	m_cpu->fpu_exp_post_check_fn = reinterpret_cast<fpu_func_t>(static_cast<uint8_t *>(block.addr) + offset + gen_fpu_exp_post_check_off_aligned16);
 }
 
 void
@@ -2437,6 +2414,16 @@ void lc86_jit::gen_update_fpu_ptr(decoded_instr *instr)
 	}
 }
 
+template<bool is_push, fpu_instr_t fpu_instr>
+void lc86_jit::gen_fpu_stack_fault_check()
+{
+	LEA(R8, MEMD64(RSP, LOCAL_VARS_off(0)));
+	LEA(RDX, MEMD64(RSP, LOCAL_VARS_off(2)));
+	CALL_F((&fpu_stack_check<is_push, fpu_instr>));
+	MOV(EBX, EAX);
+	MOV(R8D, MEMD32(RSP, LOCAL_VARS_off(2)));
+}
+
 template<unsigned idx>
 void lc86_jit::shift(decoded_instr *instr)
 {
@@ -3443,8 +3430,8 @@ void lc86_jit::float_load_constant(decoded_instr *instr)
 	else {
 		Label stack_fault = m_a.newLabel(), ok = m_a.newLabel();
 		MOV(MEMD64(RSP, LOCAL_VARS_off(0)), 0);
-		CALL_FPU_STACK_CHK(true, fpu_instr_t::float_);
-		CALL_FPU_SET_CTX();
+		gen_fpu_stack_fault_check<true, fpu_instr_t::float_>();
+		gen_set_host_fpu_ctx();
 		TEST(MEMD64(RSP, LOCAL_VARS_off(0)), 0);
 		BR_NE(stack_fault);
 		if constexpr (idx == 0) {
@@ -5176,8 +5163,8 @@ lc86_jit::fld(decoded_instr *instr)
 			{
 				Label stack_fault = m_a.newLabel(), ok = m_a.newLabel();
 				MOV(MEMD64(RSP, LOCAL_VARS_off(0)), 0);
-				CALL_FPU_STACK_CHK(true, fpu_instr_t::float_);
-				CALL_FPU_SET_CTX();
+				gen_fpu_stack_fault_check<true, fpu_instr_t::float_>();
+				gen_set_host_fpu_ctx();
 				MOV(EDX, instr->i.raw.modrm.rm);
 				MOV(EAX, sizeof(uint80_t));
 				MUL(DX);
@@ -5188,7 +5175,7 @@ lc86_jit::fld(decoded_instr *instr)
 				m_a.bind(stack_fault);
 				FLD(MEMD32(RSP, LOCAL_VARS_off(0)));
 				m_a.bind(ok);
-				CALL_FPU_EXP_CHK();
+				gen_fpu_exp_post_check();
 				MOV(EAX, sizeof(uint80_t));
 				ST_R16(FPU_DATA_FTOP, BX);
 				MUL(BX);
@@ -5202,23 +5189,23 @@ lc86_jit::fld(decoded_instr *instr)
 				case 0xD9:
 					LD_MEMs(SIZE32);
 					MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EAX);
-					CALL_FPU_STACK_CHK(true, fpu_instr_t::float_);
-					CALL_FPU_SET_CTX();
+					gen_fpu_stack_fault_check<true, fpu_instr_t::float_>();
+					gen_set_host_fpu_ctx();
 					FLD(MEMD32(RSP, LOCAL_VARS_off(0)));
 					break;
 
 				case 0xDD:
 					LD_MEMs(SIZE64);
 					MOV(MEMD64(RSP, LOCAL_VARS_off(0)), RAX);
-					CALL_FPU_STACK_CHK(true, fpu_instr_t::float_);
-					CALL_FPU_SET_CTX();
+					gen_fpu_stack_fault_check<true, fpu_instr_t::float_>();
+					gen_set_host_fpu_ctx();
 					FLD(MEMD64(RSP, LOCAL_VARS_off(0)));
 					break;
 
 				case 0xDB:
 					LD_MEM80(0);
-					CALL_FPU_STACK_CHK(true, fpu_instr_t::float_);
-					CALL_FPU_SET_CTX();
+					gen_fpu_stack_fault_check<true, fpu_instr_t::float_>();
+					gen_set_host_fpu_ctx();
 					FLD(MEMD80(RSP, LOCAL_VARS_off(0)));
 					break;
 
@@ -5226,7 +5213,7 @@ lc86_jit::fld(decoded_instr *instr)
 					LIB86CPU_ABORT();
 				}
 
-				CALL_FPU_EXP_CHK();
+				gen_fpu_exp_post_check();
 				MOV(EAX, sizeof(uint80_t));
 				ST_R16(FPU_DATA_FTOP, BX);
 				MUL(BX);
@@ -5400,8 +5387,8 @@ lc86_jit::fstp(decoded_instr *instr)
 	else {
 		Label stack_fault = m_a.newLabel(), ok = m_a.newLabel();
 		MOV(MEMD64(RSP, LOCAL_VARS_off(0)), 0);
-		CALL_FPU_STACK_CHK(false, fpu_instr_t::float_);
-		CALL_FPU_SET_CTX();
+		gen_fpu_stack_fault_check<false, fpu_instr_t::float_>();
+		gen_set_host_fpu_ctx();
 		MOV(R9D, EAX);
 		DEC(R9D);
 		TEST(MEMD64(RSP, LOCAL_VARS_off(0)), 0);
@@ -5422,7 +5409,7 @@ lc86_jit::fstp(decoded_instr *instr)
 				MOV(EAX, sizeof(uint80_t));
 				MUL(DX);
 				FSTP(MEMSD80(RCX, RAX, 0, CPU_CTX_R0));
-				CALL_FPU_EXP_CHK();
+				gen_fpu_exp_post_check();
 				ST_R16(FPU_DATA_FTOP, BX);
 				gen_update_fpu_ptr<false>(instr);
 			},
@@ -5432,21 +5419,21 @@ lc86_jit::fstp(decoded_instr *instr)
 				{
 				case 0xD9:
 					FSTP(MEMD32(RSP, LOCAL_VARS_off(0)));
-					CALL_FPU_EXP_CHK();
+					gen_fpu_exp_post_check();
 					MOV(R8D, MEMD32(RSP, LOCAL_VARS_off(0)));
 					ST_MEMs(R8D, SIZE32);
 					break;
 
 				case 0xDD:
 					FSTP(MEMD64(RSP, LOCAL_VARS_off(0)));
-					CALL_FPU_EXP_CHK();
+					gen_fpu_exp_post_check();
 					MOV(R8D, MEMD64(RSP, LOCAL_VARS_off(0)));
 					ST_MEMs(R8D, SIZE64);
 					break;
 
 				case 0xDB:
 					FSTP(MEMD80(RSP, LOCAL_VARS_off(0)));
-					CALL_FPU_EXP_CHK();
+					gen_fpu_exp_post_check();
 					LEA(R8, MEMD64(RSP, LOCAL_VARS_off(0)));
 					ST_MEM80(R8);
 					break;
