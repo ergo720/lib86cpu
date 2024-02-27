@@ -94,15 +94,17 @@ void log_unhandled_write(addr_t addr, T value)
 	if constexpr ((sizeof(T) == 10) || (sizeof(T) == 16)) {
 		constexpr size_t val_high_digits = sizeof(T) == 10 ? 4 : 16;
 		using type_high_digits = std::conditional_t<sizeof(T) == 10, uint16_t, uint64_t>;
+		type_high_digits high = value.high;
+		uint64_t low = value.low;
 		if constexpr (type == mem_type::unmapped) {
 			LOG(log_level::warn, ("Memory write of value high=0x%0" + std::to_string(val_high_digits) + get_prix_prefix<type_high_digits>() + " and low=0x%016" PRIX64 " to \
 unmapped memory at address 0x%08" PRIX32 " with size %" PRId32).c_str(),
-				value.high, value.low, addr, sizeof(T));
+				high, low, addr, sizeof(T));
 		}
 		else {
 			LOG(log_level::warn, ("Unhandled mmio write of value high=0x%0" + std::to_string(val_high_digits) + get_prix_prefix<type_high_digits>() + " and low=0x%016" PRIX64 " at \
 address 0x%08" PRIX32 " with size %" PRId32).c_str(),
-				value.high, value.low, addr, sizeof(T));
+				high, low, addr, sizeof(T));
 		}
 	}
 	else {
