@@ -106,8 +106,7 @@ T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, const memory_region_t<addr_t>
 	break;
 
 	case mem_type::unmapped:
-		LOG(log_level::warn, "Memory read to unmapped memory at address %#010x with size %d", addr, sizeof(T));
-		return std::numeric_limits<T>::max();
+		return log_unhandled_read<T, mem_type::unmapped>(addr);
 
 	default:
 		LIB86CPU_ABORT();
@@ -152,7 +151,7 @@ void as_memory_dispatch_write(cpu_t *cpu, addr_t addr, T value, const memory_reg
 	break;
 
 	case mem_type::unmapped:
-		LOG(log_level::warn, "Memory write to unmapped memory at address %#010x with size %d", addr, sizeof(T));
+		log_unhandled_write<T, mem_type::unmapped>(addr, value);
 		break;
 
 	default:
@@ -180,8 +179,7 @@ T as_io_dispatch_read(cpu_t *cpu, port_t port, const memory_region_t<port_t> *re
 		}
 
 	case mem_type::unmapped:
-		LOG(log_level::warn, "Io read to unmapped memory at port %#06x with size %d", port, sizeof(T));
-		return std::numeric_limits<T>::max();
+		return log_unhandled_read<T, mem_type::unmapped>(port);
 
 	default:
 		LIB86CPU_ABORT();
@@ -209,7 +207,7 @@ void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, const memory_region_
 		break;
 
 	case mem_type::unmapped:
-		LOG(log_level::warn, "Io write to unmapped memory at port %#06x with size %d", port, sizeof(T));
+		log_unhandled_write<T, mem_type::unmapped>(port, value);
 		return;
 
 	default:

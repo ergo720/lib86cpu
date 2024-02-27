@@ -576,8 +576,7 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv
 
 			default:
 				// because all other region types are cached, this should only happen with the unmapped region
-				LOG(log_level::warn, "Memory read to unmapped memory at address %#010x with size %d", addr, sizeof(T));
-				return std::numeric_limits<T>::max();
+				return log_unhandled_read<T, mem_type::unmapped>(addr);
 			}
 		}
 	}
@@ -659,7 +658,7 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint
 
 			default:
 				// because all other region types are cached, this should only happen with the unmapped region
-				LOG(log_level::warn, "Memory write to unmapped memory at address %#010x with size %d", addr, sizeof(T));
+				log_unhandled_write<T, mem_type::unmapped>(addr, val);
 				return;
 			}
 		}
