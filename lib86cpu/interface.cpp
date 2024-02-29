@@ -105,12 +105,13 @@ default_pmio_write_handler32(addr_t addr, const uint32_t value, void *opaque)
 * cpu_new -> creates a new cpu instance. Only a single instance should exist at a time
 * ramsize: size in bytes of ram buffer internally created (must be a multiple of 4096)
 * out: returned cpu instance
-* (optional) int_fn: function that returns the vector number when a hw interrupt is serviced. Not necessary if you never generate hw interrupts
+* (optional) int_fn: a pair where 1st is a function that returns the vector number when a hw interrupt is serviced, and 2nd is an opaque argument passed to
+* the function when lib86cpu calls it. Not necessary if you never generate hw interrupts
 * (optional) debuggee: name of the debuggee program to run
 * ret: the status of the operation
 */
 lc86_status
-cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
+cpu_new(uint32_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data, const char *debuggee)
 {
 	LOG(log_level::info, "Creating new cpu...");
 
@@ -147,7 +148,7 @@ cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn, const char *debuggee)
 
 	cpu->cpu_name = "Intel Pentium III KC 733 (Xbox CPU)";
 	cpu->dbg_name = debuggee ? debuggee : "";
-	cpu->get_int_vec = int_fn ? int_fn : default_get_int_vec;
+	cpu->int_data = int_data.first ? int_data : std::pair<fp_int, void *>{ default_get_int_vec, nullptr };
 
 	cpu->memory_space_tree = address_space<addr_t>::create();
 	cpu->io_space_tree = address_space<port_t>::create();
@@ -425,7 +426,7 @@ cpu_lower_hw_int_line(cpu_t *cpu)
 }
 
 template<bool is_save>
-static lc86_status cpu_snapshot_handler(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, fp_int int_fn = nullptr)
+static lc86_status cpu_snapshot_handler(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, std::pair<fp_int, void *> int_data = { nullptr, nullptr })
 {
 	if (cpu->is_saving_state.test_and_set() == true) {
 		cpu->is_saving_state.wait(true);
@@ -442,7 +443,7 @@ static lc86_status cpu_snapshot_handler(cpu_t *cpu, cpu_save_state_t *cpu_state,
 			ret = cpu_save_state(cpu, cpu_state, ram_state);
 		}
 		else {
-			ret = cpu_load_state(cpu, cpu_state, ram_state, int_fn);
+			ret = cpu_load_state(cpu, cpu_state, ram_state, int_data);
 		}
 	}
 	else {
@@ -460,7 +461,7 @@ static lc86_status cpu_snapshot_handler(cpu_t *cpu, cpu_save_state_t *cpu_state,
 			ret = cpu_save_state(cpu, cpu_state, ram_state);
 		}
 		else {
-			ret = cpu_load_state(cpu, cpu_state, ram_state, int_fn);
+			ret = cpu_load_state(cpu, cpu_state, ram_state, int_data);
 			cpu->state_loaded = true;
 		}
 		if (!curr_suspend_flg) {
@@ -498,13 +499,14 @@ cpu_take_snapshot(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram
 * cpu: a valid cpu instance
 * cpu_state: a buffer that receives the saved cpu state (must be allocated by the client)
 * ram_state: a buffer that receives the saved ram state (must be allocated by the client)
-* int_fn: function that returns the vector number when a hw interrupt is serviced. Not necessary if you never generate hw interrupts
+* (optional) int_fn: a pair where 1st is a function that returns the vector number when a hw interrupt is serviced, and 2nd is an opaque argument passed to
+* the function when lib86cpu calls it. Not necessary if you never generate hw interrupts
 * ret: the status of the operation
 */
 lc86_status
-cpu_restore_snapshot(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, fp_int int_fn)
+cpu_restore_snapshot(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, std::pair<fp_int, void *> int_data)
 {
-	return cpu_snapshot_handler<false>(cpu, cpu_state, ram_state, int_fn);
+	return cpu_snapshot_handler<false>(cpu, cpu_state, ram_state, int_data);
 }
 
 /*

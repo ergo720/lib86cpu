@@ -54,7 +54,7 @@ using fp_write32 = void(*)(addr_t addr, const uint32_t value, void *opaque);
 using fp_write64 = void(*)(addr_t addr, const uint64_t value, void *opaque);
 
 // hw interrupt callback, used to get the interrupt vector
-using fp_int = uint16_t(*)();
+using fp_int = uint16_t(*)(void *);
 
 struct io_handlers_t {
 	fp_read8 fnr8;
@@ -93,7 +93,7 @@ struct ram_save_state_t {
 struct cpu_t;
 
 // cpu api
-API_FUNC lc86_status cpu_new(uint32_t ramsize, cpu_t *&out, fp_int int_fn = nullptr, const char *debuggee = nullptr);
+API_FUNC lc86_status cpu_new(uint32_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data = { nullptr, nullptr }, const char *debuggee = nullptr);
 API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC lc86_status cpu_run(cpu_t *cpu);
 API_FUNC lc86_status cpu_run_until(cpu_t *cpu, uint64_t timeout_time);
@@ -108,7 +108,7 @@ API_FUNC bool cpu_is_suspended(cpu_t *cpu);
 API_FUNC void cpu_raise_hw_int_line(cpu_t *cpu);
 API_FUNC void cpu_lower_hw_int_line(cpu_t *cpu);
 API_FUNC lc86_status cpu_take_snapshot(cpu_t* cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state);
-API_FUNC lc86_status cpu_restore_snapshot(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, fp_int int_fn);
+API_FUNC lc86_status cpu_restore_snapshot(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, std::pair<fp_int, void *> int_data = { nullptr, nullptr });
 
 // register api
 API_FUNC regs_t *get_regs_ptr(cpu_t *cpu);

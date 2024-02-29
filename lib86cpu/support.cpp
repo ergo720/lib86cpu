@@ -83,7 +83,7 @@ set_last_error(lc86_status status)
 }
 
 uint16_t
-default_get_int_vec()
+default_get_int_vec(void *opaque)
 {
 	LOG(log_level::warn, "Unexpected hardware interrupt");
 	return EXP_INVALID;
@@ -119,7 +119,7 @@ cpu_save_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_st
 }
 
 lc86_status
-cpu_load_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, fp_int int_fn)
+cpu_load_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, std::pair<fp_int, void *> int_data)
 {
 	if ((cpu_state->id != SAVE_STATE_ID) || (ram_state->id != SAVE_STATE_ID) || (cpu_state->size != sizeof(cpu_save_state_t))) {
 		return set_last_error(lc86_status::invalid_parameter);
@@ -141,7 +141,7 @@ cpu_load_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_st
 
 	cpu->ram = ram_state->ram;
 
-	cpu->get_int_vec = int_fn ? int_fn : default_get_int_vec;
+	cpu->int_data = int_data.first ? int_data : std::pair<fp_int, void *>{ default_get_int_vec, nullptr };
 	cpu->clear_int_fn(&cpu->cpu_ctx, CPU_ALL_INT);
 	update_drN_helper(&cpu->cpu_ctx, 0, cpu->cpu_ctx.regs.dr[0]);
 	update_drN_helper(&cpu->cpu_ctx, 1, cpu->cpu_ctx.regs.dr[1]);

@@ -54,9 +54,9 @@ void discard_log(log_level lv, const unsigned count, const char *msg, ...);
 lc86_status set_last_error(lc86_status status);
 void cpu_exec_trampoline(cpu_t *cpu, const uint32_t ret_eip);
 bool verify_cpu_features();
-uint16_t default_get_int_vec();
+uint16_t default_get_int_vec(void *opaque);
 lc86_status cpu_save_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state);
-lc86_status cpu_load_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, fp_int int_fn);
+lc86_status cpu_load_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, std::pair<fp_int, void *> int_data);
 uint64_t muldiv128(uint64_t a, uint64_t b, uint64_t c);
 
 inline uint64_t
