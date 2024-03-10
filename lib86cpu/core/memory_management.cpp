@@ -57,15 +57,55 @@ static addr_t tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 {
 	assert((prot & ~PAGE_MASK) == 0);
 
+	const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
+	phys_addr = correct_phys_addr(cpu, phys_addr, region);
+	addr_t start_page = phys_addr & ~PAGE_MASK;
+	addr_t end_page = ((static_cast<uint64_t>(phys_addr) + PAGE_SIZE) & ~PAGE_MASK) - 1; // the cast avoids overflow on the last page at 0xFFFFF000
+
+	if (prot & MMU_SET_CODE) {
+		prot &= ~MMU_SET_CODE;
+		cpu->smc.set(phys_addr >> PAGE_SHIFT);
+	}
+
+	uint64_t entry;
+	if ((region->start <= start_page) && (region->end >= end_page)) {
+		// region spans the entire page
+
+		if (region->type == mem_type::ram) {
+			entry =  (phys_addr & ~PAGE_MASK) | (prot | TLB_RAM);
+		}
+		else if (region->type == mem_type::unmapped) {
+			entry = (phys_addr & ~PAGE_MASK) | prot;
+			// region member is ignored for entries in unmapped regions
+		}
+		else {
+			if (region->type == mem_type::mmio) {
+				prot |= TLB_MMIO;
+			}
+			else {
+				cpu->smc.reset(phys_addr >> PAGE_SHIFT);
+				prot |= TLB_ROM;
+			}
+			entry = (phys_addr & ~PAGE_MASK) | prot;
+		}
+	}
+	else {
+		// region doesn't cover the entire page
+
+		entry = (phys_addr & ~PAGE_MASK) | (prot | TLB_SUBPAGE);
+		// region member is ignored for entries in subpages
+	}
+
 	// if the tlb set is full, then the replacement policy used is "random replacement"
 
-	uint64_t tag;
 	tlb_t *tlb = nullptr;
 	if constexpr (is_fetch) {
 		uint32_t idx = (addr >> PAGE_SHIFT) & ITLB_IDX_MASK;
-		tag = (static_cast<uint64_t>(addr) << ITLB_TAG_SHIFT64) & ITLB_TAG_MASK64;
+		uint64_t tag = (static_cast<uint64_t>(addr) << ITLB_TAG_SHIFT64) & ITLB_TAG_MASK64;
+		entry |= tag;
 		for (unsigned i = 0; i < ITLB_NUM_LINES; ++i) {
-			if (!(cpu->itlb[idx][i].entry & TLB_VALID)) {
+			if (((cpu->itlb[idx][i].entry ^ entry) == TLB_DIRTY) || // entry is the same but not dirty
+				!(cpu->itlb[idx][i].entry & TLB_VALID)) { // entry is free
 				tlb = &cpu->itlb[idx][i];
 				break;
 			}
@@ -77,9 +117,11 @@ static addr_t tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 	}
 	else {
 		uint32_t idx = (addr >> PAGE_SHIFT) & DTLB_IDX_MASK;
-		tag = (static_cast<uint64_t>(addr) << DTLB_TAG_SHIFT64) & DTLB_TAG_MASK64;
+		uint64_t tag = (static_cast<uint64_t>(addr) << DTLB_TAG_SHIFT64) & DTLB_TAG_MASK64;
+		entry |= tag;
 		for (unsigned i = 0; i < DTLB_NUM_LINES; ++i) {
-			if (!(cpu->dtlb[idx][i].entry & TLB_VALID)) {
+			if (((cpu->dtlb[idx][i].entry ^ entry) == TLB_DIRTY) || // entry is the same but not dirty
+				!(cpu->dtlb[idx][i].entry & TLB_VALID)) { // entry is free
 				tlb = &cpu->dtlb[idx][i];
 				break;
 			}
@@ -90,43 +132,8 @@ static addr_t tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 		}
 	}
 
-	const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
-	phys_addr = correct_phys_addr(cpu, phys_addr, region);
-	addr_t start_page = phys_addr & ~PAGE_MASK;
-	addr_t end_page = ((static_cast<uint64_t>(phys_addr) + PAGE_SIZE) & ~PAGE_MASK) - 1; // the cast avoids overflow on the last page at 0xFFFFF000
-
-	if (prot & MMU_SET_CODE) {
-		prot &= ~MMU_SET_CODE;
-		cpu->smc.set(phys_addr >> PAGE_SHIFT);
-	}
-
-	if ((region->start <= start_page) && (region->end >= end_page)) {
-		// region spans the entire page
-
-		if (region->type == mem_type::ram) {
-			tlb->entry = tag | (phys_addr & ~PAGE_MASK) | (prot | TLB_RAM);
-			tlb->region = const_cast<memory_region_t<addr_t> *>(region);
-		}
-		else if (region->type == mem_type::unmapped) {
-			tlb->entry = tag | (phys_addr & ~PAGE_MASK) | prot;
-		}
-		else {
-			if (region->type == mem_type::mmio) {
-				prot |= TLB_MMIO;
-			}
-			else {
-				cpu->smc.reset(phys_addr >> PAGE_SHIFT);
-				prot |= TLB_ROM;
-			}
-			tlb->entry = tag | (phys_addr & ~PAGE_MASK) | prot;
-			tlb->region = const_cast<memory_region_t<addr_t> *>(region);
-		}
-	}
-	else {
-		// region doesn't cover the entire page
-
-		tlb->entry = tag | (phys_addr & ~PAGE_MASK) | (prot | TLB_SUBPAGE);
-	}
+	tlb->entry = entry;
+	tlb->region = const_cast<memory_region_t<addr_t> *>(region);
 
 	return phys_addr;
 }
