@@ -629,57 +629,99 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, uint32_t size, bool should_int)
 * handlers: a struct of function pointers to call back when the region is accessed from the guest
 * opaque: an arbitrary host pointer which is passed to the registered r/w function for the region
 * should_int: raises a guest interrupt when true, otherwise the change takes effect immediately
+* update: if 0, creates a new region. If 1, request an update to the handlers and the opaque member of an existing region that owns start. If 2,
+* also request an interrupt to make visible the updated region to the cpu. When 3, only request the interrupt (the region arguments are ignored in this case).
+* The last behaviour is useful to cache multiple update requests and only trigger the interrupt at the end. When not 0, should_int must be true.
 * ret: the status of the operation
 */
 lc86_status
-mem_init_region_io(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, io_handlers_t handlers, void *opaque, bool should_int)
+mem_init_region_io(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, io_handlers_t handlers, void *opaque, bool should_int, int update)
 {
-	if (size == 0) {
-		return set_last_error(lc86_status::invalid_parameter);
-	}
-
-	if (io_space) {
-		if ((start > 65535) || ((start + size) > 65536)) {
+	if (update) {
+		if (!should_int) {
 			return set_last_error(lc86_status::invalid_parameter);
 		}
 
-		std::unique_ptr<memory_region_t<port_t>> io(new memory_region_t<port_t>);
-		io->start = static_cast<port_t>(start);
-		uint64_t end_io1 = io->start + size - 1;
-		io->end = std::min(end_io1, to_u64(0xFFFF));
-		io->type = mem_type::pmio;
-		io->handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_pmio_read_handler8;
-		io->handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_pmio_read_handler16;
-		io->handlers.fnr32 = handlers.fnr32 ? handlers.fnr32 : default_pmio_read_handler32;
-		io->handlers.fnw8 = handlers.fnw8 ? handlers.fnw8 : default_pmio_write_handler8;
-		io->handlers.fnw16 = handlers.fnw16 ? handlers.fnw16 : default_pmio_write_handler16;
-		io->handlers.fnw32 = handlers.fnw32 ? handlers.fnw32 : default_pmio_write_handler32;
-		io->opaque = opaque;
+		if ((update == 1) || (update == 2)) {
+			if (io_space) {
+				handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_pmio_read_handler8;
+				handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_pmio_read_handler16;
+				handlers.fnr32 = handlers.fnr32 ? handlers.fnr32 : default_pmio_read_handler32;
+				handlers.fnw8 = handlers.fnw8 ? handlers.fnw8 : default_pmio_write_handler8;
+				handlers.fnw16 = handlers.fnw16 ? handlers.fnw16 : default_pmio_write_handler16;
+				handlers.fnw32 = handlers.fnw32 ? handlers.fnw32 : default_pmio_write_handler32;
+			}
+			else {
+				handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_mmio_read_handler8;
+				handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_mmio_read_handler16;
+				handlers.fnr32 = handlers.fnr32 ? handlers.fnr32 : default_mmio_read_handler32;
+				handlers.fnr64 = handlers.fnr64 ? handlers.fnr64 : default_mmio_read_handler64;
+				handlers.fnw8 = handlers.fnw8 ? handlers.fnw8 : default_mmio_write_handler8;
+				handlers.fnw16 = handlers.fnw16 ? handlers.fnw16 : default_mmio_write_handler16;
+				handlers.fnw32 = handlers.fnw32 ? handlers.fnw32 : default_mmio_write_handler32;
+				handlers.fnw64 = handlers.fnw64 ? handlers.fnw64 : default_mmio_write_handler64;
+			}
 
-		cpu->io_space_tree->insert(std::move(io));
-	}
-	else {
-		std::unique_ptr<memory_region_t<addr_t>> mmio(new memory_region_t<addr_t>);
-		mmio->start = start;
-		mmio->end = std::min(static_cast<uint64_t>(start) + size - 1, to_u64(0xFFFFFFFF));
-		mmio->type = mem_type::mmio;
-		mmio->handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_mmio_read_handler8;
-		mmio->handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_mmio_read_handler16;
-		mmio->handlers.fnr32 = handlers.fnr32 ? handlers.fnr32 : default_mmio_read_handler32;
-		mmio->handlers.fnr64 = handlers.fnr64 ? handlers.fnr64 : default_mmio_read_handler64;
-		mmio->handlers.fnw8 = handlers.fnw8 ? handlers.fnw8 : default_mmio_write_handler8;
-		mmio->handlers.fnw16 = handlers.fnw16 ? handlers.fnw16 : default_mmio_write_handler16;
-		mmio->handlers.fnw32 = handlers.fnw32 ? handlers.fnw32 : default_mmio_write_handler32;
-		mmio->handlers.fnw64 = handlers.fnw64 ? handlers.fnw64 : default_mmio_write_handler64;
-		mmio->opaque = opaque;
-
-		if (should_int) {
-			cpu->regions_changed.push_back(std::make_pair(true, std::move(mmio)));
-			cpu->raise_int_fn(&cpu->cpu_ctx, CPU_REGION_INT);
+			cpu->regions_updated.emplace_back(start, io_space, handlers, opaque);
+			if (update == 2) {
+				cpu->raise_int_fn(&cpu->cpu_ctx, CPU_HANDLER_INT);
+			}
+		}
+		else if (update == 3) {
+			cpu->raise_int_fn(&cpu->cpu_ctx, CPU_HANDLER_INT);
 		}
 		else {
-			cpu->memory_space_tree->insert(std::move(mmio));
-			tc_should_clear_cache_and_tlb<true>(cpu, start, start + size - 1);
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+	}
+	else {
+		if (size == 0) {
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+
+		if (io_space) {
+			if ((start > 65535) || ((start + size) > 65536)) {
+				return set_last_error(lc86_status::invalid_parameter);
+			}
+
+			std::unique_ptr<memory_region_t<port_t>> io(new memory_region_t<port_t>);
+			io->start = static_cast<port_t>(start);
+			uint64_t end_io1 = io->start + size - 1;
+			io->end = std::min(end_io1, to_u64(0xFFFF));
+			io->type = mem_type::pmio;
+			io->handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_pmio_read_handler8;
+			io->handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_pmio_read_handler16;
+			io->handlers.fnr32 = handlers.fnr32 ? handlers.fnr32 : default_pmio_read_handler32;
+			io->handlers.fnw8 = handlers.fnw8 ? handlers.fnw8 : default_pmio_write_handler8;
+			io->handlers.fnw16 = handlers.fnw16 ? handlers.fnw16 : default_pmio_write_handler16;
+			io->handlers.fnw32 = handlers.fnw32 ? handlers.fnw32 : default_pmio_write_handler32;
+			io->opaque = opaque;
+
+			cpu->io_space_tree->insert(std::move(io));
+		}
+		else {
+			std::unique_ptr<memory_region_t<addr_t>> mmio(new memory_region_t<addr_t>);
+			mmio->start = start;
+			mmio->end = std::min(static_cast<uint64_t>(start) + size - 1, to_u64(0xFFFFFFFF));
+			mmio->type = mem_type::mmio;
+			mmio->handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_mmio_read_handler8;
+			mmio->handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_mmio_read_handler16;
+			mmio->handlers.fnr32 = handlers.fnr32 ? handlers.fnr32 : default_mmio_read_handler32;
+			mmio->handlers.fnr64 = handlers.fnr64 ? handlers.fnr64 : default_mmio_read_handler64;
+			mmio->handlers.fnw8 = handlers.fnw8 ? handlers.fnw8 : default_mmio_write_handler8;
+			mmio->handlers.fnw16 = handlers.fnw16 ? handlers.fnw16 : default_mmio_write_handler16;
+			mmio->handlers.fnw32 = handlers.fnw32 ? handlers.fnw32 : default_mmio_write_handler32;
+			mmio->handlers.fnw64 = handlers.fnw64 ? handlers.fnw64 : default_mmio_write_handler64;
+			mmio->opaque = opaque;
+
+			if (should_int) {
+				cpu->regions_changed.push_back(std::make_pair(true, std::move(mmio)));
+				cpu->raise_int_fn(&cpu->cpu_ctx, CPU_REGION_INT);
+			}
+			else {
+				cpu->memory_space_tree->insert(std::move(mmio));
+				tc_should_clear_cache_and_tlb<true>(cpu, start, start + size - 1);
+			}
 		}
 	}
 

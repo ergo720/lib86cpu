@@ -1652,11 +1652,32 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 		}
 	}
 
-	if (int_flg & (CPU_A20_INT | CPU_REGION_INT)) {
+	if (int_flg & (CPU_A20_INT | CPU_REGION_INT | CPU_HANDLER_INT)) {
 		cpu_t *cpu = cpu_ctx->cpu;
-		uint32_t int_clear_flg;
+		uint32_t int_clear_flg = 0;
+		if (int_flg & CPU_HANDLER_INT) {
+			int_clear_flg |= CPU_HANDLER_INT;
+			std::for_each(cpu->regions_updated.begin(), cpu->regions_updated.end(), [cpu](const auto &data) {
+				if (data.io_space) {
+					auto io = const_cast<memory_region_t<port_t> *>(cpu->io_space_tree->search(data.start));
+					if (io->type == mem_type::pmio) {
+						io->handlers = data.handlers;
+						io->opaque = data.opaque;
+					}
+				}
+				else {
+					auto mmio = const_cast<memory_region_t<addr_t> *>(cpu->memory_space_tree->search(data.start));
+					if (mmio->type == mem_type::mmio) {
+						mmio->handlers = data.handlers;
+						mmio->opaque = data.opaque;
+					}
+				}
+				});
+			cpu->regions_updated.clear();
+		}
+
 		if (int_flg & CPU_A20_INT) {
-			int_clear_flg = CPU_A20_INT;
+			int_clear_flg |= CPU_A20_INT;
 			cpu->a20_mask = cpu->new_a20;
 			tlb_flush(cpu);
 			tc_cache_clear(cpu);
@@ -1674,8 +1695,8 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 				cpu->regions_changed.clear();
 			}
 		}
-		else {
-			int_clear_flg = CPU_REGION_INT;
+		else if (int_flg & CPU_REGION_INT) {
+			int_clear_flg |= CPU_REGION_INT;
 			std::for_each(cpu->regions_changed.begin(), cpu->regions_changed.end(), [cpu](auto &pair) {
 				addr_t start = pair.second->start, end = pair.second->end;
 				if (pair.first) {

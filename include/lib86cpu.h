@@ -123,7 +123,7 @@ API_FUNC void write_fstatus(cpu_t *cpu, uint16_t value);
 API_FUNC uint8_t *get_ram_ptr(cpu_t *cpu);
 API_FUNC uint8_t* get_host_ptr(cpu_t *cpu, addr_t addr);
 API_FUNC lc86_status mem_init_region_ram(cpu_t *cpu, addr_t start, uint32_t size, bool should_int = false);
-API_FUNC lc86_status mem_init_region_io(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, io_handlers_t handlers, void *opaque, bool should_int = false);
+API_FUNC lc86_status mem_init_region_io(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, io_handlers_t handlers, void *opaque, bool should_int = false, int update = 0);
 API_FUNC lc86_status mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, uint32_t ori_size, bool should_int = false);
 API_FUNC lc86_status mem_init_region_rom(cpu_t *cpu, addr_t start, uint32_t size, uint8_t *buffer, bool should_int = false);
 API_FUNC lc86_status mem_destroy_region(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, bool should_int = false);

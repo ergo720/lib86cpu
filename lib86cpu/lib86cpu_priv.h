@@ -75,6 +75,13 @@ struct memory_region_t {
 	memory_region_t(T s, T e) : memory_region_t() { start = buff_off_start = s; end = e; }
 };
 
+struct region_update_info_t {
+	addr_t start;
+	bool io_space;
+	io_handlers_t handlers;
+	void *opaque;
+};
+
 #include "as.h"
 
 struct tlb_t {
@@ -187,6 +194,7 @@ struct cpu_t {
 	std::vector<wp_info<addr_t>> wp_data;
 	std::vector<wp_info<port_t>> wp_io;
 	std::vector<std::pair<bool, std::unique_ptr<memory_region_t<addr_t>>>> regions_changed;
+	std::vector<region_update_info_t> regions_updated;
 	std::bitset<SMC_MAX_SIZE> smc; // self-modifying code tracking
 	tlb_t itlb[ITLB_NUM_SETS][ITLB_NUM_LINES]; // instruction tlb
 	tlb_t dtlb[DTLB_NUM_SETS][DTLB_NUM_LINES]; // data tlb
