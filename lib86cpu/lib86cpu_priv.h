@@ -20,7 +20,7 @@
 #ifdef _MSC_VER
 #  define MS_ABI /* Nothing */
 #else
-#  define MS_ABI __attribute__((__ms_abi__))
+#  define MS_ABI [[gnu::ms_abi]]
 #endif
 #  define JIT_API MS_ABI
 #endif
@@ -103,10 +103,10 @@ struct exp_info_t {
 
 struct cpu_ctx_t;
 struct translated_code_t;
-using entry_t = translated_code_t *(JIT_API *)(cpu_ctx_t *cpu_ctx);
-using read_int_t = uint32_t(JIT_API *)(cpu_ctx_t *cpu_ctx);
-using raise_int_t = void(JIT_API *)(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
-using clear_int_t = void(JIT_API *)(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
+using entry_t = JIT_API translated_code_t *(*)(cpu_ctx_t *cpu_ctx);
+using read_int_t = JIT_API uint32_t(*)(cpu_ctx_t *cpu_ctx);
+using raise_int_t = JIT_API void(*)(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
+using clear_int_t = JIT_API void(*)(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 
 // jmp_offset functions: 0,1 -> used for direct linking (either points to exit or &next_tc), 2 -> exit
 struct translated_code_t {

@@ -2015,14 +2015,14 @@ dbg_exec_original_instr(cpu_t *cpu)
 	cpu_main_loop<false, false>(cpu, [&i]() { return i++ == 0; });
 }
 
-template translated_code_t *cpu_raise_exception<0, true>(cpu_ctx_t *cpu_ctx);
-template translated_code_t *cpu_raise_exception<1, true>(cpu_ctx_t *cpu_ctx);
-template translated_code_t *cpu_raise_exception<2, true>(cpu_ctx_t *cpu_ctx);
-template translated_code_t *cpu_raise_exception<3, true>(cpu_ctx_t *cpu_ctx);
-template translated_code_t *cpu_raise_exception<0, false>(cpu_ctx_t *cpu_ctx);
-template translated_code_t *cpu_raise_exception<1, false>(cpu_ctx_t *cpu_ctx);
-template translated_code_t *cpu_raise_exception<2, false>(cpu_ctx_t *cpu_ctx);
-template translated_code_t *cpu_raise_exception<3, false>(cpu_ctx_t *cpu_ctx);
+template JIT_API translated_code_t *cpu_raise_exception<0, true>(cpu_ctx_t *cpu_ctx);
+template JIT_API translated_code_t *cpu_raise_exception<1, true>(cpu_ctx_t *cpu_ctx);
+template JIT_API translated_code_t *cpu_raise_exception<2, true>(cpu_ctx_t *cpu_ctx);
+template JIT_API translated_code_t *cpu_raise_exception<3, true>(cpu_ctx_t *cpu_ctx);
+template JIT_API translated_code_t *cpu_raise_exception<0, false>(cpu_ctx_t *cpu_ctx);
+template JIT_API translated_code_t *cpu_raise_exception<1, false>(cpu_ctx_t *cpu_ctx);
+template JIT_API translated_code_t *cpu_raise_exception<2, false>(cpu_ctx_t *cpu_ctx);
+template JIT_API translated_code_t *cpu_raise_exception<3, false>(cpu_ctx_t *cpu_ctx);
 template void tc_should_clear_cache_and_tlb<true>(cpu_t *cpu, addr_t start, addr_t end);
 template lc86_status cpu_start<true>(cpu_t *cpu);
 template lc86_status cpu_start<false>(cpu_t *cpu);

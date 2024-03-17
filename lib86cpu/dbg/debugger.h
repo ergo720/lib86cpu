@@ -19,7 +19,7 @@ void dbg_apply_sw_breakpoints(cpu_t *cpu);
 void dbg_apply_sw_breakpoints(cpu_t *cpu, addr_t addr);
 void dbg_remove_sw_breakpoints(cpu_t *cpu);
 void dbg_remove_sw_breakpoints(cpu_t *cpu, addr_t addr);
-void JIT_API dbg_update_exp_hook(cpu_ctx_t *cpu_ctx);
+JIT_API void dbg_update_exp_hook(cpu_ctx_t *cpu_ctx);
 void dbg_add_exp_hook(cpu_ctx_t *cpu_ctx);
 std::vector<std::pair<addr_t, std::string>> dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num);
 void dbg_exp_handler(cpu_ctx_t *cpu_ctx);

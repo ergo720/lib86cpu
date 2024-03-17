@@ -1423,18 +1423,18 @@ hlt_helper(cpu_ctx_t *cpu_ctx)
 	return 0;
 }
 
-template uint32_t lret_pe_helper<true>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
-template uint32_t lret_pe_helper<false>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
+template JIT_API uint32_t lret_pe_helper<true>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
+template JIT_API uint32_t lret_pe_helper<false>(cpu_ctx_t *cpu_ctx, uint8_t size_mode, uint32_t eip);
 
-template void verrw_helper<true>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
-template void verrw_helper<false>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template JIT_API void verrw_helper<true>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template JIT_API void verrw_helper<false>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
 
-template uint32_t mov_sel_pe_helper<DS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
-template uint32_t mov_sel_pe_helper<ES_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
-template uint32_t mov_sel_pe_helper<SS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
-template uint32_t mov_sel_pe_helper<FS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
-template uint32_t mov_sel_pe_helper<GS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template JIT_API uint32_t mov_sel_pe_helper<DS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template JIT_API uint32_t mov_sel_pe_helper<ES_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template JIT_API uint32_t mov_sel_pe_helper<SS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template JIT_API uint32_t mov_sel_pe_helper<FS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
+template JIT_API uint32_t mov_sel_pe_helper<GS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t eip);
 
-template uint32_t update_crN_helper<0>(cpu_ctx_t* cpu_ctx, uint32_t new_cr, uint8_t idx);
-template uint32_t update_crN_helper<1>(cpu_ctx_t* cpu_ctx, uint32_t new_cr, uint8_t idx);
-template uint32_t update_crN_helper<2>(cpu_ctx_t* cpu_ctx, uint32_t new_cr, uint8_t idx);
+template JIT_API uint32_t update_crN_helper<0>(cpu_ctx_t* cpu_ctx, uint32_t new_cr, uint8_t idx);
+template JIT_API uint32_t update_crN_helper<1>(cpu_ctx_t* cpu_ctx, uint32_t new_cr, uint8_t idx);
+template JIT_API uint32_t update_crN_helper<2>(cpu_ctx_t* cpu_ctx, uint32_t new_cr, uint8_t idx);

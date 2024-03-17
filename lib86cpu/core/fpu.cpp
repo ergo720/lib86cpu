@@ -113,17 +113,17 @@ uint32_t fpu_stack_check(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val)
 	return ftop;
 }
 
-template uint32_t fpu_stack_check<true, fpu_instr_t::integer8>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
-template uint32_t fpu_stack_check<false, fpu_instr_t::integer8>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
-template uint32_t fpu_stack_check<true, fpu_instr_t::integer16>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
-template uint32_t fpu_stack_check<false, fpu_instr_t::integer16>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
-template uint32_t fpu_stack_check<true, fpu_instr_t::integer32>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
-template uint32_t fpu_stack_check<false, fpu_instr_t::integer32>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
-template uint32_t fpu_stack_check<true, fpu_instr_t::integer64>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
-template uint32_t fpu_stack_check<false, fpu_instr_t::integer64>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
-template uint32_t fpu_stack_check<true, fpu_instr_t::float_>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
-template uint32_t fpu_stack_check<false, fpu_instr_t::float_>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
-template uint32_t fpu_stack_check<true, fpu_instr_t::bcd>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
-template uint32_t fpu_stack_check<false, fpu_instr_t::bcd>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
-template void fpu_update_tag<true>(cpu_ctx_t *cpu_ctx, uint32_t idx);
-template void fpu_update_tag<false>(cpu_ctx_t *cpu_ctx, uint32_t idx);
+template JIT_API uint32_t fpu_stack_check<true, fpu_instr_t::integer8>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
+template JIT_API uint32_t fpu_stack_check<false, fpu_instr_t::integer8>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
+template JIT_API uint32_t fpu_stack_check<true, fpu_instr_t::integer16>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
+template JIT_API uint32_t fpu_stack_check<false, fpu_instr_t::integer16>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
+template JIT_API uint32_t fpu_stack_check<true, fpu_instr_t::integer32>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
+template JIT_API uint32_t fpu_stack_check<false, fpu_instr_t::integer32>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
+template JIT_API uint32_t fpu_stack_check<true, fpu_instr_t::integer64>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
+template JIT_API uint32_t fpu_stack_check<false, fpu_instr_t::integer64>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
+template JIT_API uint32_t fpu_stack_check<true, fpu_instr_t::float_>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
+template JIT_API uint32_t fpu_stack_check<false, fpu_instr_t::float_>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
+template JIT_API uint32_t fpu_stack_check<true, fpu_instr_t::bcd>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
+template JIT_API uint32_t fpu_stack_check<false, fpu_instr_t::bcd>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
+template JIT_API void fpu_update_tag<true>(cpu_ctx_t *cpu_ctx, uint32_t idx);
+template JIT_API void fpu_update_tag<false>(cpu_ctx_t *cpu_ctx, uint32_t idx);

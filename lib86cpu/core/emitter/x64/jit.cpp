@@ -161,7 +161,7 @@ static const std::unordered_map<x64, x86::Gp> reg_to_sized_reg = {
 
 template<typename R, typename... Args>
 consteval std::integral_constant<size_t, sizeof...(Args)>
-get_arg_count(R(JIT_API *f)(Args...))
+get_arg_count(JIT_API R(*f)(Args...))
 {
 	return std::integral_constant<size_t, sizeof...(Args)>{};
 }
