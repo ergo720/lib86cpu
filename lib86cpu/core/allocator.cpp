@@ -165,7 +165,7 @@ mem_manager::release_sys_mem(void *addr)
 		return;
 	}
 
-#if defined(_WIN64)
+#if defined(_WIN64) || defined(__linux__)
 	void *main_addr = reinterpret_cast<uint8_t *>(addr) + 16;
 	if (auto it = eh_frames.find(main_addr); it != eh_frames.end()) {
 		os_delete_exp_info(it->second);
