@@ -530,6 +530,7 @@ lc86_jit::gen_code_block()
 	Section *section = m_code.textSection();
 	size_t offset = static_cast<size_t>(section->offset()); // should be zero for the first section
 	size_t buff_size = static_cast<size_t>(section->bufferSize());
+	assert(offset == 0);
 
 	assert(offset + buff_size <= estimated_code_size);
 	uint8_t *exit_offset = static_cast<uint8_t *>(block.addr) + offset;
