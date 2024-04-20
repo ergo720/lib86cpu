@@ -31,9 +31,3 @@ NOTE: there is a known bug in a version of Visual Studio 2022 after 17.1.5, that
 5. Build the resulting Makefile with make, or use Visual Studio Code
 
 **NOTE:** use `-DLIB86CPU_BUILD_TEST=ON` if you want to also build the test app.
-
-## Support
-
-You can show your appreciation to this project to the below addresses:
-- Bitcoin `1NnaFQoj6MMFZWFk8ETmKE4qUKpzhZxZ2g`
-- Ether   `0x340aeB056C1Cf9107FAc476371D2b2d0544b50cf`
