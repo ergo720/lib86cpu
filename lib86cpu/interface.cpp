@@ -250,7 +250,7 @@ cpu_run(cpu_t *cpu)
 /*
 * cpu_run -> starts the emulation. Returns when (1) there is an error in lib86cpu (2) the timeout time has been reached. cpu_sync_state not internally called
 * cpu: a valid cpu instance
-* timeout_time: a timeout in microseconds representing the time slice to run before returning
+* timeout_time: a timeout in microseconds representing a future time point to reach before returning
 * ret: the exit reason
 */
 lc86_status
@@ -263,8 +263,8 @@ cpu_run_until(cpu_t *cpu, uint64_t timeout_time)
 /*
 * cpu_run -> changes the timeout time currently set
 * cpu: a valid cpu instance
-* timeout_time: a timeout in microseconds representing the time slice to run before returning
-* ret: the exit reason
+* timeout_time: a timeout in microseconds representing a future time point to reach before returning
+* ret: nothing
 */
 void
 cpu_set_timeout(cpu_t *cpu, uint64_t timeout_time)
