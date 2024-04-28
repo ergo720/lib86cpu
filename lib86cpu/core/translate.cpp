@@ -1934,18 +1934,25 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 template<bool run_forever>
 lc86_status cpu_start(cpu_t *cpu)
 {
-	if ((cpu->cpu_flags & CPU_DBG_PRESENT) && cpu->dbg_first_run) [[unlikely]] {
-		cpu->dbg_first_run = false;
+	if ((cpu->cpu_flags & (CPU_DBG_PRESENT | CPU_TIMEOUT)) == CPU_DBG_PRESENT) [[unlikely]] {
+		// This check is necessary because the debugger will show disassembled instructions when first run, and HLT is translated differently depending on CPU_TIMEOUT
+		if constexpr (run_forever == false) {
+			cpu->cpu_flags |= CPU_TIMEOUT;
+		}
 		std::promise<bool> promise;
 		std::future<bool> fut = promise.get_future();
 		std::thread(dbg_main_wnd, cpu, std::ref(promise)).detach();
 		bool has_err = fut.get();
 		if (has_err) {
 			// When this fails, last_error is set to a custom message
-			return lc86_status::internal_error;
+			return set_last_error(lc86_status::internal_error);
 		}
 		// wait until the debugger continues execution, so that users have a chance to set breakpoints and/or inspect the guest code
 		guest_running.wait(false);
+	}
+
+	if constexpr (run_forever == false) {
+		cpu->cpu_flags |= CPU_TIMEOUT;
 	}
 
 	if (cpu->is_suspended.test()) {
@@ -1965,7 +1972,6 @@ lc86_status cpu_start(cpu_t *cpu)
 			cpu_main_loop<false, false>(cpu, []() { return true; });
 		}
 		else {
-			cpu->cpu_ctx.hflags |= HFLG_TIMEOUT;
 			cpu_timer_set_now(cpu);
 			cpu->cpu_ctx.exit_requested = 0;
 			if (cpu->cpu_ctx.is_halted) {
@@ -1973,12 +1979,10 @@ lc86_status cpu_start(cpu_t *cpu)
 				halt_loop(cpu);
 				if (cpu->cpu_ctx.is_halted) {
 					// if it is still halted, then it must be a timeout
-					cpu->cpu_ctx.hflags &= ~HFLG_TIMEOUT;
 					return set_last_error(lc86_status::timeout);
 				}
 			}
 			cpu_main_loop<false, false>(cpu, [cpu]() { return !cpu->cpu_ctx.exit_requested; });
-			cpu->cpu_ctx.hflags &= ~HFLG_TIMEOUT;
 			cpu->cpu_thr_id = std::thread::id();
 			return set_last_error(lc86_status::timeout);
 		}

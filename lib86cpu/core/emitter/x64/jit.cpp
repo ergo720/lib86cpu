@@ -645,7 +645,7 @@ void
 lc86_jit::gen_interrupt_check()
 {
 	Label no_int = m_a.newLabel();
-	if (m_cpu->cpu_ctx.hflags & HFLG_TIMEOUT) {
+	if (m_cpu->cpu_flags & CPU_TIMEOUT) {
 		Label no_timeout = m_a.newLabel();
 		CALL_F(&cpu_timer_helper);
 		TEST(EAX, EAX);
@@ -5544,7 +5544,7 @@ lc86_jit::hlt(decoded_instr *instr)
 		}
 		else {
 			MOV(MEMD32(RCX, CPU_CTX_EIP), m_cpu->instr_eip + m_cpu->instr_bytes);
-			if (m_cpu->cpu_ctx.hflags & HFLG_TIMEOUT) {
+			if (m_cpu->cpu_flags & CPU_TIMEOUT) {
 				Label retry = m_a.newLabel();
 				Label no_timeout = m_a.newLabel();
 				m_a.bind(retry);

@@ -36,7 +36,6 @@ JIT_API void tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 // HFLG_DBG_TRAP: used to suppress data/io watchpoints (not recorded in the tc flags)
 // HFLG_CR4_OSFXSR: osfxsr flag of cr4
 // HFLG_CR0_TS: ts flag of cr0
-// HFLG_TIMEOUT: timeout check was emitted
 // HFLG_CR0_MP: mp flag of cr0
 // HFLG_CR0_VME: vme flag of cr4
 // HFLG_CR0_PVI: pvi flag of cr4
@@ -49,7 +48,6 @@ JIT_API void tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define DBG_TRAP_SHIFT      7
 #define CR4_OSFXSR_SHIFT    9
 #define CR0_TS_SHIFT        10
-#define TIMEOUT_SHIFT       11
 #define INHIBIT_INT_SHIFT   14
 #define CR0_MP_SHIFT        15
 #define CR4_VME_SHIFT       19
@@ -62,14 +60,13 @@ JIT_API void tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define HFLG_CR0_EM         (1 << CR0_EM_SHIFT)
 #define HFLG_TRAMP          (1 << TRAMP_SHIFT)
 #define HFLG_DBG_TRAP       (1 << DBG_TRAP_SHIFT)
-#define HFLG_TIMEOUT        (1 << TIMEOUT_SHIFT)
 #define HFLG_INHIBIT_INT    (1 << INHIBIT_INT_SHIFT)
 #define HFLG_CR0_MP         (1 << CR0_MP_SHIFT)
 #define HFLG_CR0_TS         (1 << CR0_TS_SHIFT)
 #define HFLG_CR4_OSFXSR     (1 << CR4_OSFXSR_SHIFT)
 #define HFLG_CR4_VME        (1 << CR4_VME_SHIFT)
 #define HFLG_CR4_PVI        (1 << CR4_PVI_SHIFT)
-#define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_TIMEOUT | HFLG_INHIBIT_INT | HFLG_CR0_MP | HFLG_CR0_TS \
+#define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_INHIBIT_INT | HFLG_CR0_MP | HFLG_CR0_TS \
 | HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI)
 #define HFLG_SAVED_MASK     (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_INHIBIT_INT | HFLG_CR0_MP | HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI)
 

@@ -169,7 +169,6 @@ cpu_new(uint32_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data, const
 	std::random_device rd;
 	cpu->rng_gen.seed(rd());
 	cpu->cpu_thr_id = std::thread::id();
-	cpu->dbg_first_run = true;
 
 	LOG(log_level::info, "Created new cpu \"%s\"", cpu->cpu_name);
 
@@ -206,7 +205,7 @@ static void cpu_sync_state(cpu_t *cpu)
 		}
 	}
 
-	// there's no need to sync HFLG_TRAMP, HFLG_DBG_TRAP and HFLG_TIMEOUT since those can never be set when this is called either from the client or from cpu_run
+	// there's no need to sync HFLG_TRAMP and HFLG_DBG_TRAP since those can never be set when this is called either from the client or from cpu_run
 	cpu->cpu_ctx.hflags = 0;
 	cpu->cpu_ctx.hflags |= (cpu->cpu_ctx.regs.cs & HFLG_CPL);
 	if (cpu->cpu_ctx.regs.cs_hidden.flags & SEG_HIDDEN_DB) {
@@ -243,6 +242,9 @@ static void cpu_sync_state(cpu_t *cpu)
 lc86_status
 cpu_run(cpu_t *cpu)
 {
+	if (cpu->cpu_flags & CPU_TIMEOUT) {
+		return set_last_error(lc86_status::invalid_parameter);
+	}
 	cpu_sync_state<true>(cpu);
 	return cpu_start<true>(cpu);
 }
@@ -326,7 +328,6 @@ cpu_set_flags(cpu_t *cpu, uint32_t flags)
 
 	cpu->cpu_flags &= ~(CPU_SYNTAX_MASK | CPU_DBG_PRESENT | CPU_ABORT_ON_HLT);
 	cpu->cpu_flags |= flags;
-	// XXX: eventually, the user should be able to set the instruction formatting
 	set_instr_format(cpu);
 
 	return lc86_status::success;
