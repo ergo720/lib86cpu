@@ -138,7 +138,8 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 					eflags_mask |= (IF_MASK | VIF_MASK);
 				}
 				cpu_ctx->regs.eflags &= ~eflags_mask;
-				cpu_ctx->hflags &= ~(HFLG_DBG_TRAP | HFLG_INHIBIT_INT);
+				cpu_ctx->hflags &= ~HFLG_INHIBIT_INT;
+				cpu_ctx->cpu->cpu_flags &= ~CPU_INHIBIT_DBG_TRAP;
 				cpu_ctx->exp_info.old_exp = EXP_INVALID;
 				if (idx == EXP_PF) {
 					cpu_ctx->regs.cr2 = fault_addr;
@@ -380,7 +381,8 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 				cpu_ctx->regs.eflags = (eflags & ~(VM_MASK | RF_MASK | NT_MASK | TF_MASK));
 				cpu_ctx->regs.esp = (cpu_ctx->regs.esp & ~stack_mask) | (esp & stack_mask);
 				cpu_ctx->regs.eip = new_eip;
-				cpu_ctx->hflags &= ~(HFLG_DBG_TRAP | HFLG_INHIBIT_INT);
+				cpu_ctx->hflags &= ~HFLG_INHIBIT_INT;
+				cpu_ctx->cpu->cpu_flags &= ~CPU_INHIBIT_DBG_TRAP;
 				cpu_ctx->exp_info.old_exp = EXP_INVALID;
 				if (idx == EXP_PF) {
 					cpu_ctx->regs.cr2 = fault_addr;
@@ -512,7 +514,8 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		cpu_ctx->regs.eip = vec_entry & 0xFFFF;
 	}
 
-	cpu_ctx->hflags &= ~(HFLG_DBG_TRAP | HFLG_INHIBIT_INT);
+	cpu_ctx->hflags &= ~HFLG_INHIBIT_INT;
+	cpu_ctx->cpu->cpu_flags &= ~CPU_INHIBIT_DBG_TRAP;
 	cpu_ctx->exp_info.old_exp = EXP_INVALID;
 	if (idx == EXP_DB) {
 		cpu_ctx->regs.dr[7] &= ~DR7_GD_MASK;
@@ -1890,7 +1893,7 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 		switch (type)
 		{
 		case host_exp_t::pf_exp: {
-			// page fault while excecuting the translated code
+			// page fault while executing the translated code
 			retry_exp:
 			try {
 				// the exception handler always returns nullptr
@@ -1907,12 +1910,11 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 
 		case host_exp_t::db_exp: {
 			// debug exception trap (mem/io r/w watch) while executing the translated code.
-			// We set CPU_DBG_TRAP, so that we can execute the trapped instruction without triggering again a de exp,
+			// We set CPU_INHIBIT_DBG_TRAP, so that we can execute the trapped instruction without triggering again a de exp,
 			// and then jump to the debug handler. Note that eip points to the trapped instr, so we can execute it.
 			assert(cpu_ctx->exp_info.exp_data.idx == EXP_DB);
 
-			cpu_ctx->cpu->cpu_flags |= CPU_DISAS_ONE;
-			cpu_ctx->hflags |= HFLG_DBG_TRAP;
+			cpu_ctx->cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_INHIBIT_DBG_TRAP);
 			cpu_ctx->regs.eip = cpu_ctx->exp_info.exp_data.eip;
 			// run the main loop only once, since we only execute the trapped instr
 			int i = 0;

@@ -45,7 +45,7 @@ cpu_check_watchpoints(cpu_t *cpu, addr_t addr, int dr_idx, int type, uint32_t ei
 	bool match = false;
 	int dr7_type = cpu_get_watchpoint_type(cpu, dr_idx);
 	if (type == DR7_TYPE_DATA_W) {
-		if (((dr7_type == DR7_TYPE_DATA_W) || (dr7_type == DR7_TYPE_DATA_RW)) && !(cpu->cpu_ctx.hflags & HFLG_DBG_TRAP)) {
+		if (((dr7_type == DR7_TYPE_DATA_W) || (dr7_type == DR7_TYPE_DATA_RW)) && !(cpu->cpu_flags & CPU_INHIBIT_DBG_TRAP)) {
 			match = true;
 		}
 	}
@@ -54,7 +54,7 @@ cpu_check_watchpoints(cpu_t *cpu, addr_t addr, int dr_idx, int type, uint32_t ei
 			match = true;
 		}
 	}
-	else if ((type == dr7_type) && !(cpu->cpu_ctx.hflags & HFLG_DBG_TRAP)) { // either DR7_TYPE_IO_RW or DR7_TYPE_DATA_RW
+	else if ((type == dr7_type) && !(cpu->cpu_flags & CPU_INHIBIT_DBG_TRAP)) { // either DR7_TYPE_IO_RW or DR7_TYPE_DATA_RW
 		match = true;
 	}
 

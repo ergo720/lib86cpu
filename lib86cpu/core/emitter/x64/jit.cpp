@@ -679,7 +679,7 @@ lc86_jit::gen_no_link_checks()
 		m_cpu->cpu_flags |= CPU_FORCE_INSERT;
 	}
 
-	if (m_cpu->cpu_ctx.hflags & HFLG_DBG_TRAP) {
+	if (m_cpu->cpu_flags & CPU_INHIBIT_DBG_TRAP) {
 		LD_R32(EAX, CPU_CTX_EIP);
 		gen_raise_exp_inline<true>(0, 0, EXP_DB, EAX);
 		return;

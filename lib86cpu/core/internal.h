@@ -33,7 +33,6 @@ JIT_API void tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 // HFLG_PE_MODE: real or protected mode
 // HFLG_CR0_EM: em flag of cr0
 // HFLG_TRAMP: used to select the trampoline tc instead of the hook tc
-// HFLG_DBG_TRAP: used to suppress data/io watchpoints (not recorded in the tc flags)
 // HFLG_CR4_OSFXSR: osfxsr flag of cr4
 // HFLG_CR0_TS: ts flag of cr0
 // HFLG_CR0_MP: mp flag of cr0
@@ -45,7 +44,6 @@ JIT_API void tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define PE_MODE_SHIFT       4
 #define CR0_EM_SHIFT        5
 #define TRAMP_SHIFT         6
-#define DBG_TRAP_SHIFT      7
 #define CR4_OSFXSR_SHIFT    9
 #define CR0_TS_SHIFT        10
 #define INHIBIT_INT_SHIFT   14
@@ -59,7 +57,6 @@ JIT_API void tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define HFLG_PE_MODE        (1 << PE_MODE_SHIFT)
 #define HFLG_CR0_EM         (1 << CR0_EM_SHIFT)
 #define HFLG_TRAMP          (1 << TRAMP_SHIFT)
-#define HFLG_DBG_TRAP       (1 << DBG_TRAP_SHIFT)
 #define HFLG_INHIBIT_INT    (1 << INHIBIT_INT_SHIFT)
 #define HFLG_CR0_MP         (1 << CR0_MP_SHIFT)
 #define HFLG_CR0_TS         (1 << CR0_TS_SHIFT)

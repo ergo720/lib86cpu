@@ -205,7 +205,7 @@ static void cpu_sync_state(cpu_t *cpu)
 		}
 	}
 
-	// there's no need to sync HFLG_TRAMP and HFLG_DBG_TRAP since those can never be set when this is called either from the client or from cpu_run
+	// there's no need to sync HFLG_TRAMP since those can never be set when this is called either from the client or from cpu_run
 	cpu->cpu_ctx.hflags = 0;
 	cpu->cpu_ctx.hflags |= (cpu->cpu_ctx.regs.cs & HFLG_CPL);
 	if (cpu->cpu_ctx.regs.cs_hidden.flags & SEG_HIDDEN_DB) {
