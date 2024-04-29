@@ -79,7 +79,6 @@ struct cpu_save_state_t {
 	uint8_t is_halted;
 	uint8_t microcode_updated;
 	uint32_t hflags;
-	uint32_t cpu_flags;
 	uint32_t a20_mask;
 	uint64_t tsc_offset;
 };

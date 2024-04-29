@@ -14,7 +14,7 @@
 #endif
 
 // This should be updated whenever cpu members that need to be saved are added/removed
-#define SAVE_STATE_ID 5
+#define SAVE_STATE_ID 6
 
 
 void
@@ -103,7 +103,6 @@ cpu_save_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_st
 	cpu_state->is_halted = cpu->cpu_ctx.is_halted;
 	cpu_state->microcode_updated = cpu->microcode_updated;
 	cpu_state->hflags = (cpu->cpu_ctx.hflags & HFLG_SAVED_MASK);
-	cpu_state->cpu_flags = (cpu->cpu_flags & CPU_SAVED_FLG_MASK);
 	cpu_state->a20_mask = cpu->a20_mask;
 	uint32_t old_edx = cpu->cpu_ctx.regs.edx;
 	uint32_t old_eax = cpu->cpu_ctx.regs.eax;
@@ -134,7 +133,7 @@ cpu_load_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_st
 	cpu->cpu_ctx.is_halted = cpu->cpu_ctx.is_halted;
 	cpu->microcode_updated = cpu_state->microcode_updated;
 	cpu->cpu_ctx.hflags = cpu_state->hflags;
-	cpu->cpu_flags = cpu_state->cpu_flags;
+	cpu->cpu_flags &= CPU_PRESERVED_FLG_MASK;
 	cpu->a20_mask = cpu_state->a20_mask;
 	cpu->tsc_clock.offset = cpu_state->tsc_offset;
 	cpu->tsc_clock.last_host_ticks = get_current_time();
