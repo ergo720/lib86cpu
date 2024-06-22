@@ -245,7 +245,7 @@ gen_dbg_test()
 
 	regs->cr0 = 0x80000001; // protected, paging
 	regs->cr3 = 0x000FF000;
-	regs->cr4 = 0x0; // don't enable debug extensions because io watchpoints are not supported yet
+	regs->cr4 = 0x8; // debug extensions
 
 	return true;
 }
