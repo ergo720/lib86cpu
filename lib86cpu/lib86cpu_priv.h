@@ -56,7 +56,6 @@ enum class mem_type {
 enum class host_exp_t : int {
 	pf_exp,
 	db_exp,
-	halt_tc,
 };
 
 template<typename T>
@@ -93,7 +92,6 @@ struct exp_data_t {
 	uint32_t fault_addr;    // addr that caused the exception
 	uint16_t code;          // error code used by the exception (if any)
 	uint16_t idx;           // index number of the exception
-	uint32_t eip;           // eip to return to after the exception is serviced
 };
 
 struct exp_info_t {
@@ -163,8 +161,6 @@ struct cpu_ctx_t {
 	uint32_t hflags;
 	exp_info_t exp_info;
 	uint32_t int_pending;
-	uint8_t exit_requested;
-	uint8_t is_halted;
 	fpu_data_t fpu_data;
 };
 
@@ -199,8 +195,8 @@ struct cpu_t {
 	tlb_t itlb[ITLB_NUM_SETS][ITLB_NUM_LINES]; // instruction tlb
 	tlb_t dtlb[DTLB_NUM_SETS][DTLB_NUM_LINES]; // data tlb
 	uint16_t num_tc; // num of tc actually emitted, tc's might not be present in the code cache
-	uint8_t microcode_updated;
-	bool state_loaded;
+	uint8_t microcode_updated, is_halted;
+	bool state_loaded, exit_requested;
 	struct _tsc_clock {
 		uint64_t offset;
 		uint64_t last_host_ticks;

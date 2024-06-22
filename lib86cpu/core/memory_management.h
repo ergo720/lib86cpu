@@ -20,20 +20,20 @@ while (region->aliased_region) { \
 template<bool flush_global = true> void tlb_flush(cpu_t * cpu);
 inline void *get_rom_host_ptr(const memory_region_t<addr_t> *rom, addr_t addr);
 inline void *get_ram_host_ptr(cpu_t *cpu, const memory_region_t<addr_t> *ram, addr_t addr);
-addr_t get_read_addr_slow(cpu_t * cpu, addr_t addr, uint8_t is_priv, uint32_t eip);
-addr_t get_write_addr_slow(cpu_t * cpu, addr_t addr, uint8_t is_priv, uint32_t eip, bool* is_code);
-addr_t get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip);
-addr_t get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, bool *is_code);
-addr_t get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip);
-template<bool set_smc> addr_t get_code_addr(cpu_t * cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx);
+addr_t get_read_addr_slow(cpu_t * cpu, addr_t addr, uint8_t is_priv);
+addr_t get_write_addr_slow(cpu_t * cpu, addr_t addr, uint8_t is_priv, bool* is_code);
+addr_t get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv);
+addr_t get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, bool *is_code);
+addr_t get_code_addr(cpu_t *cpu, addr_t addr);
+template<bool set_smc> addr_t get_code_addr(cpu_t * cpu, addr_t addr, disas_ctx_t *disas_ctx);
 template<typename T> T ram_read(cpu_t *cpu, void *ram_ptr);
 template<typename T> void ram_write(cpu_t *cpu, void *ram_ptr, T value);
 void ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer);
 uint64_t as_ram_dispatch_read(cpu_t *cpu, addr_t addr, uint64_t size, const memory_region_t<addr_t> *region, uint8_t *buffer);
-template<typename T> JIT_API T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
-template<typename T, bool dont_write = false> JIT_API void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint8_t is_priv);
-template<typename T> JIT_API T io_read_helper(cpu_ctx_t * cpu_ctx, port_t port, uint32_t eip);
-template<typename T> JIT_API void io_write_helper(cpu_ctx_t * cpu_ctx, port_t port, T val, uint32_t eip);
+template<typename T> JIT_API T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv);
+template<typename T, bool dont_write = false> JIT_API void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint8_t is_priv);
+template<typename T> JIT_API T io_read_helper(cpu_ctx_t * cpu_ctx, port_t port);
+template<typename T> JIT_API void io_write_helper(cpu_ctx_t * cpu_ctx, port_t port, T val);
 
 inline constexpr uint64_t tlb_access[2][4] = {
 	{ TLB_SUP_READ, TLB_SUP_READ, TLB_SUP_READ, TLB_USER_READ },
@@ -248,14 +248,14 @@ void ram_write(cpu_t *cpu, void *ram_ptr, T value)
  * memory accessors
  */
 template<typename T>
-T mem_read_slow(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t is_priv)
+T mem_read_slow(cpu_t *cpu, addr_t addr, uint8_t is_priv)
 {
 	if ((sizeof(T) != 1) && ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
 		T value = 0;
 		uint8_t i = 0;
-		addr_t phys_addr_s = get_read_addr_slow(cpu, addr, is_priv, eip);
-		addr_t phys_addr_e = get_read_addr_slow(cpu, addr + sizeof(T) - 1, is_priv, eip);
-		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_RW, eip);
+		addr_t phys_addr_s = get_read_addr_slow(cpu, addr, is_priv);
+		addr_t phys_addr_e = get_read_addr_slow(cpu, addr + sizeof(T) - 1, is_priv);
+		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_RW);
 		addr_t phys_addr = phys_addr_s;
 		uint8_t bytes_in_page = ((addr + sizeof(T) - 1) & ~PAGE_MASK) - addr;
 		while (i < sizeof(T)) {
@@ -270,28 +270,28 @@ T mem_read_slow(cpu_t *cpu, addr_t addr, uint32_t eip, uint8_t is_priv)
 		return value;
 	}
 	else {
-		addr_t phys_addr = get_read_addr_slow(cpu, addr, is_priv, eip);
-		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_RW, eip);
+		addr_t phys_addr = get_read_addr_slow(cpu, addr, is_priv);
+		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_RW);
 		return as_memory_dispatch_read<T>(cpu, phys_addr, as_memory_search_addr(cpu, phys_addr));
 	}
 }
 
 template<typename T>
-void mem_write_slow(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t is_priv)
+void mem_write_slow(cpu_t *cpu, addr_t addr, T value, uint8_t is_priv)
 {
 	if ((sizeof(T) != 1) && ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
 		bool is_code1, is_code2;
 		uint8_t i = 0;
-		addr_t phys_addr_s = get_write_addr_slow(cpu, addr, is_priv, eip, &is_code1);
-		addr_t phys_addr_e = get_write_addr_slow(cpu, addr + sizeof(T) - 1, is_priv, eip, &is_code2);
-		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_W, eip);
+		addr_t phys_addr_s = get_write_addr_slow(cpu, addr, is_priv, &is_code1);
+		addr_t phys_addr_e = get_write_addr_slow(cpu, addr + sizeof(T) - 1, is_priv, &is_code2);
+		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_W);
 		addr_t phys_addr = phys_addr_s;
 		uint8_t bytes_in_page = ((addr + sizeof(T) - 1) & ~PAGE_MASK) - addr;
 		if (is_code1) {
-			tc_invalidate(&cpu->cpu_ctx, phys_addr_s, bytes_in_page, eip);
+			tc_invalidate(&cpu->cpu_ctx, phys_addr_s, bytes_in_page);
 		}
 		if (is_code2) {
-			tc_invalidate(&cpu->cpu_ctx, phys_addr_e, sizeof(T) - bytes_in_page, eip);
+			tc_invalidate(&cpu->cpu_ctx, phys_addr_e, sizeof(T) - bytes_in_page);
 		}
 		while (i < sizeof(T)) {
 			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
@@ -305,10 +305,10 @@ void mem_write_slow(cpu_t *cpu, addr_t addr, T value, uint32_t eip, uint8_t is_p
 	}
 	else {
 		bool is_code;
-		addr_t phys_addr = get_write_addr_slow(cpu, addr, is_priv, eip, &is_code);
-		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_W, eip);
+		addr_t phys_addr = get_write_addr_slow(cpu, addr, is_priv, &is_code);
+		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_W);
 		if (is_code) {
-			tc_invalidate(&cpu->cpu_ctx, phys_addr, sizeof(T), eip);
+			tc_invalidate(&cpu->cpu_ctx, phys_addr, sizeof(T));
 		}
 		as_memory_dispatch_write<T>(cpu, phys_addr, value, as_memory_search_addr(cpu, phys_addr));
 	}

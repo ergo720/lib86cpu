@@ -12,9 +12,7 @@
 
 // these flags are ORed with the flags in lib86cpu.h, so avoid conflicts
 #define CPU_TIMEOUT             (1 << 3)
-#define CPU_INHIBIT_DBG_TRAP    (1 << 4)
 #define CPU_DISAS_ONE           (1 << 7)
-#define CPU_ALLOW_CODE_WRITE    (1 << 8)
 #define CPU_FORCE_INSERT        (1 << 9)
 #define CPU_SINGLE_STEP         (1 << 10)
 #define CPU_PRESERVED_FLG_MASK  (CPU_SYNTAX_MASK | CPU_TIMEOUT | CPU_SINGLE_STEP | CPU_DBG_PRESENT | CPU_ABORT_ON_HLT)

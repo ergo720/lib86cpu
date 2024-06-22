@@ -247,7 +247,7 @@ check_page_privilege(cpu_t *cpu, uint8_t pde_priv, uint8_t pte_priv)
 
 template<bool raise_host_exp>
 static inline void
-mmu_raise_page_fault(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx, uint8_t err_code, uint8_t is_write, uint8_t cpu_lv)
+mmu_raise_page_fault(cpu_t *cpu, addr_t addr, disas_ctx_t *disas_ctx, uint8_t err_code, uint8_t is_write, uint8_t cpu_lv)
 {
 	// NOTE: the u/s bit of the error code should reflect the actual cpl even if the memory access is privileged
 	if constexpr (raise_host_exp) {
@@ -255,7 +255,6 @@ mmu_raise_page_fault(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_c
 		cpu->cpu_ctx.exp_info.exp_data.fault_addr = addr;
 		cpu->cpu_ctx.exp_info.exp_data.code = err_code | (is_write << 1) | cpu_lv;
 		cpu->cpu_ctx.exp_info.exp_data.idx = EXP_PF;
-		cpu->cpu_ctx.exp_info.exp_data.eip = eip;
 		throw host_exp_t::pf_exp;
 	}
 	else {
@@ -263,13 +262,12 @@ mmu_raise_page_fault(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_c
 		disas_ctx->exp_data.fault_addr = addr;
 		disas_ctx->exp_data.code = err_code | (is_write << 1) | cpu_lv;
 		disas_ctx->exp_data.idx = EXP_PF;
-		disas_ctx->exp_data.eip = eip;
 	}
 }
 
 // NOTE: flags: bit 0 -> is_write, bit 1 -> is_priv, bit 4 -> set_code
 template<bool is_fetch, bool should_fill_tlb = true, bool raise_host_exp = true>
-addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, uint32_t eip, disas_ctx_t *disas_ctx = nullptr)
+addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, disas_ctx_t *disas_ctx = nullptr)
 {
 	uint32_t is_write = flags & MMU_IS_WRITE;
 	uint32_t set_code = flags & MMU_SET_CODE;
@@ -293,7 +291,7 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, uint32_t eip,
 		uint32_t pde = as_memory_dispatch_read<uint32_t>(cpu, pde_addr, pde_region);
 
 		if (!(pde & PTE_PRESENT)) {
-			mmu_raise_page_fault<raise_host_exp>(cpu, addr, eip, disas_ctx, err_code, is_write, cpu_lv);
+			mmu_raise_page_fault<raise_host_exp>(cpu, addr, disas_ctx, err_code, is_write, cpu_lv);
 			return 0;
 		}
 		
@@ -320,7 +318,7 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, uint32_t eip,
 				}
 			}
 			err_code = 1;
-			mmu_raise_page_fault<raise_host_exp>(cpu, addr, eip, disas_ctx, err_code, is_write, cpu_lv);
+			mmu_raise_page_fault<raise_host_exp>(cpu, addr, disas_ctx, err_code, is_write, cpu_lv);
 			return 0;
 		}
 
@@ -330,7 +328,7 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, uint32_t eip,
 		uint32_t pte = as_memory_dispatch_read<uint32_t>(cpu, pte_addr, pte_region);
 
 		if (!(pte & PTE_PRESENT)) {
-			mmu_raise_page_fault<raise_host_exp>(cpu, addr, eip, disas_ctx, err_code, is_write, cpu_lv);
+			mmu_raise_page_fault<raise_host_exp>(cpu, addr, disas_ctx, err_code, is_write, cpu_lv);
 			return 0;
 		}
 
@@ -362,7 +360,7 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, uint32_t eip,
 		}
 		err_code = 1;
 
-		mmu_raise_page_fault<raise_host_exp>(cpu, addr, eip, disas_ctx, err_code, is_write, cpu_lv);
+		mmu_raise_page_fault<raise_host_exp>(cpu, addr, disas_ctx, err_code, is_write, cpu_lv);
 		return 0;
 	}
 }
@@ -370,13 +368,13 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, uint32_t eip,
 // These functions below only get the address of a single byte and thus do not need to check for a page boundary crossing. They return a corrected
 // physical address taking into account memory aliasing and region start offset
 addr_t
-get_read_addr_slow(cpu_t* cpu, addr_t addr, uint8_t is_priv, uint32_t eip)
+get_read_addr_slow(cpu_t* cpu, addr_t addr, uint8_t is_priv)
 {
-	return mmu_translate_addr<false>(cpu, addr, is_priv, eip);
+	return mmu_translate_addr<false>(cpu, addr, is_priv);
 }
 
 addr_t
-get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip)
+get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv)
 {
 	uint32_t idx = (addr >> PAGE_SHIFT) & DTLB_IDX_MASK;
 	uint64_t mem_access = tlb_access[0][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv];
@@ -388,19 +386,19 @@ get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip)
 		}
 	}
 
-	return get_read_addr_slow(cpu, addr, is_priv, eip);
+	return get_read_addr_slow(cpu, addr, is_priv);
 }
 
 addr_t
-get_write_addr_slow(cpu_t* cpu, addr_t addr, uint8_t is_priv, uint32_t eip, bool* is_code)
+get_write_addr_slow(cpu_t* cpu, addr_t addr, uint8_t is_priv, bool* is_code)
 {
-	addr_t phys_addr = mmu_translate_addr<false>(cpu, addr, MMU_IS_WRITE | is_priv, eip);
+	addr_t phys_addr = mmu_translate_addr<false>(cpu, addr, MMU_IS_WRITE | is_priv);
 	*is_code = cpu->smc[phys_addr >> PAGE_SHIFT];
 	return phys_addr;
 }
 
 addr_t
-get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, bool *is_code)
+get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, bool *is_code)
 {
 	// this also needs to check for the dirty flag, to catch the case where the first access to the page is a read and then a write happens, so that
 	// we give the mmu the chance to set the dirty flag in the pte
@@ -413,7 +411,7 @@ get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, bool *is_
 		if (((cpu->dtlb[idx][i].entry & mem_access) ^ tag) == 0) {
 			if (!(cpu->dtlb[idx][i].entry & TLB_DIRTY)) {
 				cpu->dtlb[idx][i].entry |= TLB_DIRTY;
-				mmu_translate_addr<false, false>(cpu, addr, MMU_IS_WRITE | is_priv, eip);
+				mmu_translate_addr<false, false>(cpu, addr, MMU_IS_WRITE | is_priv);
 			}
 			addr_t phys_addr = (cpu->dtlb[idx][i].entry & ~PAGE_MASK) | (addr & PAGE_MASK);
 			*is_code = cpu->smc[phys_addr >> PAGE_SHIFT];
@@ -421,11 +419,11 @@ get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t eip, bool *is_
 		}
 	}
 
-	return get_write_addr_slow(cpu, addr, MMU_IS_WRITE | is_priv, eip, is_code);
+	return get_write_addr_slow(cpu, addr, MMU_IS_WRITE | is_priv, is_code);
 }
 
 addr_t
-get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip)
+get_code_addr(cpu_t *cpu, addr_t addr)
 {
 	// this is only used for ram fetching, so we don't need to check for privileged accesses
 
@@ -439,11 +437,11 @@ get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip)
 		}
 	}
 
-	return mmu_translate_addr<true>(cpu, addr, MMU_SET_CODE, eip);
+	return mmu_translate_addr<true>(cpu, addr, MMU_SET_CODE);
 }
 
 template<bool set_smc>
-addr_t get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx)
+addr_t get_code_addr(cpu_t *cpu, addr_t addr, disas_ctx_t *disas_ctx)
 {
 	// overloaded get_code_addr that does not throw host exceptions, used in cpu_translate and by the debugger
 	// NOTE: the debugger should not set the smc, since it doesn't execute the instructions
@@ -458,7 +456,7 @@ addr_t get_code_addr(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_c
 		}
 	}
 
-	return mmu_translate_addr<true, true, false>(cpu, addr, set_smc ? MMU_SET_CODE : 0, eip, disas_ctx);
+	return mmu_translate_addr<true, true, false>(cpu, addr, set_smc ? MMU_SET_CODE : 0, disas_ctx);
 }
 
 uint64_t
@@ -496,7 +494,7 @@ ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer)
 	// NOTE: annoyingly, this check is already done in cpu_main_loop. If that raises a debug exception, we won't even reach here,
 	// and if it doesn't this check is useless. Perhaps find a way to avoid redoing the check here. Note that this can be skipped only the first
 	// time this is called by decode_instr!
-	cpu_check_data_watchpoints(cpu, disas_ctx->virt_pc, 1, DR7_TYPE_INSTR, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
+	cpu_check_data_watchpoints(cpu, disas_ctx->virt_pc, 1, DR7_TYPE_INSTR);
 
 	if ((disas_ctx->virt_pc & ~PAGE_MASK) != ((disas_ctx->virt_pc + X86_MAX_INSTR_LENGTH - 1) & ~PAGE_MASK)) {
 		size_t bytes_to_read, bytes_in_first_page;
@@ -508,7 +506,7 @@ ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer)
 			return;
 		}
 
-		addr_t addr = get_code_addr<true>(cpu, disas_ctx->virt_pc + bytes_in_first_page, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, disas_ctx);
+		addr_t addr = get_code_addr<true>(cpu, disas_ctx->virt_pc + bytes_in_first_page, disas_ctx);
 		if (disas_ctx->exp_data.idx == EXP_PF) {
 			// a page fault will be raised when fetching from the second page
 			disas_ctx->instr_buff_size = bytes_in_first_page;
@@ -527,7 +525,7 @@ ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer)
 
 // memory read helper invoked by the jitted code
 template<typename T>
-T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv)
+T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv)
 {
 	uint32_t page_idx1 = addr & ~PAGE_MASK;
 	uint32_t page_idx2 = (addr + sizeof(T) - 1) & ~PAGE_MASK;
@@ -541,7 +539,7 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv
 	// reads that cross pages always result in tlb misses
 	for (unsigned i = 0; i < DTLB_NUM_LINES; ++i) {
 		if ((((cpu_ctx->cpu->dtlb[idx][i].entry & mem_access) | page_idx1) ^ tag) == 0) {
-			cpu_check_data_watchpoints(cpu_ctx->cpu, addr, sizeof(T), DR7_TYPE_DATA_RW, eip);
+			cpu_check_data_watchpoints(cpu_ctx->cpu, addr, sizeof(T), DR7_TYPE_DATA_RW);
 
 			tlb_t *tlb = &cpu_ctx->cpu->dtlb[idx][i];
 			addr_t phys_addr = (tlb->entry & ~PAGE_MASK) | (addr & PAGE_MASK);
@@ -589,12 +587,12 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv
 	}
 
 	// tlb miss
-	return mem_read_slow<T>(cpu_ctx->cpu, addr, eip, is_priv);
+	return mem_read_slow<T>(cpu_ctx->cpu, addr, is_priv);
 }
 
 // memory write helper invoked by the jitted code
 template<typename T, bool dont_write>
-void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint8_t is_priv)
+void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint8_t is_priv)
 {
 	// if dont_write is true, then no write will happen and we only check if the access would fault. This is used by the ENTER instruction to check
 	// if a stack push with the final value of (e)sp will cause a page fault
@@ -616,13 +614,13 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint
 				return;
 			}
 
-			cpu_check_data_watchpoints(cpu_ctx->cpu, addr, sizeof(T), DR7_TYPE_DATA_W, eip);
+			cpu_check_data_watchpoints(cpu_ctx->cpu, addr, sizeof(T), DR7_TYPE_DATA_W);
 
 			tlb_t *tlb = &cpu_ctx->cpu->dtlb[idx][i];
 			addr_t phys_addr = (tlb->entry & ~PAGE_MASK) | (addr & PAGE_MASK);
 
 			if (cpu_ctx->cpu->smc[phys_addr >> PAGE_SHIFT]) {
-				tc_invalidate(cpu_ctx, phys_addr, sizeof(T), eip);
+				tc_invalidate(cpu_ctx, phys_addr, sizeof(T));
 			}
 
 			// tlb hit, check the region type
@@ -674,63 +672,63 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint32_t eip, uint
 	if constexpr (dont_write) {
 		// If the tlb misses, then the access might still be valid if the mmu can translate the address
 		if ((sizeof(T) != 1) && ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
-			volatile addr_t phys_addr_s = mmu_translate_addr<false>(cpu_ctx->cpu, addr, MMU_IS_WRITE | is_priv, eip);
-			volatile addr_t phys_addr_e = mmu_translate_addr<false>(cpu_ctx->cpu, addr + sizeof(T) - 1, MMU_IS_WRITE | is_priv, eip);
+			volatile addr_t phys_addr_s = mmu_translate_addr<false>(cpu_ctx->cpu, addr, MMU_IS_WRITE | is_priv);
+			volatile addr_t phys_addr_e = mmu_translate_addr<false>(cpu_ctx->cpu, addr + sizeof(T) - 1, MMU_IS_WRITE | is_priv);
 		}
 		else {
-			volatile addr_t phys_addr = mmu_translate_addr<false>(cpu_ctx->cpu, addr, MMU_IS_WRITE | is_priv, eip);
+			volatile addr_t phys_addr = mmu_translate_addr<false>(cpu_ctx->cpu, addr, MMU_IS_WRITE | is_priv);
 		}
 	}
 	else {
 		// tlb miss
-		mem_write_slow<T>(cpu_ctx->cpu, addr, val, eip, is_priv);
+		mem_write_slow<T>(cpu_ctx->cpu, addr, val, is_priv);
 	}
 }
 
 // io read helper invoked by the jitted code
 template<typename T>
-T io_read_helper(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip)
+T io_read_helper(cpu_ctx_t *cpu_ctx, port_t port)
 {
-	cpu_check_io_watchpoints(cpu_ctx->cpu, port, sizeof(T), DR7_TYPE_IO_RW, eip);
+	cpu_check_io_watchpoints(cpu_ctx->cpu, port, sizeof(T), DR7_TYPE_IO_RW);
 	return io_read<T>(cpu_ctx->cpu, port);
 }
 
 // io write helper invoked by the jitted code
 template<typename T>
-void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, T val, uint32_t eip)
+void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, T val)
 {
-	cpu_check_io_watchpoints(cpu_ctx->cpu, port, sizeof(T), DR7_TYPE_IO_RW, eip);
+	cpu_check_io_watchpoints(cpu_ctx->cpu, port, sizeof(T), DR7_TYPE_IO_RW);
 	io_write<T>(cpu_ctx->cpu, port, val);
 }
 
-template JIT_API uint8_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
-template JIT_API uint16_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
-template JIT_API uint32_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
-template JIT_API uint64_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
-template JIT_API uint80_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
-template JIT_API uint128_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t eip, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint8_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t val, uint32_t eip, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint16_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t val, uint32_t eip, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint32_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t val, uint32_t eip, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint64_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t val, uint32_t eip, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint80_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint80_t val, uint32_t eip, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint128_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint128_t val, uint32_t eip, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint8_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t val, uint32_t eip, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint16_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t val, uint32_t eip, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint32_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t val, uint32_t eip, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint64_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t val, uint32_t eip, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint80_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint80_t val, uint32_t eip, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint128_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint128_t val, uint32_t eip, uint8_t is_priv);
+template JIT_API uint8_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv);
+template JIT_API uint16_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv);
+template JIT_API uint32_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv);
+template JIT_API uint64_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv);
+template JIT_API uint80_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv);
+template JIT_API uint128_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv);
+template JIT_API void mem_write_helper<uint8_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t val, uint8_t is_priv);
+template JIT_API void mem_write_helper<uint16_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t val, uint8_t is_priv);
+template JIT_API void mem_write_helper<uint32_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t val, uint8_t is_priv);
+template JIT_API void mem_write_helper<uint64_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t val, uint8_t is_priv);
+template JIT_API void mem_write_helper<uint80_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint80_t val, uint8_t is_priv);
+template JIT_API void mem_write_helper<uint128_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint128_t val, uint8_t is_priv);
+template JIT_API void mem_write_helper<uint8_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t val, uint8_t is_priv);
+template JIT_API void mem_write_helper<uint16_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t val, uint8_t is_priv);
+template JIT_API void mem_write_helper<uint32_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t val, uint8_t is_priv);
+template JIT_API void mem_write_helper<uint64_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t val, uint8_t is_priv);
+template JIT_API void mem_write_helper<uint80_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint80_t val, uint8_t is_priv);
+template JIT_API void mem_write_helper<uint128_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint128_t val, uint8_t is_priv);
 
-template JIT_API uint8_t io_read_helper(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip);
-template JIT_API uint16_t io_read_helper(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip);
-template JIT_API uint32_t io_read_helper(cpu_ctx_t *cpu_ctx, port_t port, uint32_t eip);
-template JIT_API void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, uint8_t val, uint32_t eip);
-template JIT_API void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, uint16_t val, uint32_t eip);
-template JIT_API void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, uint32_t val, uint32_t eip);
+template JIT_API uint8_t io_read_helper(cpu_ctx_t *cpu_ctx, port_t port);
+template JIT_API uint16_t io_read_helper(cpu_ctx_t *cpu_ctx, port_t port);
+template JIT_API uint32_t io_read_helper(cpu_ctx_t *cpu_ctx, port_t port);
+template JIT_API void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, uint8_t val);
+template JIT_API void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, uint16_t val);
+template JIT_API void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, uint32_t val);
 
-template addr_t get_code_addr<false>(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx);
-template addr_t get_code_addr<true>(cpu_t *cpu, addr_t addr, uint32_t eip, disas_ctx_t *disas_ctx);
+template addr_t get_code_addr<false>(cpu_t *cpu, addr_t addr, disas_ctx_t *disas_ctx);
+template addr_t get_code_addr<true>(cpu_t *cpu, addr_t addr, disas_ctx_t *disas_ctx);
 
 template void tlb_flush<false>(cpu_t *cpu);
 template void tlb_flush<true>(cpu_t *cpu);

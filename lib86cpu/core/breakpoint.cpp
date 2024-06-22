@@ -40,12 +40,12 @@ cpu_check_watchpoint_overlap(cpu_t *cpu, addr_t addr, size_t size, int idx)
 }
 
 static void
-cpu_check_watchpoints(cpu_t *cpu, addr_t addr, int dr_idx, int type, uint32_t eip)
+cpu_check_watchpoints(cpu_t *cpu, addr_t addr, int dr_idx, int type)
 {
 	bool match = false;
 	int dr7_type = cpu_get_watchpoint_type(cpu, dr_idx);
 	if (type == DR7_TYPE_DATA_W) {
-		if (((dr7_type == DR7_TYPE_DATA_W) || (dr7_type == DR7_TYPE_DATA_RW)) && !(cpu->cpu_flags & CPU_INHIBIT_DBG_TRAP)) {
+		if (((dr7_type == DR7_TYPE_DATA_W) || (dr7_type == DR7_TYPE_DATA_RW))) {
 			match = true;
 		}
 	}
@@ -54,36 +54,40 @@ cpu_check_watchpoints(cpu_t *cpu, addr_t addr, int dr_idx, int type, uint32_t ei
 			match = true;
 		}
 	}
-	else if ((type == dr7_type) && !(cpu->cpu_flags & CPU_INHIBIT_DBG_TRAP)) { // either DR7_TYPE_IO_RW or DR7_TYPE_DATA_RW
+	else if (type == dr7_type) { // either DR7_TYPE_IO_RW or DR7_TYPE_DATA_RW
 		match = true;
 	}
 
 	if (match) {
 		cpu->cpu_ctx.regs.dr[6] |= (1 << dr_idx);
-		cpu->cpu_ctx.exp_info.exp_data.fault_addr = addr;
+		cpu->cpu_ctx.exp_info.exp_data.fault_addr = 0;
 		cpu->cpu_ctx.exp_info.exp_data.code = 0;
 		cpu->cpu_ctx.exp_info.exp_data.idx = EXP_DB;
-		cpu->cpu_ctx.exp_info.exp_data.eip = eip;
-		throw host_exp_t::db_exp;
-	}
-}
-
-void
-cpu_check_data_watchpoints(cpu_t *cpu, addr_t addr, size_t size, int type, uint32_t eip)
-{
-	for (const auto &wp : cpu->wp_data) {
-		if ((wp.watch_addr <= (addr + size - 1)) && (addr <= wp.watch_end)) [[unlikely]] {
-			cpu_check_watchpoints(cpu, addr, wp.dr_idx, type, eip);
+		if (type == DR7_TYPE_INSTR) {
+			throw host_exp_t::db_exp;
+		}
+		else {
+			cpu->raise_int_fn(&cpu->cpu_ctx, CPU_DBG_TRAP_INT);
 		}
 	}
 }
 
 void
-cpu_check_io_watchpoints(cpu_t *cpu, port_t port, size_t size, int type, uint32_t eip)
+cpu_check_data_watchpoints(cpu_t *cpu, addr_t addr, size_t size, int type)
+{
+	for (const auto &wp : cpu->wp_data) {
+		if ((wp.watch_addr <= (addr + size - 1)) && (addr <= wp.watch_end)) [[unlikely]] {
+			cpu_check_watchpoints(cpu, addr, wp.dr_idx, type);
+		}
+	}
+}
+
+void
+cpu_check_io_watchpoints(cpu_t *cpu, port_t port, size_t size, int type)
 {
 	for (const auto &wp : cpu->wp_io) {
 		if ((wp.watch_addr <= (port + size - 1)) && (port <= wp.watch_end)) [[unlikely]] {
-			cpu_check_watchpoints(cpu, port, wp.dr_idx, type, eip);
+			cpu_check_watchpoints(cpu, port, wp.dr_idx, type);
 		}
 	}
 }

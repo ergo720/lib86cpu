@@ -72,7 +72,6 @@ check_dbl_exp(cpu_ctx_t *cpu_ctx)
 
 	if ((old_contributory && curr_contributory) || (cpu_ctx->exp_info.old_exp == EXP_PF && (curr_contributory || (idx == EXP_PF)))) {
 		cpu_ctx->exp_info.exp_data.code = 0;
-		cpu_ctx->exp_info.exp_data.eip = 0;
 		idx = EXP_DF;
 	}
 
@@ -96,7 +95,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 	uint32_t fault_addr = cpu_ctx->exp_info.exp_data.fault_addr;
 	uint16_t code = cpu_ctx->exp_info.exp_data.code;
 	uint16_t idx = cpu_ctx->exp_info.exp_data.idx;
-	uint32_t eip = cpu_ctx->exp_info.exp_data.eip;
+	uint32_t eip = cpu_ctx->regs.eip;
 	uint32_t old_eflags = read_eflags(cpu);
 
 	if (cpu_ctx->hflags & HFLG_PE_MODE) {
@@ -113,8 +112,8 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		}
 
 		if ((is_intn == 2) && (((cpu_ctx->regs.eflags & VM_MASK) | (cpu_ctx->hflags & HFLG_CR4_VME)) == (VM_MASK | HFLG_CR4_VME))) {
-			uint16_t offset = mem_read_helper<uint16_t>(cpu_ctx, cpu_ctx->regs.tr_hidden.base + 102, eip, 0);
-			uint8_t io_int_table_byte = mem_read_helper<uint8_t>(cpu_ctx, cpu_ctx->regs.tr_hidden.base + offset - 32 + idx / 8, eip, 0);
+			uint16_t offset = mem_read_helper<uint16_t>(cpu_ctx, cpu_ctx->regs.tr_hidden.base + 102, 0);
+			uint8_t io_int_table_byte = mem_read_helper<uint8_t>(cpu_ctx, cpu_ctx->regs.tr_hidden.base + offset - 32 + idx / 8, 0);
 			if ((io_int_table_byte & (1 << (idx % 8))) == 0) {
 				if (iopl < 3) {
 					old_eflags = ((old_eflags & VIF_MASK) >> 10) | (old_eflags & ~(IF_MASK | IOPL_MASK)) | IOPL_MASK;
@@ -123,12 +122,12 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 				uint32_t stack_mask = cpu_ctx->hflags & HFLG_SS32 ? 0xFFFFFFFF : 0xFFFF;
 				uint32_t stack_base = cpu_ctx->regs.ss_hidden.base;
 				esp -= 2;
-				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, eip, 0);
+				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, 0);
 				esp -= 2;
-				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 0);
+				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, 0);
 				esp -= 2;
-				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), eip, eip, 0);
-				uint32_t vec_entry = mem_read_helper<uint32_t>(cpu_ctx, idx * 4, eip, 0);
+				mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), eip, 0);
+				uint32_t vec_entry = mem_read_helper<uint32_t>(cpu_ctx, idx * 4, 0);
 				uint32_t eflags_mask = TF_MASK;
 				cpu_ctx->regs.esp = (cpu_ctx->regs.esp & ~stack_mask) | (esp & stack_mask);
 				cpu_ctx->regs.cs = vec_entry >> 16;
@@ -138,8 +137,6 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 					eflags_mask |= (IF_MASK | VIF_MASK);
 				}
 				cpu_ctx->regs.eflags &= ~eflags_mask;
-				cpu_ctx->hflags &= ~HFLG_INHIBIT_INT;
-				cpu_ctx->cpu->cpu_flags &= ~CPU_INHIBIT_DBG_TRAP;
 				cpu_ctx->exp_info.old_exp = EXP_INVALID;
 				if (idx == EXP_PF) {
 					cpu_ctx->regs.cr2 = fault_addr;
@@ -165,7 +162,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 			return cpu_raise_exception(cpu_ctx);
 		}
 
-		uint64_t desc = mem_read_helper<uint64_t>(cpu_ctx, cpu_ctx->regs.idtr_hidden.base + idx * 8, eip, 2);
+		uint64_t desc = mem_read_helper<uint64_t>(cpu_ctx, cpu_ctx->regs.idtr_hidden.base + idx * 8, 2);
 		uint16_t type = (desc >> 40) & 0x1F;
 		uint32_t new_eip, eflags;
 		switch (type)
@@ -215,7 +212,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 
 		addr_t code_desc_addr;
 		uint64_t code_desc;
-		if (read_seg_desc_helper(cpu, sel, code_desc_addr, code_desc, eip)) {
+		if (read_seg_desc_helper(cpu, sel, code_desc_addr, code_desc)) {
 			cpu_ctx->exp_info.exp_data.code += ext_flg;
 			return cpu_raise_exception(cpu_ctx);
 		}
@@ -237,7 +234,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 			dpl = cpl;
 		}
 
-		set_access_flg_seg_desc_helper(cpu, code_desc, code_desc_addr, eip);
+		set_access_flg_seg_desc_helper(cpu, code_desc, code_desc_addr);
 
 		const auto &exp_has_code = [idx]() -> uint8_t
 		{
@@ -277,7 +274,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 			{
 				addr_t ss_desc_addr;
 
-				if (read_stack_ptr_from_tss_helper(cpu, dpl, new_esp, new_ss, eip, is_vm86 ? 2 : 0)) {
+				if (read_stack_ptr_from_tss_helper(cpu, dpl, new_esp, new_ss, is_vm86 ? 2 : 0)) {
 					cpu_ctx->exp_info.exp_data.code += ext_flg;
 					return true;
 				}
@@ -288,7 +285,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 					return true;
 				}
 
-				if (read_seg_desc_helper(cpu, new_ss, ss_desc_addr, ss_desc, eip)) {
+				if (read_seg_desc_helper(cpu, new_ss, ss_desc_addr, ss_desc)) {
 					cpu_ctx->exp_info.exp_data.code += ext_flg;
 					cpu_ctx->exp_info.exp_data.idx = EXP_TS;
 					return true;
@@ -307,7 +304,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 					return true;
 				}
 
-				set_access_flg_seg_desc_helper(cpu, ss_desc, ss_desc_addr, eip);
+				set_access_flg_seg_desc_helper(cpu, ss_desc, ss_desc_addr);
 
 				return false;
 			};
@@ -333,26 +330,26 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 					constexpr uint32_t push_size = sizeof(T);
 
 					esp -= push_size;
-					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.gs, eip, 2);
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.gs, 2);
 					esp -= push_size;
-					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.fs, eip, 2);
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.fs, 2);
 					esp -= push_size;
-					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.ds, eip, 2);
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.ds, 2);
 					esp -= push_size;
-					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.es, eip, 2);
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.es, 2);
 					esp -= push_size;
-					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.ss, eip, 2);
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.ss, 2);
 					esp -= push_size;
-					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.esp, eip, 2);
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.esp, 2);
 					esp -= push_size;
-					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, eip, 2);
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, 2);
 					esp -= push_size;
-					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 2);
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, 2);
 					esp -= push_size;
-					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), eip, eip, 2);
+					mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), eip, 2);
 					if (exp_has_code()) {
 						esp -= push_size;
-						mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), code, eip, 2);
+						mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), code, 2);
 					}
 				};
 
@@ -381,8 +378,6 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 				cpu_ctx->regs.eflags = (eflags & ~(VM_MASK | RF_MASK | NT_MASK | TF_MASK));
 				cpu_ctx->regs.esp = (cpu_ctx->regs.esp & ~stack_mask) | (esp & stack_mask);
 				cpu_ctx->regs.eip = new_eip;
-				cpu_ctx->hflags &= ~HFLG_INHIBIT_INT;
-				cpu_ctx->cpu->cpu_flags &= ~CPU_INHIBIT_DBG_TRAP;
 				cpu_ctx->exp_info.old_exp = EXP_INVALID;
 				if (idx == EXP_PF) {
 					cpu_ctx->regs.cr2 = fault_addr;
@@ -434,19 +429,19 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 
 			if constexpr (stack_switch) {
 				esp -= push_size;
-				mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.ss, eip, is_priv);
+				mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.ss, is_priv);
 				esp -= push_size;
-				mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.esp, eip, is_priv);
+				mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.esp, is_priv);
 			}
 			esp -= push_size;
-			mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, eip, is_priv);
+			mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, is_priv);
 			esp -= push_size;
-			mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, is_priv);
+			mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, is_priv);
 			esp -= push_size;
-			mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), eip, eip, is_priv);
+			mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), eip, is_priv);
 			if (has_code) {
 				esp -= push_size;
-				mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), code, eip, is_priv);
+				mem_write_helper<T>(cpu_ctx, stack_base + (esp & stack_mask), code, is_priv);
 			}
 		};
 
@@ -496,16 +491,16 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 			return cpu_raise_exception(cpu_ctx);
 		}
 
-		uint32_t vec_entry = mem_read_helper<uint32_t>(cpu_ctx, cpu_ctx->regs.idtr_hidden.base + idx * 4, eip, 0);
+		uint32_t vec_entry = mem_read_helper<uint32_t>(cpu_ctx, cpu_ctx->regs.idtr_hidden.base + idx * 4, 0);
 		uint32_t stack_mask = 0xFFFF;
 		uint32_t stack_base = cpu_ctx->regs.ss_hidden.base;
 		uint32_t esp = cpu_ctx->regs.esp;
 		esp -= 2;
-		mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, eip, 0);
+		mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), old_eflags, 0);
 		esp -= 2;
-		mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, eip, 0);
+		mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), cpu_ctx->regs.cs, 0);
 		esp -= 2;
-		mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), eip, eip, 0);
+		mem_write_helper<uint16_t>(cpu_ctx, stack_base + (esp & stack_mask), eip, 0);
 
 		cpu_ctx->regs.eflags &= ~(AC_MASK | RF_MASK | IF_MASK | TF_MASK);
 		cpu_ctx->regs.esp = (cpu_ctx->regs.esp & ~stack_mask) | (esp & stack_mask);
@@ -514,8 +509,6 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		cpu_ctx->regs.eip = vec_entry & 0xFFFF;
 	}
 
-	cpu_ctx->hflags &= ~HFLG_INHIBIT_INT;
-	cpu_ctx->cpu->cpu_flags &= ~CPU_INHIBIT_DBG_TRAP;
 	cpu_ctx->exp_info.old_exp = EXP_INVALID;
 	if (idx == EXP_DB) {
 		cpu_ctx->regs.dr[7] &= ~DR7_GD_MASK;
@@ -551,15 +544,9 @@ tc_hash(addr_t pc)
 }
 
 template<bool remove_hook>
-void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip)
+void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_t size)
 {
 	bool halt_tc = false;
-
-	if constexpr (!remove_hook) {
-		if (cpu_ctx->cpu->cpu_flags & CPU_ALLOW_CODE_WRITE) {
-			return;
-		}
-	}
 
 	// find all tc's in the page phys_addr belongs to
 	auto it_map = cpu_ctx->cpu->tc_page_map.find(phys_addr >> PAGE_SHIFT);
@@ -635,13 +622,10 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_
 					if (it->get() == tc_in_page) {
 						try {
 							if (it->get()->cs_base == cpu_ctx->regs.cs_hidden.base &&
-								it->get()->pc == get_code_addr(cpu_ctx->cpu, get_pc(cpu_ctx), cpu_ctx->regs.eip) &&
+								it->get()->pc == get_code_addr(cpu_ctx->cpu, get_pc(cpu_ctx)) &&
 								it->get()->guest_flags == flags) {
 								// worst case: the write overlaps with the tc we are currently executing
 								halt_tc = true;
-								if constexpr (!remove_hook) {
-									cpu_ctx->cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
-								}
 							}
 						}
 						catch (host_exp_t type) {
@@ -676,16 +660,12 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_
 	}
 
 	if (halt_tc) {
-		// in this case the tc we were executing must be interrupted and to do that, we must return to the translator with an exception
-		if constexpr (!remove_hook) {
-			cpu_ctx->regs.eip = eip;
-		}
-		throw host_exp_t::halt_tc;
+		cpu_ctx->cpu->raise_int_fn(cpu_ctx, CPU_HALT_TC_INT);
 	}
 }
 
-template void tc_invalidate<true>(cpu_ctx_t * cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
-template void tc_invalidate<false>(cpu_ctx_t * cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_t size, [[maybe_unused]] uint32_t eip);
+template void tc_invalidate<true>(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_t size);
+template void tc_invalidate<false>(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_t size);
 
 static translated_code_t *
 tc_cache_search(cpu_t *cpu, addr_t pc)
@@ -904,8 +884,7 @@ cpu_translate(cpu_t *cpu)
 		catch (host_exp_t type) {
 			// this happens on instr breakpoints (not int3)
 			assert(type == host_exp_t::db_exp);
-			cpu->jit->gen_raise_exp_inline(0, 0, EXP_DB, cpu->instr_eip);
-			disas_ctx->flags |= DISAS_FLG_DBG_FAULT;
+			cpu->jit->gen_raise_exp_inline(0, 0, EXP_DB);
 			return;
 		}
 
@@ -935,16 +914,16 @@ cpu_translate(cpu_t *cpu)
 			case ZYDIS_STATUS_DECODING_ERROR:
 				// illegal and/or undefined instruction, or lock prefix used on an instruction which does not accept it or used as source operand,
 				// or the instruction encodes a register that cannot be used (e.g. mov cs, edx)
-				cpu->jit->gen_raise_exp_inline(0, 0, EXP_UD, cpu->instr_eip);
+				cpu->jit->gen_raise_exp_inline(0, 0, EXP_UD);
 				return;
 
 			case ZYDIS_STATUS_NO_MORE_DATA:
 				// buffer < 15 bytes
-				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
+				cpu->cpu_flags &= ~CPU_DISAS_ONE;
 				if (disas_ctx->exp_data.idx == EXP_PF) {
 					// buffer size reduced because of page fault on second page
 					disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
-					cpu->jit->gen_raise_exp_inline(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx, disas_ctx->exp_data.eip);
+					cpu->jit->gen_raise_exp_inline(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx);
 					return;
 				}
 				else {
@@ -954,14 +933,14 @@ cpu_translate(cpu_t *cpu)
 
 			case ZYDIS_STATUS_INSTRUCTION_TOO_LONG: {
 				// instruction length > 15 bytes
-				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE);
-				volatile addr_t addr = get_code_addr<true>(cpu, disas_ctx->virt_pc + X86_MAX_INSTR_LENGTH, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base, disas_ctx);
+				cpu->cpu_flags &= ~CPU_DISAS_ONE;
+				volatile addr_t addr = get_code_addr<true>(cpu, disas_ctx->virt_pc + X86_MAX_INSTR_LENGTH, disas_ctx);
 				if (disas_ctx->exp_data.idx == EXP_PF) {
 					disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
-					cpu->jit->gen_raise_exp_inline(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx, disas_ctx->exp_data.eip);
+					cpu->jit->gen_raise_exp_inline(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx);
 				}
 				else {
-					cpu->jit->gen_raise_exp_inline(0, 0, EXP_GP, disas_ctx->virt_pc - cpu->cpu_ctx.regs.cs_hidden.base);
+					cpu->jit->gen_raise_exp_inline(0, 0, EXP_GP);
 				}
 				return;
 			}
@@ -1627,6 +1606,11 @@ cpu_translate(cpu_t *cpu)
 		cpu->virt_pc += cpu->instr_bytes;
 		cpu->tc->size += cpu->instr_bytes;
 
+		// Only generate an interrupt check if the current instruction didn't terminate this tc. Terminating instructions already check for interrupts
+		if (cpu->translate_next == 1) {
+			cpu->jit->gen_interrupt_check<true>();
+		}
+
 	} while ((cpu->translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR | DISAS_FLG_PAGE_CROSS_NEXT))) == 1);
 }
 
@@ -1639,25 +1623,24 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 		throw lc86_exp_abort("Received abort signal, terminating the emulation", lc86_status::success);
 	}
 
-	if (int_flg & CPU_SUSPEND_INT) {
-		cpu_ctx->cpu->clear_int_fn(cpu_ctx, CPU_SUSPEND_INT);
-		cpu_ctx->cpu->is_suspended.test_and_set();
-		if (cpu_ctx->cpu->suspend_should_throw.load() && cpu_ctx->cpu->suspend_flg.test()) {
-			throw lc86_exp_abort("Received pause signal, suspending the emulation", lc86_status::paused);
-		}
-		else {
-			cpu_ctx->cpu->suspend_flg.wait(true);
-		}
-		cpu_ctx->cpu->is_suspended.clear();
-		if (cpu_ctx->cpu->state_loaded) {
-			cpu_ctx->cpu->state_loaded = false;
-			return CPU_NON_HW_INT;
-		}
-	}
-
-	if (int_flg & (CPU_A20_INT | CPU_REGION_INT | CPU_HANDLER_INT)) {
+	if (int_flg & CPU_NON_HW_INT) {
 		cpu_t *cpu = cpu_ctx->cpu;
-		uint32_t int_clear_flg = 0;
+		uint32_t int_clear_flg = CPU_MASKED_INT | CPU_HALT_TC_INT;
+		if (int_flg & CPU_DBG_TRAP_INT) {
+			int_clear_flg |= CPU_DBG_TRAP_INT;
+			if (cpu_ctx->exp_info.exp_data.idx != EXP_DB) {
+				// This happens when another exception is generated by the instruction after a debug trap exception was detected by a memory handler. Since the info of the trap
+				// was overwritten by the new exception, we forget the trap here
+				// FIXME: this is wrong, the Intel docs document the priority among different exceptions/interrupts when they happen simultaneously in the same
+				// instruction, and debug traps have higher priority than almost all the others. However, since this feature was never implemented before, it's not
+				// a regression for now
+				LOG(log_level::warn, "Forgetting debug trap exception");
+			}
+			else {
+				cpu_raise_exception<false, false>(cpu_ctx);
+			}
+		}
+
 		if (int_flg & CPU_HANDLER_INT) {
 			int_clear_flg |= CPU_HANDLER_INT;
 			std::for_each(cpu->regions_updated.begin(), cpu->regions_updated.end(), [cpu](const auto &data) {
@@ -1714,15 +1697,31 @@ cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg)
 			tlb_flush(cpu);
 			cpu->regions_changed.clear();
 		}
+
+		if (int_flg & CPU_SUSPEND_INT) {
+			int_clear_flg |= CPU_SUSPEND_INT;
+			cpu_ctx->cpu->is_suspended.test_and_set();
+			if (cpu_ctx->cpu->suspend_should_throw.load() && cpu_ctx->cpu->suspend_flg.test()) {
+				cpu_ctx->cpu->clear_int_fn(cpu_ctx, int_clear_flg);
+				throw lc86_exp_abort("Received pause signal, suspending the emulation", lc86_status::paused);
+			}
+			else {
+				cpu_ctx->cpu->suspend_flg.wait(true);
+			}
+			cpu_ctx->cpu->is_suspended.clear();
+			if (cpu_ctx->cpu->state_loaded) {
+				cpu_ctx->cpu->state_loaded = false;
+			}
+		}
+
 		cpu_ctx->cpu->clear_int_fn(cpu_ctx, int_clear_flg);
 		return CPU_NON_HW_INT;
 	}
 
-	if (((int_flg & CPU_HW_INT) | (cpu_ctx->regs.eflags & IF_MASK) | (cpu_ctx->hflags & HFLG_INHIBIT_INT)) == (IF_MASK | CPU_HW_INT)) {
+	if (((int_flg & CPU_HW_INT) | (cpu_ctx->regs.eflags & IF_MASK)) == (IF_MASK | CPU_HW_INT)) {
 		cpu_ctx->exp_info.exp_data.fault_addr = 0;
 		cpu_ctx->exp_info.exp_data.code = 0;
 		cpu_ctx->exp_info.exp_data.idx = cpu_ctx->cpu->int_data.first(cpu_ctx->cpu->int_data.second);
-		cpu_ctx->exp_info.exp_data.eip = cpu_ctx->regs.eip;
 		cpu_raise_exception<false, true>(cpu_ctx);
 		return CPU_HW_INT;
 	}
@@ -1743,7 +1742,7 @@ void cpu_suppress_trampolines(cpu_t *cpu)
 	}
 }
 
-template<bool is_tramp, bool is_trap, typename T>
+template<bool is_tramp, typename T>
 void cpu_main_loop(cpu_t *cpu, T &&lambda)
 {
 	translated_code_t *prev_tc = nullptr, *ptr_tc = nullptr;
@@ -1755,8 +1754,8 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 		retry:
 		try {
 			virt_pc = get_pc(&cpu->cpu_ctx);
-			cpu_check_data_watchpoints(cpu, virt_pc, 1, DR7_TYPE_INSTR, cpu->cpu_ctx.regs.eip);
-			pc = get_code_addr(cpu, virt_pc, cpu->cpu_ctx.regs.eip);
+			cpu_check_data_watchpoints(cpu, virt_pc, 1, DR7_TYPE_INSTR);
+			pc = get_code_addr(cpu, virt_pc);
 		}
 		catch (host_exp_t type) {
 			assert((type == host_exp_t::pf_exp) || (type == host_exp_t::db_exp));
@@ -1778,11 +1777,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			goto retry;
 		}
 
-		if constexpr (!is_trap) {
-			// if we are executing a trapped instr, we must always emit a new tc to run it and not consider other tc's in the cache. Doing so avoids having to invalidate
-			// the tc in the cache that contains the trapped instr
-			ptr_tc = tc_cache_search(cpu, pc);
-		}
+		ptr_tc = tc_cache_search(cpu, pc);
 
 		if (ptr_tc == nullptr) {
 
@@ -1796,37 +1791,28 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			cpu->disas_ctx.flags = ((cpu->cpu_ctx.hflags & HFLG_CS32) >> CS32_SHIFT) |
 				((cpu->cpu_ctx.hflags & HFLG_SS32) >> (SS32_SHIFT - 1)) |
 				(cpu->cpu_ctx.hflags & HFLG_PE_MODE) |
-				((cpu->cpu_ctx.hflags & HFLG_INHIBIT_INT) >> 11) |
 				(cpu->cpu_flags & CPU_DISAS_ONE) |
 				((cpu->cpu_flags & CPU_SINGLE_STEP) >> 3) |
 				((cpu->cpu_ctx.regs.eflags & RF_MASK) >> 9) | // if rf is set, we need to clear it after the first instr executed
-				((cpu->cpu_ctx.regs.eflags & TF_MASK) >> 1) | // if tf is set, we need to raise a DB exp after every instruction
-				((cpu->cpu_ctx.hflags & HFLG_INHIBIT_INT) >> 7); // if interrupts are inhibited, we need to enable them after the first instr executed
+				((cpu->cpu_ctx.regs.eflags & TF_MASK) >> 1); // if tf is set, we need to raise a DB exp after every instruction
 			cpu->disas_ctx.virt_pc = virt_pc;
 			cpu->disas_ctx.pc = pc;
 
-			if constexpr (is_trap) {
-				// don't take hooks if we are executing a trapped instr. Otherwise, if the trapped instr is also hooked, we will take the hook instead of executing it
-				cpu_translate(cpu);
+			const auto it = cpu->hook_map.find(cpu->disas_ctx.virt_pc);
+			bool take_hook;
+			if constexpr (is_tramp) {
+				take_hook = (it != cpu->hook_map.end()) && !(cpu->cpu_ctx.hflags & HFLG_TRAMP);
 			}
 			else {
-				const auto it = cpu->hook_map.find(cpu->disas_ctx.virt_pc);
-				bool take_hook;
-				if constexpr (is_tramp) {
-					take_hook = (it != cpu->hook_map.end()) && !(cpu->cpu_ctx.hflags & HFLG_TRAMP);
-				}
-				else {
-					take_hook = it != cpu->hook_map.end();
-				}
+				take_hook = it != cpu->hook_map.end();
+			}
 
-				if (take_hook) {
-					cpu->instr_eip = cpu->disas_ctx.virt_pc - cpu->cpu_ctx.regs.cs_hidden.base;
-					cpu->jit->gen_hook(it->second);
-				}
-				else {
-					// start guest code translation
-					cpu_translate(cpu);
-				}
+			if (take_hook) {
+				cpu->jit->gen_hook(it->second);
+			}
+			else {
+				// start guest code translation
+				cpu_translate(cpu);
 			}
 
 			cpu->jit->gen_tc_epilogue();
@@ -1855,7 +1841,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 
 				uint32_t cpu_flags = cpu->cpu_flags;
 				cpu_suppress_trampolines<is_tramp>(cpu);
-				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_ALLOW_CODE_WRITE | CPU_FORCE_INSERT);
+				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_FORCE_INSERT);
 				prev_tc = tc_run_code(&cpu->cpu_ctx, ptr_tc);
 				if (!(cpu_flags & CPU_FORCE_INSERT)) {
 					cpu->jit->free_code_block(reinterpret_cast<void *>(ptr_tc->jmp_offset[2]));
@@ -1900,30 +1886,18 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 				return cpu_raise_exception(cpu_ctx);
 			}
 			catch (host_exp_t type) {
-				assert((type == host_exp_t::pf_exp) || (type == host_exp_t::db_exp));
+				assert(type == host_exp_t::pf_exp);
 
-				// page fault or debug exception while delivering another exception
+				// page fault exception while delivering another exception
 				goto retry_exp;
 			}
 		}
 		break;
 
-		case host_exp_t::db_exp: {
-			// debug exception trap (mem/io r/w watch) while executing the translated code.
-			// We set CPU_INHIBIT_DBG_TRAP, so that we can execute the trapped instruction without triggering again a de exp,
-			// and then jump to the debug handler. Note that eip points to the trapped instr, so we can execute it.
-			assert(cpu_ctx->exp_info.exp_data.idx == EXP_DB);
-
-			cpu_ctx->cpu->cpu_flags |= (CPU_DISAS_ONE | CPU_INHIBIT_DBG_TRAP);
-			cpu_ctx->regs.eip = cpu_ctx->exp_info.exp_data.eip;
-			// run the main loop only once, since we only execute the trapped instr
-			int i = 0;
-			cpu_main_loop<false, true>(cpu_ctx->cpu, [&i]() { return i++ == 0; });
-			return nullptr;
-		}
-
-		case host_exp_t::halt_tc:
-			return nullptr;
+		case host_exp_t::db_exp:
+			// because debug trap exceptions are handled at runtime with the debug interrupt, this cannot happen, so it must be a bug
+			LIB86CPU_ABORT_msg("Unexpected debug trap exception while running code");
+			break;
 
 		default:
 			LIB86CPU_ABORT_msg("Unknown host exception in %s", __func__);
@@ -1971,20 +1945,20 @@ lc86_status cpu_start(cpu_t *cpu)
 
 	try {
 		if constexpr (run_forever) {
-			cpu_main_loop<false, false>(cpu, []() { return true; });
+			cpu_main_loop<false>(cpu, []() { return true; });
 		}
 		else {
 			cpu_timer_set_now(cpu);
-			cpu->cpu_ctx.exit_requested = 0;
-			if (cpu->cpu_ctx.is_halted) {
+			cpu->exit_requested = false;
+			if (cpu->is_halted) {
 				// if the cpu was previously halted, then we must keep waiting until the next hw int
-				halt_loop(cpu);
-				if (cpu->cpu_ctx.is_halted) {
+				hlt_helper<true>(&cpu->cpu_ctx);
+				if (cpu->is_halted) {
 					// if it is still halted, then it must be a timeout
 					return set_last_error(lc86_status::timeout);
 				}
 			}
-			cpu_main_loop<false, false>(cpu, [cpu]() { return !cpu->cpu_ctx.exit_requested; });
+			cpu_main_loop<false>(cpu, [cpu]() { return !cpu->exit_requested; });
 			cpu->cpu_thr_id = std::thread::id();
 			return set_last_error(lc86_status::timeout);
 		}
@@ -2009,7 +1983,7 @@ cpu_exec_trampoline(cpu_t *cpu, const uint32_t ret_eip)
 {
 	// set the trampoline flag, so that we can call the trampoline tc instead of the hook tc
 	cpu->cpu_ctx.hflags |= HFLG_TRAMP;
-	cpu_main_loop<true, false>(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
+	cpu_main_loop<true>(cpu, [cpu, ret_eip]() { return cpu->cpu_ctx.regs.eip != ret_eip; });
 }
 
 void
@@ -2018,7 +1992,7 @@ dbg_exec_original_instr(cpu_t *cpu)
 	cpu->cpu_flags |= CPU_DISAS_ONE;
 	// run the main loop only once, since we only execute the original instr that was replaced by int3
 	int i = 0;
-	cpu_main_loop<false, false>(cpu, [&i]() { return i++ == 0; });
+	cpu_main_loop<false>(cpu, [&i]() { return i++ == 0; });
 }
 
 template JIT_API translated_code_t *cpu_raise_exception<0, true>(cpu_ctx_t *cpu_ctx);

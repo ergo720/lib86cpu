@@ -5,7 +5,6 @@
  */
 
 #include "internal.h"
-#include "clock.h"
 #include <immintrin.h>
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -206,27 +205,4 @@ uint128_t::operator<<(int shift)
 
 	_mm_store_si128(reinterpret_cast<__m128i *>(&low), val);
 	return *this;
-}
-
-void
-halt_loop(cpu_t *cpu)
-{
-	while (true) {
-		uint32_t ret = cpu_timer_helper(&cpu->cpu_ctx);
-		_mm_pause();
-
-		if ((ret == CPU_NO_INT) || (ret == CPU_NON_HW_INT)) {
-			// either nothing changed or it's not a hw int, keep looping in both cases
-			continue;
-		}
-
-		if (ret == CPU_HW_INT) {
-			// hw int, exit the loop and clear the halted state
-			cpu->cpu_ctx.is_halted = 0;
-			return;
-		}
-
-		// timeout, exit the loop
-		return;
-	}
 }

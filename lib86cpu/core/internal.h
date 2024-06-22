@@ -13,7 +13,7 @@
 
 
 template<bool remove_hook = false>
-void tc_invalidate(cpu_ctx_t * cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_t size = 0, [[maybe_unused]] uint32_t eip = 0);
+void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_t size = 0);
 template<bool should_flush_tlb>
 void tc_should_clear_cache_and_tlb(cpu_t *cpu, addr_t start, addr_t end);
 void tc_cache_clear(cpu_t *cpu);
@@ -22,7 +22,6 @@ addr_t get_pc(cpu_ctx_t *cpu_ctx);
 template<unsigned is_intn = 0, bool is_hw_int = false>
 JIT_API translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx);
 JIT_API uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
-void halt_loop(cpu_t *cpu);
 JIT_API void tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 
 
@@ -46,7 +45,6 @@ JIT_API void tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define TRAMP_SHIFT         6
 #define CR4_OSFXSR_SHIFT    9
 #define CR0_TS_SHIFT        10
-#define INHIBIT_INT_SHIFT   14
 #define CR0_MP_SHIFT        15
 #define CR4_VME_SHIFT       19
 #define CR4_PVI_SHIFT       20
@@ -57,27 +55,29 @@ JIT_API void tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define HFLG_PE_MODE        (1 << PE_MODE_SHIFT)
 #define HFLG_CR0_EM         (1 << CR0_EM_SHIFT)
 #define HFLG_TRAMP          (1 << TRAMP_SHIFT)
-#define HFLG_INHIBIT_INT    (1 << INHIBIT_INT_SHIFT)
 #define HFLG_CR0_MP         (1 << CR0_MP_SHIFT)
 #define HFLG_CR0_TS         (1 << CR0_TS_SHIFT)
 #define HFLG_CR4_OSFXSR     (1 << CR4_OSFXSR_SHIFT)
 #define HFLG_CR4_VME        (1 << CR4_VME_SHIFT)
 #define HFLG_CR4_PVI        (1 << CR4_PVI_SHIFT)
-#define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_INHIBIT_INT | HFLG_CR0_MP | HFLG_CR0_TS \
+#define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_CR0_MP | HFLG_CR0_TS \
 | HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI)
-#define HFLG_SAVED_MASK     (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_INHIBIT_INT | HFLG_CR0_MP | HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI)
+#define HFLG_SAVED_MASK     (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_CR0_MP | HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI)
 
 // cpu interrupt flags
-#define CPU_NO_INT      0
-#define CPU_HW_INT      (1 << 0)
-#define CPU_ABORT_INT   (1 << 1)
-#define CPU_A20_INT     (1 << 2)
-#define CPU_REGION_INT  (1 << 3)
-#define CPU_TIMEOUT_INT (1 << 4)  // never set, only returned as a status
-#define CPU_SUSPEND_INT (1 << 5)
-#define CPU_HANDLER_INT (1 << 6)
-#define CPU_NON_HW_INT  (CPU_ABORT_INT | CPU_A20_INT | CPU_REGION_INT | CPU_SUSPEND_INT | CPU_HANDLER_INT)
-#define CPU_ALL_INT     (CPU_HW_INT | CPU_NON_HW_INT)
+#define CPU_NO_INT           0
+#define CPU_HALT_TC_INT      (1 << 0)
+#define CPU_ABORT_INT        (1 << 1)
+#define CPU_A20_INT          (1 << 2)
+#define CPU_REGION_INT       (1 << 3)
+#define CPU_TIMEOUT_INT      (1 << 4)  // never set, only returned as a status
+#define CPU_SUSPEND_INT      (1 << 5)
+#define CPU_HANDLER_INT      (1 << 6)
+#define CPU_MASKED_INT       (1 << 7)
+#define CPU_DBG_TRAP_INT     (1 << 8)
+#define CPU_HW_INT           (1 << 9) // must use the same bit position as if flag so that it can be ANDed with it
+#define CPU_NON_HW_INT       (CPU_A20_INT | CPU_REGION_INT | CPU_SUSPEND_INT | CPU_HANDLER_INT | CPU_MASKED_INT | CPU_DBG_TRAP_INT | CPU_HALT_TC_INT)
+#define CPU_ALL_INT          (CPU_HW_INT | CPU_NON_HW_INT | CPU_ABORT_INT | CPU_TIMEOUT_INT)
 
 // mmu flags
 #define MMU_IS_WRITE    (1 << 0)
@@ -88,11 +88,9 @@ JIT_API void tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define DISAS_FLG_CS32             (1 << 0)
 #define DISAS_FLG_SS32             (1 << 1)
 #define DISAS_FLG_PAGE_CROSS       (1 << 2)
-#define DISAS_FLG_INHIBIT_INT      (1 << 3)
 #define DISAS_FLG_PAGE_CROSS_NEXT  (1 << 5)
 #define DISAS_FLG_PE               HFLG_PE_MODE          // (1 << 4)
 #define DISAS_FLG_FETCH_FAULT      DISAS_FLG_PAGE_CROSS  // (1 << 2)
-#define DISAS_FLG_DBG_FAULT        DISAS_FLG_PAGE_CROSS  // (1 << 2)
 #define DISAS_FLG_ONE_INSTR        CPU_DISAS_ONE         // (1 << 7)
 
 // tc struct flags/offsets

@@ -33,7 +33,9 @@ public:
 	void gen_tc_prologue() { start_new_session(); gen_exit_func(); gen_prologue_main(); }
 	void gen_tc_epilogue();
 	void gen_hook(hook_t hook_addr);
-	void gen_raise_exp_inline(uint32_t fault_addr, uint16_t code, uint16_t idx, uint32_t eip);
+	void gen_raise_exp_inline(uint32_t fault_addr, uint16_t code, uint16_t idx);
+	template<bool update_eip>
+	void gen_interrupt_check();
 	void free_code_block(void *addr) { m_mem.release_sys_mem(addr); }
 	void destroy_all_code() { m_mem.destroy_all_blocks(); }
 
@@ -185,8 +187,8 @@ private:
 	void gen_tail_call(x86::Gp addr);
 	void gen_exit_func();
 	void gen_aux_funcs();
-	void gen_interrupt_check();
 	void gen_no_link_checks();
+	void gen_timeout_check();
 	bool gen_check_rf_single_step();
 	template<typename T>
 	void gen_link_direct(addr_t dst_pc, addr_t *next_pc, T target_addr);
@@ -195,8 +197,8 @@ private:
 	void gen_link_ret();
 	template<typename T>
 	void gen_link_dst_cond(T &&lambda);
-	template<bool terminates, typename T1, typename T2, typename T3, typename T4>
-	void gen_raise_exp_inline(T1 fault_addr, T2 code, T3 idx, T4 eip);
+	template<bool terminates, typename T1, typename T2, typename T3>
+	void gen_raise_exp_inline(T1 fault_addr, T2 code, T3 idx);
 	template<bool terminates>
 	void gen_raise_exp_inline();
 	template<bool add_seg_base = true>
@@ -287,8 +289,8 @@ private:
 	cpu_t *m_cpu;
 	CodeHolder m_code;
 	x86::Assembler m_a;
-	bool m_needs_epilogue;
 	mem_manager m_mem;
+	Label m_exit_int, m_next_instr;
 };
 
 #endif

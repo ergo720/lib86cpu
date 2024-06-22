@@ -559,7 +559,7 @@ uint8_t *
 get_host_ptr(cpu_t *cpu, addr_t addr)
 {
 	try {
-		addr_t phys_addr = get_read_addr(cpu, addr, 0, 0);
+		addr_t phys_addr = get_read_addr(cpu, addr, 0);
 		const memory_region_t<addr_t>* region = as_memory_search_addr(cpu, phys_addr);
 
 		switch (region->type)
@@ -847,7 +847,7 @@ lc86_status mem_read_block(cpu_t *cpu, addr_t addr, uint32_t size, uint8_t *out,
 			addr_t phys_addr;
 			uint32_t bytes_to_read = std::min(PAGE_SIZE - page_offset, size_left);
 			if constexpr (is_virt) {
-				phys_addr = get_read_addr(cpu, addr, 0, 0);
+				phys_addr = get_read_addr(cpu, addr, 0);
 			}
 			else {
 				phys_addr = addr;
@@ -944,14 +944,14 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, uint32_t size, const void
 			addr_t phys_addr;
 			uint32_t bytes_to_write = std::min(PAGE_SIZE - page_offset, size_left);
 			if constexpr (is_virt) {
-				phys_addr = get_write_addr(cpu, addr, 0, 0, &is_code);
+				phys_addr = get_write_addr(cpu, addr, 0, &is_code);
 				if (is_code) {
-					tc_invalidate(&cpu->cpu_ctx, phys_addr, bytes_to_write, cpu->cpu_ctx.regs.eip);
+					tc_invalidate(&cpu->cpu_ctx, phys_addr, bytes_to_write);
 				}
 			}
 			else {
 				phys_addr = addr;
-				tc_invalidate(&cpu->cpu_ctx, phys_addr, bytes_to_write, cpu->cpu_ctx.regs.eip);
+				tc_invalidate(&cpu->cpu_ctx, phys_addr, bytes_to_write);
 			}
 
 			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
@@ -1062,7 +1062,7 @@ template<typename T>
 static lc86_status io_read_handler(cpu_t *cpu, port_t port, T &out)
 {
 	try {
-		out = io_read_helper<T>(&cpu->cpu_ctx, port, 0);
+		out = io_read_helper<T>(&cpu->cpu_ctx, port);
 		return lc86_status::success;
 	}
 	catch (host_exp_t type) {
@@ -1100,7 +1100,7 @@ template<typename T>
 static lc86_status io_write_handler(cpu_t *cpu, port_t port, T val)
 {
 	try {
-		io_write_helper<T>(&cpu->cpu_ctx, port, val, 0);
+		io_write_helper<T>(&cpu->cpu_ctx, port, val);
 		return lc86_status::success;
 	}
 	catch (host_exp_t type) {
@@ -1182,8 +1182,8 @@ hook_add(cpu_t *cpu, addr_t addr, hook_t hook_addr)
 	// of the translation of a new code block)
 
 	try {
-		addr_t phys_addr = get_code_addr(cpu, addr, cpu->cpu_ctx.regs.eip);
-		tc_invalidate(&cpu->cpu_ctx, phys_addr, 1, cpu->cpu_ctx.regs.eip);
+		addr_t phys_addr = get_code_addr(cpu, addr);
+		tc_invalidate(&cpu->cpu_ctx, phys_addr, 1);
 	}
 	catch (host_exp_t type) {
 		return set_last_error(lc86_status::guest_exp);
@@ -1210,7 +1210,7 @@ hook_remove(cpu_t *cpu, addr_t addr)
 
 	try {
 		bool is_code;
-		addr_t phys_addr = get_write_addr(cpu, addr, 2, cpu->cpu_ctx.regs.eip, &is_code);
+		addr_t phys_addr = get_write_addr(cpu, addr, 2, &is_code);
 		cpu->hook_map.erase(it);
 		tc_invalidate<true>(&cpu->cpu_ctx, phys_addr);
 	}

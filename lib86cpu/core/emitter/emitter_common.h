@@ -18,8 +18,6 @@
 #define CPU_CTX_HFLG         offsetof(cpu_ctx_t, hflags)
 #define CPU_CTX_EXP          offsetof(cpu_ctx_t, exp_info)
 #define CPU_CTX_INT          offsetof(cpu_ctx_t, int_pending)
-#define CPU_CTX_EXIT         offsetof(cpu_ctx_t, exit_requested)
-#define CPU_CTX_HALTED       offsetof(cpu_ctx_t, is_halted)
 
 #define CPU_CTX_EAX          offsetof(cpu_ctx_t, regs.eax)
 #define CPU_CTX_ECX          offsetof(cpu_ctx_t, regs.ecx)
@@ -122,7 +120,6 @@
 #define CPU_EXP_ADDR         offsetof(cpu_ctx_t, exp_info.exp_data.fault_addr)
 #define CPU_EXP_CODE         offsetof(cpu_ctx_t, exp_info.exp_data.code)
 #define CPU_EXP_IDX          offsetof(cpu_ctx_t, exp_info.exp_data.idx)
-#define CPU_EXP_EIP          offsetof(cpu_ctx_t, exp_info.exp_data.eip)
 
 #define REG_off(reg) get_reg_offset(reg)
 #define REG_idx(reg) get_reg_idx(reg)
@@ -202,7 +199,8 @@ inline constexpr auto all_callable_funcs = std::make_tuple(
 	idivw_helper,
 	idivb_helper,
 	cpuid_helper,
-	hlt_helper,
+	hlt_helper<true>,
+	hlt_helper<false>,
 	fxsave_helper,
 	fxrstor_helper,
 	fpu_update_tag<true>,
