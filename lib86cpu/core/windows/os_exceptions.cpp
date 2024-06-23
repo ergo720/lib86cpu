@@ -90,7 +90,7 @@ lc86_jit::gen_exception_info(uint8_t *code_ptr, size_t code_size)
 	table->BeginAddress = 0;
 	table->EndAddress = code_size;
 	table->UnwindInfoAddress = aligned_code_size;
-	m_mem.eh_frames.emplace(code_ptr, table);
+	m_mem.m_eh_frames.emplace(code_ptr, table);
 
 	[[maybe_unused]] auto ret = RtlAddFunctionTable(table, 1, reinterpret_cast<DWORD64>(code_ptr));
 	assert(ret);

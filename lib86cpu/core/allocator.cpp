@@ -11,92 +11,74 @@
 #include "os_exceptions.h"
 
 
-mem_manager::block_header_t *
-mem_manager::create_pool()
+mem_manager::mem_manager()
 {
-	block_header_t *start = static_cast<block_header_t *>(os_alloc(POOL_SIZE));
-	block_header_t *addr = start;
-	for (unsigned i = 0; i < BLOCKS_PER_POOL - 1; i++) {
+	m_code_block_area = os_alloc(CODE_CACHE_MAX_SIZE * BLOCK_SIZE + BLOCK_SIZE); // 32768 code blocks + another one for aux functions
+	init_pool();
+}
+
+void
+mem_manager::init_pool()
+{
+	block_header_t *addr = static_cast<block_header_t *>(m_code_block_area);
+	m_head = addr;
+	for (unsigned i = 0; i < CODE_CACHE_MAX_SIZE - 1; ++i) {
 		addr->next = reinterpret_cast<block_header_t *>(reinterpret_cast<uint8_t *>(addr) + BLOCK_SIZE);
 		addr = addr->next;
 	}
-
 	addr->next = nullptr;
-	blocks.emplace_back(start);
-	return start;
 }
 
 void *
 mem_manager::alloc()
 {
-	if (head == nullptr) {
-		head = create_pool();
-	}
-
-	block_header_t *addr = head;
-	head = head->next;
+	assert(m_head);
+	block_header_t *addr = m_head;
+	m_head = m_head->next;
 	return addr;
 }
 
 void
 mem_manager::free(void *ptr)
 {
-	// this is necessary because we mark the code section memory as read-only after the code is written to it
-	os_protect(ptr, BLOCK_SIZE, get_mem_flags(MEM_READ | MEM_WRITE));
-	static_cast<block_header_t *>(ptr)->next = head;
-	head = static_cast<block_header_t *>(ptr);
+	static_cast<block_header_t *>(ptr)->next = m_head;
+	m_head = static_cast<block_header_t *>(ptr);
 }
 
 void
 mem_manager::destroy_all_blocks()
 {
 #if defined(_WIN64) || defined(__linux__)
-	for (const auto &eh_pair : eh_frames) {
+	for (const auto &eh_pair : m_eh_frames) {
 		os_delete_exp_info(eh_pair.second);
 	}
 
-	eh_frames.clear();
+	m_eh_frames.clear();
 #endif
 
 #if defined(_WIN64)
-	for (auto &addr : blocks) {
-		os_free(addr);
-	}
-
-	for (auto &block : big_blocks) {
+	for (auto &block : m_big_blocks) {
 		os_free(block.first);
 	}
 #elif defined(__linux__)
-	for (auto &addr : blocks) {
-		os_free(addr, POOL_SIZE);
-	}
-
-	for (auto &block : big_blocks) {
+	for (auto &block : m_big_blocks) {
 		os_free(block.first, block.second);
 	}
 #endif
 
-	big_blocks.clear();
-	blocks.clear();
-	head = nullptr;
+	init_pool();
+	m_big_blocks.clear();
 }
 
 void
 mem_manager::purge_all_blocks()
 {
 	destroy_all_blocks();
-
 #if defined(_WIN64)
-	for (auto &block : hidden_blocks) {
-		os_free(block.first);
-	}
+	os_free(m_code_block_area);
 #elif defined(__linux__)
-	for (auto &block : hidden_blocks) {
-		os_free(block.first, block.second);
-	}
+	os_free(m_code_block_area, CODE_CACHE_MAX_SIZE * BLOCK_SIZE + BLOCK_SIZE);
 #endif
-
-	hidden_blocks.clear();
 }
 
 mem_block
@@ -110,7 +92,7 @@ mem_manager::allocate_sys_mem(size_t num_bytes)
 		size_t block_size = (num_bytes + PAGE_MASK) & ~PAGE_MASK;
 		void *addr = os_alloc(block_size);
 		mem_block block(addr, block_size);
-		big_blocks.emplace(addr, block_size);
+		m_big_blocks.emplace(addr, block_size);
 		return block;
 	}
 
@@ -118,21 +100,17 @@ mem_manager::allocate_sys_mem(size_t num_bytes)
 }
 
 mem_block
-mem_manager::allocate_non_pooled_sys_mem(size_t num_bytes)
+mem_manager::get_non_pooled_sys_mem(size_t num_bytes)
 {
 	if (num_bytes == 0) {
 		return mem_block();
 	}
 
-	size_t block_size = (num_bytes + PAGE_MASK) & ~PAGE_MASK;
-	void *addr = os_alloc(block_size);
-	mem_block block(addr, block_size);
-	hidden_blocks.emplace(addr, block_size);
-	return block;
+	return mem_block(reinterpret_cast<uint8_t *>(m_code_block_area) + CODE_CACHE_MAX_SIZE * BLOCK_SIZE, BLOCK_SIZE);
 }
 
 void
-mem_manager::protect_sys_mem(const mem_block &block, unsigned flags)
+mem_manager::flush_instr_cache(const mem_block &block)
 {
 	void *addr = block.addr;
 	size_t size = block.size;
@@ -141,17 +119,13 @@ mem_manager::protect_sys_mem(const mem_block &block, unsigned flags)
 		return;
 	}
 
-	os_protect(addr, size, get_mem_flags(flags));
-
-	if (flags & MEM_EXEC) {
 #if defined(_WIN64)
-		os_flush_instr_cache(addr, size);
+	os_flush_instr_cache(addr, size);
 #elif defined(__linux__)
-		void *start = addr;
-		void *end = static_cast<char *>(addr) + size;
-		os_flush_instr_cache(start, end);
+	void *start = addr;
+	void *end = static_cast<char *>(addr) + size;
+	os_flush_instr_cache(start, end);
 #endif
-	}
 }
 
 void
@@ -161,25 +135,21 @@ mem_manager::release_sys_mem(void *addr)
 		return;
 	}
 
-	if (auto it = hidden_blocks.find(addr); it != hidden_blocks.end()) {
-		return;
-	}
-
 #if defined(_WIN64) || defined(__linux__)
 	void *main_addr = reinterpret_cast<uint8_t *>(addr) + 16;
-	if (auto it = eh_frames.find(main_addr); it != eh_frames.end()) {
+	if (auto it = m_eh_frames.find(main_addr); it != m_eh_frames.end()) {
 		os_delete_exp_info(it->second);
-		eh_frames.erase(main_addr);
+		m_eh_frames.erase(main_addr);
 	}
 #endif
 	
-	if (auto it = big_blocks.find(addr); it != big_blocks.end()) {
+	if (auto it = m_big_blocks.find(addr); it != m_big_blocks.end()) {
 #if defined(_WIN64)
 		os_free(it->first);
 #elif defined(__linux__)
 		os_free(it->first, it->second);
 #endif
-		big_blocks.erase(addr);
+		m_big_blocks.erase(addr);
 		return;
 	}
 

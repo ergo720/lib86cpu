@@ -542,7 +542,7 @@ lc86_jit::gen_code_block()
 #endif
 
 	// This code block is complete, so protect and flush the instruction cache now
-	m_mem.protect_sys_mem(block, MEM_READ | MEM_EXEC);
+	m_mem.flush_instr_cache(block);
 
 	tc->ptr_code = reinterpret_cast<entry_t>(main_offset);
 	tc->jmp_offset[0] = tc->jmp_offset[1] = tc->jmp_offset[2] = reinterpret_cast<entry_t>(exit_offset);
@@ -600,7 +600,7 @@ lc86_jit::gen_aux_funcs()
 		throw lc86_exp_abort("The generated code has a zero size", lc86_status::internal_error);
 	}
 
-	auto block = m_mem.allocate_non_pooled_sys_mem(estimated_code_size);
+	auto block = m_mem.get_non_pooled_sys_mem(estimated_code_size);
 	if (auto err = m_code.relocateToBase(reinterpret_cast<uintptr_t>(block.addr))) {
 		std::string err_str("Asmjit failed at relocateToBase() with the error ");
 		err_str += DebugUtils::errorAsString(err);
@@ -616,7 +616,7 @@ lc86_jit::gen_aux_funcs()
 	assert(offset + buff_size <= estimated_code_size);
 	std::memcpy(static_cast<uint8_t *>(block.addr) + offset, section->data(), buff_size);
 
-	m_mem.protect_sys_mem(block, MEM_READ | MEM_EXEC);
+	m_mem.flush_instr_cache(block);
 
 	m_cpu->read_int_fn = reinterpret_cast<read_int_t>(static_cast<uint8_t *>(block.addr) + offset);
 	m_cpu->raise_int_fn = reinterpret_cast<raise_int_t>(static_cast<uint8_t *>(block.addr) + offset + raise_int_off_aligned16);

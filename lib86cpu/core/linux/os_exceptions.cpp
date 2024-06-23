@@ -159,7 +159,7 @@ lc86_jit::gen_exception_info(uint8_t *code_ptr, size_t code_size)
 	size_t aligned_code_size = (code_size + sizeof(void *) - 1) & ~(sizeof(void *) - 1);
 	cie_t *cie = reinterpret_cast<cie_t *>(code_ptr + aligned_code_size);
 	write_eh_frame(cie, code_ptr, code_size);
-	m_mem.eh_frames.emplace(code_ptr, cie);
+	m_mem.m_eh_frames.emplace(code_ptr, cie);
 }
 
 void
