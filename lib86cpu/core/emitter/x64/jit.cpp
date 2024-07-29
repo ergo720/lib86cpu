@@ -505,9 +505,9 @@ lc86_jit::gen_code_block()
 	}
 
 #if defined(_WIN64)
-	// Increase estimated_code_size by 12 + 12, to accommodate the .pdata and .xdata sections required to unwind the function
+	// Increase estimated_code_size by 16 + 12, to accommodate the .pdata and .xdata sections required to unwind the function
 	// when an exception is thrown. Note that the sections need to be DWORD aligned
-	estimated_code_size += 24;
+	estimated_code_size += 28;
 	estimated_code_size = (estimated_code_size + 3) & ~3;
 #elif defined (__linux__)
 	// Increase estimated_code_size by 24 + 40 + 4, to accommodate the .eh_frame section required to unwind the function
