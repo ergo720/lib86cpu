@@ -88,7 +88,7 @@ consteval const char *get_prix_prefix()
 	}
 }
 
-template<typename T, mem_type type>
+template<typename T, mem_type type, bool is_io = false>
 void log_unhandled_write(addr_t addr, T value)
 {
 	if constexpr ((sizeof(T) == 10) || (sizeof(T) == 16)) {
@@ -110,7 +110,9 @@ address 0x%08" PRIX32 " with size %" PRId32).c_str(),
 	else {
 		constexpr size_t val_digits = sizeof(T) * 2;
 		if constexpr (type == mem_type::unmapped) {
-			LOG(log_level::warn, ("Memory write of value 0x%0" + std::to_string(val_digits) + get_prix_prefix<T>() + " to unmapped memory at address 0x%08" PRIX32 " with size %" PRId32).c_str(),
+			std::string str1(is_io ? "Port" : "Memory");
+			std::string str2(is_io ? "port 0x%04" PRIX16 : "address 0x%08" PRIX32);
+			LOG(log_level::warn, (str1 + " write of value 0x%0" + std::to_string(val_digits) + get_prix_prefix<T>() + " to unmapped memory at " + str2 + " with size %" PRId32).c_str(),
 				value, addr, sizeof(T));
 		}
 		else if constexpr (type == mem_type::mmio) {
@@ -124,7 +126,7 @@ address 0x%08" PRIX32 " with size %" PRId32).c_str(),
 	}
 }
 
-template<typename T, mem_type type>
+template<typename T, mem_type type, bool is_io = false>
 T log_unhandled_read(addr_t addr)
 {
 	if constexpr ((sizeof(T) == 10) || (sizeof(T) == 16)) {
@@ -139,7 +141,9 @@ T log_unhandled_read(addr_t addr)
 	else {
 		constexpr size_t val_digits = sizeof(T) * 2 + 2;
 		if constexpr (type == mem_type::unmapped) {
-			LOG(log_level::warn, "Memory read to unmapped memory at address 0x%08" PRIX32 " with size %" PRId32, addr, sizeof(T));
+			std::string str1(is_io ? "Port" : "Memory");
+			std::string str2(is_io ? "port 0x%04" PRIX16 : "address 0x%08" PRIX32);
+			LOG(log_level::warn, (str1 + " read to unmapped memory at " + str2 + " with size %" PRId32).c_str(), addr, sizeof(T));
 		}
 		else if constexpr (type == mem_type::mmio) {
 			LOG(log_level::warn, "Unhandled mmio read at address 0x%08" PRIX32 " with size %" PRId32, addr, sizeof(T));

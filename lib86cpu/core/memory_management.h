@@ -179,7 +179,7 @@ T as_io_dispatch_read(cpu_t *cpu, port_t port, const memory_region_t<port_t> *re
 		}
 
 	case mem_type::unmapped:
-		return log_unhandled_read<T, mem_type::unmapped>(port);
+		return log_unhandled_read<T, mem_type::unmapped, true>(port);
 
 	default:
 		LIB86CPU_ABORT();
@@ -207,7 +207,7 @@ void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, const memory_region_
 		break;
 
 	case mem_type::unmapped:
-		log_unhandled_write<T, mem_type::unmapped>(port, value);
+		log_unhandled_write<T, mem_type::unmapped, true>(port, value);
 		return;
 
 	default:
