@@ -10,14 +10,14 @@
 #include "Zydis/Zydis.h"
 #include <stdint.h>
 
-#define SIZE128 5
-#define SIZE80  4
-#define SIZE64  3
-#define SIZE32  2
-#define SIZE16  1
-#define SIZE8   0
-#define ADDR32  0
+#define SIZE8   1
+#define SIZE16  2
+#define SIZE32  4
+#define SIZE64  8
+#define SIZE80  10
+#define SIZE128 16
 #define ADDR16  1
+#define ADDR32  0
 
 
 // Operand numbers

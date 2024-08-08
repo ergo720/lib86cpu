@@ -2022,8 +2022,6 @@ bool lc86_jit::gen_check_io_priv(T port)
 {
 	// port is either an immediate or in EDX
 
-	static const uint8_t op_size_to_mem_size[3] = { 4, 2, 1 };
-
 	if (((m_cpu->cpu_ctx.hflags & HFLG_CPL) > ((m_cpu->cpu_ctx.regs.eflags & IOPL_MASK) >> 12)) || (IS_VM86())) {
 		Label exp = m_a.newLabel();
 		LD_SEG_BASE(R10D, CPU_CTX_TR);
@@ -2061,7 +2059,7 @@ bool lc86_jit::gen_check_io_priv(T port)
 			SHR(EAX, CL);
 			RELOAD_RCX_CTX();
 		}
-		AND(EAX, (1 << op_size_to_mem_size[m_cpu->size_mode]) - 1);
+		AND(EAX, (1 << m_cpu->size_mode) - 1);
 		BR_NE(exp);
 		Label ok = m_a.newLabel();
 		BR_UNCOND(ok);
@@ -3213,7 +3211,7 @@ void lc86_jit::lxs(decoded_instr *instr)
 			MOV(EBX, EDX);
 			LD_MEM();
 		});
-	ADD(EBX, 1 << m_cpu->size_mode);
+	ADD(EBX, m_cpu->size_mode);
 	MOV(EDX, EBX);
 	MOV(rbx_host_reg, offset_host_reg);
 	LD_MEMs(SIZE16);
@@ -3929,7 +3927,7 @@ lc86_jit::bound(decoded_instr *instr)
 	LD_MEM();
 	MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
 	MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), src_host_reg);
-	ADD(EDX, 1 << m_cpu->size_mode);
+	ADD(EDX, m_cpu->size_mode);
 	LD_MEM(); //upper
 	MOV(rdx_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode)); // lower
 	CMP(dst_host_reg, rdx_host_reg);
@@ -4587,7 +4585,7 @@ lc86_jit::cmps(decoded_instr *instr)
 		set_flags_sub(eax_host_reg, ebx_host_reg, r8_host_reg);
 
 		Label sub = m_a.newLabel();
-		uint32_t k = 1 << m_cpu->size_mode;
+		uint32_t k = m_cpu->size_mode;
 		MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
 		MOV(EAX, MEMD32(RSP, LOCAL_VARS_off(1)));
 		LD_R32(EBX, CPU_CTX_EFLAGS);
@@ -5923,7 +5921,7 @@ lc86_jit::ins(decoded_instr *instr)
 		ST_MEM(val_host_reg);
 
 		Label sub = m_a.newLabel();
-		uint32_t k = 1 << m_cpu->size_mode;
+		uint32_t k = m_cpu->size_mode;
 		LD_R32(EAX, CPU_CTX_EFLAGS);
 		AND(EAX, DF_MASK);
 		TEST(EAX, EAX);
@@ -6546,7 +6544,7 @@ lc86_jit::lods(decoded_instr *instr)
 		ST_REG_val(eax_host_reg, CPU_CTX_EAX, m_cpu->size_mode);
 
 		Label sub = m_a.newLabel();
-		uint32_t k = 1 << m_cpu->size_mode;
+		uint32_t k = m_cpu->size_mode;
 		LD_R32(EAX, CPU_CTX_EFLAGS);
 		AND(EAX, DF_MASK);
 		TEST(EAX, EAX);
@@ -7172,7 +7170,7 @@ lc86_jit::movs(decoded_instr *instr)
 		ST_MEM(eax_host_reg);
 
 		Label sub = m_a.newLabel();
-		uint32_t k = 1 << m_cpu->size_mode;
+		uint32_t k = m_cpu->size_mode;
 		MOV(EAX, MEMD32(RSP, LOCAL_VARS_off(0)));
 		LD_R32(EDX, CPU_CTX_EFLAGS);
 		AND(EDX, DF_MASK);
@@ -7616,7 +7614,7 @@ lc86_jit::outs(decoded_instr *instr)
 		ST_IO();
 
 		Label sub = m_a.newLabel();
-		uint32_t k = 1 << m_cpu->size_mode;
+		uint32_t k = m_cpu->size_mode;
 		LD_R32(EAX, CPU_CTX_EFLAGS);
 		AND(EAX, DF_MASK);
 		TEST(EAX, EAX);
@@ -8550,7 +8548,7 @@ lc86_jit::scas(decoded_instr *instr)
 		set_flags_sub(eax_host_reg, edx_host_reg, r8_host_reg);
 
 		Label sub = m_a.newLabel();
-		uint32_t k = 1 << m_cpu->size_mode;
+		uint32_t k = m_cpu->size_mode;
 		LD_R32(EAX, CPU_CTX_EFLAGS);
 		AND(EAX, DF_MASK);
 		TEST(EAX, EAX);
