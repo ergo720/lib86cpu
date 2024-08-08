@@ -266,6 +266,8 @@ private:
 	void gen_update_fpu_ptr(decoded_instr *instr);
 	template<bool is_push, fpu_instr_t fpu_instr>
 	void gen_fpu_stack_fault_check();
+	template<bool is_push, fpu_instr_t fpu_instr>
+	void gen_fpu_stack_fault_check(bool should_set_ftop_in_ebx);
 	template<unsigned idx>
 	void shift(decoded_instr *instr);
 	template<unsigned idx>

@@ -131,27 +131,51 @@ static const std::unordered_map<x64, x86::Gp> reg_to_sized_reg = {
 	{ x64::rax | SIZE8,   AL   },
 	{ x64::rax | SIZE16,  AX   },
 	{ x64::rax | SIZE32,  EAX  },
+	{ x64::rax | SIZE64,  RAX  },
+	{ x64::rax | SIZE80,  RAX  },
+	{ x64::rax | SIZE128, RAX  },
 	{ x64::rbx | SIZE8,   BL   },
 	{ x64::rbx | SIZE16,  BX   },
 	{ x64::rbx | SIZE32,  EBX  },
+	{ x64::rbx | SIZE64,  RBX  },
+	{ x64::rbx | SIZE80,  RBX  },
+	{ x64::rbx | SIZE128, RBX  },
 	{ x64::rcx | SIZE8,   CL   },
 	{ x64::rcx | SIZE16,  CX   },
 	{ x64::rcx | SIZE32,  ECX  },
+	{ x64::rcx | SIZE64,  RCX  },
+	{ x64::rcx | SIZE80,  RCX  },
+	{ x64::rcx | SIZE128, RCX  },
 	{ x64::rdx | SIZE8,   DL   },
 	{ x64::rdx | SIZE16,  DX   },
 	{ x64::rdx | SIZE32,  EDX  },
+	{ x64::rdx | SIZE64,  RDX  },
+	{ x64::rdx | SIZE80,  RDX  },
+	{ x64::rdx | SIZE128, RDX  },
 	{ x64::r8  | SIZE8,   R8B  },
 	{ x64::r8  | SIZE16,  R8W  },
 	{ x64::r8  | SIZE32,  R8D  },
+	{ x64::r8  | SIZE64,  R8   },
+	{ x64::r8  | SIZE80,  R8   },
+	{ x64::r8  | SIZE128, R8   },
 	{ x64::r9  | SIZE8,   R9B  },
 	{ x64::r9  | SIZE16,  R9W  },
 	{ x64::r9  | SIZE32,  R9D  },
+	{ x64::r9  | SIZE64,  R9   },
+	{ x64::r9  | SIZE80,  R9   },
+	{ x64::r9  | SIZE128, R9   },
 	{ x64::r10 | SIZE8,   R10B },
 	{ x64::r10 | SIZE16,  R10W },
 	{ x64::r10 | SIZE32,  R10D },
+	{ x64::r10 | SIZE64,  R10  },
+	{ x64::r10 | SIZE80,  R10  },
+	{ x64::r10 | SIZE128, R10  },
 	{ x64::r11 | SIZE8,   R11B },
 	{ x64::r11 | SIZE16,  R11W },
 	{ x64::r11 | SIZE32,  R11D },
+	{ x64::r11 | SIZE64,  R11  },
+	{ x64::r11 | SIZE80,  R11  },
+	{ x64::r11 | SIZE128, R11  },
 };
 
 // The following calculates how much stack is needed to hold the stack arguments for any callable function from the jitted code. This value is then
@@ -428,11 +452,9 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 
 #define LD_MEM() load_mem(m_cpu->size_mode, 0)
 #define LD_MEMs(size) load_mem(size, 0)
-#define LD_MEM80(idx) load_mem(SIZE80, 0)
 #define LD_MEM128() load_mem(SIZE128, 0)
 #define ST_MEM(val) store_mem(val, m_cpu->size_mode, 0)
 #define ST_MEMs(val, size) store_mem(val, size, 0)
-#define ST_MEM80(val) store_mem(val, SIZE80, 0)
 #define ST_MEM128(val) store_mem(val, SIZE128, 0)
 #define ST_MEMv(val) store_mem<decltype(val), true>(val, m_cpu->size_mode, 0)
 
@@ -2395,13 +2417,21 @@ void lc86_jit::gen_update_fpu_ptr(decoded_instr *instr)
 }
 
 template<bool is_push, fpu_instr_t fpu_instr>
-void lc86_jit::gen_fpu_stack_fault_check()
+void lc86_jit::gen_fpu_stack_fault_check(bool should_set_ftop_in_ebx)
 {
 	LEA(R8, MEMD64(RSP, LOCAL_VARS_off(0)));
 	LEA(RDX, MEMD64(RSP, LOCAL_VARS_off(2)));
 	CALL_F((&fpu_stack_check<is_push, fpu_instr>));
-	MOV(EBX, EAX);
+	if (should_set_ftop_in_ebx) {
+		MOV(EBX, EAX);
+	}
 	MOV(R8D, MEMD32(RSP, LOCAL_VARS_off(2)));
+}
+
+template<bool is_push, fpu_instr_t fpu_instr>
+void lc86_jit::gen_fpu_stack_fault_check()
+{
+	gen_fpu_stack_fault_check<is_push, fpu_instr>(true);
 }
 
 template<unsigned idx>
@@ -5196,35 +5226,14 @@ lc86_jit::fld(decoded_instr *instr)
 			},
 			[this, instr](const op_info rm)
 			{
-				switch (instr->i.opcode)
-				{
-				case 0xD9:
-					LD_MEMs(SIZE32);
-					MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EAX);
-					gen_fpu_stack_fault_check<true, fpu_instr_t::float_>();
-					gen_set_host_fpu_ctx();
-					FLD(MEMD32(RSP, LOCAL_VARS_off(0)));
-					break;
-
-				case 0xDD:
-					LD_MEMs(SIZE64);
-					MOV(MEMD64(RSP, LOCAL_VARS_off(0)), RAX);
-					gen_fpu_stack_fault_check<true, fpu_instr_t::float_>();
-					gen_set_host_fpu_ctx();
-					FLD(MEMD64(RSP, LOCAL_VARS_off(0)));
-					break;
-
-				case 0xDB:
-					LD_MEM80(0);
-					gen_fpu_stack_fault_check<true, fpu_instr_t::float_>();
-					gen_set_host_fpu_ctx();
-					FLD(MEMD80(RSP, LOCAL_VARS_off(0)));
-					break;
-
-				default:
-					LIB86CPU_ABORT();
+				uint8_t size = instr->i.opcode == 0xD9 ? SIZE32 : (instr->i.opcode == 0xDD ? SIZE64 : SIZE80);
+				LD_MEMs(size);
+				if (size != SIZE80) {
+					MOV(MEMD(RSP, LOCAL_VARS_off(0), size), EAX);
 				}
-
+				gen_fpu_stack_fault_check<true, fpu_instr_t::float_>();
+				gen_set_host_fpu_ctx();
+				FLD(MEMD(RSP, LOCAL_VARS_off(0), size));
 				gen_fpu_exp_post_check();
 				MOV(EAX, sizeof(uint80_t));
 				ST_R16(FPU_DATA_FTOP, BX);
@@ -5398,8 +5407,9 @@ lc86_jit::fstp(decoded_instr *instr)
 	}
 	else {
 		Label stack_fault = m_a.newLabel(), ok = m_a.newLabel();
+		bool should_set_ftop_in_ebx = !(instr->i.raw.modrm.reg == 2);
 		MOV(MEMD64(RSP, LOCAL_VARS_off(0)), 0);
-		gen_fpu_stack_fault_check<false, fpu_instr_t::float_>();
+		gen_fpu_stack_fault_check<false, fpu_instr_t::float_>(should_set_ftop_in_ebx);
 		gen_set_host_fpu_ctx();
 		MOV(EDX, EAX);
 		MOV(MEMD32(RSP, LOCAL_VARS_off(4)), EAX);
@@ -5425,37 +5435,21 @@ lc86_jit::fstp(decoded_instr *instr)
 			},
 			[this, instr](const op_info rm)
 			{
-				switch (instr->i.opcode)
-				{
-				case 0xD9:
-					FSTP(MEMD32(RSP, LOCAL_VARS_off(0)));
-					gen_fpu_exp_post_check();
-					MOV(R8D, MEMD32(RSP, LOCAL_VARS_off(0)));
-					ST_MEMs(R8D, SIZE32);
-					break;
-
-				case 0xDD:
-					FSTP(MEMD64(RSP, LOCAL_VARS_off(0)));
-					gen_fpu_exp_post_check();
-					MOV(R8, MEMD64(RSP, LOCAL_VARS_off(0)));
-					ST_MEMs(R8, SIZE64);
-					break;
-
-				case 0xDB:
-					FSTP(MEMD80(RSP, LOCAL_VARS_off(0)));
-					gen_fpu_exp_post_check();
-					LEA(R8, MEMD64(RSP, LOCAL_VARS_off(0)));
-					ST_MEM80(R8);
-					break;
-
-				default:
-					LIB86CPU_ABORT();
+				uint8_t size = instr->i.opcode == 0xD9 ? SIZE32 : (instr->i.opcode == 0xDD ? SIZE64 : SIZE80);
+				auto r8_host_reg = SIZED_REG(x64::r8, size);
+				FSTP(MEMD(RSP, LOCAL_VARS_off(0), size));
+				gen_fpu_exp_post_check();
+				if (size != SIZE80) {
+					MOV(r8_host_reg, MEMD(RSP, LOCAL_VARS_off(0), size));
 				}
-
+				else {
+					LEA(R8, MEMD64(RSP, LOCAL_VARS_off(0)));
+				}
+				ST_MEMs(r8_host_reg, size);
 				gen_update_fpu_ptr<true>(instr);
 			});
 
-		if (!(instr->i.raw.modrm.reg == 2)) {
+		if (should_set_ftop_in_ebx) {
 			INC(EBX);
 			AND(EBX, 7);
 			ST_R16(FPU_DATA_FTOP, BX);
