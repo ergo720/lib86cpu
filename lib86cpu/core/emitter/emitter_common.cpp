@@ -73,6 +73,15 @@ static const std::unordered_map<ZydisRegister, const std::pair<int, size_t>> zyd
 	{ ZYDIS_REGISTER_XMM5,       { XMM5_idx,      CPU_CTX_XMM5    }  },
 	{ ZYDIS_REGISTER_XMM6,       { XMM6_idx,      CPU_CTX_XMM6    }  },
 	{ ZYDIS_REGISTER_XMM7,       { XMM7_idx,      CPU_CTX_XMM7    }  },
+	// use -1 for these below so we error out if somebody tries to use them
+	{ ZYDIS_REGISTER_ST0,        { -1,            -1              }  },
+	{ ZYDIS_REGISTER_ST1,        { -1,            -1              }  },
+	{ ZYDIS_REGISTER_ST2,        { -1,            -1              }  },
+	{ ZYDIS_REGISTER_ST3,        { -1,            -1              }  },
+	{ ZYDIS_REGISTER_ST4,        { -1,            -1              }  },
+	{ ZYDIS_REGISTER_ST5,        { -1,            -1              }  },
+	{ ZYDIS_REGISTER_ST6,        { -1,            -1              }  },
+	{ ZYDIS_REGISTER_ST7,        { -1,            -1              }  },
 };
 
 

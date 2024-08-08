@@ -1173,6 +1173,9 @@ op_info lc86_jit::get_operand(decoded_instr *instr, const unsigned opnum)
 		case 32:
 			return { offset, SIZE32 };
 
+		case 80:
+			return { offset, SIZE80 };
+
 		case 128:
 			return { offset, SIZE128 };
 
