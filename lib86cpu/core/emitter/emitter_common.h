@@ -219,5 +219,7 @@ inline constexpr auto all_callable_funcs = std::make_tuple(
 	fpu_stack_check<true, fpu_instr_t::float_>,
 	fpu_stack_check<false, fpu_instr_t::float_>,
 	fpu_stack_check<true, fpu_instr_t::bcd>,
-	fpu_stack_check<false, fpu_instr_t::bcd>
+	fpu_stack_check<false, fpu_instr_t::bcd>,
+	fpu_stack_check<true>,
+	fpu_stack_check<false>
 );

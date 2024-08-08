@@ -43,8 +43,8 @@ void fpu_update_tag(cpu_ctx_t *cpu_ctx, uint32_t idx)
 	}
 }
 
-template<bool is_push, fpu_instr_t instr_type>
-uint32_t fpu_stack_check(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val)
+template<bool is_push>
+uint32_t fpu_stack_check(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val, fpu_instr_t instr_type)
 {
 	// this function returns the fpu stack pointer to the value modified by the push/pop, and the flags of the status word following a stack fault.
 	// It also writes an appropriate indefinite value when it detects a masked stack exception
@@ -113,6 +113,12 @@ uint32_t fpu_stack_check(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val)
 	return ftop;
 }
 
+template<bool is_push, fpu_instr_t instr_type>
+uint32_t fpu_stack_check(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val)
+{
+	return fpu_stack_check<is_push>(cpu_ctx, sw, inv_val, instr_type);
+}
+
 template JIT_API uint32_t fpu_stack_check<true, fpu_instr_t::integer8>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
 template JIT_API uint32_t fpu_stack_check<false, fpu_instr_t::integer8>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
 template JIT_API uint32_t fpu_stack_check<true, fpu_instr_t::integer16>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
@@ -125,5 +131,7 @@ template JIT_API uint32_t fpu_stack_check<true, fpu_instr_t::float_>(cpu_ctx_t *
 template JIT_API uint32_t fpu_stack_check<false, fpu_instr_t::float_>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
 template JIT_API uint32_t fpu_stack_check<true, fpu_instr_t::bcd>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
 template JIT_API uint32_t fpu_stack_check<false, fpu_instr_t::bcd>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
+template JIT_API uint32_t fpu_stack_check<true>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val, fpu_instr_t instr_type);
+template JIT_API uint32_t fpu_stack_check<false>(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val, fpu_instr_t instr_type);
 template JIT_API void fpu_update_tag<true>(cpu_ctx_t *cpu_ctx, uint32_t idx);
 template JIT_API void fpu_update_tag<false>(cpu_ctx_t *cpu_ctx, uint32_t idx);

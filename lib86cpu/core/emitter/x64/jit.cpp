@@ -396,6 +396,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define FNSTSW(dst) m_a.fnstsw(dst)
 #define FNCLEX() m_a.fnclex()
 #define FLD(src) m_a.fld(src)
+#define FILD(src) m_a.fild(src)
 #define FSTP(dst) m_a.fstp(dst)
 #define FLD1(dst) m_a.fld1(dst)
 #define FLDL2T(dst) m_a.fldl2t(dst)
@@ -5121,6 +5122,44 @@ lc86_jit::enter(decoded_instr *instr)
 
 	MOV(rax_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
 	ST_REG_val(rax_host_reg, CPU_CTX_EBP, m_cpu->size_mode);
+}
+
+void
+lc86_jit::fild(decoded_instr *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		get_rm<OPNUM_SINGLE>(instr,
+			[](const op_info rm)
+			{
+				assert(0);
+			},
+			[this, instr](const op_info rm)
+			{
+				uint8_t size_mode = instr->i.opcode == 0xDB ? SIZE32 : (instr->i.raw.modrm.reg == 5 ? SIZE64 : SIZE16);
+				fpu_instr_t fpu_instr = instr->i.opcode == 0xDB ? fpu_instr_t::integer32 : (instr->i.raw.modrm.reg == 5 ? fpu_instr_t::integer64 : fpu_instr_t::integer16);
+				LD_MEMs(size_mode);
+				MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EAX);
+				MOV(R9D, fpu_instr);
+				LEA(R8, MEMD64(RSP, LOCAL_VARS_off(0)));
+				LEA(RDX, MEMD64(RSP, LOCAL_VARS_off(1)));
+				CALL_F((&fpu_stack_check<true>));
+				MOV(EBX, EAX);
+				MOV(EDX, EAX);
+				MOV(EAX, sizeof(uint80_t));
+				MUL(DX);
+				EMMS();
+				FILD(MEMD(RSP, LOCAL_VARS_off(0), size_mode));
+				FSTP(MEMSD80(RCX, RAX, 0, CPU_CTX_R0));
+				MOV(AX, MEMD16(RSP, LOCAL_VARS_off(1)));
+				ST_R16(CPU_CTX_FSTATUS, AX);
+				ST_R16(FPU_DATA_FTOP, BX);
+				MOV(EDX, EBX);
+				CALL_F(&fpu_update_tag<true>);
+			});
+	}
 }
 
 void
