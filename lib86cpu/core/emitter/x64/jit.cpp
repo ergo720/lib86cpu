@@ -437,7 +437,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define LD_R8H(dst, reg_offset) MOV(dst, MEMD8(RCX, reg_offset + 1))
 #define LD_R16(dst, reg_offset) MOV(dst, MEMD16(RCX, reg_offset))
 #define LD_R32(dst, reg_offset) MOV(dst, MEMD32(RCX, reg_offset))
-#define LD_REG_val(dst, reg_offset, size) load_reg(dst, reg_offset, size)
+#define LD_REG_val(dst, reg_offset, size) MOV(dst, MEMD(RCX, reg_offset, size))
 #define LD_SEG(dst, seg_offset) MOV(dst, MEMD16(RCX, seg_offset))
 #define LD_SEG_BASE(dst, seg_offset) MOV(dst, MEMD32(RCX, seg_offset + seg_base_offset))
 #define LD_SEG_LIMIT(dst, seg_offset) MOV(dst, MEMD32(RCX, seg_offset + seg_limit_offset))
@@ -445,7 +445,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define ST_R8H(reg_offset, src) MOV(MEMD8(RCX, reg_offset + 1), src)
 #define ST_R16(reg_offset, src) MOV(MEMD16(RCX, reg_offset), src)
 #define ST_R32(reg_offset, src) MOV(MEMD32(RCX, reg_offset), src)
-#define ST_REG_val(val, reg_offset, size) store_reg(val, reg_offset, size)
+#define ST_REG_val(val, reg_offset, size) MOV(MEMD(RCX, reg_offset, size), val)
 #define ST_SEG(seg_offset, val) MOV(MEMD16(RCX, seg_offset), val)
 #define ST_SEG_BASE(seg_offset, val) MOV(MEMD32(RCX, seg_offset + seg_base_offset), val)
 #define ST_SEG_LIMIT(seg_offset, val) MOV(MEMD32(RCX, seg_offset + seg_limit_offset), val)
@@ -1831,50 +1831,6 @@ lc86_jit::ld_pf(x86::Gp dst, x86::Gp res, x86::Gp aux)
 	XOR(R8, dst.r64());
 	MOVZX(dst, R8B);
 	MOVZX(dst, MEMS8(dst.r64(), res.r64(), 0));
-}
-
-void
-lc86_jit::load_reg(x86::Gp dst, size_t reg_offset, size_t size)
-{
-	switch (size)
-	{
-	case SIZE8:
-		MOV(dst, MEMD8(RCX, reg_offset));
-		break;
-
-	case SIZE16:
-		MOV(dst, MEMD16(RCX, reg_offset));
-		break;
-
-	case SIZE32:
-		MOV(dst, MEMD32(RCX, reg_offset));
-		break;
-
-	default:
-		LIB86CPU_ABORT();
-	}
-}
-
-template<typename T>
-void lc86_jit::store_reg(T val, size_t reg_offset, size_t size)
-{
-	switch (size)
-	{
-	case SIZE8:
-		MOV(MEMD8(RCX, reg_offset), val);
-		break;
-
-	case SIZE16:
-		MOV(MEMD16(RCX, reg_offset), val);
-		break;
-
-	case SIZE32:
-		MOV(MEMD32(RCX, reg_offset), val);
-		break;
-
-	default:
-		LIB86CPU_ABORT();
-	}
 }
 
 void
