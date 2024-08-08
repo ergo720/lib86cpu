@@ -5402,8 +5402,6 @@ lc86_jit::fstp(decoded_instr *instr)
 		gen_set_host_fpu_ctx();
 		MOV(EDX, EAX);
 		MOV(MEMD32(RSP, LOCAL_VARS_off(4)), EAX);
-		INC(EBX);
-		AND(EBX, 7);
 		TEST(MEMD64(RSP, LOCAL_VARS_off(0)), 0);
 		BR_NE(stack_fault);
 		MOV(EAX, sizeof(uint80_t));
@@ -5422,7 +5420,6 @@ lc86_jit::fstp(decoded_instr *instr)
 				MUL(DX);
 				FSTP(MEMSD80(RCX, RAX, 0, CPU_CTX_R0));
 				gen_fpu_exp_post_check();
-				ST_R16(FPU_DATA_FTOP, BX);
 				gen_update_fpu_ptr<false>(instr);
 			},
 			[this, instr](const op_info rm)
@@ -5454,10 +5451,14 @@ lc86_jit::fstp(decoded_instr *instr)
 					LIB86CPU_ABORT();
 				}
 
-				ST_R16(FPU_DATA_FTOP, BX);
 				gen_update_fpu_ptr<true>(instr);
 			});
 
+		if (!(instr->i.raw.modrm.reg == 2)) {
+			INC(EBX);
+			AND(EBX, 7);
+			ST_R16(FPU_DATA_FTOP, BX);
+		}
 		RESTORE_FPU_CTX();
 		MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(4)));
 		CALL_F(&fpu_update_tag<false>);
