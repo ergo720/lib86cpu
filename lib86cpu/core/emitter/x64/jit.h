@@ -285,6 +285,8 @@ private:
 	void int_(decoded_instr *instr);
 	template<unsigned idx>
 	void float_load_constant(decoded_instr *instr);
+	template<bool is_push, fpu_instr_t fpu_instr, typename T>
+	void gen_fpu_stack_prologue(bool should_set_ftop_in_ebx, T &&action_when_no_fault);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;
