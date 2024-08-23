@@ -77,6 +77,7 @@ public:
 	void div(decoded_instr *instr);
 	void enter(decoded_instr *instr);
 	void fild(decoded_instr *instr);
+	void fistp(decoded_instr *instr);
 	void fld(decoded_instr *instr);
 	void fld1(decoded_instr *instr);
 	void fldcw(decoded_instr *instr);
@@ -261,10 +262,8 @@ private:
 	void gen_set_host_fpu_ctx();
 	template<bool update_fdp>
 	void gen_update_fpu_ptr(decoded_instr *instr);
-	template<bool is_push, fpu_instr_t fpu_instr>
-	void gen_fpu_stack_fault_check();
-	template<bool is_push, fpu_instr_t fpu_instr>
-	void gen_fpu_stack_fault_check(bool should_set_ftop_in_ebx);
+	template<bool is_push>
+	void gen_fpu_stack_fault_check(bool should_set_ftop_in_ebx, fpu_instr_t fpu_instr);
 	template<unsigned idx>
 	void shift(decoded_instr *instr);
 	template<unsigned idx>
@@ -285,8 +284,8 @@ private:
 	void int_(decoded_instr *instr);
 	template<unsigned idx>
 	void float_load_constant(decoded_instr *instr);
-	template<bool is_push, fpu_instr_t fpu_instr, typename T>
-	void gen_fpu_stack_prologue(bool should_set_ftop_in_ebx, T &&action_when_no_fault);
+	template<bool is_push, typename T>
+	void gen_fpu_stack_prologue(bool should_set_ftop_in_ebx, fpu_instr_t fpu_instr, T &&action_when_no_fault);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;

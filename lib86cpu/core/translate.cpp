@@ -1136,6 +1136,11 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->fild(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_FIST:
+		case ZYDIS_MNEMONIC_FISTP:
+			cpu->jit->fistp(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_FLD:
 			cpu->jit->fld(&instr);
 			break;

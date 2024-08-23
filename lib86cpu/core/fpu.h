@@ -19,7 +19,5 @@ enum class fpu_instr_t : uint32_t {
 void fpu_init(cpu_t *cpu);
 template<bool is_push>
 JIT_API void fpu_update_tag(cpu_ctx_t *cpu_ctx, uint32_t idx);
-template<bool is_push, fpu_instr_t instr_type>
-JIT_API uint32_t fpu_stack_check(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val);
 template<bool is_push>
 JIT_API uint32_t fpu_stack_check(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val, fpu_instr_t instr_type);

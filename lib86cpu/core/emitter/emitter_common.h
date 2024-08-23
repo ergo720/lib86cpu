@@ -208,18 +208,6 @@ inline constexpr auto all_callable_funcs = std::make_tuple(
 	cpu_runtime_abort,
 	dbg_update_exp_hook,
 	tlb_invalidate_,
-	fpu_stack_check<true, fpu_instr_t::integer8>,
-	fpu_stack_check<false, fpu_instr_t::integer8>,
-	fpu_stack_check<true, fpu_instr_t::integer16>,
-	fpu_stack_check<false, fpu_instr_t::integer16>,
-	fpu_stack_check<true, fpu_instr_t::integer32>,
-	fpu_stack_check<false, fpu_instr_t::integer32>,
-	fpu_stack_check<true, fpu_instr_t::integer64>,
-	fpu_stack_check<false, fpu_instr_t::integer64>,
-	fpu_stack_check<true, fpu_instr_t::float_>,
-	fpu_stack_check<false, fpu_instr_t::float_>,
-	fpu_stack_check<true, fpu_instr_t::bcd>,
-	fpu_stack_check<false, fpu_instr_t::bcd>,
 	fpu_stack_check<true>,
 	fpu_stack_check<false>
 );
