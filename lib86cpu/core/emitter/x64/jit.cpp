@@ -2374,20 +2374,17 @@ void lc86_jit::gen_update_fpu_ptr(decoded_instr *instr)
 }
 
 template<bool is_push>
-void lc86_jit::gen_fpu_stack_fault_check(bool should_set_ftop_in_ebx, fpu_instr_t fpu_instr)
+void lc86_jit::gen_fpu_stack_fault_check(fpu_instr_t fpu_instr)
 {
 	MOV(R9D, fpu_instr);
 	LEA(R8, MEMD64(RSP, LOCAL_VARS_off(0)));
 	LEA(RDX, MEMD64(RSP, LOCAL_VARS_off(2)));
 	CALL_F((&fpu_stack_check<is_push>));
-	if (should_set_ftop_in_ebx) {
-		MOV(EBX, EAX);
-	}
 	MOV(R8D, MEMD32(RSP, LOCAL_VARS_off(2)));
 }
 
 template<bool is_push, typename T>
-void lc86_jit::gen_fpu_stack_prologue(bool should_set_ftop_in_ebx, fpu_instr_t fpu_instr, T &&action_when_no_fault)
+void lc86_jit::gen_fpu_stack_prologue(fpu_instr_t fpu_instr, T &&action_when_no_fault)
 {
 	/*
 	action_when_no_fault = code to run when no stack fault is detected. Typically, loads a value to host st0
@@ -2397,7 +2394,7 @@ void lc86_jit::gen_fpu_stack_prologue(bool should_set_ftop_in_ebx, fpu_instr_t f
 
 	Label stack_fault = m_a.newLabel(), ok = m_a.newLabel();
 	MOV(MEMD64(RSP, LOCAL_VARS_off(0)), 0);
-	gen_fpu_stack_fault_check<is_push>(should_set_ftop_in_ebx, fpu_instr);
+	gen_fpu_stack_fault_check<is_push>(fpu_instr);
 	gen_set_host_fpu_ctx();
 	MOV(MEMD32(RSP, LOCAL_VARS_off(4)), EAX); // save ftop to stack4
 	TEST(MEMD64(RSP, LOCAL_VARS_off(0)), 0); // if not zero, then stack fault
@@ -3409,7 +3406,7 @@ void lc86_jit::float_load_constant(decoded_instr *instr)
 		RAISEin0_t(EXP_NM);
 	}
 	else {
-		gen_fpu_stack_prologue<true>(true, fpu_instr_t::float_, [this]() {
+		gen_fpu_stack_prologue<true>(fpu_instr_t::float_, [this]() {
 			if constexpr (idx == 0) {
 				FLD1();
 			}
@@ -3435,6 +3432,7 @@ void lc86_jit::float_load_constant(decoded_instr *instr)
 				LIB86CPU_ABORT_msg("float_load_constant: unknown instruction specified with index %u", idx);
 			}
 			});
+		MOV(EBX, MEMD32(RSP, LOCAL_VARS_off(4)));
 		MOV(EAX, sizeof(uint80_t));
 		ST_R16(FPU_DATA_FTOP, BX);
 		MUL(BX);
@@ -5170,7 +5168,7 @@ lc86_jit::fistp(decoded_instr *instr)
 		bool should_pop = instr->i.mnemonic == ZYDIS_MNEMONIC_FISTP;
 		fpu_instr_t fpu_instr = instr->i.opcode == 0xDB ? fpu_instr_t::integer32 : (instr->i.raw.modrm.reg == 7 ? fpu_instr_t::integer64 : fpu_instr_t::integer16);
 		if (should_pop) {
-			gen_fpu_stack_prologue<false>(should_pop, fpu_instr, [this]() {
+			gen_fpu_stack_prologue<false>(fpu_instr, [this]() {
 				MOV(EAX, sizeof(uint80_t));
 				MUL(MEMD16(RSP, LOCAL_VARS_off(4)));
 				FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load guest st0 to host st0
@@ -5198,10 +5196,10 @@ lc86_jit::fistp(decoded_instr *instr)
 
 		RESTORE_FPU_CTX();
 		if (should_pop) {
-			INC(EBX);
+			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(4)));
+			LEA(EBX, MEMD32(EDX, 1));
 			AND(EBX, 7);
 			ST_R16(FPU_DATA_FTOP, BX);
-			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(4)));
 			CALL_F(&fpu_update_tag<false>);
 		}
 	}
@@ -5217,13 +5215,14 @@ lc86_jit::fld(decoded_instr *instr)
 		get_rm<OPNUM_SINGLE>(instr,
 			[this, instr](const op_info rm)
 			{
-				gen_fpu_stack_prologue<true>(true, fpu_instr_t::float_, [this, instr]() {
+				gen_fpu_stack_prologue<true>(fpu_instr_t::float_, [this, instr]() {
 					MOV(EDX, instr->i.raw.modrm.rm);
 					MOV(EAX, sizeof(uint80_t));
 					MUL(DX);
 					FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load guest st(i) to host st0
 					});
 				gen_fpu_exp_post_check();
+				MOV(EBX, MEMD32(RSP, LOCAL_VARS_off(4)));
 				MOV(EAX, sizeof(uint80_t));
 				ST_R16(FPU_DATA_FTOP, BX);
 				MUL(BX);
@@ -5237,10 +5236,11 @@ lc86_jit::fld(decoded_instr *instr)
 				if (size != SIZE80) {
 					MOV(MEMD(RSP, LOCAL_VARS_off(0), size), EAX);
 				}
-				gen_fpu_stack_fault_check<true>(true, fpu_instr_t::float_);
+				gen_fpu_stack_fault_check<true>(fpu_instr_t::float_);
 				gen_set_host_fpu_ctx();
 				FLD(MEMD(RSP, LOCAL_VARS_off(0), size));
 				gen_fpu_exp_post_check();
+				MOV(EBX, MEMD32(RSP, LOCAL_VARS_off(4)));
 				MOV(EAX, sizeof(uint80_t));
 				ST_R16(FPU_DATA_FTOP, BX);
 				MUL(BX);
@@ -5414,7 +5414,7 @@ lc86_jit::fstp(decoded_instr *instr)
 	else {
 		bool should_pop = instr->i.mnemonic == ZYDIS_MNEMONIC_FSTP;
 		if (should_pop) {
-			gen_fpu_stack_prologue<false>(should_pop, fpu_instr_t::float_, [this]() {
+			gen_fpu_stack_prologue<false>(fpu_instr_t::float_, [this]() {
 				MOV(EAX, sizeof(uint80_t));
 				MUL(MEMD16(RSP, LOCAL_VARS_off(4)));
 				FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load guest st0 to host st0
@@ -5452,10 +5452,10 @@ lc86_jit::fstp(decoded_instr *instr)
 
 		RESTORE_FPU_CTX();
 		if (should_pop) {
-			INC(EBX);
+			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(4)));
+			LEA(EBX, MEMD32(EDX, 1));
 			AND(EBX, 7);
 			ST_R16(FPU_DATA_FTOP, BX);
-			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(4)));
 			CALL_F(&fpu_update_tag<false>);
 		}
 	}
