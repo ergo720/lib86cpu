@@ -176,6 +176,8 @@ public:
 	void xlat(decoded_instr *instr);
 	void xor_(decoded_instr *instr);
 	void xorps(decoded_instr *instr);
+	template<ZydisMnemonic mnemonic>
+	void float_arithmetic(decoded_instr *instr);
 
 #if defined(_WIN64) || defined (__linux__)
 	void gen_exception_info(uint8_t *code_ptr, size_t code_size);

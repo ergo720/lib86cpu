@@ -25,6 +25,15 @@ static_assert(ZYDIS_REGISTER_DR4 - ZYDIS_REGISTER_DR0 == 4);
 static_assert(ZYDIS_REGISTER_DR5 - ZYDIS_REGISTER_DR0 == 5);
 static_assert(ZYDIS_REGISTER_DR6 - ZYDIS_REGISTER_DR0 == 6);
 static_assert(ZYDIS_REGISTER_DR7 - ZYDIS_REGISTER_DR0 == 7);
+// This is assumed in float_arithmetic
+static_assert(ZYDIS_REGISTER_ST0 - ZYDIS_REGISTER_ST0 == 0);
+static_assert(ZYDIS_REGISTER_ST1 - ZYDIS_REGISTER_ST0 == 1);
+static_assert(ZYDIS_REGISTER_ST2 - ZYDIS_REGISTER_ST0 == 2);
+static_assert(ZYDIS_REGISTER_ST3 - ZYDIS_REGISTER_ST0 == 3);
+static_assert(ZYDIS_REGISTER_ST4 - ZYDIS_REGISTER_ST0 == 4);
+static_assert(ZYDIS_REGISTER_ST5 - ZYDIS_REGISTER_ST0 == 5);
+static_assert(ZYDIS_REGISTER_ST6 - ZYDIS_REGISTER_ST0 == 6);
+static_assert(ZYDIS_REGISTER_ST7 - ZYDIS_REGISTER_ST0 == 7);
 
 // all regs available on x64
 #define AH x86::ah
@@ -99,6 +108,14 @@ static_assert(ZYDIS_REGISTER_DR7 - ZYDIS_REGISTER_DR0 == 7);
 #define XMM5 x86::xmm5
 #define XMM6 x86::xmm6
 #define XMM7 x86::xmm7
+#define ST0 x86::st0
+#define ST1 x86::st1
+#define ST2 x86::st2
+#define ST3 x86::st3
+#define ST4 x86::st4
+#define ST5 x86::st5
+#define ST6 x86::st6
+#define ST7 x86::st7
 
 #define RCX_HOME_off 8  // skip ret rip that was pushed on the stack by the caller
 #define RDX_HOME_off 16
@@ -430,6 +447,8 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define FLDLG2(dst) m_a.fldlg2(dst)
 #define FLDLN2(dst) m_a.fldln2(dst)
 #define FLDZ(dst) m_a.fldz(dst)
+#define FADD(...) m_a.fadd(__VA_ARGS__)
+#define FIADD(...) m_a.fiadd(__VA_ARGS__)
 
 #define MOVAPS(dst, src) m_a.movaps(dst, src)
 #define XORPS(dst, src) m_a.xorps(dst, src)
@@ -2404,6 +2423,112 @@ void lc86_jit::gen_fpu_stack_prologue(fpu_instr_t fpu_instr, T &&action_when_no_
 	m_a.bind(stack_fault);
 	FLD(MEMD32(RSP, LOCAL_VARS_off(0))); // load indefinite value in host st0
 	m_a.bind(ok);
+}
+
+template<ZydisMnemonic mnemonic>
+void lc86_jit::float_arithmetic(decoded_instr *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		const auto do_instr = [this]<typename... Args>(Args... args) {
+			if constexpr (mnemonic == ZYDIS_MNEMONIC_FADD) {
+				return [&]() { FADD(args...); };
+			}
+			else if constexpr (mnemonic == ZYDIS_MNEMONIC_FADDP) {
+				return [&]() { FADD(args...); }; // still use the version that doesn't pop because the stack is popped later with fstp
+			}
+			else if constexpr (mnemonic == ZYDIS_MNEMONIC_FIADD) {
+				return [&]() { FIADD(args...); };
+			}
+			else {
+				LIB86CPU_ABORT_msg("Invalid instruction with index %u specified to float_arithmetic", mnemonic);
+			}
+			};
+
+		if (instr->o[OPNUM_SRC].type == ZYDIS_OPERAND_TYPE_REGISTER) {
+			// This is the case where both src and dst operands are st(i) registers
+
+			// NOTE: remove this code path for the integer instructions to avoid instantiating the lambda above with them. This would cause an error because the
+			// integer instructions only take a single argument, while the call below passes two. Also, note that these instructions always take a memory operand,
+			// so we will never reach this case at runtime
+			constexpr bool is_fpu_int_instr = []() constexpr {
+				return mnemonic == ZYDIS_MNEMONIC_FIADD;
+				}();
+				assert(!is_fpu_int_instr);
+
+			if constexpr (!is_fpu_int_instr) {
+				bool should_pop = false;
+				unsigned src_reg_num = instr->o[OPNUM_SRC].reg.value - ZYDIS_REGISTER_ST0;
+				unsigned dst_reg_num = instr->o[OPNUM_DST].reg.value - ZYDIS_REGISTER_ST0;
+				if constexpr (mnemonic == ZYDIS_MNEMONIC_FADDP) {
+					should_pop = true;
+				}
+
+				if (should_pop) {
+					gen_fpu_stack_prologue<false>(fpu_instr_t::float_, [this, dst_reg_num]() {
+						MOV(EAX, sizeof(uint80_t));
+						MOV(EDX, dst_reg_num);
+						MUL(DX);
+						FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load dst st(i)
+						MOVZX(EBX, AX); // preserve st(i) offset
+						});
+				}
+				else {
+					MOV(EAX, sizeof(uint80_t));
+					MOV(EDX, dst_reg_num);
+					MUL(DX);
+					FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load dst st(i)
+					MOVZX(EBX, AX); // preserve st(i) offset
+					XOR(R8D, R8D); // clear r8w so that gen_fpu_exp_post_check still works
+				}
+				MOV(EAX, sizeof(uint80_t));
+				MOV(EDX, src_reg_num);
+				MUL(DX);
+				FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load src st(i)
+				do_instr.template operator()(ST1, ST0); // dst -> st1, src -> st0
+				gen_fpu_exp_post_check();
+				FSTP(MEMSD80(RCX, RBX, 0, CPU_CTX_R0)); // write result to dst st(i)
+				gen_update_fpu_ptr<true>(instr);
+				RESTORE_FPU_CTX();
+				if (should_pop) {
+					MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(4)));
+					LEA(EBX, MEMD32(EDX, 1));
+					AND(EBX, 7);
+					ST_R16(FPU_DATA_FTOP, BX);
+					CALL_F(&fpu_update_tag<false>);
+				}
+			}
+		}
+		else {
+			// This is the case where the src operand is a 16/32/64 bit mem location, either a float or an integer, and the dst operand is st0
+			get_rm<OPNUM_SINGLE>(instr,
+				[](const op_info rm)
+				{
+					assert(0);
+				},
+				[this, instr, do_instr](const op_info rm)
+				{
+					uint8_t size = instr->i.opcode == 0xDC ? SIZE64 : (instr->i.opcode == 0xDE ? SIZE16 : SIZE32);
+					auto rax_host_reg = SIZED_REG(x64::rbx, size);
+					LD_MEMs(size); // load src mem
+					MOV(MEMD(RSP, LOCAL_VARS_off(0), size), rax_host_reg); // preserve src mem to sized stack
+					gen_set_host_fpu_ctx();
+					MOV(EAX, sizeof(uint80_t));
+					MUL(MEMD16(RCX, FPU_DATA_FTOP));
+					FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load dst st0
+					MOVZX(EBX, AX); // preserve st0 offset
+					do_instr.template operator()(MEMD(RSP, LOCAL_VARS_off(0), size));
+					XOR(R8D, R8D); // clear r8d so that gen_fpu_exp_post_check still works
+					gen_fpu_exp_post_check();
+					FSTP(MEMSD80(RCX, RBX, 0, CPU_CTX_R0)); // write result to dst st0
+					gen_update_fpu_ptr<true>(instr);
+					RESTORE_FPU_CTX();
+				});
+
+		}
+	}
 }
 
 template<unsigned idx>
@@ -9382,5 +9507,8 @@ lc86_jit::xorps(decoded_instr *instr)
 
 template void lc86_jit::gen_interrupt_check<true>();
 template void lc86_jit::gen_interrupt_check<false>();
+template void lc86_jit::float_arithmetic<ZYDIS_MNEMONIC_FADD>(decoded_instr *instr);
+template void lc86_jit::float_arithmetic<ZYDIS_MNEMONIC_FADDP>(decoded_instr *instr);
+template void lc86_jit::float_arithmetic<ZYDIS_MNEMONIC_FIADD>(decoded_instr *instr);
 
 #endif
