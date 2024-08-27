@@ -43,6 +43,7 @@ JIT_API void tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define PE_MODE_SHIFT       4
 #define CR0_EM_SHIFT        5
 #define TRAMP_SHIFT         6
+#define CR0_NE_SHIFT        7
 #define CR4_OSFXSR_SHIFT    9
 #define CR0_TS_SHIFT        10
 #define CR0_MP_SHIFT        15
@@ -55,14 +56,15 @@ JIT_API void tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define HFLG_PE_MODE        (1 << PE_MODE_SHIFT)
 #define HFLG_CR0_EM         (1 << CR0_EM_SHIFT)
 #define HFLG_TRAMP          (1 << TRAMP_SHIFT)
+#define HFLG_CR0_NE         (1 << CR0_NE_SHIFT)
 #define HFLG_CR0_MP         (1 << CR0_MP_SHIFT)
 #define HFLG_CR0_TS         (1 << CR0_TS_SHIFT)
 #define HFLG_CR4_OSFXSR     (1 << CR4_OSFXSR_SHIFT)
 #define HFLG_CR4_VME        (1 << CR4_VME_SHIFT)
 #define HFLG_CR4_PVI        (1 << CR4_PVI_SHIFT)
-#define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_CR0_MP | HFLG_CR0_TS \
+#define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_CR0_MP | HFLG_CR0_TS | HFLG_CR0_NE \
 | HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI)
-#define HFLG_SAVED_MASK     (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_CR0_MP | HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI)
+#define HFLG_SAVED_MASK     (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_CR0_MP | HFLG_CR0_TS | HFLG_CR0_NE | HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI)
 
 // cpu interrupt flags
 #define CPU_NO_INT           0
@@ -395,7 +397,7 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define FPU_EXP_PRECISION  (1 << 5)
 #define FPU_EXP_ALL        (FPU_EXP_INVALID | FPU_EXP_DENORMAL | FPU_EXP_DIVBYZERO | FPU_EXP_OVERFLOW | FPU_EXP_UNDERFLOW | FPU_EXP_PRECISION)
 
-// fpu fstatus flags and shifts
+// fpu fstatus flags
 #define FPU_FLG_IE     FPU_EXP_INVALID
 #define FPU_FLG_DE     FPU_EXP_DENORMAL
 #define FPU_FLG_ZE     FPU_EXP_DIVBYZERO
@@ -404,14 +406,17 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define FPU_FLG_PE     FPU_EXP_PRECISION
 #define FPU_FLG_SF     (1 << 6)
 #define FPU_FLG_ES     (1 << 7)
+#define FPU_FLG_C0     (1 << 8)
+#define FPU_FLG_C1     (1 << 9)
+#define FPU_FLG_C2     (1 << 10)
 #define FPU_FLG_TOP    (7 << 11)
+#define FPU_FLG_C3     (1 << 14)
 #define FPU_FLG_BSY    (1 << 15)
-#define FPU_ES_SHIFT   7
-#define FPU_C0_SHIFT   8
-#define FPU_C1_SHIFT   9
-#define FPU_C2_SHIFT   10
-#define FPU_TOP_SHIFT  11
-#define FPU_C3_SHIFT   14
+#define FPU_FLG_CC_ALL (FPU_FLG_C0 | FPU_FLG_C1 | FPU_FLG_C2 | FPU_FLG_C3)
+
+// fpu stack fault flags
+#define FPU_STACK_OVERFLOW (FPU_EXP_INVALID | FPU_FLG_SF | FPU_FLG_C1)
+#define FPU_STACK_UNDERFLOW (FPU_EXP_INVALID | FPU_FLG_SF)
 
 // fpu cctrl flags
 #define FPU_FLG_PC     (3 << 8)

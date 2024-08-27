@@ -208,6 +208,9 @@ inline constexpr auto all_callable_funcs = std::make_tuple(
 	cpu_runtime_abort,
 	dbg_update_exp_hook,
 	tlb_invalidate_,
-	fpu_stack_check<true>,
-	fpu_stack_check<false>
+	fpu_is_tag_empty,
+	fpu_stack_overflow,
+	fpu_stack_underflow,
+	fpu_stack_fault,
+	fpu_update_ptr
 );

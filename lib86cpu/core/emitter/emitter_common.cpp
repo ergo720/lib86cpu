@@ -7,6 +7,15 @@
 #include "emitter_common.h"
 
 
+// For gen_update_fpu_ptr
+static_assert(CPU_CTX_ES < 65536);
+static_assert(CPU_CTX_CS < 65536);
+static_assert(CPU_CTX_SS < 65536);
+static_assert(CPU_CTX_DS < 65536);
+static_assert(CPU_CTX_FS < 65536);
+static_assert(CPU_CTX_GS < 65536);
+
+
 static const std::unordered_map<ZydisRegister, const std::pair<int, size_t>> zydis_to_reg_offset_table = {
 	{ ZYDIS_REGISTER_AL,         { EAX_idx,       CPU_CTX_EAX     }  },
 	{ ZYDIS_REGISTER_CL,         { ECX_idx,       CPU_CTX_ECX     }  },

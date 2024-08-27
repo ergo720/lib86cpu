@@ -507,6 +507,17 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define RELOAD_RCX_CTX() MOV(RCX, &m_cpu->cpu_ctx)
 #define RESTORE_FPU_CTX() FLDCW(MEMD16(RSP, LOCAL_VARS_off(5)))
 #define CALL_F(func) MOV(RAX, func); CALL(RAX); RELOAD_RCX_CTX()
+#define FPU_IS_TAG_EMPTY(num) MOV(EDX, (num)); \
+	CALL_F(&fpu_is_tag_empty); \
+	TEST(EAX, EAX)
+#define FPU_CLEAR_C1() AND(MEMD16(RCX, CPU_CTX_FSTATUS), ~FPU_FLG_C1)
+#define FPU_PUSH() DEC(MEMD16(RCX, FPU_DATA_FTOP)); AND(MEMD16(RCX, FPU_DATA_FTOP), 7)
+#define FPU_LOAD_STX(x) MOVZX(EDX, MEMD16(RCX, FPU_DATA_FTOP)); \
+	ADD(EDX, (x)); \
+	AND(EDX, 7); \
+	MOV(EAX, sizeof(uint80_t)); \
+	MUL(DX); \
+	FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0))
 
 
 lc86_jit::lc86_jit(cpu_t *cpu)
@@ -2345,61 +2356,82 @@ lc86_jit::gen_simd_mem_align_check()
 	m_a.bind(ok);
 }
 
-void
-lc86_jit::gen_fpu_exp_post_check()
+template<typename T>
+void lc86_jit::gen_fpu_exp_post_check(uint32_t exception, T &&unmasked)
 {
-	// this function should be called immediately after the fpu instr to check exceptions for. It expects to find in R8W the flags of the status word following
-	// a previous stack fault (if any happened)
-	// NOTE: we only support masked exceptions for now
+	// This function should be called immediately after the fpu instr to check exceptions for
 
-	Label no_exp = m_a.newLabel();
+	Label masked = m_a.newLabel();
 	FNSTSW(AX);
-	TEST(AX, FPU_EXP_ALL);
-	BR_EQ(no_exp);
-	LD_R16(R9W, CPU_CTX_FCTRL);
-	AND(R9W, FPU_EXP_ALL);
-	CMP(R9W, FPU_EXP_ALL);
-	BR_EQ(no_exp);
-	static const char *abort_msg = "Unmasked fpu exceptions are not supported";
-	MOV(RCX, abort_msg);
-	MOV(RAX, &cpu_runtime_abort);
-	CALL(RAX); // won't return
-	INT3();
-	m_a.bind(no_exp);
-	AND(AX, ~(FPU_FLG_SF | FPU_FLG_ES | FPU_FLG_TOP | FPU_FLG_BSY));
-	OR(AX, R8W);
-	ST_R16(CPU_CTX_FSTATUS, AX);
+	MOV(DX, MEMD16(RCX, CPU_CTX_FCTRL));
+	NOT(DX);
+	AND(DX, AX);
+	AND(AX, (FPU_EXP_ALL | FPU_FLG_CC_ALL));
+	AND(MEMD16(RCX, CPU_CTX_FSTATUS), ~(FPU_EXP_ALL | FPU_FLG_CC_ALL));
+	OR(MEMD16(RCX, CPU_CTX_FSTATUS), AX); // update exception and condition code flags of guest fstatus
+	TEST(DX, exception); // test if exceptions of interest are unmasked
+	BR_EQ(masked);
+	unmasked();
+	m_a.bind(masked);
 }
 
 void
 lc86_jit::gen_set_host_fpu_ctx()
 {
 	EMMS(); // clear fpu tag word to avoid possible fpu stack faults
-	FNSTCW(MEMD16(RSP, LOCAL_VARS_off(5))); // save host control word so that we can restore it later
-	FLDCW(MEMD16(RCX, FPU_DATA_FRP)); // set precision and rounding according to the guest settings (fpu exceptions are all masked)
 	FNCLEX(); // clear all pending fpu exceptions, so that we can use the host to detect guest fpu exceptions
+	FNSTCW(MEMD16(RSP, LOCAL_VARS_off(5))); // save host control word so that we can restore it later
+	MOV(AX, MEMD16(RCX, FPU_DATA_FRP));
+	OR(AX, FPU_EXP_ALL); // mask all exceptions to avoid them on the host side
+	MOV(MEMD16(RSP, LOCAL_VARS_off(4)), AX);
+	FLDCW(MEMD16(RSP, LOCAL_VARS_off(4))); // set precision and rounding according to the guest settings
 }
 
-template<bool update_fdp>
-void lc86_jit::gen_update_fpu_ptr(decoded_instr *instr)
+void
+lc86_jit::gen_update_fpu_ptr(decoded_instr *instr, x86::Gp mem_addr64)
 {
-	ST_R16(CPU_CTX_FCS, m_cpu->cpu_ctx.regs.cs);
-	ST_R32(CPU_CTX_FIP, m_cpu->instr_eip);
-	MOV(AX, MEMD16(RCX, CPU_CTX_DS));
-	ST_R16(CPU_CTX_FDS, AX);
-	if constexpr (update_fdp) {
-		ST_R32(CPU_CTX_FDP, m_cpu->instr_eip + instr->i.raw.modrm.offset);
+	/*
+	is_mem_op -> bit 63
+	fop -> [48 - 58]
+	seg offset -> [32 - 47]
+	modrm addr -> [0 - 31]
+	*/
+
+	uint64_t is_mem_operand = !(((instr->i.raw.modrm.reg << 3) | (instr->i.raw.modrm.mod << 6)) == 0xC0); // all fpu instr with 0xCx modrm have reg only operands
+	uint64_t instr_info = is_mem_operand << 63;
+	instr_info |= ((((instr->i.raw.modrm.rm | (instr->i.raw.modrm.reg << 3) | (instr->i.raw.modrm.mod << 6)) | ((uint64_t)instr->i.opcode << 8)) & 0x7FF) << 48); // fop is a 11 bit register
+	if (is_mem_operand) {
+		instr_info |= ((uint64_t)get_seg_prfx_offset(instr) << 32);
+		MOV(RDX, instr_info);
+		// modrm addr is calculated at runtime and placed in edx
+		OR(RDX, mem_addr64);
 	}
+	else {
+		MOV(RDX, instr_info);
+	}
+	CALL_F(&fpu_update_ptr);
 }
 
-template<bool is_push>
-void lc86_jit::gen_fpu_stack_fault_check(fpu_instr_t fpu_instr)
+void
+lc86_jit::gen_fpu_exp(uint32_t exception, stack_fault_func func)
 {
-	MOV(R9D, fpu_instr);
-	LEA(R8, MEMD64(RSP, LOCAL_VARS_off(0)));
-	LEA(RDX, MEMD64(RSP, LOCAL_VARS_off(2)));
-	CALL_F((&fpu_stack_check<is_push>));
-	MOV(R8D, MEMD32(RSP, LOCAL_VARS_off(2)));
+	MOV(EDX, exception);
+	CALL_F(func);
+}
+
+void
+lc86_jit::gen_check_fpu_unmasked_exp()
+{
+	Label no_exp = m_a.newLabel();
+	TEST(MEMD16(RCX, CPU_CTX_FSTATUS), FPU_FLG_ES);
+	BR_EQ(no_exp);
+	if (m_cpu->cpu_ctx.regs.cr0 & CR0_NE_MASK) {
+		RAISEin0_f(EXP_MF);
+	}
+	else {
+		LIB86CPU_ABORT_msg("MS-DOS compatibility mode for fpu exceptions is not supported");
+	}
+	m_a.bind(no_exp);
 }
 
 template<bool is_push, typename T>
@@ -2428,6 +2460,8 @@ void lc86_jit::gen_fpu_stack_prologue(fpu_instr_t fpu_instr, T &&action_when_no_
 template<ZydisMnemonic mnemonic>
 void lc86_jit::float_arithmetic(decoded_instr *instr)
 {
+	LIB86CPU_ABORT();
+#if 0
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
 		RAISEin0_t(EXP_NM);
 	}
@@ -2529,6 +2563,7 @@ void lc86_jit::float_arithmetic(decoded_instr *instr)
 
 		}
 	}
+#endif
 }
 
 template<unsigned idx>
@@ -3526,7 +3561,8 @@ template<unsigned idx>
 void lc86_jit::float_load_constant(decoded_instr *instr)
 {
 	// idx 0 -> fld1, 1 -> fldl2e, 2 -> fldl2t, 3 -> fldlg2, 4 -> fldln2, 5 -> fldpi, 6 -> fldz
-
+	LIB86CPU_ABORT();
+#if 0
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
 		RAISEin0_t(EXP_NM);
 	}
@@ -3567,6 +3603,7 @@ void lc86_jit::float_load_constant(decoded_instr *instr)
 		MOV(EDX, EBX);
 		CALL_F(&fpu_update_tag<true>);
 	}
+#endif
 }
 
 void
@@ -5248,6 +5285,8 @@ lc86_jit::enter(decoded_instr *instr)
 void
 lc86_jit::fild(decoded_instr *instr)
 {
+	LIB86CPU_ABORT();
+#if 0
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
 		RAISEin0_t(EXP_NM);
 	}
@@ -5281,11 +5320,14 @@ lc86_jit::fild(decoded_instr *instr)
 				CALL_F(&fpu_update_tag<true>);
 			});
 	}
+#endif
 }
 
 void
 lc86_jit::fistp(decoded_instr *instr)
 {
+	LIB86CPU_ABORT();
+#if 0
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
 		RAISEin0_t(EXP_NM);
 	}
@@ -5328,6 +5370,7 @@ lc86_jit::fistp(decoded_instr *instr)
 			CALL_F(&fpu_update_tag<false>);
 		}
 	}
+#endif
 }
 
 void
@@ -5337,45 +5380,75 @@ lc86_jit::fld(decoded_instr *instr)
 		RAISEin0_t(EXP_NM);
 	}
 	else {
+		gen_check_fpu_unmasked_exp();
+		Label end_instr = m_a.newLabel();
+		const auto stack_fault_check = [&]() {
+			Label ok = m_a.newLabel();
+			FPU_IS_TAG_EMPTY(-1); // check for stack overflow of dst st0
+			BR_NE(ok);
+			gen_fpu_exp(FPU_STACK_OVERFLOW, &fpu_stack_overflow);
+			BR_UNCOND(end_instr);
+			m_a.bind(ok);
+			};
+
 		get_rm<OPNUM_SINGLE>(instr,
-			[this, instr](const op_info rm)
+			[this, instr, end_instr, &stack_fault_check](const op_info rm)
 			{
-				gen_fpu_stack_prologue<true>(fpu_instr_t::float_, [this, instr]() {
-					MOV(EDX, instr->i.raw.modrm.rm);
-					MOV(EAX, sizeof(uint80_t));
-					MUL(DX);
-					FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load guest st(i) to host st0
-					});
-				gen_fpu_exp_post_check();
-				MOV(EBX, MEMD32(RSP, LOCAL_VARS_off(4)));
+				Label ok = m_a.newLabel(), masked = m_a.newLabel(), do_push = m_a.newLabel();
+				unsigned stx = instr->i.raw.modrm.rm;
+				gen_update_fpu_ptr(instr);
+				FPU_CLEAR_C1();
+				stack_fault_check();
+				FPU_IS_TAG_EMPTY(stx); // check for stack underflow for src stx
+				BR_EQ(ok);
+				gen_fpu_exp(FPU_STACK_UNDERFLOW, &fpu_stack_fault);
+				TEST(MEMD16(RCX, CPU_CTX_FCTRL), FPU_FLG_IE);
+				BR_NE(masked);
+				BR_UNCOND(end_instr);
+				m_a.bind(masked); // if masked, load a qnan
+				gen_set_host_fpu_ctx();
+				MOV(MEMD64(RSP, LOCAL_VARS_off(0)), FPU_QNAN_FLOAT_INDEFINITE64);
+				MOV(MEMD64(RSP, LOCAL_VARS_off(1)), FPU_QNAN_FLOAT_INDEFINITE16);
+				FLD(MEMD80(RSP, LOCAL_VARS_off(0))); // load qnan
+				BR_UNCOND(do_push);
+				m_a.bind(ok);
+				gen_set_host_fpu_ctx();
+				FPU_LOAD_STX(instr->i.raw.modrm.rm); // load src stx
+				m_a.bind(do_push);
+				FPU_PUSH();
 				MOV(EAX, sizeof(uint80_t));
-				ST_R16(FPU_DATA_FTOP, BX);
-				MUL(BX);
-				FSTP(MEMSD80(RCX, RAX, 0, CPU_CTX_R0));
-				gen_update_fpu_ptr<false>(instr);
+				MUL(MEMD16(RCX, FPU_DATA_FTOP));
+				FSTP(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // store src stx or qnan to dst st0
 			},
-			[this, instr](const op_info rm)
+			[this, instr, end_instr, &stack_fault_check](const op_info rm)
 			{
 				uint8_t size = instr->i.opcode == 0xD9 ? SIZE32 : (instr->i.opcode == 0xDD ? SIZE64 : SIZE80);
-				LD_MEMs(size);
+				auto rax_host_reg = SIZED_REG(x64::rax, size);
+				MOV(EBX, EDX); // save mem addr for gen_fpu_exp
+				LD_MEMs(size); // load src mem
 				if (size != SIZE80) {
-					MOV(MEMD(RSP, LOCAL_VARS_off(0), size), EAX);
+					MOV(MEMD(RSP, LOCAL_VARS_off(0), size), rax_host_reg);
 				}
-				gen_fpu_stack_fault_check<true>(fpu_instr_t::float_);
+				gen_update_fpu_ptr(instr);
+				FPU_CLEAR_C1();
+				stack_fault_check();
 				gen_set_host_fpu_ctx();
 				FLD(MEMD(RSP, LOCAL_VARS_off(0), size));
-				gen_fpu_exp_post_check();
-				MOV(EBX, MEMD32(RSP, LOCAL_VARS_off(4)));
+				gen_fpu_exp_post_check(FPU_EXP_INVALID, [this, instr, end_instr, size]() {
+					FSTP(MEMD(RSP, LOCAL_VARS_off(0), size)); // do a dummy pop to restore host fpu stack
+					OR(MEMD16(RCX, CPU_CTX_FSTATUS), FPU_FLG_ES);
+					BR_UNCOND(end_instr);
+					});
+				FPU_PUSH();
 				MOV(EAX, sizeof(uint80_t));
-				ST_R16(FPU_DATA_FTOP, BX);
-				MUL(BX);
-				FSTP(MEMSD80(RCX, RAX, 0, CPU_CTX_R0));
-				gen_update_fpu_ptr<true>(instr);
+				MUL(MEMD16(RCX, FPU_DATA_FTOP));
+				FSTP(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // store src mem to dst st0
 			});
 
 		RESTORE_FPU_CTX();
-		MOV(EDX, EBX);
-		CALL_F(&fpu_update_tag<true>);
+		XOR(EDX, EDX);
+		CALL_F(&fpu_update_tag<true>); // update dst st0 tag
+		m_a.bind(end_instr);
 	}
 }
 
@@ -5533,6 +5606,8 @@ lc86_jit::fnstsw(decoded_instr *instr)
 void
 lc86_jit::fstp(decoded_instr *instr)
 {
+	LIB86CPU_ABORT();
+#if 0
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
 		RAISEin0_t(EXP_NM);
 	}
@@ -5542,10 +5617,13 @@ lc86_jit::fstp(decoded_instr *instr)
 			gen_fpu_stack_prologue<false>(fpu_instr_t::float_, [this]() {
 				MOV(EAX, sizeof(uint80_t));
 				MUL(MEMD16(RSP, LOCAL_VARS_off(4)));
-				FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load guest st0 to host st0
+				FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load src st0
 				});
 		}
 		else {
+			MOV(EAX, sizeof(uint80_t));
+			MUL(MEMD16(RCX, FPU_DATA_FTOP));
+			FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load src st0
 			XOR(R8D, R8D); // clear r8w so that gen_fpu_exp_post_check still works
 		}
 
@@ -5584,6 +5662,7 @@ lc86_jit::fstp(decoded_instr *instr)
 			CALL_F(&fpu_update_tag<false>);
 		}
 	}
+#endif
 }
 
 void

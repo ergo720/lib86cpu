@@ -260,12 +260,10 @@ private:
 	template<unsigned num, unsigned store_at = 0, bool write_esp = true>
 	void gen_stack_pop();
 	void gen_simd_mem_align_check();
-	void gen_fpu_exp_post_check();
+	template<typename T>
+	void gen_fpu_exp_post_check(uint32_t exception, T &&unmasked);
 	void gen_set_host_fpu_ctx();
-	template<bool update_fdp>
-	void gen_update_fpu_ptr(decoded_instr *instr);
-	template<bool is_push>
-	void gen_fpu_stack_fault_check(fpu_instr_t fpu_instr);
+	void gen_update_fpu_ptr(decoded_instr *instr, x86::Gp mem_addr64 = x86::rbx);
 	template<unsigned idx>
 	void shift(decoded_instr *instr);
 	template<unsigned idx>
@@ -288,6 +286,8 @@ private:
 	void float_load_constant(decoded_instr *instr);
 	template<bool is_push, typename T>
 	void gen_fpu_stack_prologue(fpu_instr_t fpu_instr, T &&action_when_no_fault);
+	void gen_fpu_exp(uint32_t exception, stack_fault_func func);
+	void gen_check_fpu_unmasked_exp();
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;

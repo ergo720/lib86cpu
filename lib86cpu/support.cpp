@@ -14,7 +14,7 @@
 #endif
 
 // This should be updated whenever cpu members that need to be saved are added/removed
-#define SAVE_STATE_ID 7
+#define SAVE_STATE_ID 8
 
 
 void

@@ -16,8 +16,14 @@ enum class fpu_instr_t : uint32_t {
 	bcd,
 };
 
+using stack_fault_func = void(* JIT_API)(cpu_ctx_t *, uint32_t);
+
+
 void fpu_init(cpu_t *cpu);
 template<bool is_push>
-JIT_API void fpu_update_tag(cpu_ctx_t *cpu_ctx, uint32_t idx);
-template<bool is_push>
-JIT_API uint32_t fpu_stack_check(cpu_ctx_t *cpu_ctx, uint32_t *sw, uint80_t *inv_val, fpu_instr_t instr_type);
+JIT_API void fpu_update_tag(cpu_ctx_t *cpu_ctx, uint32_t st_num);
+JIT_API uint32_t fpu_is_tag_empty(cpu_ctx_t *cpu_ctx, uint32_t st_num);
+JIT_API void fpu_stack_overflow(cpu_ctx_t *cpu_ctx, uint32_t exception);
+JIT_API void fpu_stack_underflow(cpu_ctx_t *cpu_ctx, uint32_t exception);
+JIT_API void fpu_stack_fault(cpu_ctx_t *cpu_ctx, uint32_t exception);
+JIT_API void fpu_update_ptr(cpu_ctx_t *cpu_ctx, uint64_t instr_info);
