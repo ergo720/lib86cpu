@@ -284,10 +284,15 @@ private:
 	void int_(decoded_instr *instr);
 	template<unsigned idx>
 	void float_load_constant(decoded_instr *instr);
-	template<bool is_push, typename T>
-	void gen_fpu_stack_prologue(fpu_instr_t fpu_instr, T &&action_when_no_fault);
-	void gen_fpu_exp(uint32_t exception, stack_fault_func func);
+	template<unsigned idx>
+	void float_store(decoded_instr *instr);
+	template<unsigned idx>
+	void float_load(decoded_instr *instr);
+	void gen_fpu_stack_fault(uint32_t exception);
+	void gen_fpu_stack_overflow();
+	void gen_fpu_stack_underflow(uint32_t st_num, uint32_t should_pop);
 	void gen_check_fpu_unmasked_exp();
+	void gen_fpu_load_stx(uint32_t st_num);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;

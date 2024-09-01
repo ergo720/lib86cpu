@@ -26,6 +26,13 @@ fpu_push(cpu_ctx_t *cpu_ctx)
 	cpu_ctx->fpu_data.ftop = (cpu_ctx->fpu_data.ftop - 1) & 7;
 }
 
+static void
+fpu_pop(cpu_ctx_t *cpu_ctx)
+{
+	cpu_ctx->regs.ftags[cpu_ctx->fpu_data.ftop] = FPU_TAG_EMPTY;
+	cpu_ctx->fpu_data.ftop = (cpu_ctx->fpu_data.ftop + 1) & 7;
+}
+
 template<bool is_push>
 void fpu_update_tag(cpu_ctx_t *cpu_ctx, uint32_t st_num)
 {
@@ -88,23 +95,35 @@ fpu_stack_fault(cpu_ctx_t *cpu_ctx, uint32_t exception)
 }
 
 void
-fpu_stack_overflow(cpu_ctx_t *cpu_ctx, uint32_t exception)
+fpu_stack_overflow(cpu_ctx_t *cpu_ctx)
 {
 	if (cpu_ctx->regs.fctrl & FPU_EXP_INVALID) {
 		// masked stack fault response
 		fpu_push(cpu_ctx);
-		cpu_ctx->regs.fr[cpu_ctx->fpu_data.ftop].low = FPU_QNAN_FLOAT_INDEFINITE64;
-		cpu_ctx->regs.fr[cpu_ctx->fpu_data.ftop].high = FPU_QNAN_FLOAT_INDEFINITE16;
-		fpu_update_tag<true>(cpu_ctx, 0);
+		uint32_t idx =  cpu_ctx->fpu_data.ftop;
+		cpu_ctx->regs.fr[idx].low = FPU_QNAN_FLOAT80_LOW;
+		cpu_ctx->regs.fr[idx].high = FPU_QNAN_FLOAT80_HIGH;
+		cpu_ctx->regs.ftags[idx] = FPU_TAG_SPECIAL;
 	}
 
-	fpu_stack_fault(cpu_ctx, exception);
+	fpu_stack_fault(cpu_ctx, FPU_STACK_OVERFLOW);
 }
 
 void
-fpu_stack_underflow(cpu_ctx_t *cpu_ctx, uint32_t exception)
+fpu_stack_underflow(cpu_ctx_t *cpu_ctx, uint32_t st_num, uint32_t should_pop)
 {
-	// TODO
+	if (cpu_ctx->regs.fctrl & FPU_EXP_INVALID) {
+		// masked stack fault response
+		uint32_t idx = (st_num + cpu_ctx->fpu_data.ftop) & 7;
+		cpu_ctx->regs.fr[idx].low = FPU_QNAN_FLOAT80_LOW;
+		cpu_ctx->regs.fr[idx].high = FPU_QNAN_FLOAT80_HIGH;
+		cpu_ctx->regs.ftags[idx] = FPU_TAG_SPECIAL;
+		if (should_pop) {
+			fpu_pop(cpu_ctx);
+		}
+	}
+
+	fpu_stack_fault(cpu_ctx, FPU_STACK_UNDERFLOW);
 }
 
 template JIT_API void fpu_update_tag<true>(cpu_ctx_t *cpu_ctx, uint32_t idx);

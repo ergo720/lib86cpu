@@ -423,14 +423,16 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define FPU_FLG_RC     (3 << 10)
 
 // fpu indefinite values
-#define FPU_INTEGER_INDEFINITE8      (1 << 7)
-#define FPU_INTEGER_INDEFINITE16     (1 << 15)
-#define FPU_INTEGER_INDEFINITE32     (1UL << 31)
-#define FPU_INTEGER_INDEFINITE64     (1ULL << 63)
-#define FPU_QNAN_FLOAT_INDEFINITE64  0xC000000000000000 // mantissa part
-#define FPU_QNAN_FLOAT_INDEFINITE16  0xFFFF             // exponent and sign parts
-#define FPU_BCD_INDEFINITE64         0xC000000000000000 // mantissa part
-#define FPU_BCD_INDEFINITE16         0xFFFF             // exponent and sign parts
+#define FPU_QNAN_INT8          (1UL << 7)
+#define FPU_QNAN_INT16         (1UL << 15)
+#define FPU_QNAN_INT32         (1UL << 31)
+#define FPU_QNAN_INT64         (1ULL << 63)
+#define FPU_QNAN_FLOAT32       0xFFC00000
+#define FPU_QNAN_FLOAT64       0xFFF8000000000000
+#define FPU_QNAN_FLOAT80_LOW   0xC000000000000000 // mantissa part
+#define FPU_QNAN_FLOAT80_HIGH  0xFFFF             // exponent and sign parts
+#define FPU_QNAN_BCD64         0xC000000000000000 // mantissa part
+#define FPU_QNAN_BCD16         0xFFFF             // exponent and sign parts
 
 // fpu precision macros
 #define FPU_SINGLE_PRECISION      0
