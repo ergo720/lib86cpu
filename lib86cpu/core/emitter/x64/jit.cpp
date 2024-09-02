@@ -2377,10 +2377,7 @@ lc86_jit::gen_set_host_fpu_ctx()
 	EMMS(); // clear fpu tag word to avoid possible fpu stack faults
 	FNCLEX(); // clear all pending fpu exceptions, so that we can use the host to detect guest fpu exceptions
 	FNSTCW(MEMD16(RSP, LOCAL_VARS_off(5))); // save host control word so that we can restore it later
-	MOV(AX, MEMD16(RCX, FPU_DATA_FRP));
-	OR(AX, FPU_EXP_ALL); // mask all exceptions to avoid them on the host side
-	MOV(MEMD16(RSP, LOCAL_VARS_off(4)), AX);
-	FLDCW(MEMD16(RSP, LOCAL_VARS_off(4))); // set precision and rounding according to the guest settings
+	FLDCW(MEMD16(RCX, FPU_DATA_FRP)); // set precision and rounding according to the guest settings (all fpu exceptions are masked)
 }
 
 void
