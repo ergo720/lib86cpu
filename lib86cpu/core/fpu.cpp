@@ -80,16 +80,16 @@ fpu_stack_fault(cpu_ctx_t *cpu_ctx, uint32_t exception)
 {
 	assert(exception & FPU_EXP_INVALID);
 
-	exception &= (FPU_EXP_ALL | FPU_FLG_SF | FPU_FLG_C1);
+	exception &= (FPU_EXP_ALL | FPU_SW_SF | FPU_SW_C1);
 	uint32_t unmasked = (exception & ~cpu_ctx->regs.fctrl) & FPU_EXP_ALL;
 	if (unmasked) {
-		cpu_ctx->regs.fstatus |= FPU_FLG_ES;
+		cpu_ctx->regs.fstatus |= FPU_SW_ES;
 	}
 
 	cpu_ctx->regs.fstatus |= exception;
-	if (exception & FPU_FLG_SF) {
-		if (!(exception & FPU_FLG_C1)) {
-			cpu_ctx->regs.fstatus &= ~FPU_FLG_C1;
+	if (exception & FPU_SW_SF) {
+		if (!(exception & FPU_SW_C1)) {
+			cpu_ctx->regs.fstatus &= ~FPU_SW_C1;
 		}
 	}
 }

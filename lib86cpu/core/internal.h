@@ -398,29 +398,31 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define FPU_EXP_ALL        (FPU_EXP_INVALID | FPU_EXP_DENORMAL | FPU_EXP_DIVBYZERO | FPU_EXP_OVERFLOW | FPU_EXP_UNDERFLOW | FPU_EXP_PRECISION)
 
 // fpu fstatus flags
-#define FPU_FLG_IE     FPU_EXP_INVALID
-#define FPU_FLG_DE     FPU_EXP_DENORMAL
-#define FPU_FLG_ZE     FPU_EXP_DIVBYZERO
-#define FPU_FLG_OE     FPU_EXP_OVERFLOW
-#define FPU_FLG_UE     FPU_EXP_UNDERFLOW
-#define FPU_FLG_PE     FPU_EXP_PRECISION
-#define FPU_FLG_SF     (1 << 6)
-#define FPU_FLG_ES     (1 << 7)
-#define FPU_FLG_C0     (1 << 8)
-#define FPU_FLG_C1     (1 << 9)
-#define FPU_FLG_C2     (1 << 10)
-#define FPU_FLG_TOP    (7 << 11)
-#define FPU_FLG_C3     (1 << 14)
-#define FPU_FLG_BSY    (1 << 15)
-#define FPU_FLG_CC_ALL (FPU_FLG_C0 | FPU_FLG_C1 | FPU_FLG_C2 | FPU_FLG_C3)
+#define FPU_SW_IE     FPU_EXP_INVALID
+#define FPU_SW_DE     FPU_EXP_DENORMAL
+#define FPU_SW_ZE     FPU_EXP_DIVBYZERO
+#define FPU_SW_OE     FPU_EXP_OVERFLOW
+#define FPU_SW_UE     FPU_EXP_UNDERFLOW
+#define FPU_SW_PE     FPU_EXP_PRECISION
+#define FPU_SW_SF     (1 << 6)
+#define FPU_SW_ES     (1 << 7)
+#define FPU_SW_C0     (1 << 8)
+#define FPU_SW_C1     (1 << 9)
+#define FPU_SW_C2     (1 << 10)
+#define FPU_SW_TOP    (7 << 11)
+#define FPU_SW_C3     (1 << 14)
+#define FPU_SW_BSY    (1 << 15)
+#define FPU_SW_CC_ALL (FPU_SW_C0 | FPU_SW_C1 | FPU_SW_C2 | FPU_SW_C3)
 
 // fpu stack fault flags
-#define FPU_STACK_OVERFLOW (FPU_EXP_INVALID | FPU_FLG_SF | FPU_FLG_C1)
-#define FPU_STACK_UNDERFLOW (FPU_EXP_INVALID | FPU_FLG_SF)
+#define FPU_STACK_OVERFLOW (FPU_EXP_INVALID | FPU_SW_SF | FPU_SW_C1)
+#define FPU_STACK_UNDERFLOW (FPU_EXP_INVALID | FPU_SW_SF)
 
-// fpu cctrl flags
-#define FPU_FLG_PC     (3 << 8)
-#define FPU_FLG_RC     (3 << 10)
+// fpu ctrl flags
+#define FPU_CW_EXP    FPU_EXP_ALL
+#define FPU_CW_PC     (3 << 8)
+#define FPU_CW_RC     (3 << 10)
+#define FPU_CW_INF    (1 << 12)
 
 // fpu indefinite values
 #define FPU_QNAN_INT8          (1UL << 7)

@@ -510,7 +510,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define FPU_IS_TAG_EMPTY(num) MOV(EDX, (num)); \
 	CALL_F(&fpu_is_tag_empty); \
 	TEST(EAX, EAX)
-#define FPU_CLEAR_C1() AND(MEMD16(RCX, CPU_CTX_FSTATUS), ~FPU_FLG_C1)
+#define FPU_CLEAR_C1() AND(MEMD16(RCX, CPU_CTX_FSTATUS), ~FPU_SW_C1)
 #define FPU_PUSH() DEC(MEMD16(RCX, FPU_DATA_FTOP)); AND(MEMD16(RCX, FPU_DATA_FTOP), 7)
 #define FPU_POP() INC(MEMD16(RCX, FPU_DATA_FTOP)); AND(MEMD16(RCX, FPU_DATA_FTOP), 7)
 
@@ -2361,12 +2361,12 @@ void lc86_jit::gen_fpu_exp_post_check(uint32_t exception, T &&unmasked)
 	MOV(DX, MEMD16(RCX, CPU_CTX_FCTRL));
 	NOT(DX);
 	AND(DX, AX);
-	AND(AX, (FPU_EXP_ALL | FPU_FLG_CC_ALL));
-	AND(MEMD16(RCX, CPU_CTX_FSTATUS), ~(FPU_EXP_ALL | FPU_FLG_CC_ALL));
+	AND(AX, (FPU_EXP_ALL | FPU_SW_CC_ALL));
+	AND(MEMD16(RCX, CPU_CTX_FSTATUS), ~(FPU_EXP_ALL | FPU_SW_CC_ALL));
 	OR(MEMD16(RCX, CPU_CTX_FSTATUS), AX); // update exception and condition code flags of guest fstatus
 	TEST(DX, exception); // test if exceptions of interest are unmasked
 	BR_EQ(masked);
-	OR(MEMD16(RCX, CPU_CTX_FSTATUS), FPU_FLG_ES);
+	OR(MEMD16(RCX, CPU_CTX_FSTATUS), FPU_SW_ES);
 	unmasked();
 	m_a.bind(masked);
 }
@@ -2430,7 +2430,7 @@ void
 lc86_jit::gen_check_fpu_unmasked_exp()
 {
 	Label no_exp = m_a.newLabel();
-	TEST(MEMD16(RCX, CPU_CTX_FSTATUS), FPU_FLG_ES);
+	TEST(MEMD16(RCX, CPU_CTX_FSTATUS), FPU_SW_ES);
 	BR_EQ(no_exp);
 	if (m_cpu->cpu_ctx.regs.cr0 & CR0_NE_MASK) {
 		RAISEin0_f(EXP_MF);
@@ -3759,7 +3759,7 @@ void lc86_jit::float_load(decoded_instr *instr)
 				FPU_IS_TAG_EMPTY(stx); // check for stack underflow for src stx
 				BR_EQ(ok);
 				gen_fpu_stack_fault(FPU_STACK_UNDERFLOW);
-				TEST(MEMD16(RCX, CPU_CTX_FCTRL), FPU_FLG_IE);
+				TEST(MEMD16(RCX, CPU_CTX_FCTRL), FPU_EXP_INVALID);
 				BR_NE(masked);
 				BR_UNCOND(end_instr);
 				m_a.bind(masked); // if masked, load a qnan
@@ -5547,6 +5547,8 @@ lc86_jit::fldcw(decoded_instr *instr)
 		RAISEin0_t(EXP_NM);
 	}
 	else {
+		gen_check_fpu_unmasked_exp();
+
 		get_rm<OPNUM_SINGLE>(instr,
 			[](const op_info rm)
 			{
@@ -5554,14 +5556,25 @@ lc86_jit::fldcw(decoded_instr *instr)
 			},
 			[this](const op_info rm)
 			{
+				Label ok = m_a.newLabel(), end_instr = m_a.newLabel();
 				LD_MEMs(SIZE16);
-				MOV(DX, AX);
-				AND(AX, FPU_EXP_ALL);
-				AND(DX, FPU_FLG_PC | FPU_FLG_RC);
+				AND(AX, ~(FPU_CW_EXP | FPU_CW_PC | FPU_CW_RC | FPU_CW_INF));
 				OR(AX, 0x40);
-				OR(DX, FPU_EXP_ALL);
+				MOV(DX, AX);
+				OR(DX, FPU_CW_EXP);
 				ST_R16(CPU_CTX_FCTRL, AX);
 				ST_R16(FPU_DATA_FRP, DX);
+				// Test for pending unmasked exceptions
+				MOV(DX, MEMD16(RCX, CPU_CTX_FSTATUS));
+				NOT(AX);
+				AND(DX, AX);
+				TEST(DX, FPU_EXP_ALL);
+				BR_EQ(ok);
+				OR(MEMD16(RCX, CPU_CTX_FSTATUS), FPU_SW_ES);
+				BR_UNCOND(end_instr);
+				m_a.bind(ok);
+				AND(MEMD16(RCX, CPU_CTX_FSTATUS), ~FPU_SW_ES);
+				m_a.bind(end_instr);
 			});
 	}
 }
@@ -5609,9 +5622,7 @@ lc86_jit::fnclex(decoded_instr *instr)
 		RAISEin0_t(EXP_NM);
 	}
 	else {
-		LD_R16(AX, CPU_CTX_FSTATUS);
-		AND(AX, ~(FPU_FLG_SF | FPU_FLG_ES | FPU_FLG_BSY | FPU_EXP_ALL));
-		ST_R16(CPU_CTX_FSTATUS, AX);
+		AND(MEMD16(RCX, CPU_CTX_FSTATUS), ~(FPU_SW_SF | FPU_SW_ES | FPU_SW_BSY | FPU_EXP_ALL));
 	}
 }
 
@@ -5624,8 +5635,14 @@ lc86_jit::fninit(decoded_instr *instr)
 	else {
 		ST_R16(CPU_CTX_FCTRL, 0x37F);
 		ST_R16(CPU_CTX_FSTATUS, 0);
-		MOV(MEMD32(RCX, CPU_CTX_FTAGS0), 0x03030303); // FPU_TAG_EMPTY for all ftags
-		MOV(MEMD32(RCX, CPU_CTX_FTAGS4), 0x03030303);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS0), FPU_TAG_EMPTY);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS1), FPU_TAG_EMPTY);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS2), FPU_TAG_EMPTY);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS3), FPU_TAG_EMPTY);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS4), FPU_TAG_EMPTY);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS5), FPU_TAG_EMPTY);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS6), FPU_TAG_EMPTY);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS7), FPU_TAG_EMPTY);
 		ST_R16(CPU_CTX_FCS, 0);
 		ST_R32(CPU_CTX_FIP, 0);
 		ST_R16(CPU_CTX_FDS, 0);
@@ -5643,12 +5660,6 @@ lc86_jit::fnstcw(decoded_instr *instr)
 		RAISEin0_t(EXP_NM);
 	}
 	else {
-		LD_R16(R8W, CPU_CTX_FCTRL);
-		LD_R16(AX, FPU_DATA_FRP);
-		AND(R8W, FPU_EXP_ALL);
-		AND(AX, FPU_FLG_PC | FPU_FLG_RC);
-		OR(R8W, AX);
-		OR(R8W, 0x40);
 		get_rm<OPNUM_SINGLE>(instr,
 			[](const op_info rm)
 			{
@@ -5656,7 +5667,8 @@ lc86_jit::fnstcw(decoded_instr *instr)
 			},
 			[this](const op_info rm)
 			{
-				ST_MEMs(R8W, SIZE16);
+				LD_R16(AX, CPU_CTX_FCTRL);
+				ST_MEMs(AX, SIZE16);
 			});
 	}
 }
@@ -5670,7 +5682,7 @@ lc86_jit::fnstsw(decoded_instr *instr)
 	else {
 		LD_R16(R8W, CPU_CTX_FSTATUS);
 		LD_R16(AX, FPU_DATA_FTOP);
-		AND(R8W, ~(3 << 11));
+		AND(R8W, ~FPU_SW_TOP);
 		SHL(AX, 11);
 		OR(R8W, AX);
 		get_rm<OPNUM_SINGLE>(instr,
@@ -5698,16 +5710,7 @@ lc86_jit::fwait(decoded_instr *instr)
 		RAISEin0_t(EXP_NM);
 	}
 	else {
-		Label no_exp = m_a.newLabel();
-		LD_R16(AX, CPU_CTX_FSTATUS);
-		TEST(AX, FPU_FLG_ES);
-		BR_EQ(no_exp);
-		static const char *abort_msg = "Unmasked fpu exceptions are not supported";
-		MOV(RCX, abort_msg);
-		MOV(RAX, &cpu_runtime_abort);
-		CALL(RAX); // won't return
-		INT3();
-		m_a.bind(no_exp);
+		gen_check_fpu_unmasked_exp();
 	}
 }
 

@@ -1337,7 +1337,7 @@ write_ftags(cpu_t *cpu, uint16_t value)
 uint16_t
 read_fstatus(cpu_t *cpu)
 {
-	uint16_t fstatus = (cpu->cpu_ctx.regs.fstatus & ~FPU_FLG_TOP);
+	uint16_t fstatus = (cpu->cpu_ctx.regs.fstatus & ~FPU_SW_TOP);
 	fstatus |= (cpu->cpu_ctx.fpu_data.ftop << 11);
 	return fstatus;
 }
@@ -1351,6 +1351,6 @@ read_fstatus(cpu_t *cpu)
 void
 write_fstatus(cpu_t *cpu, uint16_t value)
 {
-	cpu->cpu_ctx.fpu_data.ftop = (value & FPU_FLG_TOP) >> 11;
+	cpu->cpu_ctx.fpu_data.ftop = (value & FPU_SW_TOP) >> 11;
 	cpu->cpu_ctx.regs.fstatus = value;
 }
