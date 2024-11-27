@@ -885,12 +885,9 @@ void lc86_jit::gen_link_direct(addr_t dst_pc, addr_t *next_pc, T target_pc)
 
 	// vec_addr: instr_pc, dst_pc, next_pc
 	addr_t page_addr = m_cpu->virt_pc & ~PAGE_MASK;
-	uint32_t n, dst = (dst_pc & ~PAGE_MASK) == page_addr;
+	uint32_t dst = (dst_pc & ~PAGE_MASK) == page_addr, n = dst;
 	if (next_pc) {
 		n = dst + ((*next_pc & ~PAGE_MASK) == page_addr);
-	}
-	else {
-		n = dst;
 	}
 	m_cpu->tc->flags |= (n & TC_FLG_NUM_JMP);
 
@@ -920,6 +917,7 @@ void lc86_jit::gen_link_direct(addr_t dst_pc, addr_t *next_pc, T target_pc)
 					}
 				}
 				else {
+					assert(target_pc == EBX);
 					Label ret = m_a.newLabel();
 					CMP(target_pc, dst_pc);
 					BR_NE(ret);
@@ -952,6 +950,7 @@ void lc86_jit::gen_link_direct(addr_t dst_pc, addr_t *next_pc, T target_pc)
 					}
 				}
 				else {
+					assert(target_pc == EBX);
 					Label ret = m_a.newLabel();
 					CMP(target_pc, *next_pc);
 					BR_NE(ret);
@@ -995,6 +994,7 @@ void lc86_jit::gen_link_direct(addr_t dst_pc, addr_t *next_pc, T target_pc)
 			}
 		}
 		else {
+			assert(target_pc == EBX);
 			Label ret = m_a.newLabel();
 			CMP(target_pc, *next_pc);
 			BR_NE(ret);
