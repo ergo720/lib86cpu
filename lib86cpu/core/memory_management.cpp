@@ -138,8 +138,8 @@ static addr_t tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 	return phys_addr;
 }
 
-template<bool flush_global>
-void tlb_flush(cpu_t *cpu)
+template<bool flush_global, bool undo_linking>
+static void tlb_flush(cpu_t *cpu)
 {
 	if constexpr (flush_global) {
 		std::memset(cpu->itlb, 0, sizeof(cpu->itlb));
@@ -163,12 +163,36 @@ void tlb_flush(cpu_t *cpu)
 			}
 		}
 	}
+
+	// Page tables might have changed, so undo all tc links (because they use virtual addresses)
+	// If false, the caller must do this
+	if constexpr (undo_linking) {
+		tc_unlink_all(cpu);
+	}
 }
 
 void
-tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr)
+tlb_flush_g_l(cpu_t *cpu)
 {
-	tlb_invalidate(cpu_ctx->cpu, addr);
+	tlb_flush<true, true>(cpu);
+}
+
+void
+tlb_flush_g(cpu_t *cpu)
+{
+	tlb_flush<true, false>(cpu);
+}
+
+void
+tlb_flush_l(cpu_t *cpu)
+{
+	tlb_flush<false, true>(cpu);
+}
+
+void
+tlb_flush(cpu_t *cpu)
+{
+	tlb_flush<false, false>(cpu);
 }
 
 int8_t
@@ -729,6 +753,3 @@ template JIT_API void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, uint32_t 
 
 template addr_t get_code_addr<false>(cpu_t *cpu, addr_t addr, disas_ctx_t *disas_ctx);
 template addr_t get_code_addr<true>(cpu_t *cpu, addr_t addr, disas_ctx_t *disas_ctx);
-
-template void tlb_flush<false>(cpu_t *cpu);
-template void tlb_flush<true>(cpu_t *cpu);

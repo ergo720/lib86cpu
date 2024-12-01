@@ -196,7 +196,7 @@ static void cpu_sync_state(cpu_t *cpu)
 {
 	// only flush the tlb and the code cache if the cpu mode changed
 	if ((cpu->cpu_ctx.regs.cr0 & CR0_PE_MASK) != ((cpu->cpu_ctx.hflags & HFLG_PE_MODE) >> PE_MODE_SHIFT)) {
-		tlb_flush(cpu);
+		tlb_flush_g(cpu);
 		if constexpr (should_purge) {
 			tc_cache_purge(cpu);
 		}
@@ -353,8 +353,7 @@ cpu_set_a20(cpu_t *cpu, bool closed, bool should_int)
 		}
 		else {
 			cpu->a20_mask = cpu->new_a20;
-			tlb_flush(cpu);
-			tc_cache_clear(cpu);
+			tc_clear_cache_and_tlb(cpu);
 		}
 	}
 }
@@ -615,7 +614,7 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, uint32_t size, bool should_int)
 	}
 	else {
 		cpu->memory_space_tree->insert(std::move(ram));
-		tc_should_clear_cache_and_tlb<true>(cpu, start, start + size - 1);
+		tc_clear_cache_and_tlb(cpu);
 	}
 
 	return lc86_status::success;
@@ -721,7 +720,7 @@ mem_init_region_io(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, io_ha
 			}
 			else {
 				cpu->memory_space_tree->insert(std::move(mmio));
-				tc_should_clear_cache_and_tlb<true>(cpu, start, start + size - 1);
+				tc_clear_cache_and_tlb(cpu);
 			}
 		}
 	}
@@ -760,7 +759,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, uint32_t
 		}
 		else {
 			cpu->memory_space_tree->insert(std::move(alias));
-			tc_should_clear_cache_and_tlb<true>(cpu, alias_start, alias_start + ori_size - 1);
+			tc_clear_cache_and_tlb(cpu);
 		}
 
 		return lc86_status::success;
@@ -797,7 +796,7 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, uint32_t size, uint8_t *buffer, bo
 	}
 	else {
 		cpu->memory_space_tree->insert(std::move(rom));
-		tc_should_clear_cache_and_tlb<true>(cpu, start, start + size - 1);
+		tc_clear_cache_and_tlb(cpu);
 	}
 
 	return lc86_status::success;
@@ -829,7 +828,7 @@ mem_destroy_region(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, bool 
 		}
 		else {
 			cpu->memory_space_tree->erase(start, end);
-			tc_should_clear_cache_and_tlb<true>(cpu, start, end);
+			tc_clear_cache_and_tlb(cpu);
 		}
 	}
 	return lc86_status::success;
@@ -1164,6 +1163,9 @@ tlb_invalidate(cpu_t *cpu, addr_t addr)
 			break;
 		}
 	}
+
+	// unlink all tc that jump to the invalidated page
+	tc_unlink_page(cpu, addr);
 }
 
 /*

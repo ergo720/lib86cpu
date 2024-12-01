@@ -811,7 +811,7 @@ uint32_t update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 			// only flush the tlb if pg changed or wp changed and pg=1
 			if (((cpu_ctx->regs.cr0 & CR0_PG_MASK) != (new_cr & CR0_PG_MASK)) ||
 				(((cpu_ctx->regs.cr0 & CR0_WP_MASK) != (new_cr & CR0_WP_MASK)) && (new_cr & CR0_PG_MASK))) {
-				tlb_flush(cpu_ctx->cpu);
+				tlb_flush_g_l(cpu_ctx->cpu);
 			}
 		}
 
@@ -869,10 +869,10 @@ uint32_t update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 	case 3:
 		if (cpu_ctx->regs.cr0 & CR0_PG_MASK) {
 			if (cpu_ctx->regs.cr4 & CR4_PGE_MASK) {
-				tlb_flush<false>(cpu_ctx->cpu);
+				tlb_flush_l(cpu_ctx->cpu);
 			}
 			else {
-				tlb_flush(cpu_ctx->cpu);
+				tlb_flush_g_l(cpu_ctx->cpu);
 			}
 		}
 
@@ -889,7 +889,7 @@ uint32_t update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 		}
 
 		if ((cpu_ctx->regs.cr4 & (CR4_PSE_MASK | CR4_PGE_MASK)) != (new_cr & (CR4_PSE_MASK | CR4_PGE_MASK))) {
-			tlb_flush(cpu_ctx->cpu);
+			tlb_flush_g_l(cpu_ctx->cpu);
 		}
 
 		cpu_ctx->hflags = ((new_cr & CR4_OSFXSR_MASK) | ((new_cr & (CR4_VME_MASK | CR4_PVI_MASK)) << 19) |
@@ -1428,6 +1428,12 @@ void hlt_helper(cpu_ctx_t *cpu_ctx)
 		cpu_ctx->cpu->is_halted = 1;
 		return;
 	}
+}
+
+void
+invlpg_helper(cpu_ctx_t *cpu_ctx, addr_t addr)
+{
+	tlb_invalidate(cpu_ctx->cpu, addr);
 }
 
 template JIT_API uint32_t lret_pe_helper<true>(cpu_ctx_t *cpu_ctx, uint8_t size_mode);

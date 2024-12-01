@@ -28,6 +28,10 @@
 
 #define CODE_CACHE_MAX_SIZE (1 << 15)
 #define SMC_MAX_SIZE (1 << 20)
+// jmp_table: 4096 entries of 3 uint32_t + 1 pointer -> virt_pc, cs_base, hflags | eflags, tc->ptr_code
+#define JMP_TABLE_NUM_ELEMENTS (1 << 12)
+#define JMP_TABLE_ELEMENT_SIZE (12 + sizeof(entry_t))
+#define JMP_TABLE_MAX_SIZE (JMP_TABLE_NUM_ELEMENTS * JMP_TABLE_ELEMENT_SIZE)
 // itlb: 512 sets * 8 lines = 4096 entries -> offset 12 bits, index 9 bites, tag 11 bits
 #define ITLB_NUM_SETS (1 << 9)
 #define ITLB_NUM_LINES (1 << 3)
@@ -106,20 +110,16 @@ using read_int_t = JIT_API uint32_t(*)(cpu_ctx_t *cpu_ctx);
 using raise_int_t = JIT_API void(*)(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 using clear_int_t = JIT_API void(*)(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 
-// jmp_offset functions: 0,1 -> used for direct linking (either points to exit or &next_tc), 2 -> exit
 struct translated_code_t {
-	std::forward_list<translated_code_t *> linked_tc;
 	addr_t cs_base;
 	addr_t pc;
 	addr_t virt_pc;
 	uint32_t guest_flags;
 	entry_t ptr_code;
-	entry_t jmp_offset[3];
-	translated_code_t *ibtc[3];
+	entry_t ptr_exit;
 	uint32_t flags;
 	uint32_t size;
 	explicit translated_code_t() noexcept;
-	explicit translated_code_t(uint32_t flags) noexcept : translated_code_t() { guest_flags = flags; }
 };
 
 struct disas_ctx_t {
@@ -153,6 +153,13 @@ struct fpu_data_t {
 	uint16_t frp; // same as fctrl, but with all floating exceptions always masked
 };
 
+PACKED(struct jmp_table_elem {
+	uint32_t virt_pc;
+	uint32_t cs_base;
+	uint32_t guest_flags;
+	entry_t ptr_code;
+});
+
 // this struct should contain all cpu variables which need to be visible from the jitted code
 struct cpu_ctx_t {
 	cpu_t *cpu;
@@ -162,6 +169,7 @@ struct cpu_ctx_t {
 	exp_info_t exp_info;
 	uint32_t int_pending;
 	fpu_data_t fpu_data;
+	uint8_t jmp_table[JMP_TABLE_MAX_SIZE];
 };
 
 // int_pending must be 4 byte aligned to ensure atomicity
@@ -185,16 +193,17 @@ struct cpu_t {
 	std::unique_ptr<address_space<addr_t>> memory_space_tree;
 	std::unique_ptr<address_space<port_t>> io_space_tree;
 	std::list<std::unique_ptr<translated_code_t>> code_cache[CODE_CACHE_MAX_SIZE];
-	std::unordered_map<uint32_t, std::unordered_set<translated_code_t *>> tc_page_map;
+	std::unordered_map<addr_t, std::unordered_set<translated_code_t *>> tc_page_map; // tracks generated tc in the physical pages
+	std::unordered_map<addr_t, std::unordered_set<addr_t>> jmp_page_map; // tracks virt_pc of tc placed in the jmp_table, on a per virtual page basis
 	std::unordered_map<addr_t, hook_t> hook_map;
 	std::vector<wp_info<addr_t>> wp_data;
 	std::vector<wp_info<port_t>> wp_io;
 	std::vector<std::pair<bool, std::unique_ptr<memory_region_t<addr_t>>>> regions_changed;
 	std::vector<region_update_info_t> regions_updated;
-	std::bitset<SMC_MAX_SIZE> smc; // self-modifying code tracking
+	std::bitset<SMC_MAX_SIZE> smc; // self-modifying code tracking, one bit for each possible physical page
 	tlb_t itlb[ITLB_NUM_SETS][ITLB_NUM_LINES]; // instruction tlb
 	tlb_t dtlb[DTLB_NUM_SETS][DTLB_NUM_LINES]; // data tlb
-	uint16_t num_tc; // num of tc actually emitted, tc's might not be present in the code cache
+	uint16_t num_tc; // num of tc actually emitted, tc might not be present in the code cache
 	uint8_t microcode_updated, is_halted;
 	bool state_loaded, exit_requested;
 	struct _tsc_clock {

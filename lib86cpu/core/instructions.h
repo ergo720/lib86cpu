@@ -28,5 +28,6 @@ JIT_API void cpu_rdtsc_helper(cpu_ctx_t *cpu_ctx);
 JIT_API uint32_t msr_read_helper(cpu_ctx_t *cpu_ctx);
 JIT_API uint32_t msr_write_helper(cpu_ctx_t *cpu_ctx);
 template<bool should_check_timeout> JIT_API void hlt_helper(cpu_ctx_t *cpu_ctx);
+JIT_API void invlpg_helper(cpu_ctx_t *cpu_ctx, addr_t addr);
 JIT_API void fxsave_helper(cpu_ctx_t *cpu_ctx, addr_t addr);
 JIT_API uint32_t fxrstor_helper(cpu_ctx_t *cpu_ctx, addr_t addr);

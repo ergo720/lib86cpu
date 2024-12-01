@@ -14,15 +14,16 @@
 
 template<bool remove_hook = false>
 void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_t size = 0);
-template<bool should_flush_tlb>
-void tc_should_clear_cache_and_tlb(cpu_t *cpu, addr_t start, addr_t end);
+void tc_unlink(cpu_t *cpu, addr_t virt_pc);
+void tc_unlink_page(cpu_t *cpu, addr_t virt_pc);
+void tc_unlink_all(cpu_t *cpu);
+void tc_clear_cache_and_tlb(cpu_t *cpu);
 void tc_cache_clear(cpu_t *cpu);
 void tc_cache_purge(cpu_t *cpu);
 addr_t get_pc(cpu_ctx_t *cpu_ctx);
 template<unsigned is_intn = 0, bool is_hw_int = false>
 JIT_API translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx);
 JIT_API uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
-JIT_API void tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 
 
 // cpu hidden flags (assumed to be constant during exec of a tc, together with a flag subset of eflags)
@@ -95,18 +96,10 @@ JIT_API void tlb_invalidate_(cpu_ctx_t *cpu_ctx, addr_t addr);
 #define DISAS_FLG_FETCH_FAULT      DISAS_FLG_PAGE_CROSS  // (1 << 2)
 #define DISAS_FLG_ONE_INSTR        CPU_DISAS_ONE         // (1 << 7)
 
-// tc struct flags/offsets
-#define TC_JMP_DST_PC     0
-#define TC_JMP_NEXT_PC    1
-#define TC_JMP_RET        2
-#define TC_FLG_NUM_JMP         (3 << 0)
-#define TC_FLG_INDIRECT        (1 << 2)
-#define TC_FLG_DIRECT          (1 << 3)
-#define TC_FLG_JMP_TAKEN       (3 << 4)
-#define TC_FLG_RET             (1 << 6)
-#define TC_FLG_DST_ONLY        (1 << 7)  // jump(dest_pc)
-#define TC_FLG_DST_COND        (1 << 8)  // jump(dest_pc) based on binary condition
-#define TC_FLG_LINK_MASK  (TC_FLG_INDIRECT | TC_FLG_DIRECT | TC_FLG_RET | TC_FLG_DST_ONLY | TC_FLG_DST_COND)
+// tc flags
+#define TC_FLG_JMP        (1 << 0)
+#define TC_FLG_RET        (1 << 1)
+#define TC_FLG_LINK_MASK  (TC_FLG_JMP | TC_FLG_RET)
 
 // segment descriptor flags
 #define SEG_DESC_TY   (15ULL << 40) // type

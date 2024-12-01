@@ -18,6 +18,7 @@
 #define CPU_CTX_HFLG         offsetof(cpu_ctx_t, hflags)
 #define CPU_CTX_EXP          offsetof(cpu_ctx_t, exp_info)
 #define CPU_CTX_INT          offsetof(cpu_ctx_t, int_pending)
+#define CPU_CTX_JMP_TABLE    offsetof(cpu_ctx_t, jmp_table)
 
 #define CPU_CTX_EAX          offsetof(cpu_ctx_t, regs.eax)
 #define CPU_CTX_ECX          offsetof(cpu_ctx_t, regs.ecx)
@@ -126,7 +127,6 @@
 #define REG_pair(reg) get_reg_pair(reg)
 
 
-JIT_API entry_t link_indirect_handler(cpu_ctx_t *cpu_ctx, translated_code_t *tc);
 size_t get_reg_offset(ZydisRegister reg);
 size_t get_seg_prfx_offset(decoded_instr *instr);
 int get_reg_idx(ZydisRegister reg);
@@ -152,7 +152,6 @@ inline constexpr auto all_callable_funcs = std::make_tuple(
 	cpu_raise_exception<3, false>,
 	cpu_timer_helper,
 	cpu_do_int,
-	link_indirect_handler,
 	mem_read_helper<uint128_t>,
 	mem_read_helper<uint80_t>,
 	mem_read_helper<uint64_t>,
@@ -207,7 +206,7 @@ inline constexpr auto all_callable_funcs = std::make_tuple(
 	fpu_update_tag<false>,
 	cpu_runtime_abort,
 	dbg_update_exp_hook,
-	tlb_invalidate_,
+	invlpg_helper,
 	fpu_is_tag_empty,
 	fpu_stack_overflow,
 	fpu_stack_underflow,

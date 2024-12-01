@@ -14,7 +14,7 @@
 #endif
 
 // This should be updated whenever cpu members that need to be saved are added/removed
-#define SAVE_STATE_ID 8
+#define SAVE_STATE_ID 9
 
 
 void
@@ -147,8 +147,7 @@ cpu_load_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_st
 	update_drN_helper(&cpu->cpu_ctx, 2, cpu->cpu_ctx.regs.dr[2]);
 	update_drN_helper(&cpu->cpu_ctx, 3, cpu->cpu_ctx.regs.dr[3]);
 	update_drN_helper(&cpu->cpu_ctx, 7, cpu->cpu_ctx.regs.dr[7]);
-	tc_cache_clear(cpu);
-	tlb_flush(cpu);
+	tc_clear_cache_and_tlb(cpu);
 
 	return lc86_status::success;
 }

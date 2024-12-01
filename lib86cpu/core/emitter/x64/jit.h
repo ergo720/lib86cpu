@@ -28,6 +28,11 @@ struct op_info {
 
 class lc86_jit : public Target {
 public:
+	enum class ret_tc_t {
+	zero,
+	dont_set,
+	};
+
 	lc86_jit(cpu_t *cpu);
 	void gen_code_block();
 	void gen_tc_prologue() { start_new_session(); gen_exit_func(); gen_prologue_main(); }
@@ -186,7 +191,7 @@ public:
 private:
 	void start_new_session();
 	void gen_prologue_main();
-	template<bool set_ret = true>
+	template<ret_tc_t set_ret>
 	void gen_epilogue_main();
 	void gen_tail_call(x86::Gp addr);
 	void gen_exit_func();
@@ -194,13 +199,9 @@ private:
 	void gen_no_link_checks();
 	void gen_timeout_check();
 	bool gen_check_rf_single_step();
-	template<typename T>
-	void gen_link_direct(addr_t dst_pc, addr_t *next_pc, T target_addr);
-	void gen_link_dst_only();
-	void gen_link_indirect();
-	void gen_link_ret();
-	template<typename T>
-	void gen_link_dst_cond(T &&lambda);
+	template<typename T, bool emit_checks = true>
+	void gen_tc_linking_jmp(T target_addr);
+	void gen_tc_linking_ret();
 	template<bool terminates, typename T1, typename T2, typename T3>
 	void gen_raise_exp_inline(T1 fault_addr, T2 code, T3 idx);
 	template<bool terminates>

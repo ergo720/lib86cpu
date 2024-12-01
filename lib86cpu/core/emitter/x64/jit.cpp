@@ -594,7 +594,7 @@ lc86_jit::gen_code_block()
 	m_mem.flush_instr_cache(block);
 
 	tc->ptr_code = reinterpret_cast<entry_t>(main_offset);
-	tc->jmp_offset[0] = tc->jmp_offset[1] = tc->jmp_offset[2] = reinterpret_cast<entry_t>(exit_offset);
+	tc->ptr_exit = reinterpret_cast<entry_t>(exit_offset);
 
 	// we are done with code generation for this block, so we null the tc pointer to prevent accidental usage
 	m_cpu->tc = nullptr;
@@ -689,6 +689,57 @@ lc86_jit::gen_exit_func()
 	}
 }
 
+void
+lc86_jit::gen_prologue_main()
+{
+  // Prolog of our main() function:
+  // push rbx
+  // sub rsp, 0x20 + sizeof(stack args) + sizeof(local vars)
+  //
+  // How to write the jitted function:
+  // RCX always holds the cpu_ctx arg, and should never be changed. If you still need to (e.g. after a call to an external function), you should always restore it
+  // immediately after with a MOV rcx, &m_cpu->cpu_ctx, since the cu_ctx is a constant and never changes at runtime while the emulation is running. Prologue and
+  // epilog always push and pop RBX, so it's volatile too. Prefer using RAX, RDX, RBX over R8, R9, R10 and R11 to reduce the code size, and only use the host stack
+  // as a last resort. Calling external functions from main() must be done with CALL(RAX), and not with rip offsets, because the function can be farther than
+  // 4 GiB from the current code.
+  // Some optimizations used in the main() function:
+  // Offsets from cpu_ctx can be calculated with displacements, to avoid having to use additional ADD instructions. Local variables on the stack are always allocated
+  // at a fixed offset computed at compile time, and the shadow area to spill registers is available too (always allocated by the caller of the jitted function).
+  // Two additions and a shift can be done with LEA and the sib addressing mode. Comparisons with zero are usually done with TEST reg, reg instead of CMP. Left shifting
+  // by one can be done with ADD reg, reg. Reading an 8/16 bit reg and then zero/sign extending to 32 can be done with a single MOVZ/SX reg, word/byte ptr [rcx, off] instead
+  // of MOV and then MOVZ/SX. Call external C++ helper functions to implement the most difficult instructions.
+  // Guest SSE is currently emulated with host SSE. If the library is compiled with AVX support, then the jit should emit VZEROUPPER to avoid the performance penalty
+  // associated with mixing legacy SSE with AVX, or better, it should just emit AVX instructions directly
+
+	PUSH(RBX);
+	SUB(RSP, get_jit_stack_required());
+
+	m_exit_int = m_a.newLabel();
+}
+
+template<lc86_jit::ret_tc_t set_ret>
+void lc86_jit::gen_epilogue_main()
+{
+	if constexpr (set_ret == ret_tc_t::zero) {
+		XOR(EAX, EAX);
+	}
+	else {
+		assert(set_ret == ret_tc_t::dont_set);
+		// do nothing
+	}
+	ADD(RSP, get_jit_stack_required());
+	POP(RBX);
+	RET();
+}
+
+void
+lc86_jit::gen_tail_call(x86::Gp addr)
+{
+	ADD(RSP, get_jit_stack_required());
+	POP(RBX);
+	BR_UNCOND(addr);
+}
+
 template<bool update_eip>
 void lc86_jit::gen_interrupt_check()
 {
@@ -713,8 +764,7 @@ lc86_jit::gen_timeout_check()
 		CALL_F(&cpu_timer_helper);
 		TEST(EAX, CPU_TIMEOUT_INT);
 		BR_EQ(no_timeout);
-		XOR(EAX, EAX);
-		gen_epilogue_main<false>();
+		gen_epilogue_main<ret_tc_t::zero>();
 		m_a.bind(no_timeout);
 	}
 }
@@ -732,53 +782,6 @@ lc86_jit::gen_no_link_checks()
 }
 
 void
-lc86_jit::gen_prologue_main()
-{
-	// Prolog of our main() function:
-	// push rbx
-	// sub rsp, 0x20 + sizeof(stack args) + sizeof(local vars)
-	//
-	// How to write the jitted function:
-	// RCX always holds the cpu_ctx arg, and should never be changed. If you still need to (e.g. after a call to an external function), you should always restore it
-	// immediately after with a MOV rcx, &m_cpu->cpu_ctx, since the cu_ctx is a constant and never changes at runtime while the emulation is running. Prologue and
-	// epilog always push and pop RBX, so it's volatile too. Prefer using RAX, RDX, RBX over R8, R9, R10 and R11 to reduce the code size, and only use the host stack
-	// as a last resort. Calling external functions from main() must be done with CALL(RAX), and not with rip offsets, because the function can be farther than
-	// 4 GiB from the current code.
-	// Some optimizations used in the main() function:
-	// Offsets from cpu_ctx can be calculated with displacements, to avoid having to use additional ADD instructions. Local variables on the stack are always allocated
-	// at a fixed offset computed at compile time, and the shadow area to spill registers is available too (always allocated by the caller of the jitted function).
-	// Two additions and a shift can be done with LEA and the sib addressing mode. Comparisons with zero are usually done with TEST reg, reg instead of CMP. Left shifting
-	// by one can be done with ADD reg, reg. Reading an 8/16 bit reg and then zero/sign extending to 32 can be done with a single MOVZ/SX reg, word/byte ptr [rcx, off] instead
-	// of MOV and then MOVZ/SX. Call external C++ helper functions to implement the most difficult instructions.
-	// Guest SSE is currently emulated with host SSE. If the library is compiled with AVX support, then the jit should emit VZEROUPPER to avoid the performance penalty
-	// associated with mixing legacy SSE with AVX, or better, it should just emit AVX instructions directly
-
-	PUSH(RBX);
-	SUB(RSP, get_jit_stack_required());
-
-	m_exit_int = m_a.newLabel();
-}
-
-template<bool set_ret>
-void lc86_jit::gen_epilogue_main()
-{
-	if constexpr (set_ret) {
-		MOV(RAX, m_cpu->tc);
-	}
-	ADD(RSP, get_jit_stack_required());
-	POP(RBX);
-	RET();
-}
-
-void
-lc86_jit::gen_tail_call(x86::Gp addr)
-{
-	ADD(RSP, get_jit_stack_required());
-	POP(RBX);
-	BR_UNCOND(addr);
-}
-
-void
 lc86_jit::gen_tc_epilogue()
 {
 	if (m_cpu->translate_next == 1) {
@@ -788,7 +791,7 @@ lc86_jit::gen_tc_epilogue()
 		// The interrupt check is already generated by a terminating instr, so skip it
 		if (gen_check_rf_single_step() == false) {
 			gen_timeout_check();
-			gen_epilogue_main();
+			gen_tc_linking_jmp<std::nullptr_t, false>(nullptr);
 		}
 	}
 
@@ -796,8 +799,7 @@ lc86_jit::gen_tc_epilogue()
 	m_a.bind(m_exit_int);
 	MOV(RAX, &cpu_do_int);
 	CALL(RAX);
-	XOR(EAX, EAX);
-	gen_epilogue_main<false>();
+	gen_epilogue_main<ret_tc_t::zero>();
 }
 
 template<bool terminates, typename T1, typename T2, typename T3>
@@ -813,7 +815,7 @@ void lc86_jit::gen_raise_exp_inline(T1 fault_addr, T2 code, T3 idx)
 	MOV(MEMD16(RCX, CPU_EXP_IDX), idx);
 	MOV(RAX, &cpu_raise_exception<>);
 	CALL(RAX);
-	gen_epilogue_main<false>();
+	gen_epilogue_main<ret_tc_t::dont_set>();
 }
 
 template<bool terminates>
@@ -826,14 +828,14 @@ void lc86_jit::gen_raise_exp_inline()
 
 	MOV(RAX, &cpu_raise_exception<>);
 	CALL(RAX);
-	gen_epilogue_main<false>();
+	gen_epilogue_main<ret_tc_t::dont_set>();
 }
 
 void
 lc86_jit::gen_hook(hook_t hook_addr)
 {
 	CALL_F(hook_addr);
-	gen_link_ret();
+	gen_tc_linking_ret();
 	m_cpu->translate_next = 0;
 }
 
@@ -873,210 +875,65 @@ lc86_jit::gen_check_rf_single_step()
 	return false;
 }
 
-template<typename T>
-void lc86_jit::gen_link_direct(addr_t dst_pc, addr_t *next_pc, T target_pc)
+template<typename T, bool emit_checks>
+void lc86_jit::gen_tc_linking_jmp(T target_pc)
 {
-	// dst_pc: destination pc, next_pc: pc of next instr, target_addr: pc where instr jumps to at runtime
-	// If target_pc is an integral type, then we know already where the instr will jump, and so we can perform the comparisons at compile time
-	// and only emit the taken code path. If it's in a reg, it must be ebx because otherwise a volatile reg might be trashed by the timer and
+	// target_pc: pc where instr jumps to at runtime. If it's in a reg, it must be ebx because otherwise a volatile reg might be trashed by the timer and
 	// interrupt calls in gen_no_link_checks
 
-	gen_no_link_checks();
+	m_cpu->tc->flags |= TC_FLG_JMP;
 
-	// vec_addr: instr_pc, dst_pc, next_pc
-	addr_t page_addr = m_cpu->virt_pc & ~PAGE_MASK;
-	uint32_t dst = (dst_pc & ~PAGE_MASK) == page_addr, n = dst;
-	if (next_pc) {
-		n = dst + ((*next_pc & ~PAGE_MASK) == page_addr);
+	if constexpr (emit_checks) {
+		gen_no_link_checks();
 	}
-	m_cpu->tc->flags |= (n & TC_FLG_NUM_JMP);
 
-	switch (n)
-	{
-	case 0:
-		gen_epilogue_main();
-		return;
-
-	case 1: {
-		if (next_pc) { // if(dst_pc) -> cond jmp dst_pc; if(next_pc) -> cond jmp next_pc
-			if (dst) {
-				MOV(RDX, &m_cpu->tc->flags);
-				MOV(EAX, MEM32(RDX));
-				AND(EAX, ~TC_FLG_JMP_TAKEN);
-				if constexpr (std::is_integral_v<T>) {
-					if (target_pc == dst_pc) {
-						MOV(MEM32(RDX), EAX);
-						MOV(RDX, &m_cpu->tc->jmp_offset[0]);
-						MOV(RAX, MEM64(RDX));
-						gen_tail_call(RAX);
-					}
-					else {
-						OR(EAX, TC_JMP_RET << 4);
-						MOV(MEM32(RDX), EAX);
-						gen_epilogue_main();
-					}
-				}
-				else {
-					assert(target_pc == EBX);
-					Label ret = m_a.newLabel();
-					CMP(target_pc, dst_pc);
-					BR_NE(ret);
-					MOV(MEM32(RDX), EAX);
-					MOV(RDX, &m_cpu->tc->jmp_offset[0]);
-					MOV(RAX, MEM64(RDX));
-					gen_tail_call(RAX);
-					m_a.bind(ret);
-					OR(EAX, TC_JMP_RET << 4);
-					MOV(MEM32(RDX), EAX);
-					gen_epilogue_main();
-				}
-			}
-			else {
-				MOV(RDX, &m_cpu->tc->flags);
-				MOV(EAX, MEM32(RDX));
-				AND(EAX, ~TC_FLG_JMP_TAKEN);
-				if constexpr (std::is_integral_v<T>) {
-					if (target_pc == *next_pc) {
-						OR(EAX, TC_JMP_NEXT_PC << 4);
-						MOV(MEM32(RDX), EAX);
-						MOV(RDX, &m_cpu->tc->jmp_offset[1]);
-						MOV(RAX, MEM64(RDX));
-						gen_tail_call(RAX);
-					}
-					else {
-						OR(EAX, TC_JMP_RET << 4);
-						MOV(MEM32(RDX), EAX);
-						gen_epilogue_main();
-					}
-				}
-				else {
-					assert(target_pc == EBX);
-					Label ret = m_a.newLabel();
-					CMP(target_pc, *next_pc);
-					BR_NE(ret);
-					OR(EAX, TC_JMP_NEXT_PC << 4);
-					MOV(MEM32(RDX), EAX);
-					MOV(RDX, &m_cpu->tc->jmp_offset[1]);
-					MOV(RAX, MEM64(RDX));
-					gen_tail_call(RAX);
-					m_a.bind(ret);
-					OR(EAX, TC_JMP_RET << 4);
-					MOV(MEM32(RDX), EAX);
-					gen_epilogue_main();
-				}
-			}
-		}
-		else { // uncond jmp dst_pc
-			MOV(RDX, &m_cpu->tc->jmp_offset[0]);
-			MOV(RAX, MEM64(RDX));
-			gen_tail_call(RAX);
-		}
+	if constexpr (std::is_integral_v<T>) { // target_pc known at compile time
+		MOV(EBX, target_pc);
 	}
-	break;
-
-	case 2: { // cond jmp next_pc + uncond jmp dst_pc
-		MOV(RDX, &m_cpu->tc->flags);
-		MOV(EAX, MEM32(RDX));
-		AND(EAX, ~TC_FLG_JMP_TAKEN);
-		if constexpr (std::is_integral_v<T>) {
-			if (target_pc == *next_pc) {
-				OR(EAX, TC_JMP_NEXT_PC << 4);
-				MOV(MEM32(RDX), EAX);
-				MOV(RDX, &m_cpu->tc->jmp_offset[1]);
-				MOV(RAX, MEM64(RDX));
-				gen_tail_call(RAX);
-			}
-			else {
-				MOV(MEM32(RDX), EAX);
-				MOV(RDX, &m_cpu->tc->jmp_offset[0]);
-				MOV(RAX, MEM64(RDX));
-				gen_tail_call(RAX);
-			}
-		}
-		else {
-			assert(target_pc == EBX);
-			Label ret = m_a.newLabel();
-			CMP(target_pc, *next_pc);
-			BR_NE(ret);
-			OR(EAX, TC_JMP_NEXT_PC << 4);
-			MOV(MEM32(RDX), EAX);
-			MOV(RDX, &m_cpu->tc->jmp_offset[1]);
-			MOV(RAX, MEM64(RDX));
-			gen_tail_call(RAX);
-			m_a.bind(ret);
-			MOV(MEM32(RDX), EAX);
-			MOV(RDX, &m_cpu->tc->jmp_offset[0]);
-			MOV(RAX, MEM64(RDX));
-			gen_tail_call(RAX);
-		}
+	else if constexpr (std::is_null_pointer_v<T>) { // target_pc known at runtime and not calculated by terminating instr
+		LD_SEG_BASE(EBX, CPU_CTX_CS);
+		MOV(R9D, EBX);
+		ADD(EBX, MEMD32(RCX, CPU_CTX_EIP));
 	}
-	break;
-
-	default:
-		LIB86CPU_ABORT();
+	else { // target_pc known at runtime and calculated by terminating instr
+		assert(target_pc == EBX);
 	}
-}
 
-void
-lc86_jit::gen_link_dst_only()
-{
-	gen_no_link_checks();
-
-	m_cpu->tc->flags |= (1 & TC_FLG_NUM_JMP);
-
-	MOV(RDX, &m_cpu->tc->jmp_offset[0]);
-	MOV(RAX, MEM64(RDX));
+	Label ret = m_a.newLabel();
+	LEA(R8, MEMD64(RCX, CPU_CTX_JMP_TABLE));
+	MOV(EDX, EBX);
+	AND(EBX, (JMP_TABLE_NUM_ELEMENTS - 1)); // hash_idx = target virt_pc & 4095
+	LEA(RBX, MEMS64(RBX, RBX, 2));
+	SHL(RBX, 2); // hash_idx * JMP_TABLE_NUM_ELEMENTS; element offset at hash_idx
+	CMP(MEMS32(R8, RBX, 0), EDX); // if zero, virt_pc matches
+	MOV(RDX, &m_cpu->tc->ptr_exit);
+	MOV(RAX, MEM64(RDX)); // get pointer to tc exit function
+	BR_NE(ret);
+	MOV(R10D, MEMD32(RCX, CPU_CTX_HFLG));
+	AND(R10D, HFLG_CONST);
+	MOV(R11D, MEMD32(RCX, CPU_CTX_EFLAGS));
+	AND(R11D, EFLAGS_CONST);
+	OR(R10D, R11D);
+	if constexpr (!std::is_null_pointer_v<T>) {
+		LD_SEG_BASE(R9D, CPU_CTX_CS);
+	}
+	SHL(R10, 32);
+	OR(R9, R10); // runtime cs_base and (hflags | eflags)
+	MOV(RDX, MEMSD64(R8, RBX, 0, 12)); // get tc->ptr_code from jmp_table
+	CMP(MEMSD64(R8, RBX, 0, 4), R9); // compare cs_base and (hflags | eflags) from jmp_table -> if zero, they match
+	CMOV_EQ(RAX, RDX);
+	m_a.bind(ret);
 	gen_tail_call(RAX);
 }
 
 void
-lc86_jit::gen_link_indirect()
-{
-	gen_no_link_checks();
-
-	MOV(RDX, m_cpu->tc);
-	CALL_F(&link_indirect_handler);
-	gen_tail_call(RAX);
-}
-
-void
-lc86_jit::gen_link_ret()
+lc86_jit::gen_tc_linking_ret()
 {
 	// NOTE: perhaps find a way to use a return stack buffer to link to the next tc
 
-	gen_link_indirect();
-}
+	// m_cpu->tc->flags |= TC_FLG_RET;
 
-template<typename T>
-void lc86_jit::gen_link_dst_cond(T &&lambda)
-{
-	// condition result should be in ebx; if true, jumps to dst, otherwise jumps to next
-
-	gen_no_link_checks();
-
-	if ((m_cpu->virt_pc & ~PAGE_MASK) == (m_cpu->virt_pc + m_cpu->instr_bytes & ~PAGE_MASK)) {
-		MOV(RDX, &m_cpu->tc->flags);
-		MOV(EAX, MEM32(RDX));
-		AND(EAX, ~TC_FLG_JMP_TAKEN);
-		lambda();
-		Label dst = m_a.newLabel();
-		BR_EQ(dst);
-		OR(EAX, TC_JMP_NEXT_PC << 4);
-		MOV(MEM32(RDX), EAX);
-		MOV(RDX, &m_cpu->tc->jmp_offset[1]);
-		MOV(RAX, MEM64(RDX));
-		gen_tail_call(RAX);
-		m_a.bind(dst);
-		MOV(MEM32(RDX), EAX);
-		MOV(RDX, &m_cpu->tc->jmp_offset[0]);
-		MOV(RAX, MEM64(RDX));
-		gen_tail_call(RAX);
-
-		m_cpu->tc->flags |= ((2 & TC_FLG_NUM_JMP) | TC_FLG_DST_COND);
-	}
-	else {
-		gen_epilogue_main();
-	}
+	gen_tc_linking_jmp(nullptr);
 }
 
 template<bool add_seg_base>
@@ -3411,11 +3268,7 @@ void lc86_jit::lxs(decoded_instr *instr)
 
 		if constexpr (idx == SS_idx) {
 			ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
-
-			gen_link_dst_cond([this] {
-				MOV(EBX, MEMD32(RCX, CPU_CTX_HFLG));
-				TEST(EBX, HFLG_SS32);
-				});
+			gen_tc_linking_jmp(nullptr);
 			m_cpu->translate_next = 0;
 		}
 	}
@@ -3527,7 +3380,7 @@ void lc86_jit::int_(decoded_instr *instr)
 		ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
 		MOV(RAX, &cpu_raise_exception<idx>);
 		CALL(RAX);
-		gen_epilogue_main<false>();
+		gen_epilogue_main<ret_tc_t::dont_set>();
 		m_a.bind(no_exp);
 	}
 	else {
@@ -3546,7 +3399,7 @@ void lc86_jit::int_(decoded_instr *instr)
 		ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
 		MOV(RAX, &cpu_raise_exception<idx>);
 		CALL(RAX);
-		gen_epilogue_main<false>();
+		gen_epilogue_main<ret_tc_t::dont_set>();
 
 		m_cpu->translate_next = 0;
 	}
@@ -4445,10 +4298,9 @@ lc86_jit::call(decoded_instr *instr)
 			CALL_F( &lcall_pe_helper);
 			TEST(EAX, EAX);
 			BR_NE(exp);
-			gen_link_indirect();
+			gen_tc_linking_jmp(nullptr);
 			m_a.bind(exp);
 			RAISEin_no_param_f();
-			m_cpu->tc->flags |= TC_FLG_INDIRECT;
 		}
 		else {
 			gen_stack_push(m_cpu->cpu_ctx.regs.cs, ret_eip);
@@ -4456,8 +4308,7 @@ lc86_jit::call(decoded_instr *instr)
 			ST_SEG(CPU_CTX_CS, new_sel);
 			ST_R32(CPU_CTX_EIP, call_eip);
 			ST_SEG_BASE(CPU_CTX_CS, new_cs_base);
-			gen_link_direct(new_cs_base + call_eip, nullptr, new_cs_base + call_eip);
-			m_cpu->tc->flags |= TC_FLG_DIRECT;
+			gen_tc_linking_jmp(new_cs_base + call_eip);
 		}
 	}
 	break;
@@ -4472,8 +4323,7 @@ lc86_jit::call(decoded_instr *instr)
 
 		gen_stack_push(ret_eip);
 		ST_R32(CPU_CTX_EIP, call_eip);
-		gen_link_direct(call_pc, nullptr, call_pc);
-		m_cpu->tc->flags |= TC_FLG_DIRECT;
+		gen_tc_linking_jmp(call_pc);
 	}
 	break;
 
@@ -4497,8 +4347,7 @@ lc86_jit::call(decoded_instr *instr)
 				MOVZX(EAX, AX);
 			}
 			ST_R32(CPU_CTX_EIP, EAX);
-			gen_link_indirect();
-			m_cpu->tc->flags |= TC_FLG_INDIRECT;
+			gen_tc_linking_jmp(nullptr);
 		}
 		else if (instr->i.raw.modrm.reg == 3) {
 			assert(instr->o[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_MEMORY);
@@ -4527,7 +4376,7 @@ lc86_jit::call(decoded_instr *instr)
 				CALL_F(&lcall_pe_helper);
 				TEST(EAX, EAX);
 				BR_NE(exp);
-				gen_link_indirect();
+				gen_tc_linking_jmp(nullptr);
 				m_a.bind(exp);
 				RAISEin_no_param_f();
 			}
@@ -4542,9 +4391,8 @@ lc86_jit::call(decoded_instr *instr)
 				MOVZX(EAX, AX);
 				SHL(EAX, 4);
 				ST_SEG_BASE(CPU_CTX_CS, EAX);
-				gen_link_indirect();
+				gen_tc_linking_jmp(nullptr);
 			}
-			m_cpu->tc->flags |= TC_FLG_INDIRECT;
 		}
 		else {
 			LIB86CPU_ABORT();
@@ -4639,8 +4487,7 @@ lc86_jit::clts(decoded_instr* instr)
 
 		addr_t dst_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
 		ST_R32(CPU_CTX_EIP, dst_eip);
-		gen_link_direct(dst_eip + m_cpu->cpu_ctx.regs.cs_hidden.base, nullptr, 0);
-		m_cpu->tc->flags |= TC_FLG_DIRECT;
+		gen_tc_linking_jmp(dst_eip + m_cpu->cpu_ctx.regs.cs_hidden.base);
 		m_cpu->translate_next = 0;
 	}
 }
@@ -5788,8 +5635,7 @@ lc86_jit::hlt(decoded_instr *instr)
 				CALL_F(&hlt_helper<false>);
 			}
 
-			XOR(EAX, EAX);
-			gen_epilogue_main<false>();
+			gen_epilogue_main<ret_tc_t::zero>();
 		}
 
 		m_cpu->translate_next = 0;
@@ -6222,7 +6068,7 @@ lc86_jit::invlpg(decoded_instr *instr)
 			},
 			[this](const op_info rm)
 			{
-				CALL_F(&tlb_invalidate_);
+				CALL_F(&invlpg_helper);
 			});
 	}
 }
@@ -6238,17 +6084,16 @@ lc86_jit::iret(decoded_instr *instr)
 		CALL_F(&lret_pe_helper<true>);
 		TEST(EAX, EAX);
 		BR_NE(exp);
-		gen_link_ret();
+		gen_tc_linking_ret();
 		m_a.bind(exp);
 		RAISEin_no_param_f();
 	}
 	else {
 		MOV(DL, m_cpu->size_mode);
 		CALL_F(&iret_real_helper);
-		gen_link_ret();
+		gen_tc_linking_ret();
 	}
 
-	m_cpu->tc->flags |= TC_FLG_RET;
 	m_cpu->translate_next = 0;
 }
 
@@ -6496,9 +6341,8 @@ lc86_jit::jcc(decoded_instr *instr)
 	MOV(MEMD32(RCX, CPU_CTX_EIP), R9D);
 	ADD(R9D, m_cpu->cpu_ctx.regs.cs_hidden.base);
 	MOV(EBX, R9D);
-	gen_link_direct(dst_pc, &next_pc, EBX);
+	gen_tc_linking_jmp(EBX);
 
-	m_cpu->tc->flags |= TC_FLG_DIRECT;
 	m_cpu->translate_next = 0;
 }
 
@@ -6514,8 +6358,7 @@ lc86_jit::jmp(decoded_instr *instr)
 			new_eip &= 0x0000FFFF;
 		}
 		ST_R32(CPU_CTX_EIP, new_eip);
-		gen_link_direct(m_cpu->cpu_ctx.regs.cs_hidden.base + new_eip, nullptr, m_cpu->cpu_ctx.regs.cs_hidden.base + new_eip);
-		m_cpu->tc->flags |= TC_FLG_DIRECT;
+		gen_tc_linking_jmp(m_cpu->cpu_ctx.regs.cs_hidden.base + new_eip);
 	}
 	break;
 
@@ -6530,18 +6373,16 @@ lc86_jit::jmp(decoded_instr *instr)
 			CALL_F(&ljmp_pe_helper);
 			TEST(EAX, EAX);
 			BR_NE(exp);
-			gen_link_indirect();
+			gen_tc_linking_jmp(nullptr);
 			m_a.bind(exp);
 			RAISEin_no_param_f();
-			m_cpu->tc->flags |= TC_FLG_INDIRECT;
 		}
 		else {
 			new_eip = m_cpu->size_mode == SIZE16 ? new_eip & 0xFFFF : new_eip;
 			ST_R16(CPU_CTX_CS, new_sel);
 			ST_R32(CPU_CTX_EIP, new_eip);
 			ST_R32(CPU_CTX_CS_BASE, static_cast<uint32_t>(new_sel) << 4);
-			gen_link_direct((static_cast<uint32_t>(new_sel) << 4) + new_eip, nullptr, (static_cast<uint32_t>(new_sel) << 4) + new_eip);
-			m_cpu->tc->flags |= TC_FLG_DIRECT;
+			gen_tc_linking_jmp((static_cast<uint32_t>(new_sel) << 4) + new_eip);
 		}
 	}
 	break;
@@ -6561,8 +6402,7 @@ lc86_jit::jmp(decoded_instr *instr)
 				MOVZX(EAX, AX);
 			}
 			ST_R32(CPU_CTX_EIP, EAX);
-			gen_link_indirect();
-			m_cpu->tc->flags |= TC_FLG_INDIRECT;
+			gen_tc_linking_jmp(nullptr);
 		}
 		else if (instr->i.raw.modrm.reg == 5) {
 			assert(instr->o[OPNUM_SINGLE].type == ZYDIS_OPERAND_TYPE_MEMORY);
@@ -6589,10 +6429,9 @@ lc86_jit::jmp(decoded_instr *instr)
 				CALL_F(&ljmp_pe_helper);
 				TEST(EAX, EAX);
 				BR_NE(exp);
-				gen_link_indirect();
+				gen_tc_linking_jmp(nullptr);
 				m_a.bind(exp);
 				RAISEin_no_param_f();
-				m_cpu->tc->flags |= TC_FLG_INDIRECT;
 			}
 			else {
 				ST_R16(CPU_CTX_CS, AX);
@@ -6600,8 +6439,7 @@ lc86_jit::jmp(decoded_instr *instr)
 				MOVZX(EAX, AX);
 				SHL(EAX, 4);
 				ST_R32(CPU_CTX_CS_BASE, EAX);
-				gen_link_indirect();
-				m_cpu->tc->flags |= TC_FLG_INDIRECT;
+				gen_tc_linking_jmp(nullptr);
 			}
 		}
 		else {
@@ -6734,8 +6572,7 @@ lc86_jit::lmsw(decoded_instr* instr)
 		CALL_F(&update_crN_helper<1>);
 
 		ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
-		gen_no_link_checks();
-		gen_epilogue_main();
+		gen_tc_linking_jmp(nullptr);
 		m_cpu->translate_next = 0;
 	}
 }
@@ -6876,8 +6713,7 @@ lc86_jit::loop(decoded_instr *instr)
 	MOV(EBX, next_pc);
 	m_a.bind(end);
 
-	gen_link_direct(dst_pc, &next_pc, EBX);
-	m_cpu->tc->flags |= TC_FLG_DIRECT;
+	gen_tc_linking_jmp(EBX);
 	m_cpu->translate_next = 0;
 }
 
@@ -6990,8 +6826,7 @@ lc86_jit::mov(decoded_instr *instr)
 				m_a.bind(ok);
 				if ((cr_idx == CR0_idx) || (cr_idx == CR4_idx)) {
 					ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
-					gen_no_link_checks();
-					gen_epilogue_main();
+					gen_tc_linking_jmp(nullptr);
 				}
 			}
 			break;
@@ -7070,13 +6905,12 @@ lc86_jit::mov(decoded_instr *instr)
 
 			ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
 			// instr breakpoint are checked at compile time, so we cannot jump to the next tc if we are writing to anything but dr6
-			if ((((m_cpu->virt_pc + m_cpu->instr_bytes) & ~PAGE_MASK) == (m_cpu->virt_pc & ~PAGE_MASK)) && (dr_idx == DR6_idx)) {
-				gen_link_dst_only();
-				m_cpu->tc->flags |= TC_FLG_DST_ONLY;
+			if (dr_idx == DR6_idx) {
+				gen_tc_linking_jmp(nullptr);
 			}
 			else {
 				gen_no_link_checks();
-				gen_epilogue_main();
+				gen_epilogue_main<ret_tc_t::zero>();
 			}
 			m_cpu->translate_next = 0;
 		}
@@ -7195,11 +7029,7 @@ lc86_jit::mov(decoded_instr *instr)
 		if (instr->o[OPNUM_DST].reg.value == ZYDIS_REGISTER_SS) {
 			m_a.lock().or_(MEMD32(RCX, CPU_CTX_INT), CPU_MASKED_INT);
 			ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
-
-			gen_link_dst_cond([this] {
-				MOV(EBX, MEMD32(RCX, CPU_CTX_HFLG));
-				TEST(EBX, HFLG_SS32);
-				});
+			gen_tc_linking_jmp(nullptr);
 			m_cpu->translate_next = 0;
 		}
 	}
@@ -8000,11 +7830,7 @@ lc86_jit::pop(decoded_instr *instr)
 		if (sel.first == SS_idx) {
 			m_a.lock().or_(MEMD32(RCX, CPU_CTX_INT), CPU_MASKED_INT);
 			ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
-
-			gen_link_dst_cond([this] {
-				MOV(EBX, MEMD32(RCX, CPU_CTX_HFLG));
-				TEST(EBX, HFLG_SS32);
-				});
+			gen_tc_linking_jmp(nullptr);
 			m_cpu->translate_next = 0;
 		}
 	}
@@ -8219,10 +8045,7 @@ lc86_jit::popf(decoded_instr *instr)
 	MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EDX);
 	ST_R32(CPU_CTX_EIP, m_cpu->instr_eip + m_cpu->instr_bytes);
 
-	if ((m_cpu->virt_pc & ~PAGE_MASK) == (m_cpu->virt_pc + m_cpu->instr_bytes & ~PAGE_MASK)) {
-		gen_link_indirect();
-		m_cpu->tc->flags |= TC_FLG_INDIRECT;
-	}
+	gen_tc_linking_jmp(nullptr);
 	m_cpu->translate_next = 0;
 }
 
@@ -8571,8 +8394,7 @@ lc86_jit::ret(decoded_instr *instr)
 		LIB86CPU_ABORT();
 	}
 
-	gen_link_ret();
-	m_cpu->tc->flags |= TC_FLG_RET;
+	gen_tc_linking_ret();
 	m_cpu->translate_next = 0;
 }
 

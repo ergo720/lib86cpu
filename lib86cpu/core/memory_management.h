@@ -17,7 +17,9 @@ while (region->aliased_region) { \
 	alias_offset += region->alias_offset; \
 }
 
-template<bool flush_global = true> void tlb_flush(cpu_t * cpu);
+void tlb_flush_g_l(cpu_t *cpu); // flushes global entries and undoes tc links
+void tlb_flush_g(cpu_t *cpu); // flushes global entries
+void tlb_flush_l(cpu_t *cpu); // undoes tc links
 inline void *get_rom_host_ptr(const memory_region_t<addr_t> *rom, addr_t addr);
 inline void *get_ram_host_ptr(cpu_t *cpu, const memory_region_t<addr_t> *ram, addr_t addr);
 addr_t get_read_addr_slow(cpu_t * cpu, addr_t addr, uint8_t is_priv);
