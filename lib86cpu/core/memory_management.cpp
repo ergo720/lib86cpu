@@ -189,12 +189,6 @@ tlb_flush_l(cpu_t *cpu)
 	tlb_flush<false, true>(cpu);
 }
 
-void
-tlb_flush(cpu_t *cpu)
-{
-	tlb_flush<false, false>(cpu);
-}
-
 int8_t
 check_page_access(cpu_t *cpu, uint8_t access_level, uint8_t mem_access)
 {

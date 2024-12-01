@@ -654,8 +654,8 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_
 	}
 }
 
-template void tc_invalidate<true>(cpu_ctx_t *cpu_ctx, addr_t virt_addr, [[maybe_unused]] uint8_t size);
-template void tc_invalidate<false>(cpu_ctx_t *cpu_ctx, addr_t virt_addr, [[maybe_unused]] uint8_t size);
+template void tc_invalidate<true>(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_t size);
+template void tc_invalidate<false>(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_t size);
 
 static translated_code_t *
 tc_cache_search(cpu_t *cpu, addr_t pc)
