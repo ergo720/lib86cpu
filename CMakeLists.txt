@@ -3,6 +3,9 @@
 cmake_minimum_required(VERSION 3.25)
 project(lib86cpu)
 
+# Suppress build failures caused by deprecation warnings treated as errors. CI seems to be using "-Werror=deprecated" which causes the issue
+set(CMAKE_ERROR_DEPRECATED FALSE CACHE BOOL "" FORCE)
+
 if(NOT DEFINED CMAKE_RUNTIME_OUTPUT_DIRECTORY)
  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${lib86cpu_BINARY_DIR}/bin")
 endif()
