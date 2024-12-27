@@ -547,7 +547,7 @@ tc_unlink(cpu_t *cpu, addr_t virt_pc)
 			if (it_map->second.empty()) {
 				cpu->jmp_page_map.erase(it_map);
 			}
-			uint32_t idx = virt_pc & (JMP_TABLE_NUM_ELEMENTS - 1);
+			uint32_t idx = virt_pc & JMP_TABLE_MASK;
 			jmp_table_elem *jmp_elem_off = (jmp_table_elem *)&cpu->cpu_ctx.jmp_table[idx * JMP_TABLE_ELEMENT_SIZE];
 			jmp_elem_off->guest_flags = HFLG_INVALID;
 		}
@@ -559,7 +559,7 @@ tc_unlink_page(cpu_t *cpu, addr_t virt_pc)
 {
 	if (auto it_map = cpu->jmp_page_map.find(virt_pc >> PAGE_SHIFT); it_map != cpu->jmp_page_map.end()) {
 		for (auto addr : it_map->second) {
-			uint32_t idx = addr & (JMP_TABLE_NUM_ELEMENTS - 1);
+			uint32_t idx = addr & JMP_TABLE_MASK;
 			jmp_table_elem *jmp_elem_off = (jmp_table_elem *)&cpu->cpu_ctx.jmp_table[idx * JMP_TABLE_ELEMENT_SIZE];
 			jmp_elem_off->guest_flags = HFLG_INVALID;
 		}
@@ -719,7 +719,7 @@ tc_cache_purge(cpu_t *cpu)
 static void
 tc_link_jmp(cpu_t *cpu, translated_code_t *ptr_tc)
 {
-	uint32_t idx = ptr_tc->virt_pc & (JMP_TABLE_NUM_ELEMENTS - 1);
+	uint32_t idx = ptr_tc->virt_pc & JMP_TABLE_MASK;
 	jmp_table_elem *jmp_elem_off = (jmp_table_elem *)&cpu->cpu_ctx.jmp_table[idx * JMP_TABLE_ELEMENT_SIZE];
 
 	// If there is an existing entry in the table, we must flush it first before inserting the new entry

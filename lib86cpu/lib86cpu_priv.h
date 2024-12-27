@@ -31,6 +31,7 @@
 // jmp_table: 4096 entries of 3 uint32_t + 1 pointer -> virt_pc, cs_base, hflags | eflags, tc->ptr_code
 #define JMP_TABLE_NUM_ELEMENTS (1 << 12)
 #define JMP_TABLE_ELEMENT_SIZE (12 + sizeof(entry_t))
+#define JMP_TABLE_MASK (JMP_TABLE_NUM_ELEMENTS - 1)
 #define JMP_TABLE_MAX_SIZE (JMP_TABLE_NUM_ELEMENTS * JMP_TABLE_ELEMENT_SIZE)
 // itlb: 512 sets * 8 lines = 4096 entries -> offset 12 bits, index 9 bites, tag 11 bits
 #define ITLB_NUM_SETS (1 << 9)

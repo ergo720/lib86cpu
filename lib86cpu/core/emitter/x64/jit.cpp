@@ -902,7 +902,7 @@ void lc86_jit::gen_tc_linking_jmp(T target_pc)
 	Label ret = m_a.newLabel();
 	LEA(R8, MEMD64(RCX, CPU_CTX_JMP_TABLE));
 	MOV(EDX, EBX);
-	AND(EBX, (JMP_TABLE_NUM_ELEMENTS - 1)); // hash_idx = target virt_pc & 4095
+	AND(EBX, JMP_TABLE_MASK); // hash_idx = target virt_pc & JMP_TABLE_MASK
 	LEA(RBX, MEMS64(RBX, RBX, 2));
 	SHL(RBX, 2); // hash_idx * JMP_TABLE_NUM_ELEMENTS; element offset at hash_idx
 	CMP(MEMS32(R8, RBX, 0), EDX); // if zero, virt_pc matches
