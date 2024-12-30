@@ -245,9 +245,9 @@ private:
 	void ld_of(x86::Gp dst, x86::Gp aux);
 	void ld_sf(x86::Gp res_dst, x86::Gp aux);
 	void ld_pf(x86::Gp dst, x86::Gp res, x86::Gp aux);
-	void load_mem(uint8_t size, uint8_t is_priv);
+	void load_mem(uint8_t size);
 	template<typename T, bool dont_write = false>
-	void store_mem(T val, uint8_t size, uint8_t is_priv);
+	void store_mem(T val, uint8_t size);
 	void load_io(uint8_t size_mode);
 	void store_io(uint8_t size_mode);
 	template<typename T>

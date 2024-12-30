@@ -470,13 +470,13 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define ST_SEG_BASE(seg_offset, val) MOV(MEMD32(RCX, seg_offset + seg_base_offset), val)
 #define ST_SEG_LIMIT(seg_offset, val) MOV(MEMD32(RCX, seg_offset + seg_limit_offset), val)
 
-#define LD_MEM() load_mem(m_cpu->size_mode, 0)
-#define LD_MEMs(size) load_mem(size, 0)
-#define LD_MEM128() load_mem(SIZE128, 0)
-#define ST_MEM(val) store_mem(val, m_cpu->size_mode, 0)
-#define ST_MEMs(val, size) store_mem(val, size, 0)
-#define ST_MEM128(val) store_mem(val, SIZE128, 0)
-#define ST_MEMv(val) store_mem<decltype(val), true>(val, m_cpu->size_mode, 0)
+#define LD_MEM() load_mem(m_cpu->size_mode)
+#define LD_MEMs(size) load_mem(size)
+#define LD_MEM128() load_mem(SIZE128)
+#define ST_MEM(val) store_mem(val, m_cpu->size_mode)
+#define ST_MEMs(val, size) store_mem(val, size)
+#define ST_MEM128(val) store_mem(val, SIZE128)
+#define ST_MEMv(val) store_mem<decltype(val), true>(val, m_cpu->size_mode)
 
 #define LD_IO() load_io(m_cpu->size_mode)
 #define ST_IO() store_io(m_cpu->size_mode)
@@ -1722,7 +1722,7 @@ lc86_jit::ld_pf(x86::Gp dst, x86::Gp res, x86::Gp aux)
 }
 
 void
-lc86_jit::load_mem(uint8_t size, uint8_t is_priv)
+lc86_jit::load_mem(uint8_t size)
 {
 	// RCX: cpu_ctx, EDX: addr
 	// for SIZE128/80 -> RCX: ptr to stack-allocated uint128/80_t, RDX: cpu_ctx, R8: addr
@@ -1733,37 +1733,33 @@ lc86_jit::load_mem(uint8_t size, uint8_t is_priv)
 		LEA(RCX, MEMD64(RSP, LOCAL_VARS_off(0)));
 		MOV(R8D, EDX);
 		MOV(RDX, &m_cpu->cpu_ctx);
-		MOV(R9B, is_priv);
-		CALL_F(&mem_read_helper<uint128_t>);
+		CALL_F(&mem_read_jit_helper<uint128_t>);
 		break;
 
 	case SIZE80:
 		LEA(RCX, MEMD64(RSP, LOCAL_VARS_off(0)));
 		MOV(R8D, EDX);
 		MOV(RDX, &m_cpu->cpu_ctx);
-		MOV(R9B, is_priv);
-		CALL_F(&mem_read_helper<uint80_t>);
+		CALL_F(&mem_read_jit_helper<uint80_t>);
 		break;
 
 	default:
-		MOV(R8B, is_priv);
-
 		switch (size)
 		{
 		case SIZE64:
-			CALL_F(&mem_read_helper<uint64_t>);
+			CALL_F(&mem_read_jit_helper<uint64_t>);
 			break;
 
 		case SIZE32:
-			CALL_F(&mem_read_helper<uint32_t>);
+			CALL_F(&mem_read_jit_helper<uint32_t>);
 			break;
 
 		case SIZE16:
-			CALL_F(&mem_read_helper<uint16_t>);
+			CALL_F(&mem_read_jit_helper<uint16_t>);
 			break;
 
 		case SIZE8:
-			CALL_F(&mem_read_helper<uint8_t>);
+			CALL_F(&mem_read_jit_helper<uint8_t>);
 			break;
 
 		default:
@@ -1773,7 +1769,7 @@ lc86_jit::load_mem(uint8_t size, uint8_t is_priv)
 }
 
 template<typename T, bool dont_write>
-void lc86_jit::store_mem(T val, uint8_t size, uint8_t is_priv)
+void lc86_jit::store_mem(T val, uint8_t size)
 {
 	// RCX: cpu_ctx, EDX: addr, R8/D/W/B or imm: val
 
@@ -1783,32 +1779,31 @@ void lc86_jit::store_mem(T val, uint8_t size, uint8_t is_priv)
 	else {
 		MOV(R8, val);
 	}
-	MOV(R9B, is_priv);
 
 	switch (size)
 	{
 	case SIZE128:
-		CALL_F((&mem_write_helper<uint128_t, dont_write>));
+		CALL_F((&mem_write_jit_helper<uint128_t, dont_write>));
 		break;
 
 	case SIZE80:
-		CALL_F((&mem_write_helper<uint80_t, dont_write>));
+		CALL_F((&mem_write_jit_helper<uint80_t, dont_write>));
 		break;
 
 	case SIZE64:
-		CALL_F((&mem_write_helper<uint64_t, dont_write>));
+		CALL_F((&mem_write_jit_helper<uint64_t, dont_write>));
 		break;
 
 	case SIZE32:
-		CALL_F((&mem_write_helper<uint32_t, dont_write>));
+		CALL_F((&mem_write_jit_helper<uint32_t, dont_write>));
 		break;
 
 	case SIZE16:
-		CALL_F((&mem_write_helper<uint16_t, dont_write>));
+		CALL_F((&mem_write_jit_helper<uint16_t, dont_write>));
 		break;
 
 	case SIZE8:
-		CALL_F((&mem_write_helper<uint8_t, dont_write>));
+		CALL_F((&mem_write_jit_helper<uint8_t, dont_write>));
 		break;
 
 	default:

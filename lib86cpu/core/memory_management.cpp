@@ -541,7 +541,6 @@ ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer)
 	}
 }
 
-// memory read helper invoked by the jitted code
 template<typename T>
 T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv)
 {
@@ -608,7 +607,6 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv)
 	return mem_read_slow<T>(cpu_ctx->cpu, addr, is_priv);
 }
 
-// memory write helper invoked by the jitted code
 template<typename T, bool dont_write>
 void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint8_t is_priv)
 {
@@ -703,6 +701,20 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint8_t is_priv)
 	}
 }
 
+// memory read helper invoked by the jitted code
+template<typename T>
+T mem_read_jit_helper(cpu_ctx_t *cpu_ctx, addr_t addr)
+{
+	return mem_read_helper<T>(cpu_ctx, addr, 0);
+}
+
+// memory write helper invoked by the jitted code
+template<typename T, bool dont_write>
+void mem_write_jit_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val)
+{
+	mem_write_helper<T, dont_write>(cpu_ctx, addr, val, 0);
+}
+
 // io read helper invoked by the jitted code
 template<typename T>
 T io_read_helper(cpu_ctx_t *cpu_ctx, port_t port)
@@ -719,24 +731,24 @@ void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, T val)
 	io_write<T>(cpu_ctx->cpu, port, val);
 }
 
-template JIT_API uint8_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv);
-template JIT_API uint16_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv);
-template JIT_API uint32_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv);
-template JIT_API uint64_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv);
-template JIT_API uint80_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv);
-template JIT_API uint128_t mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint8_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t val, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint16_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t val, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint32_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t val, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint64_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t val, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint80_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint80_t val, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint128_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint128_t val, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint8_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t val, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint16_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t val, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint32_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t val, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint64_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t val, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint80_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint80_t val, uint8_t is_priv);
-template JIT_API void mem_write_helper<uint128_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint128_t val, uint8_t is_priv);
+template JIT_API uint8_t mem_read_jit_helper(cpu_ctx_t *cpu_ctx, addr_t addr);
+template JIT_API uint16_t mem_read_jit_helper(cpu_ctx_t *cpu_ctx, addr_t addr);
+template JIT_API uint32_t mem_read_jit_helper(cpu_ctx_t *cpu_ctx, addr_t addr);
+template JIT_API uint64_t mem_read_jit_helper(cpu_ctx_t *cpu_ctx, addr_t addr);
+template JIT_API uint80_t mem_read_jit_helper(cpu_ctx_t *cpu_ctx, addr_t addr);
+template JIT_API uint128_t mem_read_jit_helper(cpu_ctx_t *cpu_ctx, addr_t addr);
+template JIT_API void mem_write_jit_helper<uint8_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t val);
+template JIT_API void mem_write_jit_helper<uint16_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t val);
+template JIT_API void mem_write_jit_helper<uint32_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t val);
+template JIT_API void mem_write_jit_helper<uint64_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t val);
+template JIT_API void mem_write_jit_helper<uint80_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint80_t val);
+template JIT_API void mem_write_jit_helper<uint128_t, false>(cpu_ctx_t *cpu_ctx, addr_t addr, uint128_t val);
+template JIT_API void mem_write_jit_helper<uint8_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t val);
+template JIT_API void mem_write_jit_helper<uint16_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint16_t val);
+template JIT_API void mem_write_jit_helper<uint32_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t val);
+template JIT_API void mem_write_jit_helper<uint64_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint64_t val);
+template JIT_API void mem_write_jit_helper<uint80_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint80_t val);
+template JIT_API void mem_write_jit_helper<uint128_t, true>(cpu_ctx_t *cpu_ctx, addr_t addr, uint128_t val);
 
 template JIT_API uint8_t io_read_helper(cpu_ctx_t *cpu_ctx, port_t port);
 template JIT_API uint16_t io_read_helper(cpu_ctx_t *cpu_ctx, port_t port);
