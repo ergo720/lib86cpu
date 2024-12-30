@@ -255,8 +255,8 @@ private:
 	Label rep_start(Label end);
 	template<unsigned rep_prfx>
 	void rep(Label start, Label end);
-	template<bool use_esp = true, typename... Args>
-	void gen_stack_push(Args... pushed_args);
+	template<bool use_esp = true, typename T>
+	void gen_stack_push(T rgs);
 	void gen_virtual_stack_push();
 	template<unsigned num, unsigned store_at = 0, bool write_esp = true>
 	void gen_stack_pop();

@@ -1176,15 +1176,17 @@ void lc86_jit::r_to_rm(decoded_instr *instr, T &&lambda)
 			auto src_host_reg = SIZED_REG(x64::rdx, src.bits);
 			auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
 			if constexpr (write_dst) {
-				auto res_host_reg = SIZED_REG(x64::rbx, m_cpu->size_mode);
+				auto res_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
+				auto rbx_host_reg = SIZED_REG(x64::rbx, m_cpu->size_mode);
 				MOV(EBX, EDX);
 				LD_MEM();
 				LD_REG_val(src_host_reg, src.val, src.bits);
 				lambda(dst_host_reg, src_host_reg);
 				MOV(EDX, EBX);
 				MOV(res_host_reg, dst_host_reg);
+				MOV(rbx_host_reg, dst_host_reg);
 				ST_MEM(res_host_reg);
-				set_flags(res_host_reg, 0, m_cpu->size_mode);
+				set_flags(rbx_host_reg, 0, m_cpu->size_mode);
 			}
 			else {
 				LD_MEM();
@@ -1381,14 +1383,16 @@ void lc86_jit::imm_to_rm(decoded_instr *instr, Imm src_imm, T &&lambda)
 		{
 			auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
 			if constexpr (write_dst) {
-				auto res_host_reg = SIZED_REG(x64::rbx, m_cpu->size_mode);
+				auto res_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
+				auto rbx_host_reg = SIZED_REG(x64::rbx, m_cpu->size_mode);
 				MOV(EBX, EDX);
 				LD_MEM();
 				lambda(dst_host_reg, src_imm);
 				MOV(EDX, EBX);
 				MOV(res_host_reg, dst_host_reg);
+				MOV(rbx_host_reg, dst_host_reg);
 				ST_MEM(res_host_reg);
-				set_flags(res_host_reg, 0, m_cpu->size_mode);
+				set_flags(rbx_host_reg, 0, m_cpu->size_mode);
 			}
 			else {
 				LD_MEM();
@@ -1428,10 +1432,11 @@ void lc86_jit::imm_to_rm_flags(decoded_instr *instr, Imm src_imm, T &&lambda)
 				MOV(EBX, EDX);
 				LD_MEM();
 				MOV(EDX, EBX);
+				MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), dst_host_reg);
 				MOV(res_host_reg, dst_host_reg);
 				lambda(res_host_reg, src_imm);
-				MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), dst_host_reg);
-				ST_MEM(res_host_reg);
+				MOV(r8_host_reg, res_host_reg);
+				ST_MEM(r8_host_reg);
 				MOV(dst_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
 				MOV(r8_host_reg, res_host_reg);
 			}
@@ -1719,7 +1724,7 @@ lc86_jit::ld_pf(x86::Gp dst, x86::Gp res, x86::Gp aux)
 void
 lc86_jit::load_mem(uint8_t size, uint8_t is_priv)
 {
-	// RCX: cpu_ctx, EDX: addr, R8: instr_eip, R9B: is_priv
+	// RCX: cpu_ctx, EDX: addr
 	// for SIZE128/80 -> RCX: ptr to stack-allocated uint128/80_t, RDX: cpu_ctx, R8: addr
 
 	switch (size)
@@ -1770,58 +1775,39 @@ lc86_jit::load_mem(uint8_t size, uint8_t is_priv)
 template<typename T, bool dont_write>
 void lc86_jit::store_mem(T val, uint8_t size, uint8_t is_priv)
 {
-	// RCX: cpu_ctx, EDX: addr
+	// RCX: cpu_ctx, EDX: addr, R8/D/W/B or imm: val
 
-	MOV(R9B, is_priv);
-
-	bool is_r8 = false;
 	if constexpr (!std::is_integral_v<T>) {
-		if (val.id() == x86::Gp::kIdR8) {
-			is_r8 = true;
-		}
+		assert(val.id() == x86::Gp::kIdR8);
 	}
+	else {
+		MOV(R8, val);
+	}
+	MOV(R9B, is_priv);
 
 	switch (size)
 	{
 	case SIZE128:
-		if (!is_r8) {
-			MOV(R8, val);
-		}
 		CALL_F((&mem_write_helper<uint128_t, dont_write>));
 		break;
 
 	case SIZE80:
-		if (!is_r8) {
-			MOV(R8, val);
-		}
 		CALL_F((&mem_write_helper<uint80_t, dont_write>));
 		break;
 
 	case SIZE64:
-		if (!is_r8) {
-			MOV(R8, val);
-		}
 		CALL_F((&mem_write_helper<uint64_t, dont_write>));
 		break;
 
 	case SIZE32:
-		if (!is_r8) {
-			MOV(R8D, val);
-		}
 		CALL_F((&mem_write_helper<uint32_t, dont_write>));
 		break;
 
 	case SIZE16:
-		if (!is_r8) {
-			MOV(R8W, val);
-		}
 		CALL_F((&mem_write_helper<uint16_t, dont_write>));
 		break;
 
 	case SIZE8:
-		if (!is_r8) {
-			MOV(R8B, val);
-		}
 		CALL_F((&mem_write_helper<uint8_t, dont_write>));
 		break;
 
@@ -1977,14 +1963,16 @@ void lc86_jit::rep(Label start, Label end)
 	BR_UNCOND(start);
 }
 
-template<bool use_esp, typename... Args>
-void lc86_jit::gen_stack_push(Args... pushed_args)
+template<bool use_esp, typename T>
+void lc86_jit::gen_stack_push(T arg)
 {
-	// edx, ebx, eax are clobbered, pushed val is either a sized imm or sized reg (1st arg only, remaining in mem) -> same size of pushed val
+	// edx, ebx, eax are clobbered, pushed arg is either a sized imm or R8D/W/B
 	// when use_esp is true, the guest esp is used for the pushes, otherwise a variable in the host ebx is used
 
 	assert(m_cpu->size_mode != SIZE8);
-	static_assert(sizeof...(Args), "Cannot push zero values!");
+	if constexpr (!std::is_integral_v<T>) {
+		assert(arg.id() == x86::Gp::kIdR8);
+	}
 
 	switch ((m_cpu->size_mode << 1) | ((m_cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
@@ -1992,13 +1980,11 @@ void lc86_jit::gen_stack_push(Args... pushed_args)
 		if constexpr (use_esp) {
 			LD_R16(BX, CPU_CTX_ESP);
 		}
-		([this, &pushed_args] {
-			SUB(BX, 4);
-			LD_SEG_BASE(EDX, CPU_CTX_SS);
-			MOVZX(EAX, BX);
-			ADD(EDX, EAX);
-			ST_MEM(pushed_args);
-			}(), ...);
+		SUB(BX, 4);
+		LD_SEG_BASE(EDX, CPU_CTX_SS);
+		MOVZX(EAX, BX);
+		ADD(EDX, EAX);
+		ST_MEM(arg);
 		if constexpr (use_esp) {
 			ST_R16(CPU_CTX_ESP, BX);
 		}
@@ -2009,12 +1995,10 @@ void lc86_jit::gen_stack_push(Args... pushed_args)
 		if constexpr (use_esp) {
 			LD_R32(EBX, CPU_CTX_ESP);
 		}
-		([this, &pushed_args] {
-			SUB(EBX, 4);
-			LD_SEG_BASE(EDX, CPU_CTX_SS);
-			ADD(EDX, EBX);
-			ST_MEM(pushed_args);
-			}(), ...);
+		SUB(EBX, 4);
+		LD_SEG_BASE(EDX, CPU_CTX_SS);
+		ADD(EDX, EBX);
+		ST_MEM(arg);
 		if constexpr (use_esp) {
 			ST_R32(CPU_CTX_ESP, EBX);
 		}
@@ -2025,13 +2009,11 @@ void lc86_jit::gen_stack_push(Args... pushed_args)
 		if constexpr (use_esp) {
 			LD_R16(BX, CPU_CTX_ESP);
 		}
-		([this, &pushed_args] {
-			SUB(BX, 2);
-			LD_SEG_BASE(EDX, CPU_CTX_SS);
-			MOVZX(EAX, BX);
-			ADD(EDX, EAX);
-			ST_MEM(pushed_args);
-			}(), ...);
+		SUB(BX, 2);
+		LD_SEG_BASE(EDX, CPU_CTX_SS);
+		MOVZX(EAX, BX);
+		ADD(EDX, EAX);
+		ST_MEM(arg);
 		if constexpr (use_esp) {
 			ST_R16(CPU_CTX_ESP, BX);
 		}
@@ -2042,12 +2024,10 @@ void lc86_jit::gen_stack_push(Args... pushed_args)
 		if constexpr (use_esp) {
 			LD_R32(EBX, CPU_CTX_ESP);
 		}
-		([this, &pushed_args] {
-			SUB(EBX, 2);
-			LD_SEG_BASE(EDX, CPU_CTX_SS);
-			ADD(EDX, EBX);
-			ST_MEM(pushed_args);
-			}(), ...);
+		SUB(EBX, 2);
+		LD_SEG_BASE(EDX, CPU_CTX_SS);
+		ADD(EDX, EBX);
+		ST_MEM(arg);
 		if constexpr (use_esp) {
 			ST_R32(CPU_CTX_ESP, EBX);
 		}
@@ -2106,7 +2086,7 @@ lc86_jit::gen_virtual_stack_push()
 template<unsigned num, unsigned store_at, bool write_esp>
 void lc86_jit::gen_stack_pop()
 {
-	// edx, ebx, eax are clobbered, popped vals are at r11d/w (esp + 0) and on the stack (any after the first)
+	// edx, ebx, eax are clobbered, popped vals are at r8d/w (when popping only one arg) or on the stack (when popping more than one args)
 
 	assert(m_cpu->size_mode != SIZE8);
 	static_assert(num, "Cannot pop zero values!");
@@ -2123,7 +2103,7 @@ void lc86_jit::gen_stack_pop()
 			ADD(EDX, EBX);
 			LD_MEM();
 			if constexpr (num == 1) {
-				MOV(R11D, EAX);
+				MOV(R8D, EAX);
 			}
 			else {
 				MOV(MEMD32(RSP, get_local_var_offset(stack_idx)), EAX);
@@ -2142,7 +2122,7 @@ void lc86_jit::gen_stack_pop()
 			ADD(EDX, EBX);
 			LD_MEM();
 			if constexpr (num == 1) {
-				MOV(R11D, EAX);
+				MOV(R8D, EAX);
 			}
 			else {
 				MOV(MEMD32(RSP, get_local_var_offset(stack_idx)), EAX);
@@ -2162,7 +2142,7 @@ void lc86_jit::gen_stack_pop()
 			ADD(EDX, EBX);
 			LD_MEM();
 			if constexpr (num == 1) {
-				MOV(R11W, AX);
+				MOV(R8W, AX);
 			}
 			else {
 				MOV(MEMD16(RSP, get_local_var_offset(stack_idx)), AX);
@@ -2181,7 +2161,7 @@ void lc86_jit::gen_stack_pop()
 			ADD(EDX, EBX);
 			LD_MEM();
 			if constexpr (num == 1) {
-				MOV(R11W, AX);
+				MOV(R8W, AX);
 			}
 			else {
 				MOV(MEMD16(RSP, get_local_var_offset(stack_idx)), AX);
@@ -2503,7 +2483,7 @@ void lc86_jit::shift(decoded_instr *instr)
 						LIB86CPU_ABORT_msg("Unknown shift operation specified with index of %u", idx);
 					}
 					MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), dst_host_reg);
-					auto dst2_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
+					auto dst2_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 					MOV(dst2_host_reg, dst_host_reg);
 					MOV(EDX, EBX);
 					SETC(BL);
@@ -2574,7 +2554,7 @@ void lc86_jit::shift(decoded_instr *instr)
 					LIB86CPU_ABORT_msg("Unknown shift operation specified with index %u", idx);
 				}
 				MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), dst_host_reg);
-				auto dst2_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
+				auto dst2_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 				MOV(dst2_host_reg, dst_host_reg);
 				MOV(EDX, EBX);
 				RELOAD_RCX_CTX();
@@ -2665,7 +2645,7 @@ void lc86_jit::double_shift(decoded_instr *instr)
 						LIB86CPU_ABORT_msg("Unknown double shift operation specified with index of %u", idx);
 					}
 					MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), dst_host_reg);
-					auto dst2_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
+					auto dst2_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 					MOV(dst2_host_reg, dst_host_reg);
 					SETC(BL);
 					SETO(AL);
@@ -2734,7 +2714,7 @@ void lc86_jit::double_shift(decoded_instr *instr)
 					LIB86CPU_ABORT_msg("Unknown double shift operation specified with index of %u", idx);
 				}
 				MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), dst_host_reg);
-				auto dst2_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
+				auto dst2_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 				MOV(dst2_host_reg, dst_host_reg);
 				RELOAD_RCX_CTX();
 				SETC(BL);
@@ -2870,7 +2850,7 @@ void lc86_jit::rotate(decoded_instr *instr)
 					else {
 						LIB86CPU_ABORT_msg("Unknown rotate operation specified with index of %u", idx);
 					}
-					auto dst2_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
+					auto dst2_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 					MOV(dst2_host_reg, dst_host_reg);
 					MOV(EDX, EBX);
 					SETC(BL);
@@ -2979,7 +2959,7 @@ void lc86_jit::rotate(decoded_instr *instr)
 				else {
 					LIB86CPU_ABORT_msg("Unknown rotate operation specified with index of %u", idx);
 				}
-				auto dst2_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
+				auto dst2_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 				MOV(dst2_host_reg, dst_host_reg);
 				MOV(EDX, EBX);
 				RELOAD_RCX_CTX();
@@ -3146,12 +3126,12 @@ void lc86_jit::store_sys_seg_reg(decoded_instr *instr)
 			{
 				constexpr auto seg_offset = idx == GDTR_idx ? CPU_CTX_GDTR : CPU_CTX_IDTR;
 				MOV(EBX, EDX);
-				MOV(AX, MEMD16(RCX, seg_offset + seg_limit_offset));
-				ST_MEMs(AX, SIZE16);
+				MOV(R8W, MEMD16(RCX, seg_offset + seg_limit_offset));
+				ST_MEMs(R8W, SIZE16);
 				ADD(EBX, 2);
 				MOV(EDX, EBX);
-				LD_SEG_BASE(EAX, seg_offset);
-				ST_MEMs(EAX, SIZE32);
+				LD_SEG_BASE(R8D, seg_offset);
+				ST_MEMs(R8D, SIZE32);
 			});
 	}
 	else if constexpr ((idx == TR_idx) || (idx == LDTR_idx)) {
@@ -3171,8 +3151,8 @@ void lc86_jit::store_sys_seg_reg(decoded_instr *instr)
 			},
 			[this](const op_info rm)
 			{
-				MOV(AX, MEMD16(RCX, seg_offset));
-				ST_MEMs(AX, SIZE16);
+				MOV(R8W, MEMD16(RCX, seg_offset));
+				ST_MEMs(R8W, SIZE16);
 			});
 	}
 	else {
@@ -3317,7 +3297,7 @@ void lc86_jit::bit(decoded_instr *instr)
 				ST_REG_val(dst, op_dst.val, op_dst.bits);
 			}
 			else {
-				auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+				auto dst_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 				MOV(dst_host_reg, dst);
 				ST_MEM(dst_host_reg);
 			}
@@ -4303,7 +4283,8 @@ lc86_jit::call(decoded_instr *instr)
 			RAISEin_no_param_f();
 		}
 		else {
-			gen_stack_push(m_cpu->cpu_ctx.regs.cs, ret_eip);
+			gen_stack_push(m_cpu->cpu_ctx.regs.cs);
+			gen_stack_push(ret_eip);
 			uint32_t new_cs_base = new_sel << 4;
 			ST_SEG(CPU_CTX_CS, new_sel);
 			ST_R32(CPU_CTX_EIP, call_eip);
@@ -4383,7 +4364,8 @@ lc86_jit::call(decoded_instr *instr)
 			else {
 				MOV(MEMD16(RSP, LOCAL_VARS_off(0)), AX);
 				MOV(MEMD32(RSP, LOCAL_VARS_off(1)), EBX);
-				gen_stack_push(m_cpu->cpu_ctx.regs.cs, ret_eip);
+				gen_stack_push(m_cpu->cpu_ctx.regs.cs);
+				gen_stack_push(ret_eip);
 				MOV(AX, MEMD16(RSP, LOCAL_VARS_off(0)));
 				MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(1)));
 				ST_SEG(CPU_CTX_CS, AX);
@@ -4917,9 +4899,10 @@ lc86_jit::cmpxchg(decoded_instr *instr)
 			[this, cmp_host_reg, src](const op_info rm)
 			{
 				Label equal = m_a.newLabel(), done = m_a.newLabel();
-				auto src_host_reg = SIZED_REG(x64::r10, src.bits);
+				auto src_host_reg = SIZED_REG(x64::r8, src.bits);
 				auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
-				auto sub_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
+				auto sub_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
+				auto r8_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 				MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
 				LD_MEM();
 				MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
@@ -4928,16 +4911,16 @@ lc86_jit::cmpxchg(decoded_instr *instr)
 				MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), dst_host_reg);
 				MOV(MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode), sub_host_reg);
 				BR_EQ(equal);
-				ST_REG_val(dst_host_reg, CPU_CTX_EAX, m_cpu->size_mode);
-				ST_MEM(dst_host_reg);
+				ST_REG_val(r8_reg, CPU_CTX_EAX, m_cpu->size_mode);
+				ST_MEM(r8_reg);
 				BR_UNCOND(done);
 				m_a.bind(equal);
 				LD_REG_val(src_host_reg, src.val, src.bits);
 				ST_MEM(src_host_reg);
 				m_a.bind(done);
 				MOV(dst_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
-				MOV(sub_host_reg, MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode));
-				set_flags_sub(dst_host_reg, cmp_host_reg, sub_host_reg);
+				MOV(r8_reg, MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode));
+				set_flags_sub(dst_host_reg, cmp_host_reg, r8_reg);
 			});
 	}
 	break;
@@ -4968,7 +4951,8 @@ lc86_jit::cmpxchg8b(decoded_instr *instr)
 			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
 			BR_EQ(equal);
 			MOV(RBX, RAX);
-			ST_MEMs(RAX, SIZE64);
+			MOV(R8, RAX);
+			ST_MEMs(R8, SIZE64);
 			ST_R32(CPU_CTX_EAX, EBX);
 			SHR(RBX, 32);
 			ST_R32(CPU_CTX_EDX, EBX);
@@ -4977,11 +4961,11 @@ lc86_jit::cmpxchg8b(decoded_instr *instr)
 			MOV(MEMD32(RCX, CPU_CTX_EFLAGS_RES), EDX);
 			BR_UNCOND(done);
 			m_a.bind(equal);
-			LD_R32(EAX, CPU_CTX_ECX);
+			LD_R32(R8D, CPU_CTX_ECX);
 			LD_R32(EBX, CPU_CTX_EBX);
-			SHL(RAX, 32);
-			OR(RAX, RBX);
-			ST_MEMs(RAX, SIZE64);
+			SHL(R8, 32);
+			OR(R8, RBX);
+			ST_MEMs(R8, SIZE64);
 			MOV(R8D, MEMD32(RCX, CPU_CTX_EFLAGS_RES));
 			MOV(R9D, MEMD32(RCX, CPU_CTX_EFLAGS_AUX));
 			MOV(EAX, R8D);
@@ -5284,15 +5268,15 @@ lc86_jit::enter(decoded_instr *instr)
 {
 	uint32_t stack_sub, nesting_lv = instr->o[OPNUM_SRC].imm.value.u & 0x1F;
 	auto rax_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
-	auto r10_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
+	auto r8_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 
-	MOV(r10_host_reg, MEMD(RCX, CPU_CTX_EBP, m_cpu->size_mode));
+	MOV(r8_host_reg, MEMD(RCX, CPU_CTX_EBP, m_cpu->size_mode));
 	switch ((m_cpu->size_mode << 1) | ((m_cpu->cpu_ctx.hflags & HFLG_SS32) >> SS32_SHIFT))
 	{
 	case (SIZE32 << 1) | 0: { // sp, push 32
 		stack_sub = 4;
 		MOVZX(EBX, MEMD16(RCX, CPU_CTX_ESP));
-		gen_stack_push<false>(r10_host_reg);
+		gen_stack_push<false>(r8_host_reg);
 		MOV(EAX, MEMD32(RCX, CPU_CTX_ESP));
 		AND(EAX, 0xFFFF0000);
 		OR(EBX, EAX);
@@ -5303,7 +5287,7 @@ lc86_jit::enter(decoded_instr *instr)
 	case (SIZE32 << 1) | 1: { // esp, push 32
 		stack_sub = 4;
 		MOV(EBX, MEMD32(RCX, CPU_CTX_ESP));
-		gen_stack_push<false>(r10_host_reg);
+		gen_stack_push<false>(r8_host_reg);
 		MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EBX);
 	}
 	break;
@@ -5311,7 +5295,7 @@ lc86_jit::enter(decoded_instr *instr)
 	case (SIZE16 << 1) | 0: { // sp, push 16
 		stack_sub = 2;
 		MOVZX(EBX, MEMD16(RCX, CPU_CTX_ESP));
-		gen_stack_push<false>(r10_host_reg);
+		gen_stack_push<false>(r8_host_reg);
 		MOV(MEMD16(RSP, LOCAL_VARS_off(0)), BX);
 	}
 	break;
@@ -5319,7 +5303,7 @@ lc86_jit::enter(decoded_instr *instr)
 	case (SIZE16 << 1) | 1: { // esp, push 16
 		stack_sub = 2;
 		MOV(EBX, MEMD32(RCX, CPU_CTX_ESP));
-		gen_stack_push<false>(r10_host_reg);
+		gen_stack_push<false>(r8_host_reg);
 		MOV(MEMD16(RSP, LOCAL_VARS_off(0)), BX);
 	}
 	break;
@@ -5340,12 +5324,12 @@ lc86_jit::enter(decoded_instr *instr)
 			LD_SEG_BASE(EDX, CPU_CTX_SS);
 			ADD(EDX, EAX);
 			LD_MEM();
-			MOV(r10_host_reg, rax_host_reg);
-			gen_stack_push<false>(r10_host_reg);
+			MOV(r8_host_reg, rax_host_reg);
+			gen_stack_push<false>(r8_host_reg);
 		}
 
-		MOV(r10_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
-		gen_stack_push<false>(r10_host_reg);
+		MOV(r8_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
+		gen_stack_push<false>(r8_host_reg);
 	}
 
 	if (m_cpu->cpu_ctx.hflags & HFLG_SS32) {
@@ -5514,8 +5498,8 @@ lc86_jit::fnstcw(decoded_instr *instr)
 			},
 			[this](const op_info rm)
 			{
-				LD_R16(AX, CPU_CTX_FCTRL);
-				ST_MEMs(AX, SIZE16);
+				LD_R16(R8W, CPU_CTX_FCTRL);
+				ST_MEMs(R8W, SIZE16);
 			});
 	}
 }
@@ -5976,14 +5960,16 @@ lc86_jit::ins(decoded_instr *instr)
 			start = rep_start(end);
 		}
 
-		auto val_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+		auto val_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
+		auto rax_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
 		MOVZX(EDX, MEMD16(RCX, CPU_CTX_EDX));
 		if (gen_check_io_priv(EDX)) {
 			MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
 		}
 		LD_IO();
+		MOV(val_host_reg, rax_host_reg);
 
-		LD_SEG_BASE(R8D, CPU_CTX_ES);
+		LD_SEG_BASE(R9D, CPU_CTX_ES);
 		if (m_cpu->addr_mode == ADDR16) {
 			MOVZX(EDX, MEMD16(RCX, CPU_CTX_EDI));
 		}
@@ -5991,7 +5977,7 @@ lc86_jit::ins(decoded_instr *instr)
 			LD_R32(EDX, CPU_CTX_EDI);
 		}
 		MOV(EBX, EDX);
-		ADD(EDX, R8D);
+		ADD(EDX, R9D);
 		ST_MEM(val_host_reg);
 
 		Label sub = m_a.newLabel();
@@ -6521,10 +6507,10 @@ lc86_jit::leave(decoded_instr *instr)
 	gen_stack_pop<1>();
 
 	if (m_cpu->size_mode == SIZE32) {
-		ST_R32(CPU_CTX_EBP, R11D);
+		ST_R32(CPU_CTX_EBP, R8D);
 	}
 	else {
-		ST_R16(CPU_CTX_EBP, R11W);
+		ST_R16(CPU_CTX_EBP, R8W);
 	}
 }
 
@@ -6923,7 +6909,7 @@ lc86_jit::mov(decoded_instr *instr)
 
 	case 0x89: {
 		auto src = GET_REG(OPNUM_SRC);
-		auto src_host_reg = SIZED_REG(x64::rax, src.bits);
+		auto src_host_reg = SIZED_REG(x64::r8, src.bits);
 		LD_REG_val(src_host_reg, src.val, src.bits);
 		get_rm<OPNUM_DST>(instr,
 			[this, src, src_host_reg](const op_info rm)
@@ -6959,16 +6945,15 @@ lc86_jit::mov(decoded_instr *instr)
 	break;
 
 	case 0x8C: {
-		LD_SEG(AX, REG_off(instr->o[OPNUM_SRC].reg.value));
+		MOVZX(R8D, MEMD16(RCX, REG_off(instr->o[OPNUM_SRC].reg.value)));
 		get_rm<OPNUM_DST>(instr,
 			[this](const op_info rm)
 			{
-				MOVZX(EAX, AX);
-				ST_REG_val(EAX, rm.val, SIZE32);
+				ST_REG_val(R8D, rm.val, SIZE32);
 			},
 			[this](const op_info rm)
 			{
-				ST_MEMs(AX, SIZE16);
+				ST_MEMs(R8W, SIZE16);
 			});
 	}
 	break;
@@ -7225,7 +7210,9 @@ lc86_jit::movs(decoded_instr *instr)
 		ADD(EDX, R8D);
 
 		auto eax_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
-		ST_MEM(eax_host_reg);
+		auto r8_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
+		MOV(r8_host_reg, eax_host_reg);
+		ST_MEM(r8_host_reg);
 
 		Label sub = m_a.newLabel();
 		uint32_t k = m_cpu->size_mode;
@@ -7461,8 +7448,9 @@ lc86_jit::neg(decoded_instr *instr)
 				MOV(EDX, EBX);
 				MOV(rbx_host_reg, rax_host_reg);
 				NEG(rax_host_reg);
+				MOV(r8_host_reg, rax_host_reg);
 				MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), rax_host_reg);
-				ST_MEM(rax_host_reg);
+				ST_MEM(r8_host_reg);
 				MOV(r8_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
 				set_flags_sub(0, rbx_host_reg, r8_host_reg);
 			});
@@ -7496,11 +7484,13 @@ lc86_jit::not_(decoded_instr *instr)
 			[this](const op_info rm)
 			{
 				auto rax_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+				auto r8_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 				MOV(EBX, EDX);
 				LD_MEM();
 				MOV(EDX, EBX);
 				NOT(rax_host_reg);
-				ST_MEM(rax_host_reg);
+				MOV(r8_host_reg, rax_host_reg);
+				ST_MEM(r8_host_reg);
 			});
 		break;
 
@@ -7730,11 +7720,11 @@ lc86_jit::pop(decoded_instr *instr)
 
 		if (m_cpu->size_mode == SIZE16) {
 			gen_stack_pop<1>();
-			ST_R16(get_reg_offset(instr->o[OPNUM_SINGLE].reg.value), R11W);
+			ST_R16(get_reg_offset(instr->o[OPNUM_SINGLE].reg.value), R8W);
 		}
 		else {
 			gen_stack_pop<1>();
-			ST_R32(get_reg_offset(instr->o[OPNUM_SINGLE].reg.value), R11D);
+			ST_R32(get_reg_offset(instr->o[OPNUM_SINGLE].reg.value), R8D);
 		}
 		break;
 
@@ -7745,16 +7735,16 @@ lc86_jit::pop(decoded_instr *instr)
 			[this](const op_info rm)
 			{
 				gen_stack_pop<1>();
-				auto r11_host_reg = SIZED_REG(x64::r11, rm.bits);
-				ST_REG_val(r11_host_reg, rm.val, rm.bits);
+				auto r8_host_reg = SIZED_REG(x64::r8, rm.bits);
+				ST_REG_val(r8_host_reg, rm.val, rm.bits);
 			},
 			[this](const op_info rm)
 			{
 				MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
 				gen_stack_pop<1, 0, false>();
 				MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
-				auto r11_host_reg = SIZED_REG(x64::r11, m_cpu->size_mode);
-				ST_MEM(r11_host_reg);
+				auto r8_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
+				ST_MEM(r8_host_reg);
 				if (m_cpu->cpu_ctx.hflags & HFLG_SS32) {
 					ST_R32(CPU_CTX_ESP, EBX);
 				}
@@ -7774,7 +7764,7 @@ lc86_jit::pop(decoded_instr *instr)
 		gen_stack_pop<1, 0, false>();
 
 		if (IS_PE_NOT_VM86()) {
-			MOV(DX, R11W);
+			MOV(DX, R8W);
 
 			switch (sel.first)
 			{
@@ -7815,8 +7805,8 @@ lc86_jit::pop(decoded_instr *instr)
 			}
 		}
 		else {
-			ST_SEG(sel.second, R11W);
-			MOVZX(EAX, R11W);
+			ST_SEG(sel.second, R8W);
+			MOVZX(EAX, R8W);
 			SHL(EAX, 4);
 			ST_SEG_BASE(sel.second, EAX);
 			if (m_cpu->cpu_ctx.hflags & HFLG_SS32) {
@@ -7948,11 +7938,11 @@ lc86_jit::popf(decoded_instr *instr)
 			gen_stack_pop<1>();
 			if (m_cpu->size_mode == SIZE32) {
 				mask |= (IF_MASK | AC_MASK | ID_MASK);
-				MOV(EBX, R11D);
+				MOV(EBX, R8D);
 			}
 			else {
 				mask |= IF_MASK;
-				MOVZX(EBX, R11W);
+				MOVZX(EBX, R8W);
 			}
 		}
 		else {
@@ -7961,8 +7951,8 @@ lc86_jit::popf(decoded_instr *instr)
 				Label exp = m_a.newLabel();
 				gen_stack_pop<1, 0, false>();
 				LD_R32(EAX, CPU_CTX_EFLAGS);
-				MOVZX(EDX, R11W);
-				MOV(R8D, EAX);
+				MOVZX(EDX, R8W);
+				MOV(R9D, EAX);
 				OR(EAX, EDX);
 				AND(EAX, IF_MASK | VIP_MASK);
 				CMP(EAX, IF_MASK | VIP_MASK);
@@ -7980,10 +7970,10 @@ lc86_jit::popf(decoded_instr *instr)
 					ST_R16(CPU_CTX_ESP, BX);
 				}
 				MOV(EBX, EDX);
-				AND(R8D, ~VIF_MASK);
+				AND(R9D, ~VIF_MASK);
 				AND(EDX, IF_MASK);
 				SHL(EDX, 10);
-				OR(EDX, R8D);
+				OR(EDX, R9D);
 				ST_R32(CPU_CTX_EFLAGS, EDX);
 			}
 			else {
@@ -8003,10 +7993,10 @@ lc86_jit::popf(decoded_instr *instr)
 
 		if (m_cpu->size_mode == SIZE32) {
 			mask |= (ID_MASK | AC_MASK);
-			MOV(EBX, R11D);
+			MOV(EBX, R8D);
 		}
 		else {
-			MOVZX(EBX, R11W);
+			MOVZX(EBX, R8W);
 		}
 	}
 
@@ -8328,9 +8318,9 @@ lc86_jit::ret(decoded_instr *instr)
 	case 0xC3: {
 		gen_stack_pop<1>();
 		if (m_cpu->size_mode == SIZE16) {
-			MOVZX(R11D, R11W);
+			MOVZX(R8D, R8W);
 		}
-		ST_R32(CPU_CTX_EIP, R11D);
+		ST_R32(CPU_CTX_EIP, R8D);
 		if (has_imm_op) {
 			if (m_cpu->cpu_ctx.hflags & HFLG_SS32) {
 				LD_R32(EAX, CPU_CTX_ESP);
@@ -9272,11 +9262,13 @@ lc86_jit::xchg(decoded_instr *instr)
 			[this, src, src_host_reg](const op_info rm)
 			{
 				auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
+				auto r8_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 				MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
 				LD_MEM();
+				MOV(r8_host_reg, src_host_reg);
 				MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
 				ST_REG_val(dst_host_reg, src.val, src.bits);
-				ST_MEM(src_host_reg);
+				ST_MEM(r8_host_reg);
 			});
 	}
 	break;
