@@ -22,6 +22,7 @@ struct op_info {
 	size_t val;
 	size_t bits;
 	op_info() : val(0U), bits(0U) {}
+	op_info(size_t val_) : val(val_), bits(0) {}
 	op_info(size_t val_, size_t bits_) : val(val_), bits(bits_) {}
 };
 
@@ -246,8 +247,14 @@ private:
 	void ld_sf(x86::Gp res_dst, x86::Gp aux);
 	void ld_pf(x86::Gp dst, x86::Gp res, x86::Gp aux);
 	void load_mem(uint8_t size);
-	template<typename T, bool dont_write = false>
-	void store_mem(T val, uint8_t size);
+	template<bool dont_write = false>
+	void store_mem(uint8_t size);
+#ifdef XBOX_CPU
+	void load_ipt(uint8_t size);
+	void load_moffset(uint8_t size, addr_t offset);
+	void store_ipt(uint8_t size);
+	void store_moffset(uint8_t size, addr_t offset);
+#endif
 	void load_io(uint8_t size_mode);
 	void store_io(uint8_t size_mode);
 	template<typename T>

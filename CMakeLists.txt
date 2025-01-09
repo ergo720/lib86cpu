@@ -34,6 +34,14 @@ else ()
 message(FATAL_ERROR "Unsupported compiler")
 endif()
 
+if (${LIB86CPU_X64_EMITTER})
+ add_definitions(-DLIB86CPU_X64_EMITTER)
+ set(LIB86CPU_EMITTER "X64")
+else ()
+ set(LIB86CPU_EMITTER "Autodetect (X64)")
+ set(LIB86CPU_X64_EMITTER TRUE) # we only support x64 for now
+endif()
+
 if (${GENERATOR_IS_UMAKE})
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_DEBUG "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Debug")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Release")
@@ -45,7 +53,7 @@ endif()
 
 if (${CMAKE_HOST_WIN32})
 message("Building for Windows")
-include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows)
+include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows ${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/windows)
 set(PLATFORM_HEADERS
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/clock.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/os_exceptions.h"
@@ -56,6 +64,20 @@ set(PLATFORM_SRC
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/os_exceptions.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/os_mem.cpp"
 )
+if (${LIB86CPU_XBOX_BUILD})
+add_definitions(-DXBOX_CPU)
+if (${LIB86CPU_X64_EMITTER})
+set(PLATFORM_HEADERS ${PLATFORM_HEADERS}
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/windows/ipt.h"
+)
+set(PLATFORM_SRC ${PLATFORM_SRC}
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/windows/ipt.cpp"
+)
+endif()
+add_compile_options(/EHa)
+else ()
+add_compile_options(/EHs)
+endif()
 elseif (${CMAKE_HOST_LINUX})
 message("Building for Linux")
 include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux)
@@ -69,20 +91,25 @@ set(PLATFORM_SRC
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/os_exceptions.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/os_mem.cpp"
 )
+if (${LIB86CPU_XBOX_BUILD})
+message(FATAL_ERROR "Inline page tables are not supported on Linux (yet)")
+endif()
 endif()
 
 if (${LIB86CPU_X64_EMITTER})
- add_definitions(-DLIB86CPU_X64_EMITTER)
- set(LIB86CPU_EMITTER "X64")
-else ()
- set(LIB86CPU_X64_EMITTER FALSE)
- set(LIB86CPU_EMITTER "Autodetect")
+set(PLATFORM_HEADERS ${PLATFORM_HEADERS}
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/jit.h"
+)
+set(PLATFORM_SRC ${PLATFORM_SRC}
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/jit.cpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/support.cpp"
+ )
 endif()
 
 message("** Lib86cpu Summary **")
 message("   LIB86CPU_EMITTER=${LIB86CPU_EMITTER}")
-message("   LIB86CPU_X64_EMITTER=${LIB86CPU_X64_EMITTER}")
 message("   LIB86CPU_BUILD_TEST=${LIB86CPU_BUILD_TEST}")
+message("   LIB86CPU_XBOX_BUILD=${LIB86CPU_XBOX_BUILD}")
 
 message("Building lib86cpu")
 include(BuildConfigH.cmake)
@@ -135,9 +162,7 @@ set(HEADERS
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/internal.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/memory_management.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/registers.h"
-
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/emitter_common.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/jit.h"
 
   ${PLATFORM_HEADERS}
 )
@@ -158,10 +183,7 @@ set(SOURCES
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/instructions.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/memory_management.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/translate.cpp"
- 
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/emitter_common.cpp"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/jit.cpp"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/support.cpp"
  
   ${PLATFORM_SRC}
 )
@@ -170,7 +192,7 @@ source_group(TREE ${LIB86CPU_ROOT_DIR} PREFIX header FILES ${HEADERS})
 source_group(TREE ${LIB86CPU_ROOT_DIR} PREFIX source FILES ${SOURCES})
 
 if (${COMPILER_IS_MSVC})
-set(CMAKE_CXX_FLAGS "/EHs /fp:strict /Zc:preprocessor")
+add_compile_options(/fp:strict /Zc:preprocessor)
 add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS -D__STDC_FORMAT_MACROS -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS)
 add_definitions(-wd4146)
 add_definitions(-wd4800)
@@ -186,7 +208,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} \
  "
 )
 elseif (${COMPILER_IS_GNU})
-set(CMAKE_CXX_FLAGS "-m64 -msse2 -fexceptions -funwind-tables")
+add_compile_options(-m64 -msse2 -fexceptions -funwind-tables)
 endif()
 
 if (${LIB86CPU_BUILD_SHARED_LIB})

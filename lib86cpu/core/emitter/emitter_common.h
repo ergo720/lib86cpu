@@ -129,6 +129,7 @@
 
 size_t get_reg_offset(ZydisRegister reg);
 size_t get_seg_prfx_offset(decoded_instr *instr);
+int get_seg_prfx_idx(decoded_instr *instr);
 int get_reg_idx(ZydisRegister reg);
 const std::pair<int, size_t> get_reg_pair(ZydisRegister reg);
 #ifdef LIB86CPU_X64_EMITTER
@@ -183,6 +184,11 @@ inline constexpr auto all_callable_funcs = std::make_tuple(
 	update_crN_helper<1>,
 	update_crN_helper<2>,
 	update_drN_helper,
+	mov_sel_real_helper<SS_idx>,
+	mov_sel_real_helper<DS_idx>,
+	mov_sel_real_helper<ES_idx>,
+	mov_sel_real_helper<FS_idx>,
+	mov_sel_real_helper<GS_idx>,
 	mov_sel_pe_helper<SS_idx>,
 	mov_sel_pe_helper<DS_idx>,
 	mov_sel_pe_helper<ES_idx>,

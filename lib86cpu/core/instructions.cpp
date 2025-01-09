@@ -10,71 +10,89 @@
 
 
 template<unsigned reg>
+concept is_valid_sel_idx = (reg == CS_idx) ||
+(reg == SS_idx) ||
+(reg == DS_idx) ||
+(reg == ES_idx) ||
+(reg == FS_idx) ||
+(reg == GS_idx) ||
+(reg == LDTR_idx) ||
+(reg == TR_idx);
+
+template<unsigned reg>
+requires (is_valid_sel_idx<reg>)
 static void
 write_seg_reg_helper(cpu_t *cpu, uint16_t sel, uint32_t base, uint32_t limit, uint32_t flags)
 {
-	switch (reg)
-	{
-	case CS_idx:
-		cpu->cpu_ctx.regs.cs = sel;
-		cpu->cpu_ctx.regs.cs_hidden.base = base;
-		cpu->cpu_ctx.regs.cs_hidden.limit = limit;
-		cpu->cpu_ctx.regs.cs_hidden.flags = flags;
-		cpu->cpu_ctx.hflags = (((cpu->cpu_ctx.regs.cs_hidden.flags & SEG_HIDDEN_DB) >> 20) | (sel & HFLG_CPL)) | (cpu->cpu_ctx.hflags & ~(HFLG_CS32 | HFLG_CPL));
-		break;
-
-	case SS_idx:
-		cpu->cpu_ctx.regs.ss = sel;
-		cpu->cpu_ctx.regs.ss_hidden.base = base;
-		cpu->cpu_ctx.regs.ss_hidden.limit = limit;
-		cpu->cpu_ctx.regs.ss_hidden.flags = flags;
-		cpu->cpu_ctx.hflags = ((cpu->cpu_ctx.regs.ss_hidden.flags & SEG_HIDDEN_DB) >> 19) | (cpu->cpu_ctx.hflags & ~HFLG_SS32);
-		break;
-
-	case DS_idx:
-		cpu->cpu_ctx.regs.ds = sel;
-		cpu->cpu_ctx.regs.ds_hidden.base = base;
-		cpu->cpu_ctx.regs.ds_hidden.limit = limit;
-		cpu->cpu_ctx.regs.ds_hidden.flags = flags;
-		break;
-
-	case ES_idx:
-		cpu->cpu_ctx.regs.es = sel;
-		cpu->cpu_ctx.regs.es_hidden.base = base;
-		cpu->cpu_ctx.regs.es_hidden.limit = limit;
-		cpu->cpu_ctx.regs.es_hidden.flags = flags;
-		break;
-
-	case FS_idx:
-		cpu->cpu_ctx.regs.fs = sel;
-		cpu->cpu_ctx.regs.fs_hidden.base = base;
-		cpu->cpu_ctx.regs.fs_hidden.limit = limit;
-		cpu->cpu_ctx.regs.fs_hidden.flags = flags;
-		break;
-
-	case GS_idx:
-		cpu->cpu_ctx.regs.gs = sel;
-		cpu->cpu_ctx.regs.gs_hidden.base = base;
-		cpu->cpu_ctx.regs.gs_hidden.limit = limit;
-		cpu->cpu_ctx.regs.gs_hidden.flags = flags;
-		break;
-
-	case LDTR_idx:
+	if constexpr (reg == LDTR_idx) {
 		cpu->cpu_ctx.regs.ldtr = sel;
 		cpu->cpu_ctx.regs.ldtr_hidden.base = base;
 		cpu->cpu_ctx.regs.ldtr_hidden.limit = limit;
 		cpu->cpu_ctx.regs.ldtr_hidden.flags = flags;
-		break;
-
-	case TR_idx:
+	}
+	else if constexpr (reg == TR_idx) {
 		cpu->cpu_ctx.regs.tr = sel;
 		cpu->cpu_ctx.regs.tr_hidden.base = base;
 		cpu->cpu_ctx.regs.tr_hidden.limit = limit;
 		cpu->cpu_ctx.regs.tr_hidden.flags = flags;
-		break;
+	}
+	else {
+		constexpr uint32_t sel_mask = 1 << (reg + ZERO_SEL2HFLG);
+		uint32_t sel_is_zero = base ? 0 : sel_mask;
 
-	default:
-		LIB86CPU_ABORT();
+		switch (reg)
+		{
+		case CS_idx:
+			cpu->cpu_ctx.regs.cs = sel;
+			cpu->cpu_ctx.regs.cs_hidden.base = base;
+			cpu->cpu_ctx.regs.cs_hidden.limit = limit;
+			cpu->cpu_ctx.regs.cs_hidden.flags = flags;
+			cpu->cpu_ctx.hflags = (((cpu->cpu_ctx.regs.cs_hidden.flags & SEG_HIDDEN_DB) >> 20) | (sel & HFLG_CPL)) | sel_is_zero | (cpu->cpu_ctx.hflags & ~(HFLG_CS32 | HFLG_CPL | sel_mask));
+			break;
+
+		case SS_idx:
+			cpu->cpu_ctx.regs.ss = sel;
+			cpu->cpu_ctx.regs.ss_hidden.base = base;
+			cpu->cpu_ctx.regs.ss_hidden.limit = limit;
+			cpu->cpu_ctx.regs.ss_hidden.flags = flags;
+			cpu->cpu_ctx.hflags = ((cpu->cpu_ctx.regs.ss_hidden.flags & SEG_HIDDEN_DB) >> 19) | sel_is_zero | (cpu->cpu_ctx.hflags & ~(HFLG_SS32 | sel_mask));
+			break;
+
+		case DS_idx:
+			cpu->cpu_ctx.regs.ds = sel;
+			cpu->cpu_ctx.regs.ds_hidden.base = base;
+			cpu->cpu_ctx.regs.ds_hidden.limit = limit;
+			cpu->cpu_ctx.regs.ds_hidden.flags = flags;
+			cpu->cpu_ctx.hflags = sel_is_zero | (cpu->cpu_ctx.hflags & ~sel_mask);
+			break;
+
+		case ES_idx:
+			cpu->cpu_ctx.regs.es = sel;
+			cpu->cpu_ctx.regs.es_hidden.base = base;
+			cpu->cpu_ctx.regs.es_hidden.limit = limit;
+			cpu->cpu_ctx.regs.es_hidden.flags = flags;
+			cpu->cpu_ctx.hflags = sel_is_zero | (cpu->cpu_ctx.hflags & ~sel_mask);
+			break;
+
+		case FS_idx:
+			cpu->cpu_ctx.regs.fs = sel;
+			cpu->cpu_ctx.regs.fs_hidden.base = base;
+			cpu->cpu_ctx.regs.fs_hidden.limit = limit;
+			cpu->cpu_ctx.regs.fs_hidden.flags = flags;
+			cpu->cpu_ctx.hflags = sel_is_zero | (cpu->cpu_ctx.hflags & ~sel_mask);
+			break;
+
+		case GS_idx:
+			cpu->cpu_ctx.regs.gs = sel;
+			cpu->cpu_ctx.regs.gs_hidden.base = base;
+			cpu->cpu_ctx.regs.gs_hidden.limit = limit;
+			cpu->cpu_ctx.regs.gs_hidden.flags = flags;
+			cpu->cpu_ctx.hflags = sel_is_zero | (cpu->cpu_ctx.hflags & ~sel_mask);
+			break;
+
+		default:
+			LIB86CPU_ABORT();
+		}
 	}
 }
 
@@ -647,6 +665,53 @@ lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t siz
 		write_seg_reg_helper<CS_idx>(cpu, (code_sel & 0xFFFC) | dpl, read_seg_desc_base_helper(cpu, code_desc), read_seg_desc_limit_helper(cpu, code_desc), read_seg_desc_flags_helper(cpu, code_desc));
 		cpu->cpu_ctx.regs.esp = esp;
 		cpu_ctx->regs.eip = (new_eip & ~eip_mask) | (new_eip & eip_mask);
+	}
+
+	return 0;
+}
+
+template<unsigned reg>
+uint32_t mov_sel_real_helper(cpu_ctx_t *cpu_ctx, uint16_t sel)
+{
+	constexpr uint32_t sel_mask = 1 << (reg + ZERO_SEL2HFLG);
+	uint32_t base = sel << 4;
+	uint32_t sel_is_zero = base ? 0 : sel_mask;
+	cpu_ctx->hflags = sel_is_zero | (cpu_ctx->hflags & ~sel_mask);
+
+	switch (reg)
+	{
+	case CS_idx:
+		cpu_ctx->regs.cs = sel;
+		cpu_ctx->regs.cs_hidden.base = base;
+		break;
+
+	case SS_idx:
+		cpu_ctx->regs.ss = sel;
+		cpu_ctx->regs.ss_hidden.base = base;
+		break;
+
+	case DS_idx:
+		cpu_ctx->regs.ds = sel;
+		cpu_ctx->regs.ds_hidden.base = base;
+		break;
+
+	case ES_idx:
+		cpu_ctx->regs.es = sel;
+		cpu_ctx->regs.es_hidden.base = base;
+		break;
+
+	case FS_idx:
+		cpu_ctx->regs.fs = sel;
+		cpu_ctx->regs.fs_hidden.base = base;
+		break;
+
+	case GS_idx:
+		cpu_ctx->regs.gs = sel;
+		cpu_ctx->regs.gs_hidden.base = base;
+		break;
+
+	default:
+		LIB86CPU_ABORT();
 	}
 
 	return 0;
@@ -1444,6 +1509,12 @@ template JIT_API void verrw_helper<false>(cpu_ctx_t *cpu_ctx, uint16_t sel);
 
 template JIT_API void hlt_helper<true>(cpu_ctx_t *cpu_ctx);
 template JIT_API void hlt_helper<false>(cpu_ctx_t *cpu_ctx);
+
+template JIT_API uint32_t mov_sel_real_helper<DS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel);
+template JIT_API uint32_t mov_sel_real_helper<ES_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel);
+template JIT_API uint32_t mov_sel_real_helper<SS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel);
+template JIT_API uint32_t mov_sel_real_helper<FS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel);
+template JIT_API uint32_t mov_sel_real_helper<GS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel);
 
 template JIT_API uint32_t mov_sel_pe_helper<DS_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel);
 template JIT_API uint32_t mov_sel_pe_helper<ES_idx>(cpu_ctx_t *cpu_ctx, uint16_t sel);

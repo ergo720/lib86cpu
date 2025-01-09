@@ -15,12 +15,29 @@
 #include "x64/jit.h"
 #endif
 
+#ifdef XBOX_CPU
+#include "ipt.h"
+#endif
+
 #define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(disas_ctx->virt_pc - cpu->instr_bytes, &instr).c_str())
 
 // Make sure we can safely use memset on the register structs
 static_assert(std::is_trivially_copyable_v<regs_t>);
 static_assert(std::is_trivially_copyable_v<msr_t>);
 
+
+#ifdef XBOX_CPU
+template<typename T>
+void memory_region_t<T>::cpu_rom_deinit(uint8_t *rom_ptr, uint8_t *rom_alias_ptr, addr_t start)
+{
+	if constexpr (std::is_same_v<T, addr_t>) {
+		ipt_rom_deinit(rom_ptr, rom_alias_ptr, start);
+	}
+}
+
+template void memory_region_t<addr_t>::cpu_rom_deinit(uint8_t *rom_ptr, uint8_t *rom_alias_ptr, addr_t start);
+template void memory_region_t<port_t>::cpu_rom_deinit(uint8_t *rom_ptr, uint8_t *rom_alias_ptr, addr_t start);
+#endif
 
 void
 cpu_reset(cpu_t *cpu)
@@ -456,12 +473,13 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 				push_regs.template operator()<false, true>(cpu_ctx, esp, stack_mask, stack_base, 2);
 			}
 
+			uint32_t ss_is_zero = stack_base ? 0 : HFLG_SS_IS_ZERO;
 			uint32_t ss_flags = read_seg_desc_flags_helper(cpu, ss_desc);
 			cpu_ctx->regs.ss = (new_ss & ~3) | dpl;
 			cpu_ctx->regs.ss_hidden.base = stack_base;
 			cpu_ctx->regs.ss_hidden.limit = read_seg_desc_limit_helper(cpu, ss_desc);
 			cpu_ctx->regs.ss_hidden.flags = ss_flags;
-			cpu_ctx->hflags = ((ss_flags & SEG_HIDDEN_DB) >> 19) | (cpu_ctx->hflags & ~HFLG_SS32);
+			cpu_ctx->hflags = (((ss_flags & SEG_HIDDEN_DB) >> 19) | ss_is_zero) | (cpu_ctx->hflags & ~(HFLG_SS32 | HFLG_SS_IS_ZERO));
 		}
 		else {
 			if (type) { // push 32, not priv
@@ -472,13 +490,14 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 			}
 		}
 
+		uint32_t cs_is_zero = seg_base ? 0 : HFLG_CS_IS_ZERO;
 		cpu_ctx->regs.eflags = (eflags & ~(VM_MASK | RF_MASK | NT_MASK | TF_MASK));
 		cpu_ctx->regs.esp = (cpu_ctx->regs.esp & ~stack_mask) | (esp & stack_mask);
 		cpu_ctx->regs.cs = (sel & ~3) | dpl;
 		cpu_ctx->regs.cs_hidden.base = seg_base;
 		cpu_ctx->regs.cs_hidden.limit = seg_limit;
 		cpu_ctx->regs.cs_hidden.flags = seg_flags;
-		cpu_ctx->hflags = (((seg_flags & SEG_HIDDEN_DB) >> 20) | dpl) | (cpu_ctx->hflags & ~(HFLG_CS32 | HFLG_CPL));
+		cpu_ctx->hflags = (((seg_flags & SEG_HIDDEN_DB) >> 20) | dpl | cs_is_zero) | (cpu_ctx->hflags & ~(HFLG_CS32 | HFLG_CPL | HFLG_CS_IS_ZERO));
 		cpu_ctx->regs.eip = new_eip;
 		if (idx == EXP_PF) {
 			cpu_ctx->regs.cr2 = fault_addr;
@@ -509,6 +528,8 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		cpu_ctx->regs.cs = vec_entry >> 16;
 		cpu_ctx->regs.cs_hidden.base = cpu_ctx->regs.cs << 4;
 		cpu_ctx->regs.eip = vec_entry & 0xFFFF;
+		uint32_t cs_is_zero = cpu_ctx->regs.cs_hidden.base ? 0 : HFLG_CS_IS_ZERO;
+		cpu_ctx->hflags = cs_is_zero | (cpu_ctx->hflags & ~HFLG_CS_IS_ZERO);
 	}
 
 	cpu_ctx->exp_info.old_exp = EXP_INVALID;
@@ -832,7 +853,7 @@ cpu_translate(cpu_t *cpu)
 			case ZYDIS_STATUS_INSTRUCTION_TOO_LONG: {
 				// instruction length > 15 bytes
 				cpu->cpu_flags &= ~CPU_DISAS_ONE;
-				volatile addr_t addr = get_code_addr<true>(cpu, disas_ctx->virt_pc + X86_MAX_INSTR_LENGTH, disas_ctx);
+				volatile addr_t addr = get_code_addr<true>(cpu, disas_ctx->virt_pc + X86_MAX_INSTR_LENGTH, &disas_ctx->exp_data);
 				if (disas_ctx->exp_data.idx == EXP_PF) {
 					disas_ctx->flags |= DISAS_FLG_FETCH_FAULT;
 					cpu->jit->gen_raise_exp_inline(disas_ctx->exp_data.fault_addr, disas_ctx->exp_data.code, disas_ctx->exp_data.idx);
@@ -1790,7 +1811,11 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 {
 	try {
 		// run the translated code
+#ifdef XBOX_CPU
+		return ipt_run_guarded_code(cpu_ctx, tc);
+#else
 		return tc->ptr_code(cpu_ctx);
+#endif
 	}
 	catch (host_exp_t type) {
 		switch (type)

@@ -330,7 +330,7 @@ dbg_disas_code_block(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, 
 			addr_t next_pc = disas_ctx->virt_pc + bytes;
 			if ((disas_ctx->virt_pc & ~PAGE_MASK) != ((next_pc - 1) & ~PAGE_MASK)) {
 				// page crossing, needs to translate virt_pc again
-				disas_ctx->pc = get_code_addr<false>(cpu, next_pc, disas_ctx);
+				disas_ctx->pc = get_code_addr<false>(cpu, next_pc, &disas_ctx->exp_data);
 				if (disas_ctx->exp_data.idx == EXP_PF) {
 					// page fault in the new page, cannot display remaining instr
 					disas_ctx->virt_pc = next_pc;
@@ -359,7 +359,7 @@ dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num)
 		((cpu->cpu_ctx.hflags & HFLG_SS32) >> (SS32_SHIFT - 1)) |
 		(cpu->cpu_ctx.hflags & HFLG_PE_MODE);
 	disas_ctx.virt_pc = pc;
-	disas_ctx.pc = get_code_addr<false>(cpu, disas_ctx.virt_pc, &disas_ctx);
+	disas_ctx.pc = get_code_addr<false>(cpu, disas_ctx.virt_pc, &disas_ctx.exp_data);
 	if (disas_ctx.exp_data.idx == EXP_PF) {
 		// page fault, cannot display instr
 		return {};
@@ -547,27 +547,20 @@ dbg_insert_sw_breakpoint(cpu_t *cpu, addr_t addr)
 {
 	// we don't need to disable debug exp because get_write_addr does not access memory
 	// set cpl to zero and clear wp of cr0, so that we can write to read-only pages
-	bool inserted;
+	bool inserted = false;
 	uint8_t old_cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
 	cpu->cpu_ctx.hflags &= ~HFLG_CPL;
 	uint32_t old_wp = cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK;
 	cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK;
 
-	try {
-		bool is_code;
-		addr_t phys_addr = get_write_addr(cpu, addr, 0, &is_code);
-		if (as_memory_search_addr(cpu, phys_addr)->type == mem_type::ram) {
+	bool is_code;
+	exp_data_t exp_data{0, 0, EXP_INVALID};
+	uint32_t page_info;
+	addr_t phys_addr = query_write_addr(cpu, addr, 0, &is_code, &exp_data, &page_info);
+	if (exp_data.idx == EXP_INVALID) {
+		if (as_memory_search_addr(cpu, phys_addr)->type == mem_type::ram) { // we can only set breakpoints in ram
 			inserted = true;
 		}
-		else {
-			// we can only set breakpoints in ram
-			inserted = false;
-		}
-	}
-	catch (host_exp_t type) {
-		// page fault while trying to insert the breakpoint, this can only happen if the page is invalid
-		assert(type == host_exp_t::pf_exp);
-		inserted = false;
 	}
 
 	(cpu->cpu_ctx.hflags &= ~HFLG_CPL) |= old_cpl;

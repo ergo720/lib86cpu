@@ -12,6 +12,7 @@ JIT_API void iret_real_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode);
 JIT_API uint32_t ljmp_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint8_t size_mode, uint32_t jmp_eip);
 JIT_API uint32_t lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t size_mode, uint32_t ret_eip);
 template<bool is_verr> JIT_API void verrw_helper(cpu_ctx_t *cpu_ctx, uint16_t sel);
+template<unsigned reg> JIT_API uint32_t mov_sel_real_helper(cpu_ctx_t *cpu_ctx, uint16_t sel);
 template<unsigned reg> JIT_API uint32_t mov_sel_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel);
 JIT_API uint32_t ltr_helper(cpu_ctx_t *cpu_ctx, uint16_t sel);
 JIT_API uint32_t lldt_helper(cpu_ctx_t *cpu_ctx, uint16_t sel);

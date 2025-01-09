@@ -6,6 +6,8 @@
 
 #pragma once
 
+#include <format>
+#include <concepts>
 #include <forward_list>
 #include <unordered_set>
 #include <bitset>
@@ -39,6 +41,9 @@
 // dtlb: 2048 sets * 4 lines = 8192 entries -> offset 12 bits, index 11 bits, tag 9 bits
 #define DTLB_NUM_SETS (1 << 11)
 #define DTLB_NUM_LINES (1 << 2)
+#ifdef XBOX_CPU
+#define NUM_OF_PAGES (1 << 20)
+#endif
 
  // used to generate the parity table
  // borrowed from Bit Twiddling Hacks by Sean Eron Anderson (public domain)
@@ -73,6 +78,16 @@ struct memory_region_t {
 	addr_t alias_offset;
 	memory_region_t<T> *aliased_region;
 	uint8_t *rom_ptr;
+#ifdef XBOX_CPU
+	uint8_t *rom_alias_ptr;
+	void cpu_rom_deinit(uint8_t *rom_ptr, uint8_t *rom_alias_ptr, addr_t start);
+	~memory_region_t()
+	{
+		if (type == mem_type::rom) {
+			cpu_rom_deinit(rom_ptr, rom_alias_ptr, start);
+		}
+	}
+#endif
 	addr_t buff_off_start;
 	memory_region_t() : start(0), end(0), alias_offset(0), buff_off_start(0), type(mem_type::unmapped), handlers{},
 		opaque(nullptr), aliased_region(nullptr), rom_ptr(nullptr) {};
@@ -171,6 +186,9 @@ struct cpu_ctx_t {
 	uint32_t int_pending;
 	fpu_data_t fpu_data;
 	uint8_t jmp_table[JMP_TABLE_MAX_SIZE];
+#ifdef XBOX_CPU
+	uint8_t *ipt[NUM_OF_PAGES]; // inline page table: translates a guest to a host virtual address, one for each possible virtual page of the xbox
+#endif
 };
 
 // int_pending must be 4 byte aligned to ensure atomicity
@@ -183,7 +201,14 @@ struct cpu_t {
 	cpu_ctx_t cpu_ctx;
 	disas_ctx_t disas_ctx;
 	translated_code_t *tc; // tc for which we are currently generating code
+#ifdef XBOX_CPU
+	uint8_t *ram; // accessed with memory handlers
+	uint8_t *ram_alias; // alias of ram, accessed with the ipt
+	uint8_t *ram_contiguous; // alias of ram, accessed with the ipt
+	uint8_t *ram_tiled; // alias of ram, accessed with the ipt
+#else
 	std::vector<uint8_t> ram;
+#endif
 	std::atomic_flag suspend_flg;
 	std::atomic_flag is_suspended;
 	std::atomic_flag is_saving_state;
@@ -233,4 +258,7 @@ struct cpu_t {
 	uint8_t translate_next;
 	uint32_t a20_mask;
 	uint32_t new_a20;
+#ifdef XBOX_CPU
+	uint8_t *guard_page;
+#endif
 };

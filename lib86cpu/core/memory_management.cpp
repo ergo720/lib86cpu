@@ -6,7 +6,11 @@
 
 #include "internal.h"
 #include "memory_management.h"
+#ifdef XBOX_CPU
+#include "ipt.h"
+#endif
 #include <assert.h>
+#include <optional>
 
 
 static uint32_t
@@ -65,6 +69,10 @@ static addr_t tlb_fill(cpu_t *cpu, addr_t addr, addr_t phys_addr, uint32_t prot)
 	if (prot & MMU_SET_CODE) {
 		prot &= ~MMU_SET_CODE;
 		cpu->smc.set(phys_addr >> PAGE_SHIFT);
+#ifdef XBOX_CPU
+		// This is necessary to catch the case where something first writes to a page (which sets up r/w access for it), and then the cpu starts executing code from it
+		ipt_protect_code_page(cpu, phys_addr);
+#endif
 	}
 
 	uint64_t entry;
@@ -163,6 +171,12 @@ static void tlb_flush(cpu_t *cpu)
 			}
 		}
 	}
+
+#ifdef XBOX_CPU
+	// Page tables might have changed, so we must flush the ipt too. Luckily, on the xbox this should only happen when the kernel initializes the memory manager
+	// and indirectly when the mcpx rom is disabled
+	ipt_flush(cpu);
+#endif
 
 	// Page tables might have changed, so undo all tc links (because they use virtual addresses)
 	// If false, the caller must do this
@@ -265,43 +279,47 @@ check_page_privilege(cpu_t *cpu, uint8_t pde_priv, uint8_t pte_priv)
 
 template<bool raise_host_exp>
 static inline void
-mmu_raise_page_fault(cpu_t *cpu, addr_t addr, disas_ctx_t *disas_ctx, uint8_t err_code, uint8_t is_write, uint8_t cpu_lv)
+mmu_raise_page_fault(cpu_t *cpu, addr_t addr, exp_data_t *exp_data, uint8_t err_code, uint32_t *page_info)
 {
 	// NOTE: the u/s bit of the error code should reflect the actual cpl even if the memory access is privileged
+	if (page_info) {
+		*page_info = 0;
+	}
 	if constexpr (raise_host_exp) {
-		assert(disas_ctx == nullptr);
+		assert(exp_data == nullptr);
 		cpu->cpu_ctx.exp_info.exp_data.fault_addr = addr;
-		cpu->cpu_ctx.exp_info.exp_data.code = err_code | (is_write << 1) | cpu_lv;
+		cpu->cpu_ctx.exp_info.exp_data.code = err_code;
 		cpu->cpu_ctx.exp_info.exp_data.idx = EXP_PF;
 		throw host_exp_t::pf_exp;
 	}
 	else {
-		assert(disas_ctx != nullptr);
-		disas_ctx->exp_data.fault_addr = addr;
-		disas_ctx->exp_data.code = err_code | (is_write << 1) | cpu_lv;
-		disas_ctx->exp_data.idx = EXP_PF;
+		assert(exp_data != nullptr);
+		exp_data->fault_addr = addr;
+		exp_data->code = err_code;
+		exp_data->idx = EXP_PF;
 	}
 }
 
 // NOTE: flags: bit 0 -> is_write, bit 1 -> is_priv, bit 4 -> set_code
-template<bool is_fetch, bool should_fill_tlb = true, bool raise_host_exp = true>
-addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, disas_ctx_t *disas_ctx = nullptr)
+template<bool is_fetch, bool should_fill_tlb, bool raise_host_exp>
+static addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, exp_data_t *exp_data, uint32_t *page_info)
 {
 	uint32_t is_write = flags & MMU_IS_WRITE;
 	uint32_t set_code = flags & MMU_SET_CODE;
 
 	if (!(cpu->cpu_ctx.regs.cr0 & CR0_PG_MASK)) {
 		if constexpr (should_fill_tlb) {
-			return tlb_fill<is_fetch>(cpu, addr, addr, TLB_SUP_READ | TLB_SUP_WRITE | TLB_USER_READ | TLB_USER_WRITE | (is_write << 9) | set_code);
+			return tlb_fill<is_fetch>(cpu, addr, addr, TLB_SUP_READ | TLB_SUP_WRITE | TLB_USER_READ | TLB_USER_WRITE | TLB_DIRTY | set_code);
 		}
 		else {
+			assert(page_info);
+			*page_info = PAGE_READ | PAGE_WRITE | PAGE_USER | PAGE_ACCESSED | PAGE_DIRTY;
 			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, addr);
 			return correct_phys_addr(cpu, addr, region);
 		}
 	}
 	else {
 		uint8_t is_priv = flags & MMU_IS_PRIV;
-		uint8_t err_code = 0;
 		uint8_t cpu_lv = (cpu->cpu_ctx.hflags & HFLG_CPL) != 3 ? 0 : 4;
 		addr_t pde_addr = (cpu->cpu_ctx.regs.cr3 & CR3_PD_MASK) | (addr >> PAGE_SHIFT_LARGE) * 4;
 		const memory_region_t<addr_t> *pde_region = as_memory_search_addr(cpu, pde_addr);
@@ -309,7 +327,7 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, disas_ctx_t *
 		uint32_t pde = as_memory_dispatch_read<uint32_t>(cpu, pde_addr, pde_region);
 
 		if (!(pde & PTE_PRESENT)) {
-			mmu_raise_page_fault<raise_host_exp>(cpu, addr, disas_ctx, err_code, is_write, cpu_lv);
+			mmu_raise_page_fault<raise_host_exp>(cpu, addr, exp_data, 0 | (is_write << 1) | cpu_lv, page_info);
 			return 0;
 		}
 		
@@ -317,26 +335,31 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, disas_ctx_t *
 		uint8_t pde_priv = (pde & PTE_WRITE) | (pde & PTE_USER);
 		if ((pde & PTE_LARGE) && (cpu->cpu_ctx.regs.cr4 & CR4_PSE_MASK)) {
 			if (check_page_access(cpu, pde_priv, mem_access)) {
-				if (!(pde & PTE_ACCESSED) || is_write) {
-					pde |= PTE_ACCESSED;
-					if (is_write) {
-						pde |= PTE_DIRTY;
-					}
-					as_memory_dispatch_write<uint32_t>(cpu, pde_addr, pde, pde_region);
-				}
 				if constexpr (should_fill_tlb) {
+					if (!(pde & PTE_ACCESSED) || is_write) {
+						pde |= PTE_ACCESSED;
+						if (is_write) {
+							pde |= PTE_DIRTY;
+						}
+						as_memory_dispatch_write<uint32_t>(cpu, pde_addr, pde, pde_region);
+					}
 					return tlb_fill<is_fetch>(cpu, addr, (pde & PTE_ADDR_4M) | (addr & PAGE_MASK_LARGE),
 						tlb_gen_access_mask(cpu, pde_priv & PTE_USER, pde_priv & PTE_WRITE)
 						| (is_write << 9) | set_code | ((pde & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
 				}
 				else {
+					assert(page_info);
+					*page_info = PAGE_READ |
+						(pde & PTE_WRITE) |
+						(pde & PTE_USER) |
+						(pde & PTE_ACCESSED) |
+						(pde & PTE_DIRTY);
 					addr_t phys_addr = (pde & PTE_ADDR_4M) | (addr & PAGE_MASK_LARGE);
 					const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
 					return correct_phys_addr(cpu, phys_addr, region);
 				}
 			}
-			err_code = 1;
-			mmu_raise_page_fault<raise_host_exp>(cpu, addr, disas_ctx, err_code, is_write, cpu_lv);
+			mmu_raise_page_fault<raise_host_exp>(cpu, addr, exp_data, 1 | (is_write << 1) | cpu_lv, page_info);
 			return 0;
 		}
 
@@ -346,41 +369,146 @@ addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, disas_ctx_t *
 		uint32_t pte = as_memory_dispatch_read<uint32_t>(cpu, pte_addr, pte_region);
 
 		if (!(pte & PTE_PRESENT)) {
-			mmu_raise_page_fault<raise_host_exp>(cpu, addr, disas_ctx, err_code, is_write, cpu_lv);
+			mmu_raise_page_fault<raise_host_exp>(cpu, addr, exp_data, 0 | (is_write << 1) | cpu_lv, page_info);
 			return 0;
 		}
 
 		int8_t access_lv = check_page_privilege(cpu, pde_priv, (pte & PTE_WRITE) | (pte & PTE_USER));
 		if (check_page_access(cpu, access_lv, mem_access)) {
-			if (!(pde & PTE_ACCESSED)) {
-				// NOTE: pdes that map page tables do not use the dirty bit. Also note that we must check this here because, if a pde is valid but the pte is not,
-				// a page fault will occur and the accessed bit should not be set
-				pde |= PTE_ACCESSED;
-				as_memory_dispatch_write<uint32_t>(cpu, pde_addr, pde, pde_region);
-			}
-			if (!(pte & PTE_ACCESSED) || is_write) {
-				pte |= PTE_ACCESSED;
-				if (is_write) {
-					pte |= PTE_DIRTY;
-				}
-				as_memory_dispatch_write<uint32_t>(cpu, pte_addr, pte, pte_region);
-			}
 			if constexpr (should_fill_tlb) {
+				if (!(pde & PTE_ACCESSED)) {
+					// NOTE: pdes that map page tables do not use the dirty bit. Also note that we must check this here because, if a pde is valid but the pte is not,
+					// a page fault will occur and the accessed bit should not be set
+					pde |= PTE_ACCESSED;
+					as_memory_dispatch_write<uint32_t>(cpu, pde_addr, pde, pde_region);
+				}
+				if (!(pte & PTE_ACCESSED) || is_write) {
+					pte |= PTE_ACCESSED;
+					if (is_write) {
+						pte |= PTE_DIRTY;
+					}
+					as_memory_dispatch_write<uint32_t>(cpu, pte_addr, pte, pte_region);
+				}
 				return tlb_fill<is_fetch>(cpu, addr, (pte & PTE_ADDR_4K) | (addr & PAGE_MASK),
 					tlb_gen_access_mask(cpu, access_lv & PTE_USER, access_lv & PTE_WRITE)
 					| (is_write << 9) | set_code | ((pte & PTE_GLOBAL) & ((cpu->cpu_ctx.regs.cr4 & CR4_PGE_MASK) << 1)));
 			}
 			else {
+				assert(page_info);
+				*page_info = PAGE_READ |
+					(pte & PTE_WRITE) |
+					(pte & PTE_USER) |
+					(pte & PTE_ACCESSED) |
+					(pte & PTE_DIRTY);
 				addr_t phys_addr = (pte & PTE_ADDR_4K) | (addr & PAGE_MASK);
 				const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
 				return correct_phys_addr(cpu, phys_addr, region);
 			}
 		}
-		err_code = 1;
 
-		mmu_raise_page_fault<raise_host_exp>(cpu, addr, disas_ctx, err_code, is_write, cpu_lv);
+		mmu_raise_page_fault<raise_host_exp>(cpu, addr, exp_data, 1 | (is_write << 1) | cpu_lv, page_info);
 		return 0;
 	}
+}
+
+template<bool is_fetch>
+static addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags)
+{
+	// Translates an address
+	return mmu_translate_addr<is_fetch, true, true>(cpu, addr, flags, nullptr, nullptr);
+}
+
+template<bool is_fetch>
+static addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, exp_data_t *exp_data)
+{
+	// Translates an address without throwing when invalid
+	return mmu_translate_addr<is_fetch, true, false>(cpu, addr, flags, exp_data, nullptr);
+}
+
+template<bool is_fetch>
+static addr_t mmu_translate_addr(cpu_t *cpu, addr_t addr, uint32_t flags, exp_data_t *exp_data, uint32_t *page_info)
+{
+	// Translates an address, doesn't throw when invalid and queries the page info
+	return mmu_translate_addr<is_fetch, false, false>(cpu, addr, flags, exp_data, page_info);
+}
+
+template<bool query_page>
+static inline std::optional<addr_t>
+tlb_get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, uint32_t *page_info)
+{
+	uint32_t idx = (addr >> PAGE_SHIFT) & DTLB_IDX_MASK;
+	uint64_t mem_access = tlb_access[0][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv];
+	uint64_t tag = ((static_cast<uint64_t>(addr) << DTLB_TAG_SHIFT64) & DTLB_TAG_MASK64) | mem_access;
+	mem_access |= DTLB_TAG_MASK64;
+	for (unsigned i = 0; i < DTLB_NUM_LINES; ++i) {
+		if (((cpu->dtlb[idx][i].entry & mem_access) ^ tag) == 0) {
+			if constexpr (query_page) {
+				assert(page_info);
+				uint64_t entry = cpu->dtlb[idx][i].entry;
+				*page_info = PAGE_READ |
+					(entry & TLB_SUP_WRITE) |
+					((entry & TLB_USER_WRITE) << 2) |
+					(entry & TLB_USER_READ) |
+					((entry & TLB_USER_WRITE) << 1) |
+					PAGE_ACCESSED |
+					((entry & TLB_DIRTY) << 3);
+			}
+			return (addr_t)((cpu->dtlb[idx][i].entry & ~PAGE_MASK) | (addr & PAGE_MASK));
+		}
+	}
+
+	return std::nullopt;
+}
+
+template<bool query_page>
+static inline std::optional<addr_t>
+tlb_get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, bool *is_code, uint32_t *page_info)
+{
+	uint32_t idx = (addr >> PAGE_SHIFT) & DTLB_IDX_MASK;
+	uint64_t mem_access = tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv];
+	uint64_t tag = ((static_cast<uint64_t>(addr) << DTLB_TAG_SHIFT64) & DTLB_TAG_MASK64) | mem_access;
+	mem_access |= DTLB_TAG_MASK64;
+	for (unsigned i = 0; i < DTLB_NUM_LINES; ++i) {
+		if (((cpu->dtlb[idx][i].entry & mem_access) ^ tag) == 0) {
+			if constexpr (query_page) {
+				assert(page_info);
+				uint64_t entry = cpu->dtlb[idx][i].entry;
+				*page_info = PAGE_READ |
+					(entry & TLB_SUP_WRITE) |
+					((entry & TLB_USER_WRITE) << 2) |
+					(entry & TLB_USER_READ) |
+					((entry & TLB_USER_WRITE) << 1) |
+					PAGE_ACCESSED |
+					((entry & TLB_DIRTY) << 3);
+			}
+			else {
+				if (!(cpu->dtlb[idx][i].entry & TLB_DIRTY)) {
+					cpu->dtlb[idx][i].entry |= TLB_DIRTY;
+				}
+			}
+			addr_t phys_addr = (cpu->dtlb[idx][i].entry & ~PAGE_MASK) | (addr & PAGE_MASK);
+			*is_code = cpu->smc[phys_addr >> PAGE_SHIFT];
+			return phys_addr;
+		}
+	}
+
+	return std::nullopt;
+}
+
+static inline std::optional<addr_t>
+tlb_get_code_addr(cpu_t *cpu, addr_t addr)
+{
+	uint32_t idx = (addr >> PAGE_SHIFT) & ITLB_IDX_MASK;
+	uint64_t mem_access = tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL];
+	uint64_t tag = ((static_cast<uint64_t>(addr) << ITLB_TAG_SHIFT64) & ITLB_TAG_MASK64) | mem_access;
+	mem_access |= ITLB_TAG_MASK64;
+	for (unsigned i = 0; i < ITLB_NUM_LINES; ++i) {
+		if (((cpu->itlb[idx][i].entry & mem_access) ^ tag) == 0) {
+			return (addr_t)((cpu->itlb[idx][i].entry & ~PAGE_MASK) | (addr & PAGE_MASK));
+		}
+	}
+
+	return std::nullopt;
 }
 
 // These functions below only get the address of a single byte and thus do not need to check for a page boundary crossing. They return a corrected
@@ -394,17 +522,34 @@ get_read_addr_slow(cpu_t* cpu, addr_t addr, uint8_t is_priv)
 addr_t
 get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv)
 {
-	uint32_t idx = (addr >> PAGE_SHIFT) & DTLB_IDX_MASK;
-	uint64_t mem_access = tlb_access[0][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv];
-	uint64_t tag = ((static_cast<uint64_t>(addr) << DTLB_TAG_SHIFT64) & DTLB_TAG_MASK64) | mem_access;
-	mem_access |= DTLB_TAG_MASK64;
-	for (unsigned i = 0; i < DTLB_NUM_LINES; ++i) {
-		if (((cpu->dtlb[idx][i].entry & mem_access) ^ tag) == 0) {
-			return (cpu->dtlb[idx][i].entry & ~PAGE_MASK) | (addr & PAGE_MASK);
-		}
+	// Translates an address with the tlb and, if it misses, with the mmu
+	if (const auto opt = tlb_get_read_addr<false>(cpu, addr, is_priv, nullptr); opt) {
+		return *opt;
 	}
 
-	return get_read_addr_slow(cpu, addr, is_priv);
+	return mmu_translate_addr<false>(cpu, addr, is_priv);
+}
+
+addr_t
+get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, exp_data_t *exp_data)
+{
+	// Translates an address with the tlb and, if it misses, with the mmu. Doesn't throw when the address is invalid
+	if (const auto opt = tlb_get_read_addr<false>(cpu, addr, is_priv, nullptr); opt) {
+		return *opt;
+	}
+
+	return mmu_translate_addr<false>(cpu, addr, is_priv, exp_data);
+}
+
+addr_t
+query_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, exp_data_t *exp_data, uint32_t *page_info)
+{
+	// Translates an address with the tlb and, if it misses, with the mmu. Doesn't throw and returns the page information
+	if (const auto opt = tlb_get_read_addr<true>(cpu, addr, is_priv, page_info); opt) {
+		return *opt;
+	}
+
+	return mmu_translate_addr<false>(cpu, addr, is_priv, exp_data, page_info);
 }
 
 addr_t
@@ -418,63 +563,63 @@ get_write_addr_slow(cpu_t* cpu, addr_t addr, uint8_t is_priv, bool* is_code)
 addr_t
 get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, bool *is_code)
 {
-	// this also needs to check for the dirty flag, to catch the case where the first access to the page is a read and then a write happens, so that
-	// we give the mmu the chance to set the dirty flag in the pte
-
-	uint32_t idx = (addr >> PAGE_SHIFT) & DTLB_IDX_MASK;
-	uint64_t mem_access = tlb_access[1][(cpu->cpu_ctx.hflags & HFLG_CPL) >> is_priv];
-	uint64_t tag = ((static_cast<uint64_t>(addr) << DTLB_TAG_SHIFT64) & DTLB_TAG_MASK64) | mem_access;
-	mem_access |= DTLB_TAG_MASK64;
-	for (unsigned i = 0; i < DTLB_NUM_LINES; ++i) {
-		if (((cpu->dtlb[idx][i].entry & mem_access) ^ tag) == 0) {
-			if (!(cpu->dtlb[idx][i].entry & TLB_DIRTY)) {
-				cpu->dtlb[idx][i].entry |= TLB_DIRTY;
-				mmu_translate_addr<false, false>(cpu, addr, MMU_IS_WRITE | is_priv);
-			}
-			addr_t phys_addr = (cpu->dtlb[idx][i].entry & ~PAGE_MASK) | (addr & PAGE_MASK);
-			*is_code = cpu->smc[phys_addr >> PAGE_SHIFT];
-			return phys_addr;
-		}
+	// Translates an address with the tlb and, if it misses, with the mmu
+	if (auto opt = tlb_get_write_addr<false>(cpu, addr, is_priv, is_code, nullptr); opt) {
+		return *opt;
 	}
 
-	return get_write_addr_slow(cpu, addr, MMU_IS_WRITE | is_priv, is_code);
+	addr_t phys_addr = mmu_translate_addr<false>(cpu, addr, MMU_IS_WRITE | is_priv);
+	*is_code = cpu->smc[phys_addr >> PAGE_SHIFT];
+	return phys_addr;
+}
+
+addr_t
+get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, bool *is_code, exp_data_t *exp_data)
+{
+	// Translates an address with the tlb and, if it misses, with the mmu. Doesn't throw when the address is invalid
+	if (auto opt = tlb_get_write_addr<false>(cpu, addr, is_priv, is_code, nullptr); opt) {
+		return *opt;
+	}
+
+	addr_t phys_addr = mmu_translate_addr<false>(cpu, addr, MMU_IS_WRITE | is_priv, exp_data);
+	*is_code = cpu->smc[phys_addr >> PAGE_SHIFT];
+	return phys_addr;
+}
+
+addr_t
+query_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, bool *is_code, exp_data_t *exp_data, uint32_t *page_info)
+{
+	// Translates an address with the tlb and, if it misses, with the mmu. Doesn't throw and returns the page information
+	if (auto opt = tlb_get_write_addr<true>(cpu, addr, is_priv, is_code, page_info); opt) {
+		return *opt;
+	}
+
+	addr_t phys_addr = mmu_translate_addr<false>(cpu, addr, MMU_IS_WRITE | is_priv, exp_data, page_info);
+	*is_code = cpu->smc[phys_addr >> PAGE_SHIFT];
+	return phys_addr;
 }
 
 addr_t
 get_code_addr(cpu_t *cpu, addr_t addr)
 {
-	// this is only used for ram fetching, so we don't need to check for privileged accesses
-
-	uint32_t idx = (addr >> PAGE_SHIFT) & ITLB_IDX_MASK;
-	uint64_t mem_access = tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL];
-	uint64_t tag = ((static_cast<uint64_t>(addr) << ITLB_TAG_SHIFT64) & ITLB_TAG_MASK64) | mem_access;
-	mem_access |= ITLB_TAG_MASK64;
-	for (unsigned i = 0; i < ITLB_NUM_LINES; ++i) {
-		if (((cpu->itlb[idx][i].entry & mem_access) ^ tag) == 0) {
-			return (cpu->itlb[idx][i].entry & ~PAGE_MASK) | (addr & PAGE_MASK);
-		}
+	// This is only used for ram fetching, so we don't need to check for privileged accesses
+	if (auto opt = tlb_get_code_addr(cpu, addr); opt) {
+		return *opt;
 	}
 
 	return mmu_translate_addr<true>(cpu, addr, MMU_SET_CODE);
 }
 
 template<bool set_smc>
-addr_t get_code_addr(cpu_t *cpu, addr_t addr, disas_ctx_t *disas_ctx)
+addr_t get_code_addr(cpu_t *cpu, addr_t addr, exp_data_t *exp_data)
 {
-	// overloaded get_code_addr that does not throw host exceptions, used in cpu_translate and by the debugger
+	// Overloaded get_code_addr that does not throw host exceptions, used in cpu_translate and by the debugger
 	// NOTE: the debugger should not set the smc, since it doesn't execute the instructions
-
-	uint32_t idx = (addr >> PAGE_SHIFT) & ITLB_IDX_MASK;
-	uint64_t mem_access = tlb_access[0][cpu->cpu_ctx.hflags & HFLG_CPL];
-	uint64_t tag = ((static_cast<uint64_t>(addr) << ITLB_TAG_SHIFT64) & ITLB_TAG_MASK64) | mem_access;
-	mem_access |= ITLB_TAG_MASK64;
-	for (unsigned i = 0; i < ITLB_NUM_LINES; ++i) {
-		if (((cpu->itlb[idx][i].entry & mem_access) ^ tag) == 0) {
-			return (cpu->itlb[idx][i].entry & ~PAGE_MASK) | (addr & PAGE_MASK);
-		}
+	if (auto opt = tlb_get_code_addr(cpu, addr); opt) {
+		return *opt;
 	}
 
-	return mmu_translate_addr<true, true, false>(cpu, addr, set_smc ? MMU_SET_CODE : 0, disas_ctx);
+	return mmu_translate_addr<true>(cpu, addr, set_smc ? MMU_SET_CODE : 0, exp_data);
 }
 
 uint64_t
@@ -524,7 +669,7 @@ ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer)
 			return;
 		}
 
-		addr_t addr = get_code_addr<true>(cpu, disas_ctx->virt_pc + bytes_in_first_page, disas_ctx);
+		addr_t addr = get_code_addr<true>(cpu, disas_ctx->virt_pc + bytes_in_first_page, &disas_ctx->exp_data);
 		if (disas_ctx->exp_data.idx == EXP_PF) {
 			// a page fault will be raised when fetching from the second page
 			disas_ctx->instr_buff_size = bytes_in_first_page;
@@ -757,5 +902,5 @@ template JIT_API void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, uint8_t v
 template JIT_API void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, uint16_t val);
 template JIT_API void io_write_helper(cpu_ctx_t *cpu_ctx, port_t port, uint32_t val);
 
-template addr_t get_code_addr<false>(cpu_t *cpu, addr_t addr, disas_ctx_t *disas_ctx);
-template addr_t get_code_addr<true>(cpu_t *cpu, addr_t addr, disas_ctx_t *disas_ctx);
+template addr_t get_code_addr<false>(cpu_t *cpu, addr_t addr, exp_data_t *exp_data);
+template addr_t get_code_addr<true>(cpu_t *cpu, addr_t addr, exp_data_t *exp_data);

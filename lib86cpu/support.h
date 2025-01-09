@@ -39,7 +39,7 @@ class lc86_exp_abort : public std::runtime_error
 public:
     explicit lc86_exp_abort(const std::string &msg, lc86_status status) : runtime_error(msg.c_str()), status(status) {}
     explicit lc86_exp_abort(const char *msg, lc86_status status) : runtime_error(msg), status(status) {}
-    lc86_status get_code() { return status; }
+    lc86_status get_code() const { return status; }
 
 private:
     lc86_status status;

@@ -156,6 +156,35 @@ get_seg_prfx_offset(decoded_instr *instr)
 	}
 }
 
+int
+get_seg_prfx_idx(decoded_instr *instr)
+{
+	if (!(instr->i.attributes & ZYDIS_ATTRIB_HAS_SEGMENT)) {
+		return DS_idx;
+	}
+	else if (instr->i.attributes & ZYDIS_ATTRIB_HAS_SEGMENT_CS) {
+		return CS_idx;
+	}
+	else if (instr->i.attributes & ZYDIS_ATTRIB_HAS_SEGMENT_SS) {
+		return SS_idx;
+	}
+	else if (instr->i.attributes & ZYDIS_ATTRIB_HAS_SEGMENT_DS) {
+		return DS_idx;
+	}
+	else if (instr->i.attributes & ZYDIS_ATTRIB_HAS_SEGMENT_ES) {
+		return ES_idx;
+	}
+	else if (instr->i.attributes & ZYDIS_ATTRIB_HAS_SEGMENT_FS) {
+		return FS_idx;
+	}
+	else if (instr->i.attributes & ZYDIS_ATTRIB_HAS_SEGMENT_GS) {
+		return GS_idx;
+	}
+	else {
+		LIB86CPU_ABORT();
+	}
+}
+
 uint128_t::uint128_t()
 {
 	this->low = 0;

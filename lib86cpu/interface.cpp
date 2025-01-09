@@ -5,13 +5,17 @@
  * the libcpu developers  Copyright (c) 2009-2010
  */
 
+#include <fstream>
+#include <cstring>
 #include "internal.h"
 #include "memory_management.h"
+#include "os_mem.h"
 #ifdef LIB86CPU_X64_EMITTER
 #include "x64/jit.h"
 #endif
-#include <fstream>
-#include <cstring>
+#ifdef XBOX_CPU
+#include "ipt.h"
+#endif
 
 
 static uint8_t
@@ -133,17 +137,22 @@ cpu_new(uint32_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data, const
 	}
 
 	try {
-		// allocate 8 extra bytes at then end in the case something ever does a 2,4,8 byte access on the last valid byte of ram
-		cpu->ram = std::vector<uint8_t>(ramsize + 8, 0);
+#ifdef XBOX_CPU
+		ipt_ram_init(cpu, ramsize);
+#else
+		// allocate 16 extra bytes at then end in the case something ever does a 2,4,8,10,16 byte access on the last valid byte of ram
+		cpu->ram = std::vector<uint8_t>(ramsize + 16, 0);
+#endif
 	}
-	catch (const std::bad_alloc &exp) {
-		cpu_free(cpu);
-		return set_last_error(lc86_status::no_memory);
-	}
-	catch (const std::length_error &exp) {
+	catch (const lc86_exp_abort &exp) {
 		cpu_free(cpu);
 		last_error = exp.what();
-		return lc86_status::invalid_parameter;
+		return exp.get_code();
+	}
+	catch (const std::exception &exp) {
+		cpu_free(cpu);
+		last_error = exp.what();
+		return set_last_error(lc86_status::no_memory);
 	}
 
 	cpu->cpu_name = "Intel Pentium III KC 733 (Xbox CPU)";
@@ -184,6 +193,10 @@ cpu_new(uint32_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data, const
 void
 cpu_free(cpu_t *cpu)
 {
+#ifdef XBOX_CPU
+	ipt_ram_deinit(cpu);
+#endif
+
 	for (auto &bucket : cpu->code_cache) {
 		bucket.clear();
 	}
@@ -213,6 +226,24 @@ static void cpu_sync_state(cpu_t *cpu)
 	}
 	if (cpu->cpu_ctx.regs.ss_hidden.flags & SEG_HIDDEN_DB) {
 		cpu->cpu_ctx.hflags |= HFLG_SS32;
+	}
+	if (cpu->cpu_ctx.regs.cs_hidden.base == 0) {
+		cpu->cpu_ctx.hflags |= HFLG_CS_IS_ZERO;
+	}
+	if (cpu->cpu_ctx.regs.ds_hidden.base == 0) {
+		cpu->cpu_ctx.hflags |= HFLG_DS_IS_ZERO;
+	}
+	if (cpu->cpu_ctx.regs.ss_hidden.base == 0) {
+		cpu->cpu_ctx.hflags |= HFLG_SS_IS_ZERO;
+	}
+	if (cpu->cpu_ctx.regs.es_hidden.base == 0) {
+		cpu->cpu_ctx.hflags |= HFLG_ES_IS_ZERO;
+	}
+	if (cpu->cpu_ctx.regs.fs_hidden.base == 0) {
+		cpu->cpu_ctx.hflags |= HFLG_FS_IS_ZERO;
+	}
+	if (cpu->cpu_ctx.regs.gs_hidden.base == 0) {
+		cpu->cpu_ctx.hflags |= HFLG_GS_IS_ZERO;
 	}
 	if (cpu->cpu_ctx.regs.cr0 & CR0_PE_MASK) {
 		cpu->cpu_ctx.hflags |= HFLG_PE_MODE;
@@ -545,7 +576,11 @@ get_last_error()
 uint8_t *
 get_ram_ptr(cpu_t *cpu)
 {
+#if XBOX_CPU
+	return cpu->ram;
+#else
 	return cpu->ram.data();
+#endif
 }
 
 /*
@@ -774,6 +809,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, uint32_t
 * start: the guest physical address where the rom starts
 * size: size in bytes of rom
 * buffer: a pointer to a client-allocated buffer that holds the rom the region refers to
+*         In the xbox build, its contents are copied to an internal buffer and no longer used afterward
 * should_int: raises a guest interrupt when true, otherwise the change takes effect immediately
 * ret: the status of the operation
 */
@@ -789,6 +825,18 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, uint32_t size, uint8_t *buffer, bo
 	rom->end = std::min(static_cast<uint64_t>(start) + size - 1, to_u64(0xFFFFFFFF));
 	rom->type = mem_type::rom;
 	rom->rom_ptr = buffer;
+
+#ifdef XBOX_CPU
+	if ((start != FLASH_ROM_BASE) && (start != MCPX_ROM_BASE)) {
+		return set_last_error(lc86_status::invalid_parameter);
+	}
+
+	if (lc86_status status = ipt_rom_init(cpu, size, rom.get(), buffer); !LC86_SUCCESS(status)) {
+		return status;
+	}
+
+	std::memcpy(rom->rom_ptr, buffer, size);
+#endif
 
 	if (should_int) {
 		cpu->regions_changed.push_back(std::make_pair(true, std::move(rom)));
@@ -1164,6 +1212,11 @@ tlb_invalidate(cpu_t *cpu, addr_t addr)
 		}
 	}
 
+#ifdef XBOX_CPU
+	// Page tables might have changed, so we must flush the affected entry in the ipt too
+	ipt_flush(cpu, addr);
+#endif
+
 	// unlink all tc that jump to the invalidated page
 	tc_unlink_page(cpu, addr);
 }
@@ -1210,15 +1263,15 @@ hook_remove(cpu_t *cpu, addr_t addr)
 		return set_last_error(lc86_status::not_found);
 	}
 
-	try {
-		bool is_code;
-		addr_t phys_addr = get_write_addr(cpu, addr, 2, &is_code);
-		cpu->hook_map.erase(it);
-		tc_invalidate<true>(&cpu->cpu_ctx, phys_addr);
-	}
-	catch (host_exp_t type) {
+	bool is_code;
+	exp_data_t exp_data{0, 0, EXP_INVALID};
+	uint32_t page_info;
+	addr_t phys_addr = query_write_addr(cpu, addr, 2, &is_code, &exp_data, &page_info);
+	if (exp_data.idx != EXP_INVALID) {
 		return set_last_error(lc86_status::guest_exp);
 	}
+	cpu->hook_map.erase(it);
+	tc_invalidate<true>(&cpu->cpu_ctx, phys_addr);
 
 	return lc86_status::success;
 }

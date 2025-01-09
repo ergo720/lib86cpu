@@ -26,6 +26,22 @@ JIT_API translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx);
 JIT_API uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 
 
+#ifdef XBOX_CPU
+#define RAM_START 0x00000000
+#define RAM_END64 (0x04000000 - 1)
+#define RAM_END128 (0x08000000 - 1)
+#define CONTIGUOUS_START (0x80000000 - 1)
+#define CONTIGUOUS_END64 (0x84000000 - 1)
+#define CONTIGUOUS_END128 (0x88000000 - 1)
+#define TILED_START 0xF0000000
+#define TILED_END (0xF4000000 - 1)
+
+#define MMIO_RANGE_START 0xFD000000 // start of nv2a mmio area and all other devices after it
+#define MMIO_RANGE_END (0xFF000000 - 1) // last byte before the flash rom area starts
+#define FLASH_ROM_BASE 0xFF000000
+#define MCPX_ROM_BASE 0xFFFFFE00
+#endif
+
 // cpu hidden flags (assumed to be constant during exec of a tc, together with a flag subset of eflags)
 // HFLG_CPL: cpl of cpu
 // HFLG_CS32: 16 or 32 bit code segment
@@ -38,6 +54,12 @@ JIT_API uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 // HFLG_CR0_MP: mp flag of cr0
 // HFLG_CR0_VME: vme flag of cr4
 // HFLG_CR0_PVI: pvi flag of cr4
+// HFLG_ES_IS_ZERO: base address of es segment is zero
+// HFLG_CS_IS_ZERO: base address of code segment is zero
+// HFLG_SS_IS_ZERO: base address of stack segment is zero
+// HFLG_DS_IS_ZERO: base address of data segment is zero
+// HFLG_FS_IS_ZERO: base address of fs segment is zero
+// HFLG_GS_IS_ZERO: base address of gs segment is zero
 #define CPL_SHIFT           0
 #define CS32_SHIFT          2
 #define SS32_SHIFT          3
@@ -50,6 +72,12 @@ JIT_API uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 #define CR0_MP_SHIFT        15
 #define CR4_VME_SHIFT       19
 #define CR4_PVI_SHIFT       20
+#define ES_ZERO_SHIFT       21
+#define CS_ZERO_SHIFT       22
+#define SS_ZERO_SHIFT       23
+#define DS_ZERO_SHIFT       24
+#define FS_ZERO_SHIFT       25
+#define GS_ZERO_SHIFT       26
 #define HFLG_INVALID        (1 << 31) // this should use a bit position that doesn't overlap with either HFLG_CONST or EFLAGS_CONST
 #define HFLG_CPL            (3 << CPL_SHIFT)
 #define HFLG_CS32           (1 << CS32_SHIFT)
@@ -63,9 +91,18 @@ JIT_API uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 #define HFLG_CR4_OSFXSR     (1 << CR4_OSFXSR_SHIFT)
 #define HFLG_CR4_VME        (1 << CR4_VME_SHIFT)
 #define HFLG_CR4_PVI        (1 << CR4_PVI_SHIFT)
+#define HFLG_ES_IS_ZERO     (1 << ES_ZERO_SHIFT)
+#define HFLG_CS_IS_ZERO     (1 << CS_ZERO_SHIFT)
+#define HFLG_SS_IS_ZERO     (1 << SS_ZERO_SHIFT)
+#define HFLG_DS_IS_ZERO     (1 << DS_ZERO_SHIFT)
+#define HFLG_FS_IS_ZERO     (1 << FS_ZERO_SHIFT)
+#define HFLG_GS_IS_ZERO     (1 << GS_ZERO_SHIFT)
+#define ZERO_SEL2HFLG       ((unsigned)13)
+#define ZERO_SEL_MASK       (HFLG_ES_IS_ZERO | HFLG_CS_IS_ZERO | HFLG_SS_IS_ZERO | HFLG_DS_IS_ZERO | HFLG_FS_IS_ZERO | HFLG_GS_IS_ZERO)
 #define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_CR0_MP | HFLG_CR0_TS | HFLG_CR0_NE \
-| HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI)
-#define HFLG_SAVED_MASK     (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_CR0_MP | HFLG_CR0_TS | HFLG_CR0_NE | HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI)
+| HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI | ZERO_SEL_MASK)
+#define HFLG_SAVED_MASK     (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_CR0_MP | HFLG_CR0_TS | HFLG_CR0_NE | HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI \
+| ZERO_SEL_MASK)
 
 // cpu interrupt flags
 #define CPU_NO_INT           0
@@ -229,6 +266,9 @@ JIT_API uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 #define PTE_DIRTY     (1 << 6)
 #define PTE_LARGE     (1 << 7)
 #define PTE_GLOBAL    (1 << 8)
+#ifdef XBOX_CPU
+#define PTE_GUARD     (1 << 9)
+#endif
 #define PTE_ADDR_4K   0xFFFFF000
 #define PTE_ADDR_4M   0xFFC00000
 
@@ -239,6 +279,14 @@ JIT_API uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 #define PAGE_SIZE_LARGE   (1 << PAGE_SHIFT_LARGE)
 #define PAGE_MASK         (PAGE_SIZE - 1)
 #define PAGE_MASK_LARGE   (PAGE_SIZE_LARGE - 1)
+#define PAGE_READ         PTE_PRESENT // page has read access (implies it's valid)
+#define PAGE_WRITE        PTE_WRITE // page is writable
+#define PAGE_USER         PTE_USER // page can be accessed in user mode
+#define PAGE_ACCESSED     PTE_ACCESSED // page was accessed (read or written) at least once
+#define PAGE_DIRTY        PTE_DIRTY // page was written to at least once (implies PAGE_ACCESSED)
+#ifdef XBOX_CPU
+#define PAGE_GUARD2       PTE_GUARD // page is invalid the first time it's accessed
+#endif
 
 // tlb macros
 #define ITLB_TAG_SHIFT64  11

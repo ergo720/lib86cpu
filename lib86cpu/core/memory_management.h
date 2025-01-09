@@ -23,11 +23,15 @@ void tlb_flush_l(cpu_t *cpu); // undoes tc links
 inline void *get_rom_host_ptr(const memory_region_t<addr_t> *rom, addr_t addr);
 inline void *get_ram_host_ptr(cpu_t *cpu, const memory_region_t<addr_t> *ram, addr_t addr);
 addr_t get_read_addr_slow(cpu_t * cpu, addr_t addr, uint8_t is_priv);
-addr_t get_write_addr_slow(cpu_t * cpu, addr_t addr, uint8_t is_priv, bool* is_code);
 addr_t get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv);
+addr_t get_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, exp_data_t *exp_data);
+addr_t query_read_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, exp_data_t *exp_data, uint32_t *page_info);
+addr_t get_write_addr_slow(cpu_t * cpu, addr_t addr, uint8_t is_priv, bool* is_code);
 addr_t get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, bool *is_code);
+addr_t get_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, bool *is_code, exp_data_t *exp_data);
+addr_t query_write_addr(cpu_t *cpu, addr_t addr, uint8_t is_priv, bool *is_code, exp_data_t *exp_data, uint32_t *page_info);
 addr_t get_code_addr(cpu_t *cpu, addr_t addr);
-template<bool set_smc> addr_t get_code_addr(cpu_t * cpu, addr_t addr, disas_ctx_t *disas_ctx);
+template<bool set_smc> addr_t get_code_addr(cpu_t * cpu, addr_t addr, exp_data_t *exp_data);
 template<typename T> T ram_read(cpu_t *cpu, void *ram_ptr);
 template<typename T> void ram_write(cpu_t *cpu, void *ram_ptr, T value);
 void ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer);

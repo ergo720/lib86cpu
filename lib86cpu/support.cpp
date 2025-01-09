@@ -14,7 +14,7 @@
 #endif
 
 // This should be updated whenever cpu members that need to be saved are added/removed
-#define SAVE_STATE_ID 9
+#define SAVE_STATE_ID 10
 
 
 void
@@ -112,7 +112,13 @@ cpu_save_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_st
 	cpu->cpu_ctx.regs.eax = old_eax;
 
 	ram_state->id = SAVE_STATE_ID;
+#ifdef XBOX_CPU
+	auto ram = as_memory_search_addr(cpu, 0);
+	assert(ram);
+	std::copy(cpu->ram, cpu->ram + (ram->end - ram->start + 1), ram_state->ram.begin());
+#else
 	ram_state->ram = cpu->ram;
+#endif
 
 	return lc86_status::success;
 }
@@ -138,7 +144,11 @@ cpu_load_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_st
 	cpu->tsc_clock.offset = cpu_state->tsc_offset;
 	cpu->tsc_clock.last_host_ticks = get_current_time();
 
+#ifdef XBOX_CPU
+	std::copy(ram_state->ram.begin(), ram_state->ram.end(), cpu->ram);
+#else
 	cpu->ram = ram_state->ram;
+#endif
 
 	cpu->int_data = int_data.first ? int_data : std::pair<fp_int, void *>{ default_get_int_vec, nullptr };
 	cpu->clear_int_fn(&cpu->cpu_ctx, CPU_ALL_INT);
