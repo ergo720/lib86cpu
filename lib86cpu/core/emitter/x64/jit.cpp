@@ -7272,7 +7272,8 @@ lc86_jit::mov(decoded_instr *instr)
 			},
 			[this, instr](const op_info rm)
 			{
-				MOV(R8, GET_IMM());
+				auto r8_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
+				MOV(r8_host_reg, GET_IMM());
 				ST_MEM();
 			});
 	}
@@ -7937,7 +7938,6 @@ lc86_jit::pop(decoded_instr *instr)
 				MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
 				gen_stack_pop<1, 0, false>();
 				MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
-				auto r8_host_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 				ST_MEM();
 				if (m_cpu->cpu_ctx.hflags & HFLG_SS32) {
 					ST_R32(CPU_CTX_ESP, EBX);
