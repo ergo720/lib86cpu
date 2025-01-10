@@ -474,21 +474,21 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define LD_MEM() load_ipt(m_cpu->size_mode)
 #define LD_MEMs(size) load_ipt(size)
 #define LD_MEM128() load_ipt(SIZE128)
-#define LD_MEM_off(offset) load_moffset(m_cpu->size_mode, offset)
+#define LD_MEM_off(info) load_moffset(m_cpu->size_mode, info)
 #define ST_MEM() store_ipt(m_cpu->size_mode)
 #define ST_MEMs(size) store_ipt(size)
 #define ST_MEM128() store_ipt(SIZE128)
-#define ST_MEM_off(offset) store_moffset(m_cpu->size_mode, offset)
+#define ST_MEM_off(info) store_moffset(m_cpu->size_mode, info)
 #define ST_MEMv() store_mem<true>(m_cpu->size_mode)
 #else
 #define LD_MEM() load_mem(m_cpu->size_mode)
 #define LD_MEMs(size) load_mem(size)
 #define LD_MEM128() load_mem(SIZE128)
-#define LD_MEM_off(offset) load_mem(m_cpu->size_mode)
+#define LD_MEM_off(info) load_mem(m_cpu->size_mode)
 #define ST_MEM() store_mem(m_cpu->size_mode)
 #define ST_MEMs(size) store_mem(size)
 #define ST_MEM128() store_mem(SIZE128)
-#define ST_MEM_off(offset) store_mem(m_cpu->size_mode)
+#define ST_MEM_off(info) store_mem(m_cpu->size_mode)
 #define ST_MEMv() store_mem<true>(m_cpu->size_mode)
 #endif
 
@@ -968,9 +968,10 @@ op_info lc86_jit::get_operand(decoded_instr *instr, const unsigned opnum)
 			if constexpr (add_seg_base) {
 				if (!(m_cpu->cpu_ctx.hflags & sel_mask)) {
 					ADD(EDX, MEMD32(RCX, REG_off(operand->mem.segment) + seg_base_offset));
+					return { disp, 1 };
 				}
 			}
-			return { disp };
+			return { disp, 0 };
 		}
 		break;
 
@@ -1850,11 +1851,11 @@ lc86_jit::load_ipt(uint8_t size)
 }
 
 void
-lc86_jit::load_moffset(uint8_t size, addr_t offset)
+lc86_jit::load_moffset(uint8_t size, op_info info)
 {
 	// Only used with MOV eax, moffset, where moffset is an address specified as an immediate
 	// If we see that the address is going to access a known mmio range, we can directly emit a call to the memory handler, thus avoid unnecessary exceptions
-	if ((offset >= MMIO_RANGE_START) && (offset <= MMIO_RANGE_END)) {
+	if ((info.bits == 0) && (info.val >= MMIO_RANGE_START) && (info.val <= MMIO_RANGE_END)) {
 		load_mem(size);
 		return;
 	}
@@ -1972,11 +1973,11 @@ lc86_jit::store_ipt(uint8_t size)
 }
 
 void
-lc86_jit::store_moffset( uint8_t size, addr_t offset)
+lc86_jit::store_moffset( uint8_t size, op_info info)
 {
 	// Only used with mov moffset, eax, where moffset is an address specified as an immediate
 	// If we see that the address is going to access a known mmio range, we can directly emit a call to the memory handler, thus avoid unnecessary exceptions
-	if ((offset >= MMIO_RANGE_START) && (offset <= MMIO_RANGE_END)) {
+	if ((info.bits == 0) && (info.val >= MMIO_RANGE_START) && (info.val <= MMIO_RANGE_END)) {
 		store_mem(size);
 		return;
 	}
@@ -7215,8 +7216,8 @@ lc86_jit::mov(decoded_instr *instr)
 		[[fallthrough]];
 
 	case 0xA1: {
-		addr_t addr = GET_OP(OPNUM_SRC).val;
-		LD_MEM_off(addr);
+		op_info src = GET_OP(OPNUM_SRC);
+		LD_MEM_off(src);
 		ST_REG_val(SIZED_REG(x64::rax, m_cpu->size_mode), GET_REG(OPNUM_DST).val, m_cpu->size_mode);
 	}
 	break;
@@ -7226,11 +7227,11 @@ lc86_jit::mov(decoded_instr *instr)
 		[[fallthrough]];
 
 	case 0xA3: {
-		addr_t addr = GET_OP(OPNUM_DST).val;
+		op_info dst = GET_OP(OPNUM_DST);
 		op_info src = GET_OP(OPNUM_SRC);
 		auto src_host_reg = SIZED_REG(x64::r8, src.bits);
 		LD_REG_val(src_host_reg, src.val, src.bits);
-		ST_MEM_off(addr);
+		ST_MEM_off(dst);
 	}
 	break;
 
