@@ -117,8 +117,6 @@ default_pmio_write_handler32(addr_t addr, const uint32_t value, void *opaque)
 lc86_status
 cpu_new(uint32_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data, const char *debuggee)
 {
-	LOG(log_level::info, "Creating new cpu...");
-
 	out = nullptr;
 
 	if (!verify_cpu_features()) {
@@ -155,7 +153,6 @@ cpu_new(uint32_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data, const
 		return set_last_error(lc86_status::no_memory);
 	}
 
-	cpu->cpu_name = "Intel Pentium III KC 733 (Xbox CPU)";
 	cpu->dbg_name = debuggee ? debuggee : "";
 	cpu->int_data = int_data.first ? int_data : std::pair<fp_int, void *>{ default_get_int_vec, nullptr };
 
@@ -178,8 +175,6 @@ cpu_new(uint32_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data, const
 	std::random_device rd;
 	cpu->rng_gen.seed(rd());
 	cpu->cpu_thr_id = std::thread::id();
-
-	LOG(log_level::info, "Created new cpu \"%s\"", cpu->cpu_name);
 
 	cpu->cpu_ctx.cpu = out = cpu;
 	return lc86_status::success;

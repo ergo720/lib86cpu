@@ -6,7 +6,6 @@
 
 #pragma once
 
-#include <format>
 #include <concepts>
 #include <forward_list>
 #include <unordered_set>
@@ -54,7 +53,7 @@
 #define GEN_TABLE P6(0), P6(1), P6(1), P6(0)
 
  // memory region type
-enum class mem_type {
+enum class mem_type : int {
 	unmapped,
 	ram,
 	mmio,
@@ -197,7 +196,6 @@ static_assert(alignof(decltype(cpu_ctx_t::int_pending)) == 4);
 class lc86_jit;
 struct cpu_t {
 	uint32_t cpu_flags;
-	const char *cpu_name;
 	cpu_ctx_t cpu_ctx;
 	disas_ctx_t disas_ctx;
 	translated_code_t *tc; // tc for which we are currently generating code

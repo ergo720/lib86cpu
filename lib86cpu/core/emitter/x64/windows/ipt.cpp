@@ -16,9 +16,7 @@
 
 static HANDLE ram_handle;
 static HANDLE rom_handle[2];
-
 static bool raise_page_fault;
-static std::string err_msg;
 
 // Ipt mechanism of working. At first, every ipt element points to the guard page, which causes a fault when accessed. If the page is valid in the guest, the ipt element
 // is updated with the base address of the host page that maps it (if ram or rom), otherwise is backpatched with a call to a memory handler. Also, when a page is valid,
@@ -93,7 +91,7 @@ ipt_rom_init(cpu_t *cpu, size_t romsize, memory_region_t<addr_t> *rom, uint8_t *
 	// Always protect the rom to make sure that nothing writes to it
 	DWORD old_protect;
 	if (VirtualProtect(rom->rom_alias_ptr, romsize, PAGE_READONLY, &old_protect) == 0) {
-		last_error = std::format("{}: failed to mark rom memory as read-only", __func__);
+		last_error = "Failed to mark rom memory as read-only";
 		return lc86_status::internal_error;
 	}
 
@@ -175,8 +173,7 @@ ipt_protect_code_page(cpu_t *cpu, addr_t phys_addr)
 		}
 	}
 
-	std::string err = std::vformat("{}: failed to change memory permissions of page at phys_addr {:#018x}", std::make_format_args(__func__, phys_addr));
-	throw lc86_exp_abort(err, lc86_status::internal_error);
+	LIB86CPU_ABORT_msg("Failed to change memory permissions of page at phys_addr 0x%016" PRIX64, phys_addr);
 }
 
 void
@@ -345,7 +342,7 @@ ipt_exception_filter(cpu_t *cpu, EXCEPTION_POINTERS *e)
 					new_protect = PAGE_READWRITE;
 				}
 				if (VirtualProtect(host_page_base, PAGE_SIZE, new_protect, &old_protect) == 0) {
-					err_msg = std::vformat("{}: failed to change memory permissions of page {:#018x}", std::make_format_args(__func__, (uintptr_t)host_page_base));
+					LOG(log_level::error, "Failed to change memory permissions of page at host address 0x%016" PRIX64, (uintptr_t)host_page_base);
 					raise_page_fault = false;
 					return EXCEPTION_EXECUTE_HANDLER;
 				}
@@ -382,7 +379,7 @@ ipt_exception_filter(cpu_t *cpu, EXCEPTION_POINTERS *e)
 		break;
 
 		default:
-			err_msg = std::vformat("{}: unexpected memory region type {:d}", std::make_format_args(__func__, (unsigned)region->type));
+			LOG(log_level::error, "Unexpected memory region type %" PRId32, (std::underlying_type_t<mem_type>)region->type);
 			raise_page_fault = false;
 			return EXCEPTION_EXECUTE_HANDLER;
 		}
@@ -424,7 +421,7 @@ ipt_exception_filter(cpu_t *cpu, EXCEPTION_POINTERS *e)
 
 	// This is not an exception we can handle, terminate the emulation
 	raise_page_fault = false;
-	err_msg = std::format("{}: unhandled os exception while running the jitted code", __func__);
+	LOG(log_level::error, "Unhandled os exception while running the jitted code");
 	return EXCEPTION_EXECUTE_HANDLER;
 }
 
@@ -457,6 +454,6 @@ ipt_run_guarded_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 			return ipt_raise_exception(cpu_ctx);
 		}
 
-		throw lc86_exp_abort(err_msg, lc86_status::internal_error);
+		LIB86CPU_ABORT();
 	}
 }
