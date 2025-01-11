@@ -1030,36 +1030,40 @@ op_info lc86_jit::get_operand(decoded_instr *instr, const unsigned opnum)
 
 				if (operand->mem.scale) {
 					// asmjit wants the scale expressed as indexed value scale = 1 << n, so don't use operand->mem.scale
-					MOVZX(R11D, MEMD16(RCX, REG_off(operand->mem.index)));
-					LEA(R10D, MEMS32(R10D, R11D, instr->i.raw.sib.scale));
+					LD_R16(R11W, REG_off(operand->mem.index));
+					SHL(R11W, instr->i.raw.sib.scale);
+					ADD(R10W, R11W);
 				}
 
 				if (operand->mem.disp.has_displacement) {
 					if ((add_seg_base == false) || (m_cpu->cpu_ctx.hflags & sel_mask)) {
 						if (instr->i.raw.modrm.mod == 1) {
-							LEA(EDX, MEMSb32(R10D, 0, static_cast<int16_t>(static_cast<int8_t>(operand->mem.disp.value))));
+							ADD(R10W, static_cast<int16_t>(static_cast<int8_t>(operand->mem.disp.value)));
 						}
 						else {
-							LEA(EDX, MEMSb32(R10D, 0, static_cast<uint16_t>(operand->mem.disp.value)));
+							ADD(R10W, operand->mem.disp.value);
 						}
+						MOVZX(EDX, R10W);
 					}
 					else {
 						LD_SEG_BASE(EDX, REG_off(operand->mem.segment));
 						if (instr->i.raw.modrm.mod == 1) {
-							LEA(EDX, MEMSD32(EDX, R10D, 0, static_cast<int16_t>(static_cast<int8_t>(operand->mem.disp.value))));
+							ADD(R10W, static_cast<int16_t>(static_cast<int8_t>(operand->mem.disp.value)));
 						}
 						else {
-							LEA(EDX, MEMSD32(EDX, R10D, 0, static_cast<uint16_t>(operand->mem.disp.value)));
+							ADD(R10W, operand->mem.disp.value);
 						}
+						ADD(EDX, R10D);
 					}
 					return {};
 				}
 
-				MOV(EDX, R10D);
-				if constexpr (add_seg_base) {
-					if (!(m_cpu->cpu_ctx.hflags & sel_mask)) {
-						ADD(EDX, MEMD32(RCX, REG_off(operand->mem.segment) + seg_base_offset));
-					}
+				if ((add_seg_base == false) || (m_cpu->cpu_ctx.hflags & sel_mask)) {
+					MOVZX(EDX, R10W);
+				}
+				else {
+					LD_SEG_BASE(EDX, REG_off(operand->mem.segment));
+					ADD(EDX, R10D);
 				}
 				return {};
 			}
