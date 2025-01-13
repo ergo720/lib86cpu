@@ -19,8 +19,8 @@ using namespace asmjit;
 
 // val: value of immediate or offset of referenced register, bits: size in bits of val or, for moffset only, whether or not the segment base was added to it
 struct op_info {
-	size_t val;
-	size_t bits;
+	uint64_t val;
+	uint64_t bits;
 	op_info() : val(0U), bits(0U) {}
 	op_info(size_t val_, size_t bits_) : val(val_), bits(bits_) {}
 };

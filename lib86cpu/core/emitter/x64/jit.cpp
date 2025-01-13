@@ -963,15 +963,15 @@ op_info lc86_jit::get_operand(decoded_instr *instr, const unsigned opnum)
 		{
 		case ZYDIS_OPERAND_ENCODING_DISP16_32_64: {
 			uint32_t sel_mask = 1 << (REG_idx(operand->mem.segment) + ZERO_SEL2HFLG);
-			uint32_t disp = instr->i.address_width == 32 ? operand->mem.disp.value : operand->mem.disp.value & 0xFFFF;
-			MOV(EDX, disp);
+			uint64_t moffset = instr->i.address_width == 32 ? operand->mem.disp.value : operand->mem.disp.value & 0xFFFF;
+			MOV(EDX, moffset);
 			if constexpr (add_seg_base) {
 				if (!(m_cpu->cpu_ctx.hflags & sel_mask)) {
 					ADD(EDX, MEMD32(RCX, REG_off(operand->mem.segment) + seg_base_offset));
-					return { disp, 1 };
+					return { moffset, 1 };
 				}
 			}
-			return { disp, 0 };
+			return { moffset, 0 };
 		}
 		break;
 
@@ -4029,8 +4029,8 @@ lc86_jit::adc(decoded_instr *instr)
 		assert(instr->i.raw.modrm.reg == 2);
 
 		uint64_t src_imm = GET_IMM();
-		imm_to_rm_flags<true, uint32_t>(instr, src_imm,
-			[this](x86::Gp sum_host_reg, uint32_t src_imm)
+		imm_to_rm_flags<true>(instr, src_imm,
+			[this](x86::Gp sum_host_reg, uint64_t src_imm)
 			{
 				auto cf_host_reg = SIZED_REG(x64::r9, m_cpu->size_mode);
 				LD_CF(R9D);
@@ -4046,7 +4046,7 @@ lc86_jit::adc(decoded_instr *instr)
 
 		if (m_cpu->size_mode == SIZE16) {
 			int16_t src_imm = static_cast<int16_t>(static_cast<int8_t>(GET_IMM()));
-			imm_to_rm_flags<true, int16_t>(instr, src_imm,
+			imm_to_rm_flags<true>(instr, src_imm,
 				[this](x86::Gp sum_host_reg, int16_t src_imm)
 				{
 					auto cf_host_reg = SIZED_REG(x64::r9, m_cpu->size_mode);
@@ -4058,7 +4058,7 @@ lc86_jit::adc(decoded_instr *instr)
 		}
 		else {
 			int32_t src_imm = static_cast<int32_t>(static_cast<int8_t>(GET_IMM()));
-			imm_to_rm_flags<true, int32_t>(instr, src_imm,
+			imm_to_rm_flags<true>(instr, src_imm,
 				[this](x86::Gp sum_host_reg, int32_t src_imm)
 				{
 					auto cf_host_reg = SIZED_REG(x64::r9, m_cpu->size_mode);
@@ -4128,8 +4128,8 @@ lc86_jit::add(decoded_instr *instr)
 		assert(instr->i.raw.modrm.reg == 0);
 
 		uint64_t src_imm = GET_IMM();
-		imm_to_rm_flags<true, uint32_t>(instr, src_imm,
-			[this](x86::Gp sum_host_reg, uint32_t src_imm)
+		imm_to_rm_flags<true>(instr, src_imm,
+			[this](x86::Gp sum_host_reg, uint64_t src_imm)
 			{
 				ADD(sum_host_reg, src_imm);
 			});
@@ -4141,7 +4141,7 @@ lc86_jit::add(decoded_instr *instr)
 
 		if (m_cpu->size_mode == SIZE16) {
 			int16_t src_imm = static_cast<int16_t>(static_cast<int8_t>(GET_IMM()));
-			imm_to_rm_flags<true, int16_t>(instr, src_imm,
+			imm_to_rm_flags<true>(instr, src_imm,
 				[this](x86::Gp sum_host_reg, int16_t src_imm)
 				{
 					ADD(sum_host_reg, src_imm);
@@ -4149,7 +4149,7 @@ lc86_jit::add(decoded_instr *instr)
 		}
 		else {
 			int32_t src_imm = static_cast<int32_t>(static_cast<int8_t>(GET_IMM()));
-			imm_to_rm_flags<true, int32_t>(instr, src_imm,
+			imm_to_rm_flags<true>(instr, src_imm,
 				[this](x86::Gp sum_host_reg, int32_t src_imm)
 				{
 					ADD(sum_host_reg, src_imm);
@@ -4215,8 +4215,8 @@ lc86_jit::and_(decoded_instr *instr)
 		assert(instr->i.raw.modrm.reg == 4);
 
 		uint64_t src_imm = GET_IMM();
-		imm_to_rm<uint32_t>(instr, src_imm,
-			[this](x86::Gp res_host_reg, uint32_t src_imm)
+		imm_to_rm(instr, src_imm,
+			[this](x86::Gp res_host_reg, uint64_t src_imm)
 			{
 				AND(res_host_reg, src_imm);
 			});
@@ -4228,7 +4228,7 @@ lc86_jit::and_(decoded_instr *instr)
 
 		if (m_cpu->size_mode == SIZE16) {
 			int16_t src_imm = static_cast<int16_t>(static_cast<int8_t>(GET_IMM()));
-			imm_to_rm<int16_t>(instr, src_imm,
+			imm_to_rm(instr, src_imm,
 				[this](x86::Gp res_host_reg, int16_t src_imm)
 				{
 					AND(res_host_reg, src_imm);
@@ -4236,7 +4236,7 @@ lc86_jit::and_(decoded_instr *instr)
 		}
 		else {
 			int32_t src_imm = static_cast<int32_t>(static_cast<int8_t>(GET_IMM()));
-			imm_to_rm<int32_t>(instr, src_imm,
+			imm_to_rm(instr, src_imm,
 				[this](x86::Gp res_host_reg, int32_t src_imm)
 				{
 					AND(res_host_reg, src_imm);
@@ -4919,8 +4919,8 @@ lc86_jit::cmp(decoded_instr *instr)
 
 	case 0x81: {
 		uint64_t src_imm = GET_IMM();
-		imm_to_rm_flags<false, uint32_t, false>(instr, src_imm,
-			[this](x86::Gp sub_host_reg, uint32_t src_imm)
+		imm_to_rm_flags<false, uint64_t, false>(instr, src_imm,
+			[this](x86::Gp sub_host_reg, uint64_t src_imm)
 			{
 				SUB(sub_host_reg, src_imm);
 			});
@@ -7750,8 +7750,8 @@ lc86_jit::or_(decoded_instr *instr)
 		assert(instr->i.raw.modrm.reg == 1);
 
 		uint64_t src_imm = GET_IMM();
-		imm_to_rm<uint32_t>(instr, src_imm,
-			[this](x86::Gp res_host_reg, uint32_t src_imm)
+		imm_to_rm(instr, src_imm,
+			[this](x86::Gp res_host_reg, uint64_t src_imm)
 			{
 				OR(res_host_reg, src_imm);
 			});
@@ -7763,7 +7763,7 @@ lc86_jit::or_(decoded_instr *instr)
 
 		if (m_cpu->size_mode == SIZE16) {
 			int16_t src_imm = static_cast<int16_t>(static_cast<int8_t>(GET_IMM()));
-			imm_to_rm<int16_t>(instr, src_imm,
+			imm_to_rm(instr, src_imm,
 				[this](x86::Gp res_host_reg, int16_t src_imm)
 				{
 					OR(res_host_reg, src_imm);
@@ -7771,7 +7771,7 @@ lc86_jit::or_(decoded_instr *instr)
 		}
 		else {
 			int32_t src_imm = static_cast<int32_t>(static_cast<int8_t>(GET_IMM()));
-			imm_to_rm<int32_t>(instr, src_imm,
+			imm_to_rm(instr, src_imm,
 				[this](x86::Gp res_host_reg, int32_t src_imm)
 				{
 					OR(res_host_reg, src_imm);
@@ -8711,8 +8711,8 @@ lc86_jit::sbb(decoded_instr *instr)
 		assert(instr->i.raw.modrm.reg == 3);
 
 		uint64_t src_imm = GET_IMM();
-		imm_to_rm_flags<false, uint32_t>(instr, src_imm,
-			[this](x86::Gp sub_host_reg, uint32_t src_imm)
+		imm_to_rm_flags<false>(instr, src_imm,
+			[this](x86::Gp sub_host_reg, uint64_t src_imm)
 			{
 				auto cf_host_reg = SIZED_REG(x64::r9, m_cpu->size_mode);
 				LD_CF(R9D);
@@ -9273,8 +9273,8 @@ lc86_jit::sub(decoded_instr *instr)
 		assert(instr->i.raw.modrm.reg == 5);
 
 		uint64_t src_imm = GET_IMM();
-		imm_to_rm_flags<false, uint32_t>(instr, src_imm,
-			[this](x86::Gp sub_host_reg, uint32_t src_imm)
+		imm_to_rm_flags<false>(instr, src_imm,
+			[this](x86::Gp sub_host_reg, uint64_t src_imm)
 			{
 				SUB(sub_host_reg, src_imm);
 			});
@@ -9286,7 +9286,7 @@ lc86_jit::sub(decoded_instr *instr)
 
 		if (m_cpu->size_mode == SIZE16) {
 			int16_t src_imm = static_cast<int16_t>(static_cast<int8_t>(GET_IMM()));
-			imm_to_rm_flags<false, int16_t>(instr, src_imm,
+			imm_to_rm_flags<false>(instr, src_imm,
 				[this](x86::Gp sub_host_reg, int16_t src_imm)
 				{
 					SUB(sub_host_reg, src_imm);
@@ -9294,7 +9294,7 @@ lc86_jit::sub(decoded_instr *instr)
 		}
 		else {
 			int32_t src_imm = static_cast<int32_t>(static_cast<int8_t>(GET_IMM()));
-			imm_to_rm_flags<false, int32_t>(instr, src_imm,
+			imm_to_rm_flags<false>(instr, src_imm,
 				[this](x86::Gp sub_host_reg, int32_t src_imm)
 				{
 					SUB(sub_host_reg, src_imm);
@@ -9345,8 +9345,8 @@ lc86_jit::test(decoded_instr *instr)
 
 	case 0xF7: {
 		uint64_t src_imm = GET_IMM();
-		imm_to_rm<uint32_t, false>(instr, src_imm,
-			[this](x86::Gp res_host_reg, uint32_t src_imm)
+		imm_to_rm<uint64_t, false>(instr, src_imm,
+			[this](x86::Gp res_host_reg, uint64_t src_imm)
 			{
 				AND(res_host_reg, src_imm);
 			});
@@ -9572,8 +9572,8 @@ lc86_jit::xor_(decoded_instr *instr)
 
 	case 0x81: {
 		uint64_t src_imm = GET_IMM();
-		imm_to_rm<uint32_t>(instr, src_imm,
-			[this](x86::Gp res_host_reg, uint32_t src_imm)
+		imm_to_rm(instr, src_imm,
+			[this](x86::Gp res_host_reg, uint64_t src_imm)
 			{
 				XOR(res_host_reg, src_imm);
 			});
@@ -9583,7 +9583,7 @@ lc86_jit::xor_(decoded_instr *instr)
 	case 0x83: {
 		if (m_cpu->size_mode == SIZE16) {
 			int16_t src_imm = static_cast<int16_t>(static_cast<int8_t>(GET_IMM()));
-			imm_to_rm<int16_t>(instr, src_imm,
+			imm_to_rm(instr, src_imm,
 				[this](x86::Gp res_host_reg, int16_t src_imm)
 				{
 					XOR(res_host_reg, src_imm);
@@ -9591,7 +9591,7 @@ lc86_jit::xor_(decoded_instr *instr)
 		}
 		else {
 			int32_t src_imm = static_cast<int32_t>(static_cast<int8_t>(GET_IMM()));
-			imm_to_rm<int32_t>(instr, src_imm,
+			imm_to_rm(instr, src_imm,
 				[this](x86::Gp res_host_reg, int32_t src_imm)
 				{
 					XOR(res_host_reg, src_imm);
