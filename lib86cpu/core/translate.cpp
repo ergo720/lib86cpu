@@ -113,7 +113,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 	cpu_t *cpu = cpu_ctx->cpu;
 	uint32_t fault_addr = cpu_ctx->exp_info.exp_data.fault_addr;
 	uint16_t code = cpu_ctx->exp_info.exp_data.code;
-	uint16_t idx = cpu_ctx->exp_info.exp_data.idx;
+	uint32_t idx = cpu_ctx->exp_info.exp_data.idx;
 	uint32_t eip = cpu_ctx->regs.eip;
 	uint32_t old_eflags = read_eflags(cpu);
 
@@ -638,7 +638,7 @@ void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_
 								halt_tc = true;
 							}
 						}
-						catch (host_exp_t type) {
+						catch (host_exp_t) {
 							// the current tc cannot fault
 							LIB86CPU_ABORT_msg("%s: unexpected page fault while touching address 0x%08X", __func__, get_pc(cpu_ctx));
 						}
