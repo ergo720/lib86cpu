@@ -1361,7 +1361,7 @@ void lc86_jit::imm_to_eax_flags(decoded_instr *instr, T &&lambda)
 	auto dst = GET_REG(OPNUM_DST);
 	auto dst_host_reg = SIZED_REG(x64::rax, dst.bits);
 	auto res_host_reg = SIZED_REG(x64::r8, dst.bits);
-	uint32_t src_imm = GET_IMM();
+	uint64_t src_imm = GET_IMM();
 	LD_REG_val(dst_host_reg, dst.val, dst.bits);
 	MOV(res_host_reg, dst_host_reg);
 	lambda(res_host_reg, src_imm);
@@ -4028,7 +4028,7 @@ lc86_jit::adc(decoded_instr *instr)
 	case 0x81: {
 		assert(instr->i.raw.modrm.reg == 2);
 
-		uint32_t src_imm = GET_IMM();
+		uint64_t src_imm = GET_IMM();
 		imm_to_rm_flags<true, uint32_t>(instr, src_imm,
 			[this](x86::Gp sum_host_reg, uint32_t src_imm)
 			{
@@ -4127,7 +4127,7 @@ lc86_jit::add(decoded_instr *instr)
 	case 0x81: {
 		assert(instr->i.raw.modrm.reg == 0);
 
-		uint32_t src_imm = GET_IMM();
+		uint64_t src_imm = GET_IMM();
 		imm_to_rm_flags<true, uint32_t>(instr, src_imm,
 			[this](x86::Gp sum_host_reg, uint32_t src_imm)
 			{
@@ -4214,7 +4214,7 @@ lc86_jit::and_(decoded_instr *instr)
 	case 0x81: {
 		assert(instr->i.raw.modrm.reg == 4);
 
-		uint32_t src_imm = GET_IMM();
+		uint64_t src_imm = GET_IMM();
 		imm_to_rm<uint32_t>(instr, src_imm,
 			[this](x86::Gp res_host_reg, uint32_t src_imm)
 			{
@@ -4918,7 +4918,7 @@ lc86_jit::cmp(decoded_instr *instr)
 		[[fallthrough]];
 
 	case 0x81: {
-		uint32_t src_imm = GET_IMM();
+		uint64_t src_imm = GET_IMM();
 		imm_to_rm_flags<false, uint32_t, false>(instr, src_imm,
 			[this](x86::Gp sub_host_reg, uint32_t src_imm)
 			{
@@ -6049,7 +6049,7 @@ lc86_jit::in(decoded_instr *instr)
 
 	case 0xE5: {
 		auto val_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
-		uint8_t port = GET_IMM();
+		uint64_t port = GET_IMM();
 		gen_check_io_priv(port);
 		MOV(EDX, port);
 		LD_IO();
@@ -7749,7 +7749,7 @@ lc86_jit::or_(decoded_instr *instr)
 	case 0x81: {
 		assert(instr->i.raw.modrm.reg == 1);
 
-		uint32_t src_imm = GET_IMM();
+		uint64_t src_imm = GET_IMM();
 		imm_to_rm<uint32_t>(instr, src_imm,
 			[this](x86::Gp res_host_reg, uint32_t src_imm)
 			{
@@ -8710,7 +8710,7 @@ lc86_jit::sbb(decoded_instr *instr)
 	case 0x81: {
 		assert(instr->i.raw.modrm.reg == 3);
 
-		uint32_t src_imm = GET_IMM();
+		uint64_t src_imm = GET_IMM();
 		imm_to_rm_flags<false, uint32_t>(instr, src_imm,
 			[this](x86::Gp sub_host_reg, uint32_t src_imm)
 			{
@@ -9272,7 +9272,7 @@ lc86_jit::sub(decoded_instr *instr)
 	case 0x81: {
 		assert(instr->i.raw.modrm.reg == 5);
 
-		uint32_t src_imm = GET_IMM();
+		uint64_t src_imm = GET_IMM();
 		imm_to_rm_flags<false, uint32_t>(instr, src_imm,
 			[this](x86::Gp sub_host_reg, uint32_t src_imm)
 			{
@@ -9344,7 +9344,7 @@ lc86_jit::test(decoded_instr *instr)
 		[[fallthrough]];
 
 	case 0xF7: {
-		uint32_t src_imm = GET_IMM();
+		uint64_t src_imm = GET_IMM();
 		imm_to_rm<uint32_t, false>(instr, src_imm,
 			[this](x86::Gp res_host_reg, uint32_t src_imm)
 			{
@@ -9571,7 +9571,7 @@ lc86_jit::xor_(decoded_instr *instr)
 		[[fallthrough]];
 
 	case 0x81: {
-		uint32_t src_imm = GET_IMM();
+		uint64_t src_imm = GET_IMM();
 		imm_to_rm<uint32_t>(instr, src_imm,
 			[this](x86::Gp res_host_reg, uint32_t src_imm)
 			{
