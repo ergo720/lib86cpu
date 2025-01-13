@@ -126,7 +126,7 @@ static_assert(ZYDIS_REGISTER_ST7 - ZYDIS_REGISTER_ST0 == 7);
 #define JIT_REG_ARGS_STACK_SIZE    0x20
 
 // all x64 regs that can actually be used in the main jitted function
-enum class x64 : uint32_t {
+enum class x64 : uint64_t {
 	rax = 0,
 	rbx,
 	rcx,
@@ -139,9 +139,9 @@ enum class x64 : uint32_t {
 };
 
 constexpr x64
-operator|(x64 reg, uint32_t size)
+operator|(x64 reg, uint64_t size)
 {
-	return static_cast<x64>(static_cast<uint32_t>(reg) | (size << static_cast<uint32_t>(x64::max)));
+	return static_cast<x64>(static_cast<std::underlying_type_t<x64>>(reg) | (size << static_cast<std::underlying_type_t<x64>>(x64::max)));
 }
 
 static const std::unordered_map<x64, x86::Gp> reg_to_sized_reg = {
