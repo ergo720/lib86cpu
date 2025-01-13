@@ -800,7 +800,7 @@ cpu_translate(cpu_t *cpu)
 		try {
 			status = decode_instr(cpu, disas_ctx, &decoder, &instr);
 		}
-		catch (host_exp_t type) {
+		catch ([[maybe_unused]] host_exp_t type) {
 			// this happens on instr breakpoints (not int3)
 			assert(type == host_exp_t::db_exp);
 			cpu->jit->gen_raise_exp_inline(0, 0, EXP_DB);
@@ -1695,7 +1695,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			cpu_check_data_watchpoints(cpu, virt_pc, 1, DR7_TYPE_INSTR);
 			pc = get_code_addr(cpu, virt_pc);
 		}
-		catch (host_exp_t type) {
+		catch ([[maybe_unused]] host_exp_t type) {
 			assert((type == host_exp_t::pf_exp) || (type == host_exp_t::db_exp));
 			cpu_suppress_trampolines<is_tramp>(cpu);
 
@@ -1705,7 +1705,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 				// the exception handler always returns nullptr
 				prev_tc = cpu_raise_exception(&cpu->cpu_ctx);
 			}
-			catch (host_exp_t type) {
+			catch ([[maybe_unused]] host_exp_t type) {
 				assert((type == host_exp_t::pf_exp) || (type == host_exp_t::db_exp));
 
 				// page fault or debug exception while delivering another exception
@@ -1827,7 +1827,7 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 				// the exception handler always returns nullptr
 				return cpu_raise_exception(cpu_ctx);
 			}
-			catch (host_exp_t type) {
+			catch ([[maybe_unused]] host_exp_t type) {
 				assert(type == host_exp_t::pf_exp);
 
 				// page fault exception while delivering another exception

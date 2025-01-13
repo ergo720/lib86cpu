@@ -299,7 +299,7 @@ dbg_add_exp_hook(cpu_ctx_t *cpu_ctx)
 			cpu_ctx->cpu->db_addr = ((vec_db_entry >> 16) << 4) + (vec_db_entry & 0xFFFF);
 		}
 	}
-	catch (host_exp_t type) {
+	catch (host_exp_t) {
 		// this is either a page fault or a debug exception
 		LOG(log_level::warn, "Failed to install hook for the exception handler: a guest exception was raised");
 		return;
@@ -432,7 +432,7 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 
 		}
 	}
-	catch (host_exp_t type) {
+	catch (host_exp_t) {
 		// NOTE: debug exceptions cannot happen here because we are not accessing any memory here, only translating an address 
 		LOG(log_level::info, "Failed to write to address 0x%08" PRIX32, addr);
 	}
@@ -473,7 +473,7 @@ dbg_single_step_handler(cpu_ctx_t *cpu_ctx)
 				iret_real_helper(cpu_ctx, (cpu_ctx->hflags & HFLG_CS32) ? SIZE32 : SIZE16);
 			}
 		}
-		catch (host_exp_t type) {
+		catch (host_exp_t) {
 			// we can't handle an exception here, so abort
 			LIB86CPU_ABORT_msg("Unhandled exception while returning from a single step");
 		}
@@ -519,7 +519,7 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 			dbg_exec_original_instr(cpu_ctx->cpu);
 			dbg_apply_sw_breakpoints(cpu_ctx->cpu, pc);
 		}
-		catch (host_exp_t type) {
+		catch (host_exp_t) {
 			// we can't handle an exception here, so abort
 			LIB86CPU_ABORT_msg("Unhandled exception while returning from a breakpoint");
 		}
@@ -628,7 +628,7 @@ dbg_remove_sw_breakpoints(cpu_t *cpu)
 			try {
 				mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, original_byte, 0);
 			}
-			catch (host_exp_t type) {
+			catch (host_exp_t) {
 				LIB86CPU_ABORT_msg("Unhandled page fault while removing a sw breakpoint");
 			}
 		}
@@ -643,7 +643,7 @@ dbg_remove_sw_breakpoints(cpu_t *cpu, addr_t addr)
 			try {
 				mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, it->second, 0);
 			}
-			catch (host_exp_t type) {
+			catch (host_exp_t) {
 				LIB86CPU_ABORT_msg("Unhandled page fault while removing a sw breakpoint");
 			}
 		}

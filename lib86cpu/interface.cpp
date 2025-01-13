@@ -603,7 +603,7 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 		set_last_error(lc86_status::invalid_parameter);
 		return nullptr;
 	}
-	catch (host_exp_t type) {
+	catch ([[maybe_unused]] host_exp_t type) {
 		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::db_exp));
 		set_last_error(lc86_status::guest_exp);
 		return nullptr;
@@ -941,7 +941,7 @@ lc86_status mem_read_block(cpu_t *cpu, addr_t addr, uint64_t size, uint8_t *out,
 		}
 		return lc86_status::success;
 	}
-	catch (host_exp_t type) {
+	catch ([[maybe_unused]] host_exp_t type) {
 		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::db_exp));
 		if (actual_size) {
 			*actual_size = vec_offset;
@@ -1047,7 +1047,7 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, uint64_t size, const void
 		}
 		return lc86_status::success;
 	}
-	catch (host_exp_t type) {
+	catch ([[maybe_unused]] host_exp_t type) {
 		assert((type == host_exp_t::pf_exp) || (type == host_exp_t::db_exp));
 		if (actual_size) {
 			*actual_size = size_tot;
@@ -1105,7 +1105,7 @@ static lc86_status io_read_handler(cpu_t *cpu, port_t port, T &out)
 		out = io_read_helper<T>(&cpu->cpu_ctx, port);
 		return lc86_status::success;
 	}
-	catch (host_exp_t type) {
+	catch ([[maybe_unused]] host_exp_t type) {
 		assert(type == host_exp_t::db_exp);
 		return set_last_error(lc86_status::guest_exp);
 	}
@@ -1143,7 +1143,7 @@ static lc86_status io_write_handler(cpu_t *cpu, port_t port, T val)
 		io_write_helper<T>(&cpu->cpu_ctx, port, val);
 		return lc86_status::success;
 	}
-	catch (host_exp_t type) {
+	catch ([[maybe_unused]] host_exp_t type) {
 		assert(type == host_exp_t::db_exp);
 		return set_last_error(lc86_status::guest_exp);
 	}
@@ -1233,7 +1233,7 @@ hook_add(cpu_t *cpu, addr_t addr, hook_t hook_addr)
 		addr_t phys_addr = get_code_addr(cpu, addr);
 		tc_invalidate(&cpu->cpu_ctx, phys_addr, 1);
 	}
-	catch (host_exp_t type) {
+	catch (host_exp_t) {
 		return set_last_error(lc86_status::guest_exp);
 	}
 
