@@ -92,7 +92,7 @@ struct ram_save_state_t {
 struct cpu_t;
 
 // cpu api
-API_FUNC lc86_status cpu_new(uint32_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data = { nullptr, nullptr }, const char *debuggee = nullptr);
+API_FUNC lc86_status cpu_new(uint64_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data = { nullptr, nullptr }, const char *debuggee = nullptr);
 API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC lc86_status cpu_run(cpu_t *cpu);
 API_FUNC lc86_status cpu_run_until(cpu_t *cpu, uint64_t timeout_time);
@@ -121,17 +121,17 @@ API_FUNC void write_fstatus(cpu_t *cpu, uint16_t value);
 // memory api
 API_FUNC uint8_t *get_ram_ptr(cpu_t *cpu);
 API_FUNC uint8_t* get_host_ptr(cpu_t *cpu, addr_t addr);
-API_FUNC lc86_status mem_init_region_ram(cpu_t *cpu, addr_t start, uint32_t size, bool should_int = false);
-API_FUNC lc86_status mem_init_region_io(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, io_handlers_t handlers, void *opaque, bool should_int = false, int update = 0);
-API_FUNC lc86_status mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, uint32_t ori_size, bool should_int = false);
-API_FUNC lc86_status mem_init_region_rom(cpu_t *cpu, addr_t start, uint32_t size, uint8_t *buffer, bool should_int = false);
-API_FUNC lc86_status mem_destroy_region(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, bool should_int = false);
-API_FUNC lc86_status mem_read_block_virt(cpu_t *cpu, addr_t addr, uint32_t size, uint8_t *out, uint32_t *actual_size = nullptr);
-API_FUNC lc86_status mem_read_block_phys(cpu_t *cpu, addr_t addr, uint32_t size, uint8_t *out, uint32_t *actual_size = nullptr);
-API_FUNC lc86_status mem_write_block_virt(cpu_t *cpu, addr_t addr, uint32_t size, const void *buffer, uint32_t *actual_size = nullptr);
-API_FUNC lc86_status mem_write_block_phys(cpu_t *cpu, addr_t addr, uint32_t size, const void *buffer, uint32_t *actual_size = nullptr);
-API_FUNC lc86_status mem_fill_block_virt(cpu_t *cpu, addr_t addr, uint32_t size, int val, uint32_t *actual_size = nullptr);
-API_FUNC lc86_status mem_fill_block_phys(cpu_t *cpu, addr_t addr, uint32_t size, int val, uint32_t *actual_size = nullptr);
+API_FUNC lc86_status mem_init_region_ram(cpu_t *cpu, addr_t start, uint64_t size, bool should_int = false);
+API_FUNC lc86_status mem_init_region_io(cpu_t *cpu, addr_t start, uint64_t size, bool io_space, io_handlers_t handlers, void *opaque, bool should_int = false, int update = 0);
+API_FUNC lc86_status mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, uint64_t ori_size, bool should_int = false);
+API_FUNC lc86_status mem_init_region_rom(cpu_t *cpu, addr_t start, uint64_t size, uint8_t *buffer, bool should_int = false);
+API_FUNC lc86_status mem_destroy_region(cpu_t *cpu, addr_t start, uint64_t size, bool io_space, bool should_int = false);
+API_FUNC lc86_status mem_read_block_virt(cpu_t *cpu, addr_t addr, uint64_t size, uint8_t *out, uint64_t *actual_size = nullptr);
+API_FUNC lc86_status mem_read_block_phys(cpu_t *cpu, addr_t addr, uint64_t size, uint8_t *out, uint64_t *actual_size = nullptr);
+API_FUNC lc86_status mem_write_block_virt(cpu_t *cpu, addr_t addr, uint64_t size, const void *buffer, uint64_t *actual_size = nullptr);
+API_FUNC lc86_status mem_write_block_phys(cpu_t *cpu, addr_t addr, uint64_t size, const void *buffer, uint64_t *actual_size = nullptr);
+API_FUNC lc86_status mem_fill_block_virt(cpu_t *cpu, addr_t addr, uint64_t size, int val, uint64_t *actual_size = nullptr);
+API_FUNC lc86_status mem_fill_block_phys(cpu_t *cpu, addr_t addr, uint64_t size, int val, uint64_t *actual_size = nullptr);
 API_FUNC lc86_status io_read_8(cpu_t *cpu, port_t port, uint8_t &out);
 API_FUNC lc86_status io_read_16(cpu_t *cpu, port_t port, uint16_t &out);
 API_FUNC lc86_status io_read_32(cpu_t *cpu, port_t port, uint32_t &out);

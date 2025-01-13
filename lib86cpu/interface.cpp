@@ -115,7 +115,7 @@ default_pmio_write_handler32(addr_t addr, const uint32_t value, void *opaque)
 * ret: the status of the operation
 */
 lc86_status
-cpu_new(uint32_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data, const char *debuggee)
+cpu_new(uint64_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data, const char *debuggee)
 {
 	out = nullptr;
 
@@ -627,7 +627,7 @@ get_host_ptr(cpu_t *cpu, addr_t addr)
 * ret: the status of the operation
 */
 lc86_status
-mem_init_region_ram(cpu_t *cpu, addr_t start, uint32_t size, bool should_int)
+mem_init_region_ram(cpu_t *cpu, addr_t start, uint64_t size, bool should_int)
 {
 	if (size == 0) {
 		return set_last_error(lc86_status::invalid_parameter);
@@ -635,7 +635,7 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, uint32_t size, bool should_int)
 
 	std::unique_ptr<memory_region_t<addr_t>> ram(new memory_region_t<addr_t>);
 	ram->start = ram->buff_off_start = start;
-	ram->end = std::min(static_cast<uint64_t>(start) + size - 1, to_u64(0xFFFFFFFF));
+	ram->end = (addr_t)std::min(start + size - 1, 0xFFFFFFFFull);
 	ram->type = mem_type::ram;
 
 	if (should_int) {
@@ -665,7 +665,7 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, uint32_t size, bool should_int)
 * ret: the status of the operation
 */
 lc86_status
-mem_init_region_io(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, io_handlers_t handlers, void *opaque, bool should_int, int update)
+mem_init_region_io(cpu_t *cpu, addr_t start, uint64_t size, bool io_space, io_handlers_t handlers, void *opaque, bool should_int, int update)
 {
 	if (update) {
 		if (!should_int) {
@@ -716,8 +716,7 @@ mem_init_region_io(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, io_ha
 
 			std::unique_ptr<memory_region_t<port_t>> io(new memory_region_t<port_t>);
 			io->start = static_cast<port_t>(start);
-			uint64_t end_io1 = io->start + size - 1;
-			io->end = std::min(end_io1, to_u64(0xFFFF));
+			io->end = (addr_t)std::min(io->start + size - 1, 0xFFFFull);
 			io->type = mem_type::pmio;
 			io->handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_pmio_read_handler8;
 			io->handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_pmio_read_handler16;
@@ -732,7 +731,7 @@ mem_init_region_io(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, io_ha
 		else {
 			std::unique_ptr<memory_region_t<addr_t>> mmio(new memory_region_t<addr_t>);
 			mmio->start = start;
-			mmio->end = std::min(static_cast<uint64_t>(start) + size - 1, to_u64(0xFFFFFFFF));
+			mmio->end = (addr_t)std::min(start + size - 1, 0xFFFFFFFFull);
 			mmio->type = mem_type::mmio;
 			mmio->handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_mmio_read_handler8;
 			mmio->handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_mmio_read_handler16;
@@ -768,7 +767,7 @@ mem_init_region_io(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, io_ha
 * ret: the status of the operation
 */
 lc86_status
-mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, uint32_t ori_size, bool should_int)
+mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, uint64_t ori_size, bool should_int)
 {
 	if (ori_size == 0) {
 		return set_last_error(lc86_status::invalid_parameter);
@@ -778,7 +777,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, uint32_t
 	if ((aliased_region->start <= ori_start) && (aliased_region->end >= (ori_start + ori_size - 1)) && (aliased_region->type != mem_type::unmapped)) {
 		std::unique_ptr<memory_region_t<addr_t>> alias(new memory_region_t<addr_t>);
 		alias->start = alias_start;
-		alias->end = std::min(static_cast<uint64_t>(alias_start) + ori_size - 1, to_u64(0xFFFFFFFF));
+		alias->end = (addr_t)std::min(alias_start + ori_size - 1, 0xFFFFFFFFull);
 		alias->alias_offset = ori_start - aliased_region->start;
 		alias->type = mem_type::alias;
 		alias->aliased_region = aliased_region;
@@ -809,7 +808,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, uint32_t
 * ret: the status of the operation
 */
 lc86_status
-mem_init_region_rom(cpu_t *cpu, addr_t start, uint32_t size, uint8_t *buffer, bool should_int)
+mem_init_region_rom(cpu_t *cpu, addr_t start, uint64_t size, uint8_t *buffer, bool should_int)
 {
 	if ((size == 0) || !(buffer)) {
 		return set_last_error(lc86_status::invalid_parameter);
@@ -817,7 +816,7 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, uint32_t size, uint8_t *buffer, bo
 
 	std::unique_ptr<memory_region_t<addr_t>> rom(new memory_region_t<addr_t>);
 	rom->start = rom->buff_off_start = start;
-	rom->end = std::min(static_cast<uint64_t>(start) + size - 1, to_u64(0xFFFFFFFF));
+	rom->end = (addr_t)std::min(start + size - 1, 0xFFFFFFFFull);
 	rom->type = mem_type::rom;
 	rom->rom_ptr = buffer;
 
@@ -855,16 +854,15 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, uint32_t size, uint8_t *buffer, bo
 * ret: always success
 */
 lc86_status
-mem_destroy_region(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, bool should_int)
+mem_destroy_region(cpu_t *cpu, addr_t start, uint64_t size, bool io_space, bool should_int)
 {
 	if (io_space) {
 		port_t start_io = static_cast<port_t>(start);
-		uint64_t end_io1 = start_io + size - 1;
-		port_t end_io = std::min(end_io1, to_u64(0xFFFF));
+		port_t end_io = (port_t)std::min(start_io + size - 1, 0xFFFFull);
 		cpu->io_space_tree->erase(start_io, end_io);
 	}
 	else {
-		addr_t end = std::min(static_cast<uint64_t>(start) + size - 1, to_u64(0xFFFFFFFF));
+		addr_t end = (addr_t)std::min(start + size - 1, 0xFFFFFFFFull);
 		if (should_int) {
 			cpu->regions_changed.push_back(std::make_pair(false, std::make_unique<memory_region_t<addr_t>>(start, end)));
 			cpu->raise_int_fn(&cpu->cpu_ctx, CPU_REGION_INT);
@@ -878,16 +876,16 @@ mem_destroy_region(cpu_t *cpu, addr_t start, uint32_t size, bool io_space, bool 
 }
 
 template<bool is_virt>
-lc86_status mem_read_block(cpu_t *cpu, addr_t addr, uint32_t size, uint8_t *out, uint32_t *actual_size)
+lc86_status mem_read_block(cpu_t *cpu, addr_t addr, uint64_t size, uint8_t *out, uint64_t *actual_size)
 {
-	uint32_t vec_offset = 0;
-	uint32_t page_offset = addr & PAGE_MASK;
-	uint32_t size_left = size;
+	uint64_t vec_offset = 0;
+	uint64_t page_offset = addr & PAGE_MASK;
+	uint64_t size_left = size;
 
 	try {
 		while (size_left > 0) {
 			addr_t phys_addr;
-			uint32_t bytes_to_read = std::min(PAGE_SIZE - page_offset, size_left);
+			uint32_t bytes_to_read = (uint32_t)std::min(PAGE_SIZE - page_offset, size_left);
 			if constexpr (is_virt) {
 				phys_addr = get_read_addr(cpu, addr, 0);
 			}
@@ -962,29 +960,29 @@ lc86_status mem_read_block(cpu_t *cpu, addr_t addr, uint32_t size, uint8_t *out,
 * ret: the status of the operation
 */
 lc86_status
-mem_read_block_virt(cpu_t *cpu, addr_t addr, uint32_t size, uint8_t *out, uint32_t *actual_size)
+mem_read_block_virt(cpu_t *cpu, addr_t addr, uint64_t size, uint8_t *out, uint64_t *actual_size)
 {
 	return mem_read_block<true>(cpu, addr, size, out, actual_size);
 }
 
 lc86_status
-mem_read_block_phys(cpu_t *cpu, addr_t addr, uint32_t size, uint8_t *out, uint32_t *actual_size)
+mem_read_block_phys(cpu_t *cpu, addr_t addr, uint64_t size, uint8_t *out, uint64_t *actual_size)
 {
 	return mem_read_block<false>(cpu, addr, size, out, actual_size);
 }
 
 template<bool fill, bool is_virt>
-lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, uint32_t size, const void *buffer, int val, uint32_t *actual_size)
+lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, uint64_t size, const void *buffer, int val, uint64_t *actual_size)
 {
-	uint32_t size_tot = 0;
-	uint32_t page_offset = addr & PAGE_MASK;
-	uint32_t size_left = size;
+	uint64_t size_tot = 0;
+	uint64_t page_offset = addr & PAGE_MASK;
+	uint64_t size_left = size;
 
 	try {
 		while (size_left > 0) {
 			bool is_code;
 			addr_t phys_addr;
-			uint32_t bytes_to_write = std::min(PAGE_SIZE - page_offset, size_left);
+			uint32_t bytes_to_write = (uint32_t)std::min(PAGE_SIZE - page_offset, size_left);
 			if constexpr (is_virt) {
 				phys_addr = get_write_addr(cpu, addr, 0, &is_code);
 				if (is_code) {
@@ -1068,13 +1066,13 @@ lc86_status mem_write_handler(cpu_t *cpu, addr_t addr, uint32_t size, const void
 * ret: the status of the operation
 */
 lc86_status
-mem_write_block_virt(cpu_t *cpu, addr_t addr, uint32_t size, const void *buffer, uint32_t *actual_size)
+mem_write_block_virt(cpu_t *cpu, addr_t addr, uint64_t size, const void *buffer, uint64_t *actual_size)
 {
 	return mem_write_handler<false, true>(cpu, addr, size, buffer, 0, actual_size);
 }
 
 lc86_status
-mem_write_block_phys(cpu_t *cpu, addr_t addr, uint32_t size, const void *buffer, uint32_t *actual_size)
+mem_write_block_phys(cpu_t *cpu, addr_t addr, uint64_t size, const void *buffer, uint64_t *actual_size)
 {
 	return mem_write_handler<false, false>(cpu, addr, size, buffer, 0, actual_size);
 }
@@ -1089,13 +1087,13 @@ mem_write_block_phys(cpu_t *cpu, addr_t addr, uint32_t size, const void *buffer,
 * ret: the status of the operation
 */
 lc86_status
-mem_fill_block_virt(cpu_t *cpu, addr_t addr, uint32_t size, int val, uint32_t *actual_size)
+mem_fill_block_virt(cpu_t *cpu, addr_t addr, uint64_t size, int val, uint64_t *actual_size)
 {
 	return mem_write_handler<true, true>(cpu, addr, size, nullptr, val, actual_size);
 }
 
 lc86_status
-mem_fill_block_phys(cpu_t *cpu, addr_t addr, uint32_t size, int val, uint32_t *actual_size)
+mem_fill_block_phys(cpu_t *cpu, addr_t addr, uint64_t size, int val, uint64_t *actual_size)
 {
 	return mem_write_handler<true, false>(cpu, addr, size, nullptr, val, actual_size);
 }

@@ -25,7 +25,7 @@ static bool raise_page_fault;
 // because the debug comparisons are done with virtual addresses
 
 void
-ipt_ram_init(cpu_t *cpu, size_t ramsize)
+ipt_ram_init(cpu_t *cpu, uint64_t ramsize)
 {
 	if ((ramsize != (64 * 1024 * 1024)) && (ramsize != (128 * 1024 * 1024))) {
 		throw lc86_exp_abort("Invalid ram size", lc86_status::invalid_parameter);
@@ -39,7 +39,7 @@ ipt_ram_init(cpu_t *cpu, size_t ramsize)
 	// Create a regular ram allocation (accessed from the host with normal memory handlers) and also an alias of it which is only accessed from the
 	// jitted code with the ipt. We need to create one alias for each xbox ram pool so that we are able to emulate the guest page permissions
 	// with the host page permissions
-	ram_handle = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, ramsize + 16, NULL);
+	ram_handle = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, DWORD(ramsize + 16), NULL);
 	if (ram_handle == NULL) {
 		throw lc86_exp_abort("Failed to create the ram memory mapping", lc86_status::no_memory);
 	}
@@ -64,13 +64,13 @@ ipt_ram_init(cpu_t *cpu, size_t ramsize)
 }
 
 lc86_status
-ipt_rom_init(cpu_t *cpu, size_t romsize, memory_region_t<addr_t> *rom, uint8_t *buffer)
+ipt_rom_init(cpu_t *cpu, uint64_t romsize, memory_region_t<addr_t> *rom, uint8_t *buffer)
 {
 	uint32_t rom_handle_idx = rom->start == FLASH_ROM_BASE ? FLASH_ROM_HANDLE : MCPX_ROM_HANDLE;
 
 	// Allocate 16 extra bytes at then end in the case something ever does a 2,4,8,10,16 byte access on the last valid byte of the rom
 	// NOTE: unlike main ram, we don't need to create rom aliases to handle page permissions because all valid rom pages are always read-only
-	rom_handle[rom_handle_idx] = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, romsize + 16, NULL);
+	rom_handle[rom_handle_idx] = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, DWORD(romsize + 16), NULL);
 	if (rom_handle[rom_handle_idx] == NULL) {
 		last_error = "Failed to create the rom memory mapping";
 		return lc86_status::no_memory;
@@ -193,7 +193,7 @@ static void
 ipt_backpatch(cpu_t *cpu, uint8_t *faulting_addr, uint32_t mem_access_size, uint32_t mem_access_offset)
 {
 	uint8_t *addr_to_patch = faulting_addr - mem_access_offset, *addr_nops_start;
-	size_t nops_to_add, size_to_flush;
+	uint32_t nops_to_add, size_to_flush;
 
 	if (mem_access_size == 1) {
 		// Bytes to patch: 29 (ipt check) + 4 (MOV) -> patched: 22, nop: 11
@@ -227,7 +227,7 @@ ipt_backpatch(cpu_t *cpu, uint8_t *faulting_addr, uint32_t mem_access_size, uint
 	static const uint8_t nop8[] = { 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 };
 	static const uint8_t nop9[] = { 0x66, 0x0F, 0x1F, 0x84, 0x00, 0x00, 0x00, 0x00, 0x00 };
 	static const uint8_t *nop_arr[] = { nop1, nop2, nop3, nop4, nop5, nop6, nop7, nop8, nop9 };
-	size_t nop_max_size = is_multi_nop_supported ? 9 : 1, nops_left = nops_to_add;
+	uint32_t nop_max_size = is_multi_nop_supported ? 9 : 1, nops_left = nops_to_add;
 
 	while (nops_left) {
 		uint32_t nops_added = std::min(nops_left, nop_max_size);
@@ -433,7 +433,7 @@ ipt_raise_exception(cpu_ctx_t *cpu_ctx)
 		// the exception handler always returns nullptr
 		return cpu_raise_exception(cpu_ctx);
 	}
-	catch (host_exp_t type) {
+	catch ([[maybe_unused]] host_exp_t type) {
 		assert(type == host_exp_t::pf_exp);
 
 		// page fault exception while delivering another exception

@@ -9,8 +9,8 @@
 
 inline bool is_multi_nop_supported = false;
 
-void ipt_ram_init(cpu_t *cpu, size_t ramsize);
-lc86_status ipt_rom_init(cpu_t *cpu, size_t romsize, memory_region_t<addr_t> *rom, uint8_t *buffer);
+void ipt_ram_init(cpu_t *cpu, uint64_t ramsize);
+lc86_status ipt_rom_init(cpu_t *cpu, uint64_t romsize, memory_region_t<addr_t> *rom, uint8_t *buffer);
 void ipt_ram_deinit(cpu_t *cpu);
 void ipt_rom_deinit(uint8_t *rom_ptr, uint8_t *rom_alias_ptr, addr_t start);
 translated_code_t *ipt_run_guarded_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc);

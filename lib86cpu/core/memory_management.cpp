@@ -625,7 +625,7 @@ addr_t get_code_addr(cpu_t *cpu, addr_t addr, exp_data_t *exp_data)
 uint64_t
 as_ram_dispatch_read(cpu_t *cpu, addr_t addr, uint64_t size, const memory_region_t<addr_t> *region, uint8_t *buffer)
 {
-	uint64_t bytes_to_read = std::min((region->end - addr) + to_u64(1), size);
+	uint64_t bytes_to_read = std::min(region->end - addr + 1ull, size);
 
 	switch (region->type)
 	{
