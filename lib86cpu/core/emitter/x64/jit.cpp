@@ -207,74 +207,75 @@ get_arg_count(JIT_API R(*f)(Args...))
 	return std::integral_constant<size_t, sizeof...(Args)>{};
 }
 
-template<size_t idx>
-consteval size_t
+template<uint64_t idx>
+consteval uint16_t
 max_stack_required_for_func()
 {
-	if constexpr (constexpr size_t num_args = decltype(get_arg_count(std::get<idx>(all_callable_funcs)))::value; num_args > 4) {
+	if constexpr (constexpr uint16_t num_args = decltype(get_arg_count(std::get<idx>(all_callable_funcs)))::value; num_args > 4) {
 		return (num_args - 4) * 8;
 	}
 
 	return 0;
 }
 
-template<size_t idx>
+template<uint64_t idx>
 struct max_stack_required
 {
-	static constexpr size_t stack = std::max(max_stack_required<idx - 1>::stack, max_stack_required_for_func<idx>());
+	static constexpr uint16_t stack = std::max(max_stack_required<idx - 1>::stack, max_stack_required_for_func<idx>());
 };
 
 template<>
 struct max_stack_required<0>
 {
-	static constexpr size_t stack = max_stack_required_for_func<0>();
+	static constexpr uint16_t stack = max_stack_required_for_func<0>();
 };
 
-consteval size_t
+consteval uint16_t
 get_tot_args_stack_required()
 {
 	// on WIN64, the stack is 16 byte aligned
 	return (max_stack_required<std::tuple_size_v<decltype(all_callable_funcs)> - 1>::stack + 15) & ~15;
 }
 
-constexpr size_t local_vars_size = JIT_LOCAL_VARS_STACK_SIZE;
-constexpr size_t reg_args_size = JIT_REG_ARGS_STACK_SIZE;
-constexpr size_t stack_args_size = get_tot_args_stack_required();
-constexpr size_t tot_arg_size = stack_args_size + reg_args_size + local_vars_size;
+constexpr uint16_t local_vars_size = JIT_LOCAL_VARS_STACK_SIZE;
+constexpr uint16_t reg_args_size = JIT_REG_ARGS_STACK_SIZE;
+constexpr uint16_t stack_args_size = get_tot_args_stack_required();
+constexpr uint16_t tot_arg_size = stack_args_size + reg_args_size + local_vars_size;
 
-size_t
+uint16_t
 get_jit_stack_required_runtime()
 {
 	// runtime version used by x64_exceptions.cpp
 	return tot_arg_size;
 }
-static constexpr size_t
+
+static constexpr uint16_t
 get_jit_stack_required()
 {
 	return tot_arg_size;
 }
 
-static constexpr size_t
+static constexpr uint16_t
 get_jit_reg_args_size()
 {
 	return reg_args_size;
 }
 
-static constexpr size_t
+static constexpr uint16_t
 get_jit_stack_args_size()
 {
 	return stack_args_size;
 }
 
-static constexpr size_t
+static constexpr uint16_t
 get_jit_local_vars_size()
 {
 	return local_vars_size;
 }
 
 // calculates a stack offset at runtime
-static size_t
-get_local_var_offset(size_t idx)
+static uint64_t
+get_local_var_offset(uint64_t idx)
 {
 	if (idx > (get_jit_local_vars_size() / 8 - 1)) {
 		LIB86CPU_ABORT_msg("Attempted to use a local variable for which not enough stack was allocated for");
@@ -285,8 +286,8 @@ get_local_var_offset(size_t idx)
 }
 
 // calculates a stack offset at compile time
-template<size_t idx>
-static constexpr size_t
+template<uint64_t idx>
+static constexpr uint64_t
 get_local_var_offset()
 {
 	if (idx > (get_jit_local_vars_size() / 8 - 1)) {
@@ -298,7 +299,7 @@ get_local_var_offset()
 }
 
 template<x86::Gp reg>
-constexpr size_t
+constexpr uint64_t
 get_reg_arg_offset()
 {
 	// this adds get_jit_stack_required() to revert SUB(RSP, get_jit_stack_required()), then adds 8 to revert PUSH(RBX)

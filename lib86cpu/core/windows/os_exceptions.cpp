@@ -47,7 +47,7 @@ create_unwind_info()
 	uint8_t num_unwind_codes;
 
 	// Create UNWIND_CODE entries for sub rsp, imm32
-	size_t tot_stack_allocated = get_jit_stack_required_runtime();
+	uint16_t tot_stack_allocated = get_jit_stack_required_runtime();
 	if (tot_stack_allocated <= 128) {
 		unwind_codes[0] = 8 | (UWOP_ALLOC_SMALL << 8) | ((tot_stack_allocated / 8 - 1) << 12);
 		num_unwind_codes = 1;
@@ -77,19 +77,19 @@ create_unwind_info()
 }
 
 void
-lc86_jit::gen_exception_info(uint8_t *code_ptr, size_t code_size)
+lc86_jit::gen_exception_info(uint8_t *code_ptr, uint64_t code_size)
 {
 	create_unwind_info();
 
 	// Write .xdata
-	size_t aligned_code_size = (code_size + sizeof(DWORD) - 1) & ~(sizeof(DWORD) - 1);
+	uint64_t aligned_code_size = (code_size + sizeof(DWORD) - 1) & ~(sizeof(DWORD) - 1);
 	std::memcpy(code_ptr + aligned_code_size, unwind_info, sizeof(unwind_info));
 
 	// Write .pdata
 	RUNTIME_FUNCTION *table = reinterpret_cast<RUNTIME_FUNCTION *>(code_ptr + aligned_code_size + sizeof(unwind_info));
 	table->BeginAddress = 0;
-	table->EndAddress = code_size;
-	table->UnwindInfoAddress = aligned_code_size;
+	table->EndAddress = DWORD(code_size);
+	table->UnwindInfoAddress = DWORD(aligned_code_size);
 	m_mem.m_eh_frames.emplace(code_ptr, table);
 
 	[[maybe_unused]] auto ret = RtlAddFunctionTable(table, 1, reinterpret_cast<DWORD64>(code_ptr));

@@ -185,7 +185,7 @@ public:
 	void float_arithmetic(decoded_instr *instr);
 
 #if defined(_WIN64) || defined (__linux__)
-	void gen_exception_info(uint8_t *code_ptr, size_t code_size);
+	void gen_exception_info(uint8_t *code_ptr, uint64_t code_size);
 #endif
 
 private:

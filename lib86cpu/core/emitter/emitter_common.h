@@ -133,7 +133,7 @@ int get_seg_prfx_idx(decoded_instr *instr);
 int get_reg_idx(ZydisRegister reg);
 const std::pair<int, size_t> get_reg_pair(ZydisRegister reg);
 #ifdef LIB86CPU_X64_EMITTER
-size_t get_jit_stack_required_runtime();
+uint16_t get_jit_stack_required_runtime();
 #endif
 
 
