@@ -258,7 +258,7 @@ dbg_add_exp_hook(cpu_ctx_t *cpu_ctx)
 					LOG(log_level::warn, "Failed to install hook for the exception handler: selector specified by the IDT descriptor points to the null GDT descriptor");
 					return;
 				}
-				uint16_t sel_idx = sel >> 3;
+				uint32_t sel_idx = sel >> 3;
 				uint32_t base, limit;
 				if (sel & 4) {
 					base = cpu_ctx->regs.ldtr_hidden.base;
@@ -278,7 +278,7 @@ dbg_add_exp_hook(cpu_ctx_t *cpu_ctx)
 					LOG(log_level::warn, "Failed to install hook for the exception handler: GDT or LDT descriptor not present");
 					return;
 				}
-				new_base = ((desc & 0xFFFF0000) >> 16) | ((desc & 0xFF00000000) >> 16) | ((desc & 0xFF00000000000000) >> 32);
+				new_base = uint32_t(((desc & 0xFFFF0000) >> 16) | ((desc & 0xFF00000000) >> 16) | ((desc & 0xFF00000000000000) >> 32));
 				if (exp_idx == EXP_BP) {
 					cpu_ctx->cpu->bp_addr = new_base + new_eip;
 					exp_idx = EXP_DB;
@@ -326,7 +326,7 @@ dbg_disas_code_block(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, 
 		if (ZYAN_SUCCESS(status)) {
 			disas_data.push_back(std::make_pair(disas_ctx->virt_pc, log_instr(disas_ctx->virt_pc, &instr)));
 			--instr_num;
-			size_t bytes = instr.i.length;
+			uint32_t bytes = instr.i.length;
 			addr_t next_pc = disas_ctx->virt_pc + bytes;
 			if ((disas_ctx->virt_pc & ~PAGE_MASK) != ((next_pc - 1) & ~PAGE_MASK)) {
 				// page crossing, needs to translate virt_pc again
