@@ -1733,7 +1733,7 @@ lc86_jit::ld_pf(x86::Gp dst, x86::Gp res, x86::Gp aux)
 }
 
 void
-lc86_jit::load_mem(uint8_t size)
+lc86_jit::load_mem(uint64_t size)
 {
 	// Reads memory by invoking a memory handler
 	// RCX: cpu_ctx, EDX: addr
@@ -1782,13 +1782,13 @@ lc86_jit::load_mem(uint8_t size)
 
 #ifdef XBOX_CPU
 void
-lc86_jit::load_ipt(uint8_t size)
+lc86_jit::load_ipt(uint64_t size)
 {
 	// Attempts to read memory directly with the ipt
 	// RCX: cpu_ctx, EDX: addr
 	// for SIZE128/80: same as above, but without ipt it must be changed to be RCX: ptr to stack/memory-allocated uint128/80_t, RDX: cpu_ctx, R8: addr
 
-	const auto &ipt_call_code = [this](uint8_t size) {
+	const auto &ipt_call_code = [this](uint64_t size) {
 		MOV(EAX, EDX); // persist a copy of the original address (used if the access causes a fault)
 		MOV(R11D, EDX);
 		SHR(EAX, PAGE_SHIFT); // calculate virtual page number
@@ -1855,7 +1855,7 @@ lc86_jit::load_ipt(uint8_t size)
 }
 
 void
-lc86_jit::load_moffset(uint8_t size, op_info info)
+lc86_jit::load_moffset(uint64_t size, op_info info)
 {
 	// Only used with MOV eax, moffset, where moffset is an address specified as an immediate
 	// If we see that the address is going to access a known mmio range, we can directly emit a call to the memory handler, thus avoid unnecessary exceptions
@@ -1869,7 +1869,7 @@ lc86_jit::load_moffset(uint8_t size, op_info info)
 #endif
 
 template<bool dont_write>
-void lc86_jit::store_mem(uint8_t size)
+void lc86_jit::store_mem(uint64_t size)
 {
 	// Writes to memory by invoking a memory handler
 	// RCX: cpu_ctx, EDX: addr, R8/D/W/B: val
@@ -1907,12 +1907,12 @@ void lc86_jit::store_mem(uint8_t size)
 
 #ifdef XBOX_CPU
 void
-lc86_jit::store_ipt(uint8_t size)
+lc86_jit::store_ipt(uint64_t size)
 {
 	// Attempts to write to memory directly with the ipt
 	// RCX: cpu_ctx, EDX: addr, R8/D/W/B: val
 
-	const auto &ipt_call_code = [this](uint8_t size) {
+	const auto &ipt_call_code = [this](uint64_t size) {
 		MOV(EAX, EDX); // persist a copy of the original address (used if the access causes a fault)
 		MOV(R11D, EDX);
 		SHR(EAX, PAGE_SHIFT); // calculate virtual page number
@@ -1977,7 +1977,7 @@ lc86_jit::store_ipt(uint8_t size)
 }
 
 void
-lc86_jit::store_moffset( uint8_t size, op_info info)
+lc86_jit::store_moffset(uint64_t size, op_info info)
 {
 	// Only used with mov moffset, eax, where moffset is an address specified as an immediate
 	// If we see that the address is going to access a known mmio range, we can directly emit a call to the memory handler, thus avoid unnecessary exceptions
@@ -1991,7 +1991,7 @@ lc86_jit::store_moffset( uint8_t size, op_info info)
 #endif
 
 void
-lc86_jit::load_io(uint8_t size_mode)
+lc86_jit::load_io(uint64_t size_mode)
 {
 	// RCX: cpu_ctx, EDX: port
 
@@ -2015,7 +2015,7 @@ lc86_jit::load_io(uint8_t size_mode)
 }
 
 void
-lc86_jit::store_io(uint8_t size_mode)
+lc86_jit::store_io(uint64_t size_mode)
 {
 	// RCX: cpu_ctx, EDX: port, R8B/R8W/R8D: val
 
