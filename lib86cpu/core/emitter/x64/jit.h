@@ -209,7 +209,7 @@ private:
 	template<bool add_seg_base = true>
 	op_info get_operand(decoded_instr *instr, const unsigned opnum);
 	op_info get_register_op(decoded_instr *instr, const unsigned opnum);
-	uint32_t get_immediate_op(decoded_instr *instr, const unsigned opnum);
+	uint64_t get_immediate_op(decoded_instr *instr, const unsigned opnum);
 	template<unsigned opnum, typename T1, typename T2>
 	auto get_rm(decoded_instr *instr, T1 &&reg, T2 &&mem);
 	template<bool write_dst = true, typename T>

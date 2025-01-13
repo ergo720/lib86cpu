@@ -1140,7 +1140,7 @@ lc86_jit::get_register_op(decoded_instr *instr, const unsigned opnum)
 	return get_operand(instr, opnum);
 }
 
-uint32_t
+uint64_t
 lc86_jit::get_immediate_op(decoded_instr *instr, const unsigned opnum)
 {
 	assert(instr->o[opnum].type == ZYDIS_OPERAND_TYPE_IMMEDIATE);
