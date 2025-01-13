@@ -4010,7 +4010,7 @@ lc86_jit::adc(decoded_instr *instr)
 
 	case 0x15: {
 		imm_to_eax_flags<true>(instr,
-			[this](x86::Gp sum_host_reg, uint32_t src_imm)
+			[this](x86::Gp sum_host_reg, uint64_t src_imm)
 			{
 				auto cf_host_reg = SIZED_REG(x64::r9, m_cpu->size_mode);
 				LD_CF(R9D);
@@ -4113,7 +4113,7 @@ lc86_jit::add(decoded_instr *instr)
 
 	case 0x05: {
 		imm_to_eax_flags<true>(instr,
-			[this](x86::Gp sum_host_reg, uint32_t src_imm)
+			[this](x86::Gp sum_host_reg, uint64_t src_imm)
 			{
 				ADD(sum_host_reg, src_imm);
 			});
@@ -4200,7 +4200,7 @@ lc86_jit::and_(decoded_instr *instr)
 
 	case 0x25: {
 		imm_to_eax(instr,
-			[this](x86::Gp res_host_reg, uint32_t src_imm)
+			[this](x86::Gp res_host_reg, uint64_t src_imm)
 			{
 				AND(res_host_reg, src_imm);
 			});
@@ -4491,7 +4491,7 @@ lc86_jit::call(decoded_instr *instr)
 
 	case 0xE8: {
 		addr_t ret_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
-		addr_t call_eip = ret_eip + instr->o[OPNUM_SINGLE].imm.value.s;
+		addr_t call_eip = addr_t((int64_t)ret_eip + instr->o[OPNUM_SINGLE].imm.value.s);
 		if (m_cpu->size_mode == SIZE16) {
 			call_eip &= 0x0000FFFF;
 		}
@@ -4905,7 +4905,7 @@ lc86_jit::cmp(decoded_instr *instr)
 
 	case 0x3D: {
 		imm_to_eax_flags<false, false>(instr,
-			[this](x86::Gp sub_host_reg, uint32_t src_imm)
+			[this](x86::Gp sub_host_reg, uint64_t src_imm)
 			{
 				SUB(sub_host_reg, src_imm);
 			});
@@ -6286,7 +6286,7 @@ void
 lc86_jit::jcc(decoded_instr *instr)
 {
 	addr_t next_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
-	addr_t jmp_eip = next_eip + instr->o[OPNUM_SINGLE].imm.value.s;
+	addr_t jmp_eip = addr_t((uint64_t)next_eip + instr->o[OPNUM_SINGLE].imm.value.s);
 	if (m_cpu->size_mode == SIZE16) {
 		jmp_eip &= 0x0000FFFF;
 	}
@@ -6538,7 +6538,7 @@ lc86_jit::jmp(decoded_instr *instr)
 	{
 	case 0xE9:
 	case 0xEB: {
-		addr_t new_eip = (m_cpu->virt_pc - m_cpu->cpu_ctx.regs.cs_hidden.base) + m_cpu->instr_bytes + instr->o[OPNUM_SINGLE].imm.value.s;
+		addr_t new_eip = addr_t((m_cpu->virt_pc - m_cpu->cpu_ctx.regs.cs_hidden.base) + m_cpu->instr_bytes + instr->o[OPNUM_SINGLE].imm.value.s);
 		if (m_cpu->size_mode == SIZE16) {
 			new_eip &= 0x0000FFFF;
 		}
@@ -6884,7 +6884,7 @@ lc86_jit::loop(decoded_instr *instr)
 	}
 
 	addr_t next_eip = m_cpu->instr_eip + m_cpu->instr_bytes;
-	addr_t loop_eip = next_eip + instr->o[OPNUM_SINGLE].imm.value.s;
+	addr_t loop_eip = addr_t((int64_t)next_eip + instr->o[OPNUM_SINGLE].imm.value.s);
 	if (m_cpu->size_mode == SIZE16) {
 		loop_eip &= 0x0000FFFF;
 	}
@@ -7735,7 +7735,7 @@ lc86_jit::or_(decoded_instr *instr)
 
 	case 0x0D: {
 		imm_to_eax(instr,
-			[this](x86::Gp res_host_reg, uint32_t src_imm)
+			[this](x86::Gp res_host_reg, uint64_t src_imm)
 			{
 				OR(res_host_reg, src_imm);
 			});
@@ -7795,7 +7795,7 @@ lc86_jit::out(decoded_instr *instr)
 		[[fallthrough]];
 
 	case 0xE7: {
-		uint8_t port = instr->o[OPNUM_DST].imm.value.u;
+		uint64_t port = instr->o[OPNUM_DST].imm.value.u;
 		gen_check_io_priv(port);
 		MOV(EDX, port);
 		LD_REG_val(SIZED_REG(x64::r8, m_cpu->size_mode), CPU_CTX_EAX, m_cpu->size_mode);
@@ -8692,7 +8692,7 @@ lc86_jit::sbb(decoded_instr *instr)
 
 	case 0x1D: {
 		imm_to_eax_flags<false>(instr,
-			[this](x86::Gp sub_host_reg, uint32_t src_imm)
+			[this](x86::Gp sub_host_reg, uint64_t src_imm)
 			{
 				auto cf_host_reg = SIZED_REG(x64::r9, m_cpu->size_mode);
 				LD_CF(R9D);
@@ -9258,7 +9258,7 @@ lc86_jit::sub(decoded_instr *instr)
 
 	case 0x2D: {
 		imm_to_eax_flags<false>(instr,
-			[this](x86::Gp sub_host_reg, uint32_t src_imm)
+			[this](x86::Gp sub_host_reg, uint64_t src_imm)
 			{
 				SUB(sub_host_reg, src_imm);
 			});
@@ -9332,7 +9332,7 @@ lc86_jit::test(decoded_instr *instr)
 
 	case 0xA9: {
 		imm_to_eax<false>(instr,
-			[this](x86::Gp res_host_reg, uint32_t src_imm)
+			[this](x86::Gp res_host_reg, uint64_t src_imm)
 			{
 				AND(res_host_reg, src_imm);
 			});
@@ -9559,7 +9559,7 @@ lc86_jit::xor_(decoded_instr *instr)
 
 	case 0x35: {
 		imm_to_eax(instr,
-			[this](x86::Gp res_host_reg, uint32_t src_imm)
+			[this](x86::Gp res_host_reg, uint64_t src_imm)
 			{
 				XOR(res_host_reg, src_imm);
 			});
