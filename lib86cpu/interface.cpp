@@ -635,7 +635,7 @@ mem_init_region_ram(cpu_t *cpu, addr_t start, uint64_t size, bool should_int)
 
 	std::unique_ptr<memory_region_t<addr_t>> ram(new memory_region_t<addr_t>);
 	ram->start = ram->buff_off_start = start;
-	ram->end = (addr_t)std::min(start + size - 1, 0xFFFFFFFFull);
+	ram->end = (addr_t)std::min(start + size - 1, (uint64_t)std::numeric_limits<uint32_t>::max());
 	ram->type = mem_type::ram;
 
 	if (should_int) {
@@ -716,7 +716,7 @@ mem_init_region_io(cpu_t *cpu, addr_t start, uint64_t size, bool io_space, io_ha
 
 			std::unique_ptr<memory_region_t<port_t>> io(new memory_region_t<port_t>);
 			io->start = static_cast<port_t>(start);
-			io->end = (addr_t)std::min(io->start + size - 1, 0xFFFFull);
+			io->end = (addr_t)std::min(io->start + size - 1, (uint64_t)std::numeric_limits<uint16_t>::max());
 			io->type = mem_type::pmio;
 			io->handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_pmio_read_handler8;
 			io->handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_pmio_read_handler16;
@@ -731,7 +731,7 @@ mem_init_region_io(cpu_t *cpu, addr_t start, uint64_t size, bool io_space, io_ha
 		else {
 			std::unique_ptr<memory_region_t<addr_t>> mmio(new memory_region_t<addr_t>);
 			mmio->start = start;
-			mmio->end = (addr_t)std::min(start + size - 1, 0xFFFFFFFFull);
+			mmio->end = (addr_t)std::min(start + size - 1, (uint64_t)std::numeric_limits<uint32_t>::max());
 			mmio->type = mem_type::mmio;
 			mmio->handlers.fnr8 = handlers.fnr8 ? handlers.fnr8 : default_mmio_read_handler8;
 			mmio->handlers.fnr16 = handlers.fnr16 ? handlers.fnr16 : default_mmio_read_handler16;
@@ -777,7 +777,7 @@ mem_init_region_alias(cpu_t *cpu, addr_t alias_start, addr_t ori_start, uint64_t
 	if ((aliased_region->start <= ori_start) && (aliased_region->end >= (ori_start + ori_size - 1)) && (aliased_region->type != mem_type::unmapped)) {
 		std::unique_ptr<memory_region_t<addr_t>> alias(new memory_region_t<addr_t>);
 		alias->start = alias_start;
-		alias->end = (addr_t)std::min(alias_start + ori_size - 1, 0xFFFFFFFFull);
+		alias->end = (addr_t)std::min(alias_start + ori_size - 1, (uint64_t)std::numeric_limits<uint32_t>::max());
 		alias->alias_offset = ori_start - aliased_region->start;
 		alias->type = mem_type::alias;
 		alias->aliased_region = aliased_region;
@@ -816,7 +816,7 @@ mem_init_region_rom(cpu_t *cpu, addr_t start, uint64_t size, uint8_t *buffer, bo
 
 	std::unique_ptr<memory_region_t<addr_t>> rom(new memory_region_t<addr_t>);
 	rom->start = rom->buff_off_start = start;
-	rom->end = (addr_t)std::min(start + size - 1, 0xFFFFFFFFull);
+	rom->end = (addr_t)std::min(start + size - 1, (uint64_t)std::numeric_limits<uint32_t>::max());
 	rom->type = mem_type::rom;
 	rom->rom_ptr = buffer;
 
@@ -858,11 +858,11 @@ mem_destroy_region(cpu_t *cpu, addr_t start, uint64_t size, bool io_space, bool 
 {
 	if (io_space) {
 		port_t start_io = static_cast<port_t>(start);
-		port_t end_io = (port_t)std::min(start_io + size - 1, 0xFFFFull);
+		port_t end_io = (port_t)std::min(start_io + size - 1, (uint64_t)std::numeric_limits<uint16_t>::max());
 		cpu->io_space_tree->erase(start_io, end_io);
 	}
 	else {
-		addr_t end = (addr_t)std::min(start + size - 1, 0xFFFFFFFFull);
+		addr_t end = (addr_t)std::min(start + size - 1, (uint64_t)std::numeric_limits<uint32_t>::max());
 		if (should_int) {
 			cpu->regions_changed.push_back(std::make_pair(false, std::make_unique<memory_region_t<addr_t>>(start, end)));
 			cpu->raise_int_fn(&cpu->cpu_ctx, CPU_REGION_INT);
