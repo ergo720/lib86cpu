@@ -56,7 +56,7 @@ ipt_ram_init(cpu_t *cpu, uint64_t ramsize)
 		throw lc86_exp_abort("Failed to map the contiguous ram view", lc86_status::no_memory);
 	}
 
-	if (cpu->ram_tiled = (uint8_t *)MapViewOfFile(ram_handle, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, 64 * 1024 * 1024); cpu->ram_tiled == NULL) {
+	if (cpu->ram_tiled = (uint8_t *)MapViewOfFile(ram_handle, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, 64 * 1024 * 1024 + 16); cpu->ram_tiled == NULL) {
 		throw lc86_exp_abort("Failed to map the tiled ram view", lc86_status::no_memory);
 	}
 
@@ -69,7 +69,7 @@ ipt_rom_init(cpu_t *cpu, uint64_t romsize, memory_region_t<addr_t> *rom, uint8_t
 	uint32_t rom_handle_idx = rom->start == FLASH_ROM_BASE ? FLASH_ROM_HANDLE : MCPX_ROM_HANDLE;
 
 	// Allocate 16 extra bytes at then end in the case something ever does a 2,4,8,10,16 byte access on the last valid byte of the rom
-	// NOTE: unlike main ram, we don't need to create rom aliases to handle page permissions because all valid rom pages are always read-only
+	// NOTE: unlike main ram, we don't need to create additional rom aliases to handle page permissions because all valid rom pages are always read-only
 	rom_handle[rom_handle_idx] = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, DWORD(romsize + 16), NULL);
 	if (rom_handle[rom_handle_idx] == NULL) {
 		last_error = "Failed to create the rom memory mapping";
@@ -90,7 +90,7 @@ ipt_rom_init(cpu_t *cpu, uint64_t romsize, memory_region_t<addr_t> *rom, uint8_t
 
 	// Always protect the rom to make sure that nothing writes to it
 	DWORD old_protect;
-	if (VirtualProtect(rom->rom_alias_ptr, romsize, PAGE_READONLY, &old_protect) == 0) {
+	if (VirtualProtect(rom->rom_alias_ptr, romsize + 16, PAGE_READONLY, &old_protect) == 0) {
 		last_error = "Failed to mark rom memory as read-only";
 		return lc86_status::internal_error;
 	}

@@ -53,7 +53,7 @@ endif()
 
 if (${CMAKE_HOST_WIN32})
 message("Building for Windows")
-include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows ${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/windows)
+include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows)
 set(PLATFORM_HEADERS
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/clock.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/os_exceptions.h"
@@ -64,20 +64,6 @@ set(PLATFORM_SRC
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/os_exceptions.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/os_mem.cpp"
 )
-if (${LIB86CPU_XBOX_BUILD})
-add_definitions(-DXBOX_CPU)
-if (${LIB86CPU_X64_EMITTER})
-set(PLATFORM_HEADERS ${PLATFORM_HEADERS}
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/windows/ipt.h"
-)
-set(PLATFORM_SRC ${PLATFORM_SRC}
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/windows/ipt.cpp"
-)
-endif()
-add_compile_options(/EHa)
-else ()
-add_compile_options(/EHs)
-endif()
 elseif (${CMAKE_HOST_LINUX})
 message("Building for Linux")
 include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux)
@@ -91,8 +77,28 @@ set(PLATFORM_SRC
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/os_exceptions.cpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/os_mem.cpp"
 )
+endif()
+
 if (${LIB86CPU_XBOX_BUILD})
-message(FATAL_ERROR "Inline page tables are not supported on Linux (yet)")
+add_definitions(-DXBOX_CPU)
+if (${LIB86CPU_X64_EMITTER})
+if (${CMAKE_HOST_WIN32})
+include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/windows)
+set(PLATFORM_HEADERS ${PLATFORM_HEADERS}
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/windows/ipt.h"
+)
+set(PLATFORM_SRC ${PLATFORM_SRC}
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/windows/ipt.cpp"
+)
+elseif (${CMAKE_HOST_LINUX})
+include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/linux)
+set(PLATFORM_HEADERS ${PLATFORM_HEADERS}
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/linux/ipt.h"
+)
+set(PLATFORM_SRC ${PLATFORM_SRC}
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/linux/ipt.cpp"
+)
+endif()
 endif()
 endif()
 
@@ -192,7 +198,10 @@ source_group(TREE ${LIB86CPU_ROOT_DIR} PREFIX header FILES ${HEADERS})
 source_group(TREE ${LIB86CPU_ROOT_DIR} PREFIX source FILES ${SOURCES})
 
 if (${COMPILER_IS_MSVC})
-add_compile_options(/fp:strict /Zc:preprocessor)
+add_compile_options(/EHs /fp:strict /Zc:preprocessor)
+if (${LIB86CPU_XBOX_BUILD})
+add_compile_options(/EHa) # overrides /EHs
+endif()
 add_definitions(-D_CRT_SECURE_NO_WARNINGS -D_CRT_NONSTDC_NO_WARNINGS -D_SCL_SECURE_NO_WARNINGS -D__STDC_FORMAT_MACROS -D__STDC_CONSTANT_MACROS -D__STDC_LIMIT_MACROS)
 add_definitions(-wd4146)
 add_definitions(-wd4800)
