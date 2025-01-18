@@ -5100,7 +5100,6 @@ lc86_jit::cmpxchg(decoded_instr *instr)
 				auto src_host_reg = SIZED_REG(x64::r8, src.bits);
 				auto dst_host_reg = SIZED_REG(x64::rax, m_cpu->size_mode);
 				auto sub_host_reg = SIZED_REG(x64::r10, m_cpu->size_mode);
-				auto r8_reg = SIZED_REG(x64::r8, m_cpu->size_mode);
 				MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EDX);
 				LD_MEM();
 				MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(0)));
@@ -5109,16 +5108,15 @@ lc86_jit::cmpxchg(decoded_instr *instr)
 				MOV(MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode), dst_host_reg);
 				MOV(MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode), sub_host_reg);
 				BR_EQ(equal);
-				ST_REG_val(r8_reg, CPU_CTX_EAX, m_cpu->size_mode);
-				ST_MEM();
+				ST_REG_val(dst_host_reg, CPU_CTX_EAX, m_cpu->size_mode);
 				BR_UNCOND(done);
 				m_a.bind(equal);
 				LD_REG_val(src_host_reg, src.val, src.bits);
 				ST_MEM();
 				m_a.bind(done);
 				MOV(dst_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
-				MOV(r8_reg, MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode));
-				set_flags_sub(dst_host_reg, cmp_host_reg, r8_reg);
+				MOV(src_host_reg, MEMD(RSP, LOCAL_VARS_off(1), m_cpu->size_mode));
+				set_flags_sub(dst_host_reg, cmp_host_reg, src_host_reg);
 			});
 	}
 	break;
