@@ -120,6 +120,7 @@ struct msr_t {
 	uint64_t mcg_status;
 	uint64_t mcg_ctl;
 	uint64_t mca_banks[10][4];
+	uint64_t ebl_cr_poweron;
 };
 
 static_assert(sizeof(uint80_t) == 10);

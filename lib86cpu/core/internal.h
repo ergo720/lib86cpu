@@ -362,6 +362,7 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 
 // msr register addresses
 #define IA32_APIC_BASE             0x1B
+#define IA32_EBL_CR_POWERON        0x2A
 #define IA32_BIOS_UPDT_TRIG        0x79
 #define IA32_BIOS_SIGN_ID          0x8B
 #define IA32_MTRRCAP               0xFE
@@ -401,6 +402,8 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define MSR_MTRR_PHYSMASK_RES      0xFFFFFFF0000007FF
 #define MSR_MTRR_DEF_TYPE_RES      0xFFFFFFFFFFFFF300
 #define MSR_PAT_RES                0xF8F8F8F8F8F8F8F8
+#define MSR_EBL_CR_POWERON_RES     0xFFFFFFFFF0000821
+#define MSR_EBL_CR_POWERON_RW      0x00000000040000DE
 #define MCG_NUM_BANKS              (sizeof(msr_t::mca_banks) / sizeof(msr_t::mca_banks[0]))
 #define MCG_CTL_P                  (1 << 8)
 #define MCG_SER_P                  (1 << 24)

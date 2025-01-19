@@ -65,6 +65,7 @@ cpu_reset(cpu_t *cpu)
 	cpu->cpu_ctx.lazy_eflags.result = 0x100; // make zf=0
 	cpu->a20_mask = 0xFFFFFFFF; // gate closed
 	cpu->cpu_ctx.exp_info.old_exp = EXP_INVALID;
+	cpu->msr.ebl_cr_poweron = 0xC5040000; // system bus frequency = 133 MHz, clock frequency ratio = 5.5, low power mode enabled
 	cpu->msr.mcg_cap = (MCG_NUM_BANKS | MCG_CTL_P | MCG_SER_P);
 	cpu->msr.mcg_ctl = MCG_CTL_ENABLE;
 	for (unsigned i = 0; i < MCG_NUM_BANKS; ++i) {

@@ -1059,6 +1059,10 @@ msr_read_helper(cpu_ctx_t *cpu_ctx)
 		val = MSR_IA32_APICBASE_BSP;
 		break;
 
+	case IA32_EBL_CR_POWERON:
+		val = cpu_ctx->cpu->msr.ebl_cr_poweron;
+		break;
+
 	case IA32_BIOS_UPDT_TRIG:
 		val = 0;
 		break;
@@ -1178,6 +1182,13 @@ msr_write_helper(cpu_ctx_t *cpu_ctx)
 		if (val & MSR_IA32_APIC_BASE_RES) {
 			return 1;
 		}
+		break;
+
+	case IA32_EBL_CR_POWERON:
+		if (val & MSR_EBL_CR_POWERON_RES) {
+			return 1;
+		}
+		cpu_ctx->cpu->msr.ebl_cr_poweron = (cpu_ctx->cpu->msr.ebl_cr_poweron & ~MSR_EBL_CR_POWERON_RW) | (val & MSR_EBL_CR_POWERON_RW);
 		break;
 
 	case IA32_BIOS_UPDT_TRIG:
