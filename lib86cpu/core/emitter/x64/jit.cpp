@@ -2425,7 +2425,7 @@ lc86_jit::gen_set_host_fpu_ctx()
 }
 
 void
-lc86_jit::gen_update_fpu_ptr(decoded_instr *instr, x86::Gp mem_addr64)
+lc86_jit::gen_update_fpu_ptr(decoded_instr *instr)
 {
 	/*
 	is_mem_op -> bit 63
@@ -2434,14 +2434,14 @@ lc86_jit::gen_update_fpu_ptr(decoded_instr *instr, x86::Gp mem_addr64)
 	modrm addr -> [0 - 31]
 	*/
 
-	uint64_t is_mem_operand = !(((instr->i.raw.modrm.reg << 3) | (instr->i.raw.modrm.mod << 6)) == 0xC0); // all fpu instr with 0xCx modrm have reg only operands
+	uint64_t is_mem_operand = !!((instr->i.attributes & ZYDIS_ATTRIB_HAS_MODRM) && !(instr->i.raw.modrm.mod == 3)); // all instr with mod=3 have a reg operand
 	uint64_t instr_info = is_mem_operand << 63;
 	instr_info |= ((((instr->i.raw.modrm.rm | (instr->i.raw.modrm.reg << 3) | (instr->i.raw.modrm.mod << 6)) | ((uint64_t)instr->i.opcode << 8)) & 0x7FF) << 48); // fop is a 11 bit register
 	if (is_mem_operand) {
 		instr_info |= ((uint64_t)get_seg_prfx_offset(instr) << 32);
 		MOV(RDX, instr_info);
-		// modrm addr is calculated at runtime and placed in edx
-		OR(RDX, mem_addr64);
+		// modrm addr must have been placed in (r|e)bx before calling us
+		OR(RDX, RBX);
 	}
 	else {
 		MOV(RDX, instr_info);
@@ -3585,49 +3585,54 @@ template<unsigned idx>
 void lc86_jit::float_load_constant(decoded_instr *instr)
 {
 	// idx 0 -> fld1, 1 -> fldl2e, 2 -> fldl2t, 3 -> fldlg2, 4 -> fldln2, 5 -> fldpi, 6 -> fldz
-	LIB86CPU_ABORT();
-#if 0
+
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
 		RAISEin0_t(EXP_NM);
 	}
 	else {
-		gen_fpu_stack_prologue<true>(fpu_instr_t::float_, [this]() {
-			if constexpr (idx == 0) {
-				FLD1();
-			}
-			else if constexpr (idx == 1) {
-				FLDL2E();
-			}
-			else if constexpr (idx == 2) {
-				FLDL2T();
-			}
-			else if constexpr (idx == 3) {
-				FLDLG2();
-			}
-			else if constexpr (idx == 4) {
-				FLDLN2();
-			}
-			else if constexpr (idx == 5) {
-				FLDPI();
-			}
-			else if constexpr (idx == 6) {
-				FLDZ();
-			}
-			else {
-				LIB86CPU_ABORT_msg("float_load_constant: unknown instruction specified with index %u", idx);
-			}
-			});
-		MOV(EBX, MEMD32(RSP, LOCAL_VARS_off(4)));
+		gen_check_fpu_unmasked_exp();
+		Label ok = m_a.newLabel(), end_instr = m_a.newLabel();
+		gen_update_fpu_ptr(instr);
+		FPU_CLEAR_C1();
+		FPU_IS_TAG_EMPTY(-1); // check for stack overflow of dst st0
+		BR_NE(ok);
+		gen_fpu_stack_overflow();
+		BR_UNCOND(end_instr);
+		m_a.bind(ok);
+		gen_set_host_fpu_ctx();
+		if constexpr (idx == 0) {
+			FLD1();
+		}
+		else if constexpr (idx == 1) {
+			FLDL2E();
+		}
+		else if constexpr (idx == 2) {
+			FLDL2T();
+		}
+		else if constexpr (idx == 3) {
+			FLDLG2();
+		}
+		else if constexpr (idx == 4) {
+			FLDLN2();
+		}
+		else if constexpr (idx == 5) {
+			FLDPI();
+		}
+		else if constexpr (idx == 6) {
+			FLDZ();
+		}
+		else {
+			LIB86CPU_ABORT_msg("%s: unknown instruction specified with index %u", __func__, idx);
+		}
+		FPU_PUSH();
 		MOV(EAX, sizeof(uint80_t));
-		ST_R16(FPU_DATA_FTOP, BX);
-		MUL(BX);
-		FSTP(MEMSD80(RCX, RAX, 0, CPU_CTX_R0));
-		gen_update_fpu_ptr<false>(instr);
+		MUL(MEMD16(RCX, FPU_DATA_FTOP));
+		FSTP(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // store src constant to dst st0
 		RESTORE_FPU_CTX();
-		MOV(EDX, EBX);
-		CALL_F(&fpu_update_tag<true>);
+		XOR(EDX, EDX);
+		CALL_F(&fpu_update_tag<true>); // update dst st0 tag
+		m_a.bind(end_instr);
 	}
-#endif
 }
 
 template<unsigned idx>

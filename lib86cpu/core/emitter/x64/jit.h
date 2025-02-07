@@ -270,7 +270,7 @@ private:
 	template<typename T>
 	void gen_fpu_exp_post_check(uint32_t exception, T &&unmasked);
 	void gen_set_host_fpu_ctx();
-	void gen_update_fpu_ptr(decoded_instr *instr, x86::Gp mem_addr64 = x86::rbx);
+	void gen_update_fpu_ptr(decoded_instr *instr);
 	template<unsigned idx>
 	void shift(decoded_instr *instr);
 	template<unsigned idx>
