@@ -20,8 +20,8 @@ enum class fpu_instr_t : uint32_t {
 void fpu_init(cpu_t *cpu);
 template<bool is_push>
 JIT_API void fpu_update_tag(cpu_ctx_t *cpu_ctx, uint32_t st_num);
-JIT_API uint32_t fpu_is_tag_empty(cpu_ctx_t *cpu_ctx, uint32_t st_num);
-JIT_API void fpu_stack_overflow(cpu_ctx_t *cpu_ctx);
-JIT_API void fpu_stack_underflow(cpu_ctx_t *cpu_ctx, uint32_t st_num, uint32_t should_pop);
-JIT_API void fpu_stack_fault(cpu_ctx_t *cpu_ctx, uint32_t exception);
+JIT_API uint32_t fpu_stack_overflow(cpu_ctx_t *cpu_ctx);
+JIT_API uint32_t fpu_stack_underflow_reg(cpu_ctx_t *cpu_ctx, uint32_t st_num_src, uint32_t st_num_dst, uint32_t should_pop);
+template<typename T, T qnan>
+JIT_API uint32_t fpu_stack_underflow_mem(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t st_num_src, uint32_t should_pop);
 JIT_API void fpu_update_ptr(cpu_ctx_t *cpu_ctx, uint64_t instr_info);

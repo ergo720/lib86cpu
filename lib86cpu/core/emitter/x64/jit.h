@@ -181,8 +181,6 @@ public:
 	void xlat(decoded_instr *instr);
 	void xor_(decoded_instr *instr);
 	void xorps(decoded_instr *instr);
-	template<ZydisMnemonic mnemonic>
-	void float_arithmetic(decoded_instr *instr);
 
 #if defined(_WIN64) || defined (__linux__)
 	void gen_exception_info(uint8_t *code_ptr, uint64_t code_size);
@@ -290,16 +288,20 @@ private:
 	template<unsigned idx>
 	void int_(decoded_instr *instr);
 	template<unsigned idx>
-	void float_load_constant(decoded_instr *instr);
+	void fpu_load_constant(decoded_instr *instr);
+	template<ZydisMnemonic mnemonic>
+	void fpu_arithmetic(decoded_instr *instr);
 	template<unsigned idx>
-	void float_store(decoded_instr *instr);
+	void fpu_store(decoded_instr *instr);
 	template<unsigned idx>
-	void float_load(decoded_instr *instr);
-	void gen_fpu_stack_fault(uint32_t exception);
-	void gen_fpu_stack_overflow();
-	void gen_fpu_stack_underflow(uint32_t st_num, uint32_t should_pop);
+	void fpu_load(decoded_instr *instr);
+	void gen_fpu_check_stack_overflow();
+	void gen_fpu_check_stack_underflow(uint32_t st_num_src, uint32_t st_mun_dst, uint32_t should_pop);
+	template<typename T, T qnan>
+	void gen_fpu_check_stack_underflow(uint32_t st_num_src, uint32_t should_pop);
 	void gen_check_fpu_unmasked_exp();
 	void gen_fpu_load_stx(uint32_t st_num);
+	void gen_fpu_store_stx(uint32_t st_num);
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;

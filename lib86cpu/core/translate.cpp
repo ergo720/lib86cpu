@@ -1053,17 +1053,8 @@ cpu_translate(cpu_t *cpu)
 			break;
 
 		case ZYDIS_MNEMONIC_FADD:
-			cpu->jit->float_arithmetic<ZYDIS_MNEMONIC_FADD>(&instr);
-			break;
-
 		case ZYDIS_MNEMONIC_FADDP:
-			cpu->jit->float_arithmetic<ZYDIS_MNEMONIC_FADDP>(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FIADD:
-			cpu->jit->float_arithmetic<ZYDIS_MNEMONIC_FIADD>(&instr);
-			break;
-
+		case ZYDIS_MNEMONIC_FIADD: BAD;
 		case ZYDIS_MNEMONIC_FILD:
 			cpu->jit->fild(&instr);
 			break;

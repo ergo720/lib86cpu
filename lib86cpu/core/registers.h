@@ -9,6 +9,8 @@
 #include "config.h"
 #include "platform.h"
 
+#define COMMA ,
+
 #define DEFINE_REG32(_reg) \
 		uint32_t		_reg
 
@@ -39,6 +41,7 @@ PACKED(struct uint80_t {
 	uint16_t high;
 	uint80_t();
 	uint80_t(uint64_t val);
+	constexpr uint80_t(uint64_t l, uint16_t h) : low(l)COMMA high(h) {}
 	uint80_t &operator|=(const uint80_t &rhs);
 	uint80_t operator>>(int shift);
 	uint80_t operator<<(int shift);
@@ -126,3 +129,5 @@ struct msr_t {
 static_assert(sizeof(uint80_t) == 10);
 static_assert(sizeof(uint128_t) == 16);
 static_assert(alignof(decltype(regs_t::xmm)) == 16);
+
+#undef COMMA
