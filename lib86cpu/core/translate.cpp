@@ -1054,7 +1054,10 @@ cpu_translate(cpu_t *cpu)
 
 		case ZYDIS_MNEMONIC_FADD:
 		case ZYDIS_MNEMONIC_FADDP:
-		case ZYDIS_MNEMONIC_FIADD: BAD;
+		case ZYDIS_MNEMONIC_FIADD:
+			cpu->jit->fadd(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_FILD:
 			cpu->jit->fild(&instr);
 			break;

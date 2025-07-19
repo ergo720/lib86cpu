@@ -449,9 +449,9 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define FLDLN2(dst) m_a.fldln2(dst)
 #define FLDZ(dst) m_a.fldz(dst)
 #define FADD(...) m_a.fadd(__VA_ARGS__)
-#define FIADD(...) m_a.fiadd(__VA_ARGS__)
+#define FIADD(dst) m_a.fiadd(dst)
 #define FSUB(...) m_a.fsub(__VA_ARGS__)
-#define FISUB(...) m_a.fisub(__VA_ARGS__)
+#define FISUB(dst) m_a.fisub(dst)
 
 #define MOVAPS(dst, src) m_a.movaps(dst, src)
 #define XORPS(dst, src) m_a.xorps(dst, src)
@@ -3772,7 +3772,7 @@ void lc86_jit::fpu_load(decoded_instr *instr)
 template<unsigned idx>
 void lc86_jit::fpu_arithmetic(decoded_instr *instr)
 {
-	// idx 0 -> fsub
+	// idx 0 -> fsub, 1 -> fadd
 
 	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
 		RAISEin0_t(EXP_NM);
@@ -3810,6 +3810,9 @@ void lc86_jit::fpu_arithmetic(decoded_instr *instr)
 				}
 				if constexpr (idx == 0) {
 					FSUB(ST0, ST1);
+				}
+				else if constexpr (idx == 1) {
+					FADD(ST0, ST1);
 				}
 				else {
 					LIB86CPU_ABORT();
@@ -3872,6 +3875,10 @@ void lc86_jit::fpu_arithmetic(decoded_instr *instr)
 				{
 				case 0:
 					is_float_arg ? FSUB(MEMD(RSP, LOCAL_VARS_off(0), size)) : FISUB(MEMD(RSP, LOCAL_VARS_off(0), size));
+					break;
+
+				case 1:
+					is_float_arg ? FADD(MEMD(RSP, LOCAL_VARS_off(0), size)) : FIADD(MEMD(RSP, LOCAL_VARS_off(0), size));
 					break;
 
 				default:
@@ -5567,6 +5574,12 @@ lc86_jit::enter(decoded_instr *instr)
 
 	MOV(rax_host_reg, MEMD(RSP, LOCAL_VARS_off(0), m_cpu->size_mode));
 	ST_REG_val(rax_host_reg, CPU_CTX_EBP, m_cpu->size_mode);
+}
+
+void
+lc86_jit::fadd(decoded_instr *instr)
+{
+	fpu_arithmetic<1>(instr);
 }
 
 void

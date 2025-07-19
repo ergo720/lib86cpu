@@ -81,6 +81,7 @@ public:
 	void dec(decoded_instr *instr);
 	void div(decoded_instr *instr);
 	void enter(decoded_instr *instr);
+	void fadd(decoded_instr *instr);
 	void fild(decoded_instr *instr);
 	void fistp(decoded_instr *instr);
 	void fld(decoded_instr *instr);
