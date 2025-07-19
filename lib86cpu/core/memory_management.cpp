@@ -689,19 +689,20 @@ ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer)
 template<typename T>
 T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv)
 {
+	constexpr auto type_size = sizeof_type<T>();
 	uint32_t page_idx1 = addr & ~PAGE_MASK;
-	uint32_t page_idx2 = (addr + sizeof(T) - 1) & ~PAGE_MASK;
+	uint32_t page_idx2 = (addr + type_size - 1) & ~PAGE_MASK;
 	uint32_t idx = (addr >> PAGE_SHIFT) & DTLB_IDX_MASK;
 	uint64_t mem_access = (tlb_access[0][(cpu_ctx->hflags & HFLG_CPL) >> is_priv]);
 	uint64_t tag = ((static_cast<uint64_t>(addr) << DTLB_TAG_SHIFT64) & DTLB_TAG_MASK64) | page_idx2 | mem_access;
 	mem_access |= DTLB_TAG_MASK64;
 
 	// interrogate the dtlb
-	// this checks the page privilege access (mem_access) and also if the last byte of the read is in the same page as the first (addr + sizeof(T) - 1)
+	// this checks the page privilege access (mem_access) and also if the last byte of the read is in the same page as the first (addr + type_size - 1)
 	// reads that cross pages always result in tlb misses
 	for (unsigned i = 0; i < DTLB_NUM_LINES; ++i) {
 		if ((((cpu_ctx->cpu->dtlb[idx][i].entry & mem_access) | page_idx1) ^ tag) == 0) {
-			cpu_check_data_watchpoints(cpu_ctx->cpu, addr, sizeof(T), DR7_TYPE_DATA_RW);
+			cpu_check_data_watchpoints(cpu_ctx->cpu, addr, type_size, DR7_TYPE_DATA_RW);
 
 			tlb_t *tlb = &cpu_ctx->cpu->dtlb[idx][i];
 			addr_t phys_addr = (tlb->entry & ~PAGE_MASK) | (addr & PAGE_MASK);
@@ -720,20 +721,20 @@ T mem_read_helper(cpu_ctx_t *cpu_ctx, addr_t addr, uint8_t is_priv)
 			case TLB_MMIO: {
 				// it's mmio, tlb holds the mmio region
 				const memory_region_t<addr_t> *mmio = tlb->region;
-				if constexpr (sizeof(T) == 1) {
+				if constexpr (type_size == 1) {
 					return mmio->handlers.fnr8(phys_addr, mmio->opaque);
 				}
-				else if constexpr (sizeof(T) == 2) {
+				else if constexpr (type_size == 2) {
 					return mmio->handlers.fnr16(phys_addr, mmio->opaque);
 				}
-				else if constexpr (sizeof(T) == 4) {
+				else if constexpr (type_size == 4) {
 					return mmio->handlers.fnr32(phys_addr, mmio->opaque);
 				}
-				else if constexpr (sizeof(T) == 8) {
+				else if constexpr (type_size == 8) {
 					return mmio->handlers.fnr64(phys_addr, mmio->opaque);
 				}
 				else {
-					LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+					LIB86CPU_ABORT_msg("Unexpected size %u in %s", type_size, __func__);
 				}
 			}
 
@@ -758,15 +759,16 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint8_t is_priv)
 	// if dont_write is true, then no write will happen and we only check if the access would fault. This is used by the ENTER instruction to check
 	// if a stack push with the final value of (e)sp will cause a page fault
 
+	constexpr auto type_size = sizeof_type<T>();
 	uint32_t page_idx1 = addr & ~PAGE_MASK;
-	uint32_t page_idx2 = (addr + sizeof(T) - 1) & ~PAGE_MASK;
+	uint32_t page_idx2 = (addr + type_size - 1) & ~PAGE_MASK;
 	uint32_t idx = (addr >> PAGE_SHIFT) & DTLB_IDX_MASK;
 	uint64_t mem_access = (tlb_access[1][(cpu_ctx->hflags & HFLG_CPL) >> is_priv]) | TLB_DIRTY;
 	uint64_t tag = ((static_cast<uint64_t>(addr) << DTLB_TAG_SHIFT64) & DTLB_TAG_MASK64) | page_idx2 | mem_access;
 	mem_access |= DTLB_TAG_MASK64;
 
 	// interrogate the dtlb
-	// this checks the page privilege access (mem_access), if the last byte of the write is in the same page as the first (addr + sizeof(T) - 1) and
+	// this checks the page privilege access (mem_access), if the last byte of the write is in the same page as the first (addr + type_size - 1) and
 	// the tlb dirty flag. Writes that cross pages always result in tlb misses, and writes without the dirty flag set miss only once
 	for (unsigned i = 0; i < DTLB_NUM_LINES; ++i) {
 		if ((((cpu_ctx->cpu->dtlb[idx][i].entry & mem_access) | page_idx1) ^ tag) == 0) {
@@ -775,13 +777,13 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint8_t is_priv)
 				return;
 			}
 
-			cpu_check_data_watchpoints(cpu_ctx->cpu, addr, sizeof(T), DR7_TYPE_DATA_W);
+			cpu_check_data_watchpoints(cpu_ctx->cpu, addr, type_size, DR7_TYPE_DATA_W);
 
 			tlb_t *tlb = &cpu_ctx->cpu->dtlb[idx][i];
 			addr_t phys_addr = (tlb->entry & ~PAGE_MASK) | (addr & PAGE_MASK);
 
 			if (cpu_ctx->cpu->smc[phys_addr >> PAGE_SHIFT]) {
-				tc_invalidate(cpu_ctx, phys_addr, sizeof(T));
+				tc_invalidate(cpu_ctx, phys_addr, type_size);
 			}
 
 			// tlb hit, check the region type
@@ -799,20 +801,20 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint8_t is_priv)
 			case TLB_MMIO: {
 				// it's mmio, tlb holds the region pointer
 				const memory_region_t<addr_t> *mmio = tlb->region;
-				if constexpr (sizeof(T) == 1) {
+				if constexpr (type_size == 1) {
 					mmio->handlers.fnw8(phys_addr, val, mmio->opaque);
 				}
-				else if constexpr (sizeof(T) == 2) {
+				else if constexpr (type_size == 2) {
 					mmio->handlers.fnw16(phys_addr, val, mmio->opaque);
 				}
-				else if constexpr (sizeof(T) == 4) {
+				else if constexpr (type_size == 4) {
 					mmio->handlers.fnw32(phys_addr, val, mmio->opaque);
 				}
-				else if constexpr (sizeof(T) == 8) {
+				else if constexpr (type_size == 8) {
 					mmio->handlers.fnw64(phys_addr, val, mmio->opaque);
 				}
 				else {
-					LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+					LIB86CPU_ABORT_msg("Unexpected size %u in %s", type_size, __func__);
 				}
 				return;
 			}
@@ -832,9 +834,9 @@ void mem_write_helper(cpu_ctx_t *cpu_ctx, addr_t addr, T val, uint8_t is_priv)
 
 	if constexpr (dont_write) {
 		// If the tlb misses, then the access might still be valid if the mmu can translate the address
-		if ((sizeof(T) != 1) && ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
+		if ((type_size != 1) && ((addr & ~PAGE_MASK) != ((addr + type_size - 1) & ~PAGE_MASK))) {
 			volatile addr_t phys_addr_s = mmu_translate_addr<false>(cpu_ctx->cpu, addr, MMU_IS_WRITE | is_priv);
-			volatile addr_t phys_addr_e = mmu_translate_addr<false>(cpu_ctx->cpu, addr + sizeof(T) - 1, MMU_IS_WRITE | is_priv);
+			volatile addr_t phys_addr_e = mmu_translate_addr<false>(cpu_ctx->cpu, addr + type_size - 1, MMU_IS_WRITE | is_priv);
 		}
 		else {
 			volatile addr_t phys_addr = mmu_translate_addr<false>(cpu_ctx->cpu, addr, MMU_IS_WRITE | is_priv);

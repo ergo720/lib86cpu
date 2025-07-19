@@ -67,13 +67,15 @@ as_io_search_port(cpu_t *cpu, port_t port)
 template<typename T>
 T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, const memory_region_t<addr_t> *region)
 {
+	constexpr auto type_size = sizeof_type<T>();
+
 	switch (region->type)
 	{
 	case mem_type::ram:
 		return ram_read<T>(cpu, get_ram_host_ptr(cpu, region, addr));
 
 	case mem_type::rom:
-		if ((addr + sizeof(T) - 1) > region->end) [[unlikely]] {
+		if ((addr + type_size - 1) > region->end) [[unlikely]] {
 			// avoid rom buffer overflow
 			T value = 0;
 			unsigned i = 0;
@@ -90,20 +92,20 @@ T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, const memory_region_t<addr_t>
 		}
 
 	case mem_type::mmio:
-		if constexpr (sizeof(T) == 1) {
+		if constexpr (type_size == 1) {
 			return region->handlers.fnr8(addr, region->opaque);
 		}
-		else if constexpr (sizeof(T) == 2) {
+		else if constexpr (type_size == 2) {
 			return region->handlers.fnr16(addr, region->opaque);
 		}
-		else if constexpr (sizeof(T) == 4) {
+		else if constexpr (type_size == 4) {
 			return region->handlers.fnr32(addr, region->opaque);
 		}
-		else if constexpr (sizeof(T) == 8) {
+		else if constexpr (type_size == 8) {
 			return region->handlers.fnr64(addr, region->opaque);
 		}
 		else {
-			LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+			LIB86CPU_ABORT_msg("Unexpected size %u in %s", type_size, __func__);
 		}
 
 	case mem_type::alias: {
@@ -124,6 +126,8 @@ T as_memory_dispatch_read(cpu_t *cpu, addr_t addr, const memory_region_t<addr_t>
 template<typename T>
 void as_memory_dispatch_write(cpu_t *cpu, addr_t addr, T value, const memory_region_t<addr_t> *region)
 {
+	constexpr auto type_size = sizeof_type<T>();
+
 	switch (region->type)
 	{
 	case mem_type::ram:
@@ -134,20 +138,20 @@ void as_memory_dispatch_write(cpu_t *cpu, addr_t addr, T value, const memory_reg
 		break;
 
 	case mem_type::mmio:
-		if constexpr (sizeof(T) == 1) {
+		if constexpr (type_size == 1) {
 			region->handlers.fnw8(addr, value, region->opaque);
 		}
-		else if constexpr (sizeof(T) == 2) {
+		else if constexpr (type_size == 2) {
 			region->handlers.fnw16(addr, value, region->opaque);
 		}
-		else if constexpr (sizeof(T) == 4) {
+		else if constexpr (type_size == 4) {
 			region->handlers.fnw32(addr, value, region->opaque);
 		}
-		else if constexpr (sizeof(T) == 8) {
+		else if constexpr (type_size == 8) {
 			region->handlers.fnw64(addr, value, region->opaque);
 		}
 		else {
-			LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+			LIB86CPU_ABORT_msg("Unexpected size %u in %s", type_size, __func__);
 		}
 		break;
 
@@ -183,7 +187,7 @@ T as_io_dispatch_read(cpu_t *cpu, port_t port, const memory_region_t<port_t> *re
 			return region->handlers.fnr32(port, region->opaque);
 		}
 		else {
-			LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+			LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof_type<T>(), __func__);
 		}
 
 	case mem_type::unmapped:
@@ -210,7 +214,7 @@ void as_io_dispatch_write(cpu_t *cpu, port_t port, T value, const memory_region_
 			region->handlers.fnw32(port, value, region->opaque);
 		}
 		else {
-			LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof(T), __func__);
+			LIB86CPU_ABORT_msg("Unexpected size %u in %s", sizeof_type<T>(), __func__);
 		}
 		break;
 
@@ -242,14 +246,14 @@ template<typename T>
 T ram_read(cpu_t *cpu, void *ram_ptr)
 {
 	T value;
-	memcpy(&value, ram_ptr, sizeof(T));
+	memcpy(&value, ram_ptr, sizeof_type<T>());
 	return value;
 }
 
 template<typename T>
 void ram_write(cpu_t *cpu, void *ram_ptr, T value)
 {
-	memcpy(ram_ptr, &value, sizeof(T));
+	memcpy(ram_ptr, &value, sizeof_type<T>());
 }
 
 /*
@@ -258,15 +262,17 @@ void ram_write(cpu_t *cpu, void *ram_ptr, T value)
 template<typename T>
 T mem_read_slow(cpu_t *cpu, addr_t addr, uint8_t is_priv)
 {
-	if ((sizeof(T) != 1) && ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
+	constexpr auto type_size = sizeof_type<T>();
+
+	if ((type_size != 1) && ((addr & ~PAGE_MASK) != ((addr + type_size - 1) & ~PAGE_MASK))) {
 		T value = 0;
 		uint8_t i = 0;
 		addr_t phys_addr_s = get_read_addr_slow(cpu, addr, is_priv);
-		addr_t phys_addr_e = get_read_addr_slow(cpu, addr + sizeof(T) - 1, is_priv);
-		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_RW);
+		addr_t phys_addr_e = get_read_addr_slow(cpu, addr + type_size - 1, is_priv);
+		cpu_check_data_watchpoints(cpu, addr, type_size, DR7_TYPE_DATA_RW);
 		addr_t phys_addr = phys_addr_s;
-		uint8_t bytes_in_page = ((addr + sizeof(T) - 1) & ~PAGE_MASK) - addr;
-		while (i < sizeof(T)) {
+		uint8_t bytes_in_page = ((addr + type_size - 1) & ~PAGE_MASK) - addr;
+		while (i < type_size) {
 			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
 			value |= (static_cast<T>(as_memory_dispatch_read<uint8_t>(cpu, phys_addr, region)) << (i * 8));
 			phys_addr++;
@@ -279,7 +285,7 @@ T mem_read_slow(cpu_t *cpu, addr_t addr, uint8_t is_priv)
 	}
 	else {
 		addr_t phys_addr = get_read_addr_slow(cpu, addr, is_priv);
-		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_RW);
+		cpu_check_data_watchpoints(cpu, addr, type_size, DR7_TYPE_DATA_RW);
 		return as_memory_dispatch_read<T>(cpu, phys_addr, as_memory_search_addr(cpu, phys_addr));
 	}
 }
@@ -287,21 +293,23 @@ T mem_read_slow(cpu_t *cpu, addr_t addr, uint8_t is_priv)
 template<typename T>
 void mem_write_slow(cpu_t *cpu, addr_t addr, T value, uint8_t is_priv)
 {
-	if ((sizeof(T) != 1) && ((addr & ~PAGE_MASK) != ((addr + sizeof(T) - 1) & ~PAGE_MASK))) {
+	constexpr auto type_size = sizeof_type<T>();
+
+	if ((type_size != 1) && ((addr & ~PAGE_MASK) != ((addr + type_size - 1) & ~PAGE_MASK))) {
 		bool is_code1, is_code2;
 		uint8_t i = 0;
 		addr_t phys_addr_s = get_write_addr_slow(cpu, addr, is_priv, &is_code1);
-		addr_t phys_addr_e = get_write_addr_slow(cpu, addr + sizeof(T) - 1, is_priv, &is_code2);
-		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_W);
+		addr_t phys_addr_e = get_write_addr_slow(cpu, addr + type_size - 1, is_priv, &is_code2);
+		cpu_check_data_watchpoints(cpu, addr, type_size, DR7_TYPE_DATA_W);
 		addr_t phys_addr = phys_addr_s;
-		uint8_t bytes_in_page = ((addr + sizeof(T) - 1) & ~PAGE_MASK) - addr;
+		uint8_t bytes_in_page = ((addr + type_size - 1) & ~PAGE_MASK) - addr;
 		if (is_code1) {
 			tc_invalidate(&cpu->cpu_ctx, phys_addr_s, bytes_in_page);
 		}
 		if (is_code2) {
-			tc_invalidate(&cpu->cpu_ctx, phys_addr_e, sizeof(T) - bytes_in_page);
+			tc_invalidate(&cpu->cpu_ctx, phys_addr_e, type_size - bytes_in_page);
 		}
-		while (i < sizeof(T)) {
+		while (i < type_size) {
 			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
 			as_memory_dispatch_write<uint8_t>(cpu, phys_addr, static_cast<uint8_t>(value >> (i * 8)), region);
 			phys_addr++;
@@ -314,9 +322,9 @@ void mem_write_slow(cpu_t *cpu, addr_t addr, T value, uint8_t is_priv)
 	else {
 		bool is_code;
 		addr_t phys_addr = get_write_addr_slow(cpu, addr, is_priv, &is_code);
-		cpu_check_data_watchpoints(cpu, addr, sizeof(T), DR7_TYPE_DATA_W);
+		cpu_check_data_watchpoints(cpu, addr, type_size, DR7_TYPE_DATA_W);
 		if (is_code) {
-			tc_invalidate(&cpu->cpu_ctx, phys_addr, sizeof(T));
+			tc_invalidate(&cpu->cpu_ctx, phys_addr, type_size);
 		}
 		as_memory_dispatch_write<T>(cpu, phys_addr, value, as_memory_search_addr(cpu, phys_addr));
 	}

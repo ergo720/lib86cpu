@@ -8,8 +8,7 @@
 
 #include "config.h"
 #include "platform.h"
-
-#define COMMA ,
+#include <cstddef>
 
 #define DEFINE_REG32(_reg) \
 		uint32_t		_reg
@@ -25,7 +24,7 @@
 			uint32_t flags; \
 		} _reg ## _hidden;
 
-PACKED(struct alignas(16) uint128_t {
+struct alignas(16) uint128_t {
 	uint64_t low;
 	uint64_t high;
 	uint128_t();
@@ -33,21 +32,21 @@ PACKED(struct alignas(16) uint128_t {
 	uint128_t &operator|=(const uint128_t &rhs);
 	uint128_t operator>>(int shift);
 	uint128_t operator<<(int shift);
-	explicit operator uint8_t ();
-});
+	explicit operator uint8_t();
+};
 
-PACKED(struct uint80_t {
+struct uint80_t {
 	uint64_t low;
 	uint16_t high;
 	uint80_t();
 	uint80_t(uint64_t val);
-	constexpr uint80_t(uint64_t l, uint16_t h) : low(l)COMMA high(h) {}
+	constexpr uint80_t(uint64_t l, uint16_t h) : low(l), high(h) {}
 	uint80_t &operator|=(const uint80_t &rhs);
 	uint80_t operator>>(int shift);
 	uint80_t operator<<(int shift);
-	explicit operator uint8_t ();
+	explicit operator uint8_t();
 	operator uint128_t ();
-});
+};
 
 struct regs_t {
 	/* General registers */
@@ -126,8 +125,7 @@ struct msr_t {
 	uint64_t ebl_cr_poweron;
 };
 
-static_assert(sizeof(uint80_t) == 10);
-static_assert(sizeof(uint128_t) == 16);
-static_assert(alignof(decltype(regs_t::xmm)) == 16);
-
-#undef COMMA
+static_assert(offsetof(uint80_t, high) == 8); // make sure there are no padding bytes between the two members
+static_assert(offsetof(uint128_t, high) == 8); // make sure there are no padding bytes between the two members
+static_assert(sizeof(uint128_t) == 16); // make sure that sizeof(uint128_t) gives the expected size
+static_assert(alignof(decltype(regs_t::xmm)) == 16); // 16 bytes alignment required to avoid simd exceptions when using sse2 on these registers
