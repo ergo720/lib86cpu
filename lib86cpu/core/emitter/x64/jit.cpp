@@ -450,6 +450,8 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define FLDZ(dst) m_a.fldz(dst)
 #define FADD(...) m_a.fadd(__VA_ARGS__)
 #define FIADD(...) m_a.fiadd(__VA_ARGS__)
+#define FSUB(...) m_a.fsub(__VA_ARGS__)
+#define FISUB(...) m_a.fisub(__VA_ARGS__)
 
 #define MOVAPS(dst, src) m_a.movaps(dst, src)
 #define XORPS(dst, src) m_a.xorps(dst, src)
@@ -2537,115 +2539,6 @@ lc86_jit::gen_fpu_store_stx(uint32_t st_num)
 	FSTP(MEMSD80(RCX, RAX, 0, CPU_CTX_R0));
 }
 
-template<ZydisMnemonic mnemonic>
-void lc86_jit::fpu_arithmetic(decoded_instr *instr)
-{
-	LIB86CPU_ABORT();
-#if 0
-	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
-		RAISEin0_t(EXP_NM);
-	}
-	else {
-		const auto do_instr = [this]<typename... Args>(Args... args) {
-			if constexpr (mnemonic == ZYDIS_MNEMONIC_FADD) {
-				return [&]() { FADD(args...); };
-			}
-			else if constexpr (mnemonic == ZYDIS_MNEMONIC_FADDP) {
-				return [&]() { FADD(args...); }; // still use the version that doesn't pop because the stack is popped later with fstp
-			}
-			else if constexpr (mnemonic == ZYDIS_MNEMONIC_FIADD) {
-				return [&]() { FIADD(args...); };
-			}
-			else {
-				LIB86CPU_ABORT_msg("Invalid instruction with index %u specified to fpu_arithmetic", mnemonic);
-			}
-			};
-
-		if (instr->o[OPNUM_SRC].type == ZYDIS_OPERAND_TYPE_REGISTER) {
-			// This is the case where both src and dst operands are st(i) registers
-
-			// NOTE: remove this code path for the integer instructions to avoid instantiating the lambda above with them. This would cause an error because the
-			// integer instructions only take a single argument, while the call below passes two. Also, note that these instructions always take a memory operand,
-			// so we will never reach this case at runtime
-			constexpr bool is_fpu_int_instr = []() constexpr {
-				return mnemonic == ZYDIS_MNEMONIC_FIADD;
-				}();
-				assert(!is_fpu_int_instr);
-
-			if constexpr (!is_fpu_int_instr) {
-				bool should_pop = false;
-				unsigned src_reg_num = instr->o[OPNUM_SRC].reg.value - ZYDIS_REGISTER_ST0;
-				unsigned dst_reg_num = instr->o[OPNUM_DST].reg.value - ZYDIS_REGISTER_ST0;
-				if constexpr (mnemonic == ZYDIS_MNEMONIC_FADDP) {
-					should_pop = true;
-				}
-
-				if (should_pop) {
-					gen_fpu_stack_prologue<false>(fpu_instr_t::float_, [this, dst_reg_num]() {
-						MOV(EAX, sizeof(uint80_t));
-						MOV(EDX, dst_reg_num);
-						MUL(DX);
-						FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load dst st(i)
-						MOVZX(EBX, AX); // preserve st(i) offset
-						});
-				}
-				else {
-					MOV(EAX, sizeof(uint80_t));
-					MOV(EDX, dst_reg_num);
-					MUL(DX);
-					FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load dst st(i)
-					MOVZX(EBX, AX); // preserve st(i) offset
-					XOR(R8D, R8D); // clear r8w so that gen_fpu_exp_post_check still works
-				}
-				MOV(EAX, sizeof(uint80_t));
-				MOV(EDX, src_reg_num);
-				MUL(DX);
-				FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load src st(i)
-				do_instr.template operator()(ST1, ST0); // dst -> st1, src -> st0
-				gen_fpu_exp_post_check();
-				FSTP(MEMSD80(RCX, RBX, 0, CPU_CTX_R0)); // write result to dst st(i)
-				gen_update_fpu_ptr<true>(instr);
-				RESTORE_FPU_CTX();
-				if (should_pop) {
-					MOV(EDX, MEMD32(RSP, LOCAL_VARS_off(4)));
-					LEA(EBX, MEMD32(EDX, 1));
-					AND(EBX, 7);
-					ST_R16(FPU_DATA_FTOP, BX);
-					CALL_F(&fpu_update_tag<false>);
-				}
-			}
-		}
-		else {
-			// This is the case where the src operand is a 16/32/64 bit mem location, either a float or an integer, and the dst operand is st0
-			get_rm<OPNUM_SINGLE>(instr,
-				[](const op_info rm)
-				{
-					assert(0);
-				},
-				[this, instr, do_instr](const op_info rm)
-				{
-					uint8_t size = instr->i.opcode == 0xDC ? SIZE64 : (instr->i.opcode == 0xDE ? SIZE16 : SIZE32);
-					auto rax_host_reg = SIZED_REG(x64::rbx, size);
-					LD_MEMs(size); // load src mem
-					MOV(MEMD(RSP, LOCAL_VARS_off(0), size), rax_host_reg); // preserve src mem to sized stack
-					gen_set_host_fpu_ctx();
-					MOV(EAX, sizeof(uint80_t));
-					MUL(MEMD16(RCX, FPU_DATA_FTOP));
-					FLD(MEMSD80(RCX, RAX, 0, CPU_CTX_R0)); // load dst st0
-					MOVZX(EBX, AX); // preserve st0 offset
-					do_instr.template operator()(MEMD(RSP, LOCAL_VARS_off(0), size));
-					XOR(R8D, R8D); // clear r8d so that gen_fpu_exp_post_check still works
-					gen_fpu_exp_post_check();
-					FSTP(MEMSD80(RCX, RBX, 0, CPU_CTX_R0)); // write result to dst st0
-					gen_update_fpu_ptr<true>(instr);
-					RESTORE_FPU_CTX();
-				});
-
-		}
-	}
-#endif
-}
-
 template<unsigned idx>
 void lc86_jit::shift(decoded_instr *instr)
 {
@@ -3872,6 +3765,131 @@ void lc86_jit::fpu_load(decoded_instr *instr)
 		RESTORE_FPU_CTX();
 		XOR(EDX, EDX);
 		CALL_F(&fpu_update_tag<true>); // update dst st0 tag
+		m_a.bind(end_instr);
+	}
+}
+
+template<unsigned idx>
+void lc86_jit::fpu_arithmetic(decoded_instr *instr)
+{
+	// idx 0 -> fsub
+
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		Label end_instr = m_a.newLabel();
+
+		gen_check_fpu_unmasked_exp();
+
+		get_rm<OPNUM_SINGLE>(instr,
+			[&](const op_info rm)
+			{
+				uint32_t dst_idx;
+
+				gen_update_fpu_ptr(instr);
+				FPU_CLEAR_C1();
+				gen_fpu_check_stack_underflow(instr->i.raw.modrm.rm, 0, 0); // check for stack underflow for stx
+				TEST(EAX, EAX);
+				BR_NE(end_instr);
+				gen_fpu_check_stack_underflow(0, 0, 0); // check for stack underflow for st0
+				TEST(EAX, EAX);
+				BR_NE(end_instr);
+				gen_set_host_fpu_ctx();
+				if (instr->i.opcode == 0xD8) { // src: stx, dst st0
+					dst_idx = 0;
+					gen_fpu_load_stx(instr->i.raw.modrm.rm);
+					gen_fpu_load_stx(dst_idx); // (stx operation st0) -> stx_g/st0_h -> stx_g/st1_h, st0_g/st0_h
+				}
+				else { // src: st0, dst stx
+					assert((instr->i.opcode == 0xDC) || (instr->i.opcode == 0xDE));
+
+					dst_idx = instr->i.raw.modrm.rm;
+					gen_fpu_load_stx(0);
+					gen_fpu_load_stx(dst_idx); // (st0 operation stx) -> st0_g/st0_h -> st0_g/st1_h, stx_g/st0_h
+				}
+				if constexpr (idx == 0) {
+					FSUB(ST0, ST1);
+				}
+				else {
+					LIB86CPU_ABORT();
+				}
+				gen_fpu_exp_post_check(FPU_EXP_ALL, [this, end_instr]() {
+					FSTP(MEMD80(RSP, LOCAL_VARS_off(0))); // do a dummy pop to restore host fpu stack
+					FSTP(MEMD80(RSP, LOCAL_VARS_off(0))); // do a dummy pop to restore host fpu stack
+					RESTORE_FPU_CTX();
+					BR_UNCOND(end_instr);
+					});
+				MOV(MEMD16(RCX, CPU_CTX_FSTATUS), R11W); // update exception and condition code flags of guest fstatus
+				gen_fpu_store_stx(dst_idx); // store result to dst st0/stx
+				FSTP(MEMD80(RSP, LOCAL_VARS_off(0))); // do a dummy pop to restore host fpu stack
+				RESTORE_FPU_CTX();
+				MOV(EDX, dst_idx);
+				CALL_F(&fpu_update_tag<true>); // update dst st0/stx tag
+				if (instr->i.opcode == 0xDE) {
+					XOR(EDX, EDX);
+					CALL_F(&fpu_update_tag<false>); // update st0 tag
+					FPU_POP();
+				}
+			},
+			[&](const op_info rm)
+			{
+				uint8_t size;
+				switch (instr->o[OPNUM_SINGLE].size)
+				{
+				case 16:
+					assert(instr->i.opcode == 0xDE);
+					size = SIZE16;
+					break;
+
+				case 32:
+					assert((instr->i.opcode == 0xD8) || (instr->i.opcode == 0xDA));
+					size = SIZE32;
+					break;
+
+				case 64:
+					assert(instr->i.opcode == 0xDC);
+					size = SIZE64;
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+
+				MOV(EBX, EDX); // save mem addr for gen_update_fpu_ptr
+				LD_MEMs(size); // load src mem
+				MOV(MEMD(RSP, LOCAL_VARS_off(0), size), SIZED_REG(x64::rax, size));
+				gen_update_fpu_ptr(instr);
+				FPU_CLEAR_C1();
+				gen_fpu_check_stack_underflow(0, 0, 0); // check for stack underflow for dst st0
+				TEST(EAX, EAX);
+				BR_NE(end_instr);
+				gen_set_host_fpu_ctx();
+				gen_fpu_load_stx(0); // load dst st0
+
+				bool is_float_arg = (instr->i.opcode == 0xD8) || (instr->i.opcode == 0xDC);
+				switch (idx)
+				{
+				case 0:
+					is_float_arg ? FSUB(MEMD(RSP, LOCAL_VARS_off(0), size)) : FISUB(MEMD(RSP, LOCAL_VARS_off(0), size));
+					break;
+
+				default:
+					LIB86CPU_ABORT();
+				}
+
+				gen_fpu_exp_post_check(FPU_EXP_ALL, [this, end_instr]() {
+					FSTP(MEMD80(RSP, LOCAL_VARS_off(0))); // do a dummy pop to restore host fpu stack
+					RESTORE_FPU_CTX();
+					BR_UNCOND(end_instr);
+					});
+				MOV(MEMD16(RCX, CPU_CTX_FSTATUS), R11W); // update exception and condition code flags of guest fstatus
+				gen_fpu_store_stx(0); // store result to dst st0
+				RESTORE_FPU_CTX();
+				XOR(EDX, EDX);
+				CALL_F(&fpu_update_tag<true>); // update dst st0 tag
+			});
+
 		m_a.bind(end_instr);
 	}
 }
@@ -5736,6 +5754,12 @@ void
 lc86_jit::fstp(decoded_instr *instr)
 {
 	fpu_store<0>(instr);
+}
+
+void
+lc86_jit::fsub(decoded_instr *instr)
+{
+	fpu_arithmetic<0>(instr);
 }
 
 void

@@ -97,6 +97,7 @@ public:
 	void fnstcw(decoded_instr *instr);
 	void fnstsw(decoded_instr *instr);
 	void fstp(decoded_instr *instr);
+	void fsub(decoded_instr *instr);
 	void fwait(decoded_instr *instr);
 	void fxrstor(decoded_instr *instr);
 	void fxsave(decoded_instr *instr);
@@ -289,7 +290,7 @@ private:
 	void int_(decoded_instr *instr);
 	template<unsigned idx>
 	void fpu_load_constant(decoded_instr *instr);
-	template<ZydisMnemonic mnemonic>
+	template<unsigned idx>
 	void fpu_arithmetic(decoded_instr *instr);
 	template<unsigned idx>
 	void fpu_store(decoded_instr *instr);
