@@ -454,6 +454,8 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define FISUB(dst) m_a.fisub(dst)
 #define FMUL(...) m_a.fmul(__VA_ARGS__)
 #define FIMUL(dst) m_a.fimul(dst)
+#define FSINCOS() m_a.fsincos()
+#define FXCH(op) m_a.fxch(op)
 
 #define MOVAPS(dst, src) m_a.movaps(dst, src)
 #define XORPS(dst, src) m_a.xorps(dst, src)
@@ -527,6 +529,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define RESTORE_FPU_CTX() FLDCW(MEMD16(RSP, LOCAL_VARS_off(5)))
 #define CALL_F(func) MOV(RAX, func); CALL(RAX); RELOAD_RCX_CTX()
 #define FPU_CLEAR_C1() AND(MEMD16(RCX, CPU_CTX_FSTATUS), ~FPU_SW_C1)
+#define FPU_CLEAR_C2() AND(MEMD16(RCX, CPU_CTX_FSTATUS), ~FPU_SW_C2)
 #define FPU_PUSH() DEC(MEMD16(RCX, FPU_DATA_FTOP)); AND(MEMD16(RCX, FPU_DATA_FTOP), 7)
 #define FPU_POP() INC(MEMD16(RCX, FPU_DATA_FTOP)); AND(MEMD16(RCX, FPU_DATA_FTOP), 7)
 
@@ -2477,6 +2480,15 @@ lc86_jit::gen_fpu_check_stack_underflow(uint32_t st_num_src, uint32_t st_num_dst
 	MOV(R8D, st_num_dst);
 	MOV(R9D, should_pop);
 	CALL_F(&fpu_stack_underflow_reg);
+}
+
+void
+lc86_jit::gen_fpu_check_stack_fault_sincos()
+{
+	// trashes -> func call
+	// ret -> eax
+
+	CALL_F(&fpu_stack_fault_sincos);
 }
 
 template<typename T, T qnan>
@@ -5773,6 +5785,48 @@ lc86_jit::fnstsw(decoded_instr *instr)
 			{
 				ST_MEMs(SIZE16);
 			});
+	}
+}
+
+void
+lc86_jit::fsincos(decoded_instr *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		Label end_instr = m_a.newLabel();
+
+		gen_check_fpu_unmasked_exp();
+		gen_update_fpu_ptr(instr);
+		FPU_CLEAR_C1();
+		FPU_CLEAR_C2();
+		gen_fpu_check_stack_fault_sincos();
+		TEST(EAX, EAX);
+		BR_NE(end_instr);
+		gen_set_host_fpu_ctx();
+		gen_fpu_load_stx(0); // load src st0
+		FSINCOS();
+		gen_fpu_exp_post_check(FPU_EXP_ALL, [this, end_instr]() {
+			// NOTE: if exp occurred, then result is inside the valid range, so fsincos pushed the stack
+			FSTP(MEMD80(RSP, LOCAL_VARS_off(0))); // do a dummy pop to restore host fpu stack
+			FSTP(MEMD80(RSP, LOCAL_VARS_off(0))); // do a dummy pop to restore host fpu stack
+			RESTORE_FPU_CTX();
+			BR_UNCOND(end_instr);
+			});
+		MOV(MEMD16(RCX, CPU_CTX_FSTATUS), R11W); // update exception and condition code flags of guest fstatus
+		TEST(R11W, FPU_SW_C2); // if 1, src was out of range
+		BR_NE(end_instr);
+		FXCH(ST1); // swap the st0 with st1 so that we have st1 -> cos and st0 -> sin in the host
+		gen_fpu_store_stx(0); // store sin result to dst st0 (becomes st1 after push below)
+		FPU_PUSH();
+		gen_fpu_store_stx(0); // store cos result to dst st0
+		RESTORE_FPU_CTX();
+		XOR(EDX, EDX);
+		CALL_F(&fpu_update_tag<true>); // update dst st0 tag
+		MOV(EDX, 1);
+		CALL_F(&fpu_update_tag<true>); // update dst st1 tag
+		m_a.bind(end_instr);
 	}
 }
 

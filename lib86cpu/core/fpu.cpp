@@ -117,6 +117,39 @@ fpu_stack_overflow(cpu_ctx_t *cpu_ctx)
 }
 
 uint32_t
+fpu_stack_fault_sincos(cpu_ctx_t *cpu_ctx)
+{
+	// checks for stack underflow when the destination is a register
+
+	bool is_underflow = fpu_is_tag_empty(cpu_ctx, 0);
+	if (is_underflow || (fpu_is_tag_empty(cpu_ctx, -1) == false)) {
+		if (cpu_ctx->regs.fctrl & FPU_EXP_INVALID) {
+			// masked stack fault response
+			uint32_t idx = cpu_ctx->fpu_data.ftop;
+			cpu_ctx->regs.fr[idx].low = FPU_QNAN_FLOAT80_LOW;
+			cpu_ctx->regs.fr[idx].high = FPU_QNAN_FLOAT80_HIGH;
+			cpu_ctx->regs.ftags[idx] = FPU_TAG_SPECIAL;
+			fpu_push(cpu_ctx);
+			idx = cpu_ctx->fpu_data.ftop;
+			cpu_ctx->regs.fr[idx].low = FPU_QNAN_FLOAT80_LOW;
+			cpu_ctx->regs.fr[idx].high = FPU_QNAN_FLOAT80_HIGH;
+			cpu_ctx->regs.ftags[idx] = FPU_TAG_SPECIAL;
+		}
+
+		if (is_underflow) {
+			fpu_stack_fault(cpu_ctx, FPU_STACK_UNDERFLOW);
+		}
+		else {
+			fpu_stack_fault(cpu_ctx, FPU_STACK_OVERFLOW);
+		}
+
+		return 1;
+	}
+
+	return 0;
+}
+
+uint32_t
 fpu_stack_underflow_reg(cpu_ctx_t *cpu_ctx, uint32_t st_num_src, uint32_t st_num_dst, uint32_t should_pop)
 {
 	// checks for stack underflow when the destination is a register
