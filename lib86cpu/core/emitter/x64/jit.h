@@ -93,6 +93,7 @@ public:
 	void fldln2(decoded_instr *instr);
 	void fldpi(decoded_instr *instr);
 	void fldz(decoded_instr *instr);
+	void fmul(decoded_instr *instr);
 	void fnclex(decoded_instr *instr);
 	void fninit(decoded_instr *instr);
 	void fnstcw(decoded_instr *instr);
