@@ -5624,12 +5624,10 @@ lc86_jit::fldcw(decoded_instr *instr)
 			{
 				Label ok = m_a.newLabel(), end_instr = m_a.newLabel();
 				LD_MEMs(SIZE16);
-				AND(AX, ~(FPU_CW_EXP | FPU_CW_PC | FPU_CW_RC | FPU_CW_INF));
-				OR(AX, 0x40);
-				MOV(DX, AX);
-				OR(DX, FPU_CW_EXP);
+				OR(AX, 0x40); // reserved bit
 				ST_R16(CPU_CTX_FCTRL, AX);
-				ST_R16(FPU_DATA_FRP, DX);
+				ST_R16(FPU_DATA_FRP, AX);
+				OR(MEMD16(RCX, FPU_DATA_FRP), FPU_CW_EXP);
 				// Test for pending unmasked exceptions
 				MOV(DX, MEMD16(RCX, CPU_CTX_FSTATUS));
 				NOT(AX);
