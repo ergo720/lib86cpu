@@ -215,6 +215,8 @@ inline constexpr auto all_callable_funcs = std::make_tuple(
 	invlpg_helper,
 	fpu_stack_overflow,
 	fpu_stack_fault_sincos,
+	fpu_stack_underflow_fcom1,
+	fpu_stack_underflow_fcom2,
 	fpu_stack_underflow_reg,
 	fpu_stack_underflow_mem<uint16_t, FPU_QNAN_INT16>,
 	fpu_stack_underflow_mem<uint32_t, FPU_QNAN_INT32>,

@@ -456,6 +456,8 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define FIMUL(dst) m_a.fimul(dst)
 #define FSINCOS() m_a.fsincos()
 #define FXCH(op) m_a.fxch(op)
+#define FCOMP(op) m_a.fcomp(op)
+#define FCOMPP() m_a.fcompp()
 
 #define MOVAPS(dst, src) m_a.movaps(dst, src)
 #define XORPS(dst, src) m_a.xorps(dst, src)
@@ -2489,6 +2491,29 @@ lc86_jit::gen_fpu_check_stack_fault_sincos()
 	// ret -> eax
 
 	CALL_F(&fpu_stack_fault_sincos);
+}
+
+void
+lc86_jit::gen_fpu_check_stack_fault_com1(uint32_t st_num1, uint32_t pops_num)
+{
+	// trashes -> func call
+	// ret -> eax
+
+	MOV(EDX, st_num1);
+	MOV(R8D, pops_num);
+	CALL_F(&fpu_stack_underflow_fcom1);
+}
+
+void
+lc86_jit::gen_fpu_check_stack_fault_com2(uint32_t st_num1, uint32_t st_num2, uint32_t pops_num)
+{
+	// trashes -> func call
+	// ret -> eax
+
+	MOV(EDX, st_num1);
+	MOV(R8D, st_num2);
+	MOV(R9D, pops_num);
+	CALL_F(&fpu_stack_underflow_fcom2);
 }
 
 template<typename T, T qnan>
@@ -5601,6 +5626,65 @@ void
 lc86_jit::fadd(decoded_instr *instr)
 {
 	fpu_arithmetic<1>(instr);
+}
+
+void
+lc86_jit::fcom(decoded_instr *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		Label end_instr = m_a.newLabel();
+		uint32_t pops_num = (instr->i.mnemonic == ZYDIS_MNEMONIC_FCOM) ? 0
+			: (instr->i.mnemonic == ZYDIS_MNEMONIC_FCOMP) ? 1 : 2;
+
+		gen_check_fpu_unmasked_exp();
+
+		get_rm<OPNUM_SINGLE>(instr,
+			[&](const op_info rm)
+			{
+				gen_update_fpu_ptr(instr);
+				FPU_CLEAR_C1();
+				gen_fpu_check_stack_fault_com2(0, instr->i.raw.modrm.rm, pops_num);
+				TEST(EAX, EAX);
+				BR_NE(end_instr);
+				gen_set_host_fpu_ctx();
+				gen_fpu_load_stx(instr->i.raw.modrm.rm);
+				gen_fpu_load_stx(0);
+				FCOMPP();
+			},
+			[&](const op_info rm)
+			{
+				uint8_t size = instr->i.opcode == 0xD8 ? SIZE32 : SIZE64;
+
+				MOV(EBX, EDX); // save mem addr for gen_update_fpu_ptr
+				LD_MEMs(size); // load src mem
+				MOV(MEMD(RSP, LOCAL_VARS_off(0), size), SIZED_REG(x64::rax, size));
+				gen_update_fpu_ptr(instr);
+				FPU_CLEAR_C1();
+				gen_fpu_check_stack_fault_com1(0, pops_num);
+				TEST(EAX, EAX);
+				BR_NE(end_instr);
+				gen_set_host_fpu_ctx();
+				gen_fpu_load_stx(0);
+				FCOMP(MEMD(RSP, LOCAL_VARS_off(0), size));
+			});
+
+		gen_fpu_exp_post_check(FPU_EXP_ALL, [this, end_instr]() {
+			RESTORE_FPU_CTX();
+			BR_UNCOND(end_instr);
+			});
+		MOV(MEMD16(RCX, CPU_CTX_FSTATUS), R11W); // update exception and condition code flags of guest fstatus
+		RESTORE_FPU_CTX();
+		while (pops_num) {
+			XOR(EDX, EDX);
+			CALL_F(&fpu_update_tag<false>); // update st0 tag
+			FPU_POP();
+			--pops_num;
+		}
+		m_a.bind(end_instr);
+	}
 }
 
 void

@@ -82,6 +82,7 @@ public:
 	void div(decoded_instr *instr);
 	void enter(decoded_instr *instr);
 	void fadd(decoded_instr *instr);
+	void fcom(decoded_instr *instr);
 	void fild(decoded_instr *instr);
 	void fistp(decoded_instr *instr);
 	void fld(decoded_instr *instr);
@@ -302,6 +303,8 @@ private:
 	void gen_fpu_check_stack_overflow();
 	void gen_fpu_check_stack_underflow(uint32_t st_num_src, uint32_t st_mun_dst, uint32_t should_pop);
 	void gen_fpu_check_stack_fault_sincos();
+	void gen_fpu_check_stack_fault_com1(uint32_t st_num1, uint32_t pops_num);
+	void gen_fpu_check_stack_fault_com2(uint32_t st_num1, uint32_t st_num2, uint32_t pops_num);
 	template<typename T, T qnan>
 	void gen_fpu_check_stack_underflow(uint32_t st_num_src, uint32_t should_pop);
 	void gen_check_fpu_unmasked_exp();

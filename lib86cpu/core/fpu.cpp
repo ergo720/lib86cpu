@@ -149,6 +149,39 @@ fpu_stack_fault_sincos(cpu_ctx_t *cpu_ctx)
 	return 0;
 }
 
+static uint32_t
+fpu_stack_underflow_fcom(cpu_ctx_t *cpu_ctx, bool empty_tag1, bool empty_tag2, uint32_t pops_num)
+{
+	if (empty_tag1 || empty_tag2) {
+		cpu_ctx->regs.fstatus |= (FPU_SW_C0 | FPU_SW_C2 | FPU_SW_C3);
+		if (cpu_ctx->regs.fctrl & FPU_EXP_INVALID) {
+			// masked stack fault response
+			while (pops_num) {
+				fpu_pop(cpu_ctx);
+				--pops_num;
+			}
+		}
+
+		fpu_stack_fault(cpu_ctx, FPU_STACK_UNDERFLOW);
+
+		return 1;
+	}
+
+	return 0;
+}
+
+uint32_t
+fpu_stack_underflow_fcom1(cpu_ctx_t *cpu_ctx, uint32_t st_num1, uint32_t pops_num)
+{
+	return fpu_stack_underflow_fcom(cpu_ctx, fpu_is_tag_empty(cpu_ctx, st_num1), false, pops_num);
+}
+
+uint32_t
+fpu_stack_underflow_fcom2(cpu_ctx_t *cpu_ctx, uint32_t st_num1, uint32_t st_num2, uint32_t pops_num)
+{
+	return fpu_stack_underflow_fcom(cpu_ctx, fpu_is_tag_empty(cpu_ctx, st_num1), fpu_is_tag_empty(cpu_ctx, st_num2), pops_num);
+}
+
 uint32_t
 fpu_stack_underflow_reg(cpu_ctx_t *cpu_ctx, uint32_t st_num_src, uint32_t st_num_dst, uint32_t should_pop)
 {
