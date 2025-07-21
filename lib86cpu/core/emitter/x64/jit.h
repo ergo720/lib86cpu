@@ -101,6 +101,7 @@ public:
 	void fninit(decoded_instr *instr);
 	void fnstcw(decoded_instr *instr);
 	void fnstsw(decoded_instr *instr);
+	void fpatan(decoded_instr *instr);
 	void fsincos(decoded_instr *instr);
 	void fstp(decoded_instr *instr);
 	void fsub(decoded_instr *instr);
@@ -304,6 +305,7 @@ private:
 	void fpu_load(decoded_instr *instr);
 	void gen_fpu_check_stack_overflow();
 	void gen_fpu_check_stack_underflow(uint32_t st_num_src, uint32_t st_mun_dst, uint32_t should_pop);
+	void gen_fpu_check_stack_fault_patan();
 	void gen_fpu_check_stack_fault_sincos();
 	void gen_fpu_check_stack_fault_com1(uint32_t st_num1, uint32_t pops_num);
 	void gen_fpu_check_stack_fault_com2(uint32_t st_num1, uint32_t st_num2, uint32_t pops_num);

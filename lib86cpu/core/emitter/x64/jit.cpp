@@ -457,6 +457,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define FDIVR(...) m_a.fdivr(__VA_ARGS__)
 #define FIDIVR(dst) m_a.fidivr(dst)
 #define FSINCOS() m_a.fsincos()
+#define FPATAN() m_a.fpatan()
 #define FXCH(op) m_a.fxch(op)
 #define FCOMP(op) m_a.fcomp(op)
 #define FCOMPP() m_a.fcompp()
@@ -2496,6 +2497,15 @@ lc86_jit::gen_fpu_check_stack_underflow(uint32_t st_num_src, uint32_t st_num_dst
 	MOV(R8D, st_num_dst);
 	MOV(R9D, should_pop);
 	CALL_F(&fpu_stack_underflow_reg);
+}
+
+void
+lc86_jit::gen_fpu_check_stack_fault_patan()
+{
+	// trashes -> func call
+	// ret -> eax
+
+	CALL_F(&fpu_stack_fault_patan);
 }
 
 void
@@ -5913,6 +5923,39 @@ lc86_jit::fnstsw(decoded_instr *instr)
 			{
 				ST_MEMs(SIZE16);
 			});
+	}
+}
+
+void
+lc86_jit::fpatan(decoded_instr *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		Label end_instr = m_a.newLabel();
+
+		gen_check_fpu_unmasked_exp();
+		gen_update_fpu_ptr(instr);
+		FPU_CLEAR_C1();
+		gen_fpu_check_stack_fault_patan();
+		TEST(EAX, EAX);
+		BR_NE(end_instr);
+		gen_set_host_fpu_ctx();
+		gen_fpu_load_stx(1); // load st1_g to st0_h
+		gen_fpu_load_stx(0); // load st0_g to st0_h -> st1_g/st1_h, st0_g/st0_h
+		FPATAN();
+		gen_fpu_exp_post_check<true>(FPU_EXP_ALL, [this, end_instr]() {
+			FSTP(MEMD80(RSP, LOCAL_VARS_off(0))); // do a dummy pop to restore host fpu stack
+			RESTORE_FPU_CTX();
+			BR_UNCOND(end_instr);
+			});
+		gen_fpu_store_stx(1); // store patan result to dst st1
+		RESTORE_FPU_CTX();
+		XOR(EDX, EDX);
+		CALL_F(&fpu_update_tag<false>); // update dst st0 tag
+		FPU_POP();
+		m_a.bind(end_instr);
 	}
 }
 
