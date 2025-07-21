@@ -280,6 +280,7 @@ ipt_exception_filter(cpu_t *cpu, EXCEPTION_POINTERS *e)
 
 		if (exp_data.idx == EXP_PF) {
 			// Page is invalid, invoke the guest exception handler
+			cpu->cpu_ctx.exp_info.exp_data = exp_data;
 			raise_page_fault = true;
 			return EXCEPTION_EXECUTE_HANDLER;
 		}

@@ -346,6 +346,7 @@ ipt_segfault_sigaction(int signal, siginfo_t *si, void *ctx)
 
 	if (exp_data.idx == EXP_PF) {
 		// Page is invalid, invoke the guest exception handler
+		g_cpu->cpu_ctx.exp_info.exp_data = exp_data;
 		siglongjmp(env, SIG_GUEST_PF);
 	}
 
