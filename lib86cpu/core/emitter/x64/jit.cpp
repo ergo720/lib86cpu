@@ -460,6 +460,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define FXCH(op) m_a.fxch(op)
 #define FCOMP(op) m_a.fcomp(op)
 #define FCOMPP() m_a.fcompp()
+#define FCHS() m_a.fchs()
 
 #define MOVAPS(dst, src) m_a.movaps(dst, src)
 #define XORPS(dst, src) m_a.xorps(dst, src)
@@ -5694,6 +5695,27 @@ lc86_jit::fcom(decoded_instr *instr)
 		}
 		m_a.bind(end_instr);
 	}
+}
+
+void
+lc86_jit::fchs(decoded_instr *instr)
+{
+	Label end_instr = m_a.newLabel();
+
+	gen_check_fpu_unmasked_exp();
+	gen_update_fpu_ptr(instr);
+	gen_fpu_check_stack_underflow(0, 0, 0); // check for stack underflow in st0
+	TEST(EAX, EAX);
+	BR_NE(end_instr);
+	FPU_CLEAR_C1();
+	gen_set_host_fpu_ctx();
+	gen_fpu_load_stx(0);
+	FCHS();
+	gen_fpu_store_stx(0);
+	RESTORE_FPU_CTX();
+	XOR(EDX, EDX);
+	CALL_F(&fpu_update_tag<true>); // update st0 tag
+	m_a.bind(end_instr);
 }
 
 void

@@ -83,6 +83,7 @@ public:
 	void enter(decoded_instr *instr);
 	void fadd(decoded_instr *instr);
 	void fcom(decoded_instr *instr);
+	void fchs(decoded_instr *instr);
 	void fdivr(decoded_instr *instr);
 	void fild(decoded_instr *instr);
 	void fistp(decoded_instr *instr);

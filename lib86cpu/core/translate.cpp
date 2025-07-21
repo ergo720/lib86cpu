@@ -1058,6 +1058,10 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->fadd(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_FCHS:
+			cpu->jit->fchs(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_FCOM:
 		case ZYDIS_MNEMONIC_FCOMP:
 		case ZYDIS_MNEMONIC_FCOMPP:
