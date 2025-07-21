@@ -1068,6 +1068,12 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->fcom(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_FDIV:
+		case ZYDIS_MNEMONIC_FDIVP:
+		case ZYDIS_MNEMONIC_FIDIV:
+			cpu->jit->fdiv(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_FDIVR:
 		case ZYDIS_MNEMONIC_FDIVRP:
 		case ZYDIS_MNEMONIC_FIDIVR:
