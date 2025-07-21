@@ -2404,11 +2404,11 @@ lc86_jit::gen_simd_mem_align_check()
 	m_a.bind(ok);
 }
 
-template<typename T>
+template<bool write_fstatus, typename T>
 void lc86_jit::gen_fpu_exp_post_check(uint32_t exception, T &&unmasked)
 {
 	// trashes -> rax, rdx, r11
-	// ret -> r11w
+	// ret -> r11w when write_fstatus == false, otherwise nothing
 	// This function should be called immediately after the fpu instr to check exceptions for
 
 	Label masked = m_a.newLabel();
@@ -2418,13 +2418,24 @@ void lc86_jit::gen_fpu_exp_post_check(uint32_t exception, T &&unmasked)
 	NOT(EDX);
 	AND(EDX, EAX);
 	AND(EAX, (FPU_EXP_ALL | FPU_SW_CC_ALL));
-	MOVZX(R11D, MEMD16(RCX, CPU_CTX_FSTATUS));
-	AND(R11D, ~(FPU_EXP_ALL | FPU_SW_CC_ALL));
-	OR(R11D, EAX); // update a copy of guest fstatus because, if a page fault occurs later, it should retain its original value
+	if constexpr (write_fstatus) {
+		AND(MEMD16(RCX, CPU_CTX_FSTATUS), ~(FPU_EXP_ALL | FPU_SW_CC_ALL));
+		OR(MEMD16(RCX, CPU_CTX_FSTATUS), EAX); // update guest fstatus
+	}
+	else {
+		MOVZX(R11D, MEMD16(RCX, CPU_CTX_FSTATUS));
+		AND(R11D, ~(FPU_EXP_ALL | FPU_SW_CC_ALL));
+		OR(R11D, EAX); // update a copy of guest fstatus because, if a page fault occurs later, it should retain its original value
+	}
 	TEST(EDX, exception); // test if exceptions of interest are unmasked
 	BR_EQ(masked);
-	OR(R11D, FPU_SW_ES);
-	MOV(MEMD16(RCX, CPU_CTX_FSTATUS), R11W); // update exception and condition code flags of guest fstatus
+	if constexpr (write_fstatus) {
+		OR(MEMD16(RCX, CPU_CTX_FSTATUS), FPU_SW_ES);
+	}
+	else {
+		OR(R11D, FPU_SW_ES);
+		MOV(MEMD16(RCX, CPU_CTX_FSTATUS), R11W); // update exception and condition code flags of guest fstatus
+	}
 	unmasked();
 	m_a.bind(masked);
 }
@@ -3690,7 +3701,7 @@ void lc86_jit::fpu_store(decoded_instr *instr)
 				else {
 					LIB86CPU_ABORT();
 				}
-				gen_fpu_exp_post_check(FPU_EXP_ALL, [this, end_instr]() {
+				gen_fpu_exp_post_check<false>(FPU_EXP_ALL, [this, end_instr]() {
 					RESTORE_FPU_CTX();
 					BR_UNCOND(end_instr);
 					});
@@ -3787,12 +3798,11 @@ void lc86_jit::fpu_load(decoded_instr *instr)
 				gen_set_host_fpu_ctx();
 				if constexpr (idx == 0) {
 					FLD(MEMD(RSP, LOCAL_VARS_off(0), size));
-					gen_fpu_exp_post_check(FPU_EXP_INVALID, [this, instr, end_instr, size]() {
+					gen_fpu_exp_post_check<true>(FPU_EXP_INVALID, [this, instr, end_instr, size]() {
 						FSTP(MEMD(RSP, LOCAL_VARS_off(0), size)); // do a dummy pop to restore host fpu stack
 						RESTORE_FPU_CTX();
 						BR_UNCOND(end_instr);
 						});
-					MOV(MEMD16(RCX, CPU_CTX_FSTATUS), R11W); // update exception and condition code flags of guest fstatus
 				}
 				else if constexpr (idx == 1) {
 					FILD(MEMD(RSP, LOCAL_VARS_off(0), size));
@@ -3865,13 +3875,12 @@ void lc86_jit::fpu_arithmetic(decoded_instr *instr)
 				else {
 					LIB86CPU_ABORT();
 				}
-				gen_fpu_exp_post_check(FPU_EXP_ALL, [this, end_instr]() {
+				gen_fpu_exp_post_check<true>(FPU_EXP_ALL, [this, end_instr]() {
 					FSTP(MEMD80(RSP, LOCAL_VARS_off(0))); // do a dummy pop to restore host fpu stack
 					FSTP(MEMD80(RSP, LOCAL_VARS_off(0))); // do a dummy pop to restore host fpu stack
 					RESTORE_FPU_CTX();
 					BR_UNCOND(end_instr);
 					});
-				MOV(MEMD16(RCX, CPU_CTX_FSTATUS), R11W); // update exception and condition code flags of guest fstatus
 				gen_fpu_store_stx(dst_idx); // store result to dst st0/stx
 				FSTP(MEMD80(RSP, LOCAL_VARS_off(0))); // do a dummy pop to restore host fpu stack
 				RESTORE_FPU_CTX();
@@ -3941,12 +3950,11 @@ void lc86_jit::fpu_arithmetic(decoded_instr *instr)
 					LIB86CPU_ABORT();
 				}
 
-				gen_fpu_exp_post_check(FPU_EXP_ALL, [this, end_instr]() {
+				gen_fpu_exp_post_check<true>(FPU_EXP_ALL, [this, end_instr]() {
 					FSTP(MEMD80(RSP, LOCAL_VARS_off(0))); // do a dummy pop to restore host fpu stack
 					RESTORE_FPU_CTX();
 					BR_UNCOND(end_instr);
 					});
-				MOV(MEMD16(RCX, CPU_CTX_FSTATUS), R11W); // update exception and condition code flags of guest fstatus
 				gen_fpu_store_stx(0); // store result to dst st0
 				RESTORE_FPU_CTX();
 				XOR(EDX, EDX);
@@ -5681,11 +5689,10 @@ lc86_jit::fcom(decoded_instr *instr)
 				FCOMP(MEMD(RSP, LOCAL_VARS_off(0), size));
 			});
 
-		gen_fpu_exp_post_check(FPU_EXP_ALL, [this, end_instr]() {
+		gen_fpu_exp_post_check<true>(FPU_EXP_ALL, [this, end_instr]() {
 			RESTORE_FPU_CTX();
 			BR_UNCOND(end_instr);
 			});
-		MOV(MEMD16(RCX, CPU_CTX_FSTATUS), R11W); // update exception and condition code flags of guest fstatus
 		RESTORE_FPU_CTX();
 		while (pops_num) {
 			XOR(EDX, EDX);
@@ -5928,15 +5935,14 @@ lc86_jit::fsincos(decoded_instr *instr)
 		gen_set_host_fpu_ctx();
 		gen_fpu_load_stx(0); // load src st0
 		FSINCOS();
-		gen_fpu_exp_post_check(FPU_EXP_ALL, [this, end_instr]() {
+		gen_fpu_exp_post_check<true>(FPU_EXP_ALL, [this, end_instr]() {
 			// NOTE: if exp occurred, then result is inside the valid range, so fsincos pushed the stack
 			FSTP(MEMD80(RSP, LOCAL_VARS_off(0))); // do a dummy pop to restore host fpu stack
 			FSTP(MEMD80(RSP, LOCAL_VARS_off(0))); // do a dummy pop to restore host fpu stack
 			RESTORE_FPU_CTX();
 			BR_UNCOND(end_instr);
 			});
-		MOV(MEMD16(RCX, CPU_CTX_FSTATUS), R11W); // update exception and condition code flags of guest fstatus
-		TEST(R11W, FPU_SW_C2); // if 1, src was out of range
+		TEST(MEMD16(RCX, CPU_CTX_FSTATUS), FPU_SW_C2); // if 1, src was out of range
 		BR_NE(end_instr);
 		FXCH(ST1); // swap the st0 with st1 so that we have st1 -> cos and st0 -> sin in the host
 		gen_fpu_store_stx(0); // store sin result to dst st0 (becomes st1 after push below)

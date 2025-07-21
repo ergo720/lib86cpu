@@ -272,7 +272,7 @@ private:
 	template<unsigned num, unsigned store_at = 0, bool write_esp = true>
 	void gen_stack_pop();
 	void gen_simd_mem_align_check();
-	template<typename T>
+	template<bool write_fstatus, typename T>
 	void gen_fpu_exp_post_check(uint32_t exception, T &&unmasked);
 	void gen_set_host_fpu_ctx();
 	void gen_update_fpu_ptr(decoded_instr *instr);
