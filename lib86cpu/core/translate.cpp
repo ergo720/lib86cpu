@@ -77,6 +77,73 @@ cpu_reset(cpu_t *cpu)
 	tc_cache_purge(cpu);
 }
 
+static std::string
+exp_idx_to_str(unsigned idx)
+{
+	switch (idx)
+	{
+	case EXP_DE:
+		return "DE";
+
+	case EXP_DB:
+		return "DB";
+
+	case EXP_NMI:
+		return "NMI";
+
+	case EXP_BP:
+		return "BP";
+
+	case EXP_OF:
+		return "OF";
+
+	case EXP_BR:
+		return "BR";
+
+	case EXP_UD:
+		return "UD";
+
+	case EXP_NM:
+		return "NM";
+
+	case EXP_DF:
+		return "DF";
+
+	case EXP_TS:
+		return "TS";
+
+	case EXP_NP:
+		return "NP";
+
+	case EXP_SS:
+		return "SS";
+
+	case EXP_GP:
+		return "GP";
+
+	case EXP_PF:
+		return "PF";
+
+	case EXP_MF:
+		return "MF";
+
+	case EXP_AC:
+		return "AC";
+
+	case EXP_MC:
+		return "MC";
+
+	case EXP_XF:
+		return "XF";
+
+	case EXP_INVALID:
+		return "NOTHING";
+
+	default:
+		return std::to_string(idx);
+	}
+}
+
 static void
 check_dbl_exp(cpu_ctx_t *cpu_ctx)
 {
@@ -84,7 +151,7 @@ check_dbl_exp(cpu_ctx_t *cpu_ctx)
 	bool old_contributory = cpu_ctx->exp_info.old_exp == 0 || (cpu_ctx->exp_info.old_exp >= 10 && cpu_ctx->exp_info.old_exp <= 13);
 	bool curr_contributory = idx == 0 || (idx >= 10 && idx <= 13);
 
-	LOG(log_level::info, "%s old: %u new %u", __func__, cpu_ctx->exp_info.old_exp, idx);
+	LOG(log_level::info, "Exception thrown -> old: %s new %s", exp_idx_to_str(cpu_ctx->exp_info.old_exp).c_str(), exp_idx_to_str(idx).c_str());
 
 	if (cpu_ctx->exp_info.old_exp == EXP_DF) {
 		throw lc86_exp_abort("The guest has triple faulted, cannot continue", lc86_status::success);
