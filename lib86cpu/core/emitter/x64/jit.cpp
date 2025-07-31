@@ -468,6 +468,8 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define MOVAPS(dst, src) m_a.movaps(dst, src)
 #define XORPS(dst, src) m_a.xorps(dst, src)
 
+#define VZEROUPPER() m_a.vzeroupper()
+
 #define LD_R8L(dst, reg_offset) MOV(dst, MEMD8(RCX, reg_offset))
 #define LD_R8H(dst, reg_offset) MOV(dst, MEMD8(RCX, reg_offset + 1))
 #define LD_R16(dst, reg_offset) MOV(dst, MEMD16(RCX, reg_offset))
@@ -2612,6 +2614,17 @@ lc86_jit::gen_fpu_store_stx(uint32_t st_num)
 	MOV(EAX, sizeof(uint80_t));
 	MUL(DX);
 	FSTP(MEMSD80(RCX, RAX, 0, CPU_CTX_R0));
+}
+
+void
+lc86_jit::gen_vzeroupper()
+{
+	// If the host supports AVX, then emit vzeroupper to clear the upper bits of Y/ZMM registers. We do this to avoid the known performance penalty
+	// on Skylake and newer processors that happens when mixing SSE with AVX
+
+	if (g_is_avx_supported) {
+		VZEROUPPER();
+	}
 }
 
 template<unsigned idx>
@@ -7626,6 +7639,8 @@ lc86_jit::movaps(decoded_instr *instr)
 		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
 	}
 	else {
+		gen_vzeroupper();
+
 		switch (instr->i.opcode)
 		{
 		case 0x28: {
@@ -7677,6 +7692,7 @@ lc86_jit::movntps(decoded_instr *instr)
 	}
 	else {
 		if (instr->i.opcode == 0x2B) {
+			gen_vzeroupper();
 			const auto src = GET_REG(OPNUM_SRC);
 			get_rm<OPNUM_DST>(instr,
 				[](const op_info rm)
@@ -9943,6 +9959,7 @@ lc86_jit::xorps(decoded_instr *instr)
 	}
 	else {
 		if (instr->i.opcode == 0x57) {
+			gen_vzeroupper();
 			const auto dst = GET_REG(OPNUM_DST);
 			get_rm<OPNUM_SRC>(instr,
 				[this, dst](const op_info rm)

@@ -317,6 +317,7 @@ private:
 	void gen_check_fpu_unmasked_exp();
 	void gen_fpu_load_stx(uint32_t st_num);
 	void gen_fpu_store_stx(uint32_t st_num);
+	void gen_vzeroupper();
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;

@@ -15,8 +15,9 @@
 #include "ipt.h"
 #endif
 
-#define FPU_SUPPORTED          (1 << 0)
-#define SSE2_SUPPORTED         (1 << 26)
+#define FPU_SUPPORTED          (1 << 0) // edx
+#define SSE2_SUPPORTED         (1 << 26) // edx
+#define AVX_SUPPORTED          (1 << 28) // ecx
 #define CPU_FEATURES_REQUIRED  (FPU_SUPPORTED | SSE2_SUPPORTED)
 
 
@@ -29,6 +30,9 @@ verify_cpu_features()
 	int cpu_info[4];
 	__cpuid(cpu_info, 1);
 	if ((cpu_info[3] & CPU_FEATURES_REQUIRED) == CPU_FEATURES_REQUIRED) {
+		if (cpu_info[2] & AVX_SUPPORTED) {
+			g_is_avx_supported = true;
+		}
 #ifdef XBOX_CPU
 		if ((((cpu_info[0] & 0xF00) >> 8) == 0x6) || (((cpu_info[0] & 0xF00) >> 8) == 0xF)) {
 			is_multi_nop_supported = true;
@@ -40,6 +44,9 @@ verify_cpu_features()
 	unsigned cpu_info[4];
 	if (__get_cpuid(1, &cpu_info[0], &cpu_info[1], &cpu_info[2], &cpu_info[3])) {
 		if ((cpu_info[3] & CPU_FEATURES_REQUIRED) == CPU_FEATURES_REQUIRED) {
+			if (cpu_info[2] & AVX_SUPPORTED) {
+				g_is_avx_supported = true;
+			}
 #ifdef XBOX_CPU
 			if ((((cpu_info[0] & 0xF00) >> 8) == 0x6) || (((cpu_info[0] & 0xF00) >> 8) == 0xF)) {
 				is_multi_nop_supported = true;

@@ -52,6 +52,8 @@
 #define P6(n) P4(n), P4(n ^ 1), P4(n ^ 1), P4(n)
 #define GEN_TABLE P6(0), P6(1), P6(1), P6(0)
 
+inline bool g_is_avx_supported = false;
+
  // memory region type
 enum class mem_type : int {
 	unmapped,
