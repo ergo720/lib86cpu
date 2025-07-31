@@ -2502,36 +2502,46 @@ lc86_jit::gen_fpu_check_stack_underflow(uint32_t st_num_src, uint32_t st_num_dst
 }
 
 void
-lc86_jit::gen_fpu_check_stack_fault_patan()
+lc86_jit::gen_fpu_check_stack_fault_fpatan()
 {
 	// trashes -> func call
 	// ret -> eax
 
-	CALL_F(&fpu_stack_fault_patan);
+	CALL_F(&fpu_stack_fault_fpatan);
 }
 
 void
-lc86_jit::gen_fpu_check_stack_fault_sincos()
+lc86_jit::gen_fpu_check_stack_fault_fsincos()
 {
 	// trashes -> func call
 	// ret -> eax
 
-	CALL_F(&fpu_stack_fault_sincos);
+	CALL_F(&fpu_stack_fault_fsincos);
 }
 
 void
-lc86_jit::gen_fpu_check_stack_fault_com1(uint32_t st_num1, uint32_t pops_num)
+lc86_jit::gen_fpu_check_stack_fault_fxch(uint32_t st_num)
+{
+	// trashes -> func call
+	// ret -> eax
+
+	MOV(EDX, st_num);
+	CALL_F(&fpu_stack_fault_fxch);
+}
+
+void
+lc86_jit::gen_fpu_check_stack_fault_fcom1(uint32_t st_num1, uint32_t pops_num)
 {
 	// trashes -> func call
 	// ret -> eax
 
 	MOV(EDX, st_num1);
 	MOV(R8D, pops_num);
-	CALL_F(&fpu_stack_underflow_fcom1);
+	CALL_F(&fpu_stack_fault_fcom1);
 }
 
 void
-lc86_jit::gen_fpu_check_stack_fault_com2(uint32_t st_num1, uint32_t st_num2, uint32_t pops_num)
+lc86_jit::gen_fpu_check_stack_fault_fcom2(uint32_t st_num1, uint32_t st_num2, uint32_t pops_num)
 {
 	// trashes -> func call
 	// ret -> eax
@@ -2539,7 +2549,7 @@ lc86_jit::gen_fpu_check_stack_fault_com2(uint32_t st_num1, uint32_t st_num2, uin
 	MOV(EDX, st_num1);
 	MOV(R8D, st_num2);
 	MOV(R9D, pops_num);
-	CALL_F(&fpu_stack_underflow_fcom2);
+	CALL_F(&fpu_stack_fault_fcom2);
 }
 
 template<typename T, T qnan>
@@ -5683,7 +5693,7 @@ lc86_jit::fcom(decoded_instr *instr)
 			{
 				gen_update_fpu_ptr(instr);
 				FPU_CLEAR_C1();
-				gen_fpu_check_stack_fault_com2(0, instr->i.raw.modrm.rm, pops_num);
+				gen_fpu_check_stack_fault_fcom2(0, instr->i.raw.modrm.rm, pops_num);
 				TEST(EAX, EAX);
 				BR_NE(end_instr);
 				gen_set_host_fpu_ctx();
@@ -5700,7 +5710,7 @@ lc86_jit::fcom(decoded_instr *instr)
 				MOV(MEMD(RSP, LOCAL_VARS_off(0), size), SIZED_REG(x64::rax, size));
 				gen_update_fpu_ptr(instr);
 				FPU_CLEAR_C1();
-				gen_fpu_check_stack_fault_com1(0, pops_num);
+				gen_fpu_check_stack_fault_fcom1(0, pops_num);
 				TEST(EAX, EAX);
 				BR_NE(end_instr);
 				gen_set_host_fpu_ctx();
@@ -5953,7 +5963,7 @@ lc86_jit::fpatan(decoded_instr *instr)
 		gen_check_fpu_unmasked_exp();
 		gen_update_fpu_ptr(instr);
 		FPU_CLEAR_C1();
-		gen_fpu_check_stack_fault_patan();
+		gen_fpu_check_stack_fault_fpatan();
 		TEST(EAX, EAX);
 		BR_NE(end_instr);
 		gen_set_host_fpu_ctx();
@@ -5987,7 +5997,7 @@ lc86_jit::fsincos(decoded_instr *instr)
 		gen_update_fpu_ptr(instr);
 		FPU_CLEAR_C1();
 		FPU_CLEAR_C2();
-		gen_fpu_check_stack_fault_sincos();
+		gen_fpu_check_stack_fault_fsincos();
 		TEST(EAX, EAX);
 		BR_NE(end_instr);
 		gen_set_host_fpu_ctx();
@@ -6035,6 +6045,31 @@ lc86_jit::fwait(decoded_instr *instr)
 	}
 	else {
 		gen_check_fpu_unmasked_exp();
+	}
+}
+
+void
+lc86_jit::fxch(decoded_instr *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		Label end_instr = m_a.newLabel();
+
+		gen_check_fpu_unmasked_exp();
+		gen_update_fpu_ptr(instr);
+		FPU_CLEAR_C1();
+		gen_fpu_check_stack_fault_fxch(instr->i.raw.modrm.rm); // check for stack underflow for src stx/dst st0
+		TEST(EAX, EAX);
+		BR_NE(end_instr);
+		gen_set_host_fpu_ctx();
+		gen_fpu_load_stx(0);
+		gen_fpu_load_stx(instr->i.raw.modrm.rm); // stx_g/st0_h, st0_g/st1_h
+		gen_fpu_store_stx(0);
+		gen_fpu_store_stx(instr->i.raw.modrm.rm);
+		RESTORE_FPU_CTX();
+		m_a.bind(end_instr);
 	}
 }
 

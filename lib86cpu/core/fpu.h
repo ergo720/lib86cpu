@@ -21,10 +21,11 @@ void fpu_init(cpu_t *cpu);
 template<bool is_push>
 JIT_API void fpu_update_tag(cpu_ctx_t *cpu_ctx, uint32_t st_num);
 JIT_API uint32_t fpu_stack_overflow(cpu_ctx_t *cpu_ctx);
-JIT_API uint32_t fpu_stack_fault_patan(cpu_ctx_t *cpu_ctx);
-JIT_API uint32_t fpu_stack_fault_sincos(cpu_ctx_t *cpu_ctx);
-JIT_API uint32_t fpu_stack_underflow_fcom1(cpu_ctx_t *cpu_ctx, uint32_t st_num1, uint32_t pops_num);
-JIT_API uint32_t fpu_stack_underflow_fcom2(cpu_ctx_t *cpu_ctx, uint32_t st_num1, uint32_t st_num2, uint32_t pops_num);
+JIT_API uint32_t fpu_stack_fault_fpatan(cpu_ctx_t *cpu_ctx);
+JIT_API uint32_t fpu_stack_fault_fsincos(cpu_ctx_t *cpu_ctx);
+JIT_API uint32_t fpu_stack_fault_fxch(cpu_ctx_t *cpu_ctx, uint32_t st_num);
+JIT_API uint32_t fpu_stack_fault_fcom1(cpu_ctx_t *cpu_ctx, uint32_t st_num1, uint32_t pops_num);
+JIT_API uint32_t fpu_stack_fault_fcom2(cpu_ctx_t *cpu_ctx, uint32_t st_num1, uint32_t st_num2, uint32_t pops_num);
 JIT_API uint32_t fpu_stack_underflow_reg(cpu_ctx_t *cpu_ctx, uint32_t st_num_src, uint32_t st_num_dst, uint32_t should_pop);
 template<typename T, T qnan>
 JIT_API uint32_t fpu_stack_underflow_mem(cpu_ctx_t *cpu_ctx, addr_t addr, uint32_t st_num_src, uint32_t should_pop);

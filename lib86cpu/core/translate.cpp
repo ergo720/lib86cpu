@@ -1237,6 +1237,10 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->fwait(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_FXCH:
+			cpu->jit->fxch(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_FXRSTOR:
 			cpu->jit->fxrstor(&instr);
 			break;

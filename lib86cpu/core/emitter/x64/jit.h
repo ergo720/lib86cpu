@@ -107,6 +107,7 @@ public:
 	void fstp(decoded_instr *instr);
 	void fsub(decoded_instr *instr);
 	void fwait(decoded_instr *instr);
+	void fxch(decoded_instr *instr);
 	void fxrstor(decoded_instr *instr);
 	void fxsave(decoded_instr *instr);
 	void hlt(decoded_instr *instr);
@@ -306,10 +307,11 @@ private:
 	void fpu_load(decoded_instr *instr);
 	void gen_fpu_check_stack_overflow();
 	void gen_fpu_check_stack_underflow(uint32_t st_num_src, uint32_t st_mun_dst, uint32_t should_pop);
-	void gen_fpu_check_stack_fault_patan();
-	void gen_fpu_check_stack_fault_sincos();
-	void gen_fpu_check_stack_fault_com1(uint32_t st_num1, uint32_t pops_num);
-	void gen_fpu_check_stack_fault_com2(uint32_t st_num1, uint32_t st_num2, uint32_t pops_num);
+	void gen_fpu_check_stack_fault_fpatan();
+	void gen_fpu_check_stack_fault_fsincos();
+	void gen_fpu_check_stack_fault_fxch(uint32_t st_num);
+	void gen_fpu_check_stack_fault_fcom1(uint32_t st_num1, uint32_t pops_num);
+	void gen_fpu_check_stack_fault_fcom2(uint32_t st_num1, uint32_t st_num2, uint32_t pops_num);
 	template<typename T, T qnan>
 	void gen_fpu_check_stack_underflow(uint32_t st_num_src, uint32_t should_pop);
 	void gen_check_fpu_unmasked_exp();
