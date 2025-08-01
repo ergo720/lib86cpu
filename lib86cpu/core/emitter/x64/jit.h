@@ -109,6 +109,7 @@ public:
 	void fsincos(decoded_instr *instr);
 	void fstp(decoded_instr *instr);
 	void fsub(decoded_instr *instr);
+	void fsubr(decoded_instr *instr);
 	void fwait(decoded_instr *instr);
 	void fxch(decoded_instr *instr);
 	void fxrstor(decoded_instr *instr);
