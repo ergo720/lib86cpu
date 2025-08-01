@@ -468,6 +468,10 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define MOVD(dst, src) m_a.movd(dst, src)
 #define MOVAPS(dst, src) m_a.movaps(dst, src)
 #define XORPS(dst, src) m_a.xorps(dst, src)
+#define ADDPS(dst, src) m_a.addps(dst, src)
+#define ADDSS(dst, src) m_a.addss(dst, src)
+#define MULPS(dst, src) m_a.mulps(dst, src)
+#define MULSS(dst, src) m_a.mulss(dst, src)
 #define CVTTSS2SI(dst, src) m_a.cvttss2si(dst, src)
 #define SHUFPS(dst, src, imm) m_a.shufps(dst, src, imm)
 #define LDMXCSR(dst) m_a.ldmxcsr(dst)
@@ -2664,6 +2668,58 @@ lc86_jit::gen_vzeroupper()
 }
 
 template<unsigned idx>
+void lc86_jit::simd_arithmetic(decoded_instr *instr, bool is_packed)
+{
+	// idx 0 -> mul(p|s)s, 1 -> add(p|s)s
+
+	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
+		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
+	}
+	else {
+		gen_vzeroupper();
+		const auto dst = GET_REG(OPNUM_DST);
+		MOVAPS(XMM0, MEMD128(RCX, dst.val));
+
+		get_rm<OPNUM_SRC>(instr,
+			[this](const op_info rm)
+			{
+				MOVAPS(XMM1, MEMD128(RCX, rm.val));
+			},
+			[this, is_packed](const op_info rm)
+			{
+				if (is_packed) {
+					LD_MEM128();
+					MOVAPS(XMM1, MEM128(RAX));
+				}
+				else {
+					LD_MEMs(SIZE32);
+					MOVD(XMM1, EAX);
+				}
+			});
+
+		gen_set_host_simd_ctx();
+
+		switch (idx)
+		{
+		case 0:
+			is_packed ? MULPS(XMM0, XMM1) : MULSS(XMM0, XMM1);
+			break;
+
+		case 1:
+			is_packed ? ADDPS(XMM0, XMM1) : ADDSS(XMM0, XMM1);
+			break;
+
+		default:
+			LIB86CPU_ABORT();
+		}
+
+		gen_simd_exp_post_check();
+		MOVAPS(MEMD128(RCX, dst.val), XMM0);
+		RESTORE_SIMD_CTX();
+	}
+}
+
+template<unsigned idx>
 void lc86_jit::shift(decoded_instr *instr)
 {
 	// idx 0 -> shl, 1 -> shr, 2 -> sar
@@ -4336,6 +4392,18 @@ lc86_jit::add(decoded_instr *instr)
 	default:
 		LIB86CPU_ABORT();
 	}
+}
+
+void
+lc86_jit::addss(decoded_instr *instr)
+{
+	simd_arithmetic<1>(instr, false);
+}
+
+void
+lc86_jit::addps(decoded_instr *instr)
+{
+	simd_arithmetic<1>(instr, true);
 }
 
 void
@@ -8024,6 +8092,17 @@ lc86_jit::mul(decoded_instr *instr)
 	MOV(MEMD32(RCX, CPU_CTX_EFLAGS_AUX), EBX);
 }
 
+void
+lc86_jit::mulss(decoded_instr *instr)
+{
+	simd_arithmetic<0>(instr, false);
+}
+
+void
+lc86_jit::mulps(decoded_instr *instr)
+{
+	simd_arithmetic<0>(instr, true);
+}
 
 void
 lc86_jit::neg(decoded_instr *instr)

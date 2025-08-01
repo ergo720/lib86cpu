@@ -50,6 +50,8 @@ public:
 	void aas(decoded_instr *instr);
 	void adc(decoded_instr *instr);
 	void add(decoded_instr *instr);
+	void addss(decoded_instr *instr);
+	void addps(decoded_instr *instr);
 	void and_(decoded_instr *instr);
 	void arpl(decoded_instr *instr);
 	void bound(decoded_instr *instr);
@@ -146,6 +148,8 @@ public:
 	void movsx(decoded_instr *instr);
 	void movzx(decoded_instr *instr);
 	void mul(decoded_instr *instr);
+	void mulss(decoded_instr *instr);
+	void mulps(decoded_instr *instr);
 	void neg(decoded_instr *instr);
 	void not_(decoded_instr *instr);
 	void or_(decoded_instr *instr);
@@ -283,6 +287,8 @@ private:
 	void gen_fpu_exp_post_check(uint32_t exception, T &&unmasked);
 	void gen_set_host_fpu_ctx();
 	void gen_update_fpu_ptr(decoded_instr *instr);
+	template<unsigned idx>
+	void simd_arithmetic(decoded_instr *instr, bool is_packed);
 	template<unsigned idx>
 	void shift(decoded_instr *instr);
 	template<unsigned idx>

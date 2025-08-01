@@ -979,6 +979,14 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->add(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_ADDSS:
+			cpu->jit->addss(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_ADDPS:
+			cpu->jit->addps(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_AND:
 			cpu->jit->and_(&instr);
 			break;
@@ -1423,6 +1431,14 @@ cpu_translate(cpu_t *cpu)
 
 		case ZYDIS_MNEMONIC_MUL:
 			cpu->jit->mul(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_MULSS:
+			cpu->jit->mulss(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_MULPS:
+			cpu->jit->mulps(&instr);
 			break;
 
 		case ZYDIS_MNEMONIC_NEG:
