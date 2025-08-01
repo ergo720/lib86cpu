@@ -1574,6 +1574,10 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->shrd(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_SHUFPS:
+			cpu->jit->shufps(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_SIDT:
 			cpu->jit->sidt(&instr);
 			break;

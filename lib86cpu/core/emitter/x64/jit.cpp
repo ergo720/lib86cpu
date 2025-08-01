@@ -469,6 +469,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define MOVAPS(dst, src) m_a.movaps(dst, src)
 #define XORPS(dst, src) m_a.xorps(dst, src)
 #define CVTTSS2SI(dst, src) m_a.cvttss2si(dst, src)
+#define SHUFPS(dst, src, imm) m_a.shufps(dst, src, imm)
 #define LDMXCSR(dst) m_a.ldmxcsr(dst)
 #define STMXCSR(dst) m_a.stmxcsr(dst)
 
@@ -9454,6 +9455,37 @@ void
 lc86_jit::shrd(decoded_instr *instr)
 {
 	double_shift<1>(instr);
+}
+
+void
+lc86_jit::shufps(decoded_instr *instr)
+{
+	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
+		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
+	}
+	else {
+		assert(instr->i.opcode == 0xC6);
+
+		gen_vzeroupper();
+		const auto dst = GET_REG(OPNUM_DST);
+		const auto imm = GET_OP(OPNUM_THIRD);
+		MOVAPS(XMM0, MEMD128(RCX, dst.val));
+
+		get_rm<OPNUM_SRC>(instr,
+			[this, dst](const op_info rm)
+			{
+				MOVAPS(XMM1, MEMD128(RCX, rm.val));
+			},
+			[this, dst](const op_info rm)
+			{
+				gen_simd_mem_align_check();
+				LD_MEM128();
+				MOVAPS(XMM1, MEM128(RAX));
+			});
+
+		SHUFPS(XMM0, XMM1, imm.val);
+		MOVAPS(MEMD128(RCX, dst.val), XMM0);
+	}
 }
 
 void

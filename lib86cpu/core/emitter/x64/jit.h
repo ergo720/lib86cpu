@@ -174,6 +174,7 @@ public:
 	void shld(decoded_instr *instr);
 	void shr(decoded_instr *instr);
 	void shrd(decoded_instr *instr);
+	void shufps(decoded_instr *instr);
 	void sidt(decoded_instr *instr);
 	void sldt(decoded_instr *instr);
 	void stc(decoded_instr *instr);
