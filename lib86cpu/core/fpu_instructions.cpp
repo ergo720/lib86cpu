@@ -55,6 +55,7 @@ fxrstor_helper(cpu_ctx_t *cpu_ctx, addr_t addr)
 			return 1;
 		}
 		cpu_ctx->regs.mxcsr = temp;
+		cpu_ctx->shadow_mxcsr = (temp | (MXCSR_EXP_ALL << 7)) & ~MXCSR_EXP_ALL; // daz must be zero already because of the above check done with MXCSR_MASK
 	}
 
 	cpu_ctx->regs.fctrl = (mem_read_helper<uint16_t>(cpu_ctx, addr, 0) | 0x40);

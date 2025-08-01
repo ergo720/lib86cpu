@@ -51,6 +51,7 @@ JIT_API uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 // HFLG_TRAMP: used to select the trampoline tc instead of the hook tc
 // HFLG_CR4_OSFXSR: osfxsr flag of cr4
 // HFLG_CR0_TS: ts flag of cr0
+// HFLG_CR4_OSXMMEXCPT: osxmmexcpt flag of cr4
 // HFLG_CR0_MP: mp flag of cr0
 // HFLG_CR0_VME: vme flag of cr4
 // HFLG_CR0_PVI: pvi flag of cr4
@@ -60,49 +61,51 @@ JIT_API uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 // HFLG_DS_IS_ZERO: base address of data segment is zero
 // HFLG_FS_IS_ZERO: base address of fs segment is zero
 // HFLG_GS_IS_ZERO: base address of gs segment is zero
-#define CPL_SHIFT           0
-#define CS32_SHIFT          2
-#define SS32_SHIFT          3
-#define PE_MODE_SHIFT       4
-#define CR0_EM_SHIFT        5
-#define TRAMP_SHIFT         6
-#define CR0_NE_SHIFT        7
-#define CR4_OSFXSR_SHIFT    9
-#define CR0_TS_SHIFT        10
-#define CR0_MP_SHIFT        15
-#define CR4_VME_SHIFT       19
-#define CR4_PVI_SHIFT       20
-#define ES_ZERO_SHIFT       21
-#define CS_ZERO_SHIFT       22
-#define SS_ZERO_SHIFT       23
-#define DS_ZERO_SHIFT       24
-#define FS_ZERO_SHIFT       25
-#define GS_ZERO_SHIFT       26
-#define HFLG_INVALID        (1 << 31) // this should use a bit position that doesn't overlap with either HFLG_CONST or EFLAGS_CONST
-#define HFLG_CPL            (3 << CPL_SHIFT)
-#define HFLG_CS32           (1 << CS32_SHIFT)
-#define HFLG_SS32           (1 << SS32_SHIFT)
-#define HFLG_PE_MODE        (1 << PE_MODE_SHIFT)
-#define HFLG_CR0_EM         (1 << CR0_EM_SHIFT)
-#define HFLG_TRAMP          (1 << TRAMP_SHIFT)
-#define HFLG_CR0_NE         (1 << CR0_NE_SHIFT)
-#define HFLG_CR0_MP         (1 << CR0_MP_SHIFT)
-#define HFLG_CR0_TS         (1 << CR0_TS_SHIFT)
-#define HFLG_CR4_OSFXSR     (1 << CR4_OSFXSR_SHIFT)
-#define HFLG_CR4_VME        (1 << CR4_VME_SHIFT)
-#define HFLG_CR4_PVI        (1 << CR4_PVI_SHIFT)
-#define HFLG_ES_IS_ZERO     (1 << ES_ZERO_SHIFT)
-#define HFLG_CS_IS_ZERO     (1 << CS_ZERO_SHIFT)
-#define HFLG_SS_IS_ZERO     (1 << SS_ZERO_SHIFT)
-#define HFLG_DS_IS_ZERO     (1 << DS_ZERO_SHIFT)
-#define HFLG_FS_IS_ZERO     (1 << FS_ZERO_SHIFT)
-#define HFLG_GS_IS_ZERO     (1 << GS_ZERO_SHIFT)
-#define ZERO_SEL2HFLG       ((unsigned)13)
-#define ZERO_SEL_MASK       (HFLG_ES_IS_ZERO | HFLG_CS_IS_ZERO | HFLG_SS_IS_ZERO | HFLG_DS_IS_ZERO | HFLG_FS_IS_ZERO | HFLG_GS_IS_ZERO)
-#define HFLG_CONST          (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_CR0_MP | HFLG_CR0_TS | HFLG_CR0_NE \
+#define CPL_SHIFT             0
+#define CS32_SHIFT            2
+#define SS32_SHIFT            3
+#define PE_MODE_SHIFT         4
+#define CR0_EM_SHIFT          5
+#define TRAMP_SHIFT           6
+#define CR0_NE_SHIFT          7
+#define CR4_OSFXSR_SHIFT      9
+#define CR0_TS_SHIFT          10
+#define CR4_OSXMMEXCPT_SHIFT  11
+#define CR0_MP_SHIFT          15
+#define CR4_VME_SHIFT         19
+#define CR4_PVI_SHIFT         20
+#define ES_ZERO_SHIFT         21
+#define CS_ZERO_SHIFT         22
+#define SS_ZERO_SHIFT         23
+#define DS_ZERO_SHIFT         24
+#define FS_ZERO_SHIFT         25
+#define GS_ZERO_SHIFT         26
+#define HFLG_INVALID          (1 << 31) // this should use a bit position that doesn't overlap with either HFLG_CONST or EFLAGS_CONST
+#define HFLG_CPL              (3 << CPL_SHIFT)
+#define HFLG_CS32             (1 << CS32_SHIFT)
+#define HFLG_SS32             (1 << SS32_SHIFT)
+#define HFLG_PE_MODE          (1 << PE_MODE_SHIFT)
+#define HFLG_CR0_EM           (1 << CR0_EM_SHIFT)
+#define HFLG_TRAMP            (1 << TRAMP_SHIFT)
+#define HFLG_CR0_NE           (1 << CR0_NE_SHIFT)
+#define HFLG_CR0_MP           (1 << CR0_MP_SHIFT)
+#define HFLG_CR0_TS           (1 << CR0_TS_SHIFT)
+#define HFLG_CR4_OSXMMEXCPT   (1 << CR4_OSXMMEXCPT_SHIFT)
+#define HFLG_CR4_OSFXSR       (1 << CR4_OSFXSR_SHIFT)
+#define HFLG_CR4_VME          (1 << CR4_VME_SHIFT)
+#define HFLG_CR4_PVI          (1 << CR4_PVI_SHIFT)
+#define HFLG_ES_IS_ZERO       (1 << ES_ZERO_SHIFT)
+#define HFLG_CS_IS_ZERO       (1 << CS_ZERO_SHIFT)
+#define HFLG_SS_IS_ZERO       (1 << SS_ZERO_SHIFT)
+#define HFLG_DS_IS_ZERO       (1 << DS_ZERO_SHIFT)
+#define HFLG_FS_IS_ZERO       (1 << FS_ZERO_SHIFT)
+#define HFLG_GS_IS_ZERO       (1 << GS_ZERO_SHIFT)
+#define ZERO_SEL2HFLG         ((unsigned)13)
+#define ZERO_SEL_MASK         (HFLG_ES_IS_ZERO | HFLG_CS_IS_ZERO | HFLG_SS_IS_ZERO | HFLG_DS_IS_ZERO | HFLG_FS_IS_ZERO | HFLG_GS_IS_ZERO)
+#define HFLG_CONST            (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_TRAMP | HFLG_CR0_MP | HFLG_CR0_TS | HFLG_CR4_OSXMMEXCPT | HFLG_CR0_NE \
 | HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI | ZERO_SEL_MASK)
-#define HFLG_SAVED_MASK     (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_CR0_MP | HFLG_CR0_TS | HFLG_CR0_NE | HFLG_CR4_OSFXSR | HFLG_CR4_VME | HFLG_CR4_PVI \
-| ZERO_SEL_MASK)
+#define HFLG_SAVED_MASK       (HFLG_CPL | HFLG_CS32 | HFLG_SS32 | HFLG_PE_MODE | HFLG_CR0_EM | HFLG_CR0_MP | HFLG_CR0_TS | HFLG_CR4_OSXMMEXCPT | HFLG_CR0_NE | HFLG_CR4_OSFXSR \
+| HFLG_CR4_VME | HFLG_CR4_PVI | ZERO_SEL_MASK)
 
 // cpu interrupt flags
 #define CPU_NO_INT           0
@@ -328,16 +331,17 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define CR3_PCD_MASK (1 << 4)
 #define CR3_PWT_MASK (1 << 3)
 #define CR3_FLG_MASK (CR3_PD_MASK | CR3_PCD_MASK | CR3_PWT_MASK)
-#define CR4_VME_MASK    (1 << 0)
-#define CR4_PVI_MASK    (1 << 1)
-#define CR4_TSD_MASK    (1 << 2)
-#define CR4_DE_MASK     (1 << 3)
-#define CR4_PSE_MASK    (1 << 4)
-#define CR4_PAE_MASK    (1 << 5)
-#define CR4_PGE_MASK    (1 << 7)
-#define CR4_OSFXSR_MASK (1 << 9)
-#define CR4_UMIP_MASK   (1 << 11)
-#define CR4_RES_MASK    (0x1FFFFF << 11) // cr4 reserved bits
+#define CR4_VME_MASK        (1 << 0)
+#define CR4_PVI_MASK        (1 << 1)
+#define CR4_TSD_MASK        (1 << 2)
+#define CR4_DE_MASK         (1 << 3)
+#define CR4_PSE_MASK        (1 << 4)
+#define CR4_PAE_MASK        (1 << 5)
+#define CR4_PGE_MASK        (1 << 7)
+#define CR4_OSFXSR_MASK     (1 << 9)
+#define CR4_OSXMMEXCPT_MASK (1 << 10)
+#define CR4_UMIP_MASK       (1 << 11)
+#define CR4_RES_MASK        (0x1FFFFF << 11) // cr4 reserved bits
 
 // debug register flags
 #define DR6_B0_MASK      (1 << 0)
@@ -491,7 +495,10 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 #define FPU_ROUND_UP    2
 #define FPU_ROUND_ZERO  3
 
+// mxcsr macros
 #define MXCSR_MASK 0x0000FFBF
+#define MXCSR_EXP_ALL FPU_EXP_ALL
 
+// misc macros
 #define X86_MAX_INSTR_LENGTH 15
 #define INTEL_MICROCODE_ID   (1ULL << 32)

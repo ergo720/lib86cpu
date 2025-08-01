@@ -465,8 +465,12 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define FCOMPP() m_a.fcompp()
 #define FCHS() m_a.fchs()
 
+#define MOVD(dst, src) m_a.movd(dst, src)
 #define MOVAPS(dst, src) m_a.movaps(dst, src)
 #define XORPS(dst, src) m_a.xorps(dst, src)
+#define CVTTSS2SI(dst, src) m_a.cvttss2si(dst, src)
+#define LDMXCSR(dst) m_a.ldmxcsr(dst)
+#define STMXCSR(dst) m_a.stmxcsr(dst)
 
 #define VZEROUPPER() m_a.vzeroupper()
 
@@ -537,6 +541,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 
 #define RELOAD_RCX_CTX() MOV(RCX, &m_cpu->cpu_ctx)
 #define RESTORE_FPU_CTX() FLDCW(MEMD16(RSP, LOCAL_VARS_off(5)))
+#define RESTORE_SIMD_CTX() LDMXCSR(MEMD32(RSP, LOCAL_VARS_off(5)))
 #define CALL_F(func) MOV(RAX, func); CALL(RAX); RELOAD_RCX_CTX()
 #define FPU_CLEAR_C1() AND(MEMD16(RCX, CPU_CTX_FSTATUS), ~FPU_SW_C1)
 #define FPU_CLEAR_C2() AND(MEMD16(RCX, CPU_CTX_FSTATUS), ~FPU_SW_C2)
@@ -2407,6 +2412,36 @@ lc86_jit::gen_simd_mem_align_check()
 	BR_EQ(ok);
 	RAISEin0_f(EXP_GP);
 	m_a.bind(ok);
+}
+
+void
+lc86_jit::gen_set_host_simd_ctx()
+{
+	STMXCSR(MEMD32(RSP, LOCAL_VARS_off(5))); // save host mxcsr so that we can restore it later
+	LDMXCSR(MEMD32(RCX, SIMD_SHDW_MXCSR)); // set rounding and ftz according to the guest settings (all simd exceptions are masked and unmasked exceptions bits are cleared)
+}
+
+void
+lc86_jit::gen_simd_exp_post_check()
+{
+	// trashes -> edx, eax, stack(4)
+	// This function should be called immediately after the simd instr to check exceptions for
+
+	Label masked = m_a.newLabel();
+	STMXCSR(MEMD32(RSP, LOCAL_VARS_off(4)));
+	MOV(EDX, MEMD32(RCX, CPU_CTX_MXCSR));
+	MOV(EAX, MEMD32(RSP, LOCAL_VARS_off(4)));
+	AND(MEMD32(RCX, CPU_CTX_MXCSR), ~MXCSR_EXP_ALL);
+	SHR(EDX, 7);
+	AND(EAX, MXCSR_EXP_ALL);
+	NOT(EDX);
+	OR(MEMD32(RCX, CPU_CTX_MXCSR), EAX); // write back updated mxcsr
+	AND(EDX, MXCSR_EXP_ALL);
+	TEST(EDX, EAX); // test if any simd exceptions are unmasked
+	BR_EQ(masked);
+	RESTORE_SIMD_CTX();
+	RAISEin0_f(m_cpu->cpu_ctx.hflags & HFLG_CR4_OSXMMEXCPT ? EXP_XF : EXP_UD);
+	m_a.bind(masked);
 }
 
 template<bool write_fstatus, typename T>
@@ -5321,6 +5356,40 @@ void
 lc86_jit::cpuid(decoded_instr *instr)
 {
 	CALL_F(&cpuid_helper);
+}
+
+void
+lc86_jit::cvttss2si(decoded_instr *instr)
+{
+	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
+		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
+	}
+	else {
+		if (instr->i.opcode == 0x2C) {
+			gen_vzeroupper();
+			const auto dst = GET_REG(OPNUM_DST);
+
+			get_rm<OPNUM_SRC>(instr,
+				[this](const op_info rm)
+				{
+					MOVAPS(XMM0, MEMD128(RCX, rm.val));
+				},
+				[this](const op_info rm)
+				{
+					LD_MEMs(SIZE32);
+					MOVD(XMM0, EAX);
+				});
+
+			gen_set_host_simd_ctx();
+			CVTTSS2SI(EBX, XMM0);
+			gen_simd_exp_post_check();
+			MOV(MEMD32(RCX, dst.val), EBX);
+			RESTORE_SIMD_CTX();
+		}
+		else {
+			LIB86CPU_ABORT();
+		}
+	}
 }
 
 void

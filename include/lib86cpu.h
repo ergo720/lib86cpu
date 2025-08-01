@@ -76,6 +76,7 @@ struct cpu_save_state_t {
 	uint32_t eflags_aux;
 	uint16_t ftop;
 	uint16_t frp;
+	uint32_t shadow_mxcsr;
 	uint8_t is_halted;
 	uint8_t microcode_updated;
 	uint32_t hflags;

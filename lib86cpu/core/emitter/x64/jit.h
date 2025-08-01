@@ -74,6 +74,7 @@ public:
 	void cmpxchg(decoded_instr *instr);
 	void cmpxchg8b(decoded_instr *instr);
 	void cpuid(decoded_instr *instr);
+	void cvttss2si(decoded_instr *instr);
 	void cwd(decoded_instr *instr);
 	void cwde(decoded_instr *instr);
 	void daa(decoded_instr *instr);
@@ -275,6 +276,8 @@ private:
 	template<unsigned num, unsigned store_at = 0, bool write_esp = true>
 	void gen_stack_pop();
 	void gen_simd_mem_align_check();
+	void gen_set_host_simd_ctx();
+	void gen_simd_exp_post_check();
 	template<bool write_fstatus, typename T>
 	void gen_fpu_exp_post_check(uint32_t exception, T &&unmasked);
 	void gen_set_host_fpu_ctx();

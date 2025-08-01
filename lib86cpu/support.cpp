@@ -14,7 +14,7 @@
 #endif
 
 // This should be updated whenever cpu members that need to be saved are added/removed
-#define SAVE_STATE_ID 11
+#define SAVE_STATE_ID 12
 
 
 void
@@ -100,6 +100,7 @@ cpu_save_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_st
 	cpu_state->eflags_aux = cpu->cpu_ctx.lazy_eflags.auxbits;
 	cpu_state->ftop = cpu->cpu_ctx.fpu_data.ftop;
 	cpu_state->frp = cpu->cpu_ctx.fpu_data.frp;
+	cpu_state->shadow_mxcsr = cpu->cpu_ctx.shadow_mxcsr;
 	cpu_state->is_halted = cpu->is_halted;
 	cpu_state->microcode_updated = cpu->microcode_updated;
 	cpu_state->hflags = (cpu->cpu_ctx.hflags & HFLG_SAVED_MASK);
@@ -136,6 +137,7 @@ cpu_load_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_st
 	cpu->cpu_ctx.lazy_eflags.auxbits = cpu_state->eflags_aux;
 	cpu->cpu_ctx.fpu_data.ftop = cpu_state->ftop;
 	cpu->cpu_ctx.fpu_data.frp = cpu_state->frp;
+	cpu->cpu_ctx.shadow_mxcsr = cpu_state->shadow_mxcsr;
 	cpu->is_halted = cpu->is_halted;
 	cpu->microcode_updated = cpu_state->microcode_updated;
 	cpu->cpu_ctx.hflags = cpu_state->hflags;

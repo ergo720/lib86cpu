@@ -186,6 +186,7 @@ struct cpu_ctx_t {
 	exp_info_t exp_info;
 	uint32_t int_pending;
 	fpu_data_t fpu_data;
+	uint32_t shadow_mxcsr; // same as mxcsr, but with all exceptions masked and daz and unmasked exceptions flags cleared
 	uint8_t jmp_table[JMP_TABLE_MAX_SIZE];
 #ifdef XBOX_CPU
 	uint8_t *ipt[NUM_OF_PAGES]; // inline page table: translates a guest to a host virtual address, one for each possible virtual page of the xbox

@@ -114,9 +114,12 @@
 #define CPU_CTX_XMM5         offsetof(cpu_ctx_t, regs.xmm[5].low)
 #define CPU_CTX_XMM6         offsetof(cpu_ctx_t, regs.xmm[6].low)
 #define CPU_CTX_XMM7         offsetof(cpu_ctx_t, regs.xmm[7].low)
+#define CPU_CTX_MXCSR        offsetof(cpu_ctx_t, regs.mxcsr)
 
 #define FPU_DATA_FTOP        offsetof(cpu_ctx_t, fpu_data.ftop)
 #define FPU_DATA_FRP         offsetof(cpu_ctx_t, fpu_data.frp)
+
+#define SIMD_SHDW_MXCSR      offsetof(cpu_ctx_t, shadow_mxcsr)
 
 #define CPU_EXP_ADDR         offsetof(cpu_ctx_t, exp_info.exp_data.fault_addr)
 #define CPU_EXP_CODE         offsetof(cpu_ctx_t, exp_info.exp_data.code)
