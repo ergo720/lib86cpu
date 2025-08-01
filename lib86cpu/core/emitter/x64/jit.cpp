@@ -5365,30 +5365,27 @@ lc86_jit::cvttss2si(decoded_instr *instr)
 		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
 	}
 	else {
-		if (instr->i.opcode == 0x2C) {
-			gen_vzeroupper();
-			const auto dst = GET_REG(OPNUM_DST);
+		assert(instr->i.opcode == 0x2C);
 
-			get_rm<OPNUM_SRC>(instr,
-				[this](const op_info rm)
-				{
-					MOVAPS(XMM0, MEMD128(RCX, rm.val));
-				},
-				[this](const op_info rm)
-				{
-					LD_MEMs(SIZE32);
-					MOVD(XMM0, EAX);
-				});
+		gen_vzeroupper();
+		const auto dst = GET_REG(OPNUM_DST);
 
-			gen_set_host_simd_ctx();
-			CVTTSS2SI(EBX, XMM0);
-			gen_simd_exp_post_check();
-			MOV(MEMD32(RCX, dst.val), EBX);
-			RESTORE_SIMD_CTX();
-		}
-		else {
-			LIB86CPU_ABORT();
-		}
+		get_rm<OPNUM_SRC>(instr,
+			[this](const op_info rm)
+			{
+				MOVAPS(XMM0, MEMD128(RCX, rm.val));
+			},
+			[this](const op_info rm)
+			{
+				LD_MEMs(SIZE32);
+				MOVD(XMM0, EAX);
+			});
+
+		gen_set_host_simd_ctx();
+		CVTTSS2SI(EBX, XMM0);
+		gen_simd_exp_post_check();
+		MOV(MEMD32(RCX, dst.val), EBX);
+		RESTORE_SIMD_CTX();
 	}
 }
 
@@ -7760,25 +7757,23 @@ lc86_jit::movntps(decoded_instr *instr)
 		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
 	}
 	else {
-		if (instr->i.opcode == 0x2B) {
-			gen_vzeroupper();
-			const auto src = GET_REG(OPNUM_SRC);
-			get_rm<OPNUM_DST>(instr,
-				[](const op_info rm)
-				{
-					assert(0);
-				},
-				[this, src](const op_info rm)
-				{
-					// we don't emulate the processor's caches, so we don't care about the write-combine policy that this instruction uses
-					gen_simd_mem_align_check();
-					LEA(R8, MEMD64(RCX, src.val));
-					ST_MEM128();
-				});
-		}
-		else {
-			LIB86CPU_ABORT();
-		}
+		assert(instr->i.opcode == 0x2B);
+
+		gen_vzeroupper();
+		const auto src = GET_REG(OPNUM_SRC);
+
+		get_rm<OPNUM_DST>(instr,
+			[](const op_info rm)
+			{
+				assert(0);
+			},
+			[this, src](const op_info rm)
+			{
+				// we don't emulate the processor's caches, so we don't care about the write-combine policy that this instruction uses
+				gen_simd_mem_align_check();
+				LEA(R8, MEMD64(RCX, src.val));
+				ST_MEM128();
+			});
 	}
 }
 
@@ -10027,28 +10022,26 @@ lc86_jit::xorps(decoded_instr *instr)
 		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
 	}
 	else {
-		if (instr->i.opcode == 0x57) {
-			gen_vzeroupper();
-			const auto dst = GET_REG(OPNUM_DST);
-			get_rm<OPNUM_SRC>(instr,
-				[this, dst](const op_info rm)
-				{
-					MOVAPS(XMM0, MEMD128(RCX, dst.val));
-					XORPS(XMM0, MEMD128(RCX, rm.val));
-					MOVAPS(MEMD128(RCX, dst.val), XMM0);
-				},
-				[this, dst](const op_info rm)
-				{
-					gen_simd_mem_align_check();
-					LD_MEM128();
-					MOVAPS(XMM0, MEMD128(RCX, dst.val));
-					XORPS(XMM0, MEM128(RAX));
-					MOVAPS(MEMD128(RCX, dst.val), XMM0);
-				});
-		}
-		else {
-			LIB86CPU_ABORT();
-		}
+		assert(instr->i.opcode == 0x57);
+
+		gen_vzeroupper();
+		const auto dst = GET_REG(OPNUM_DST);
+
+		get_rm<OPNUM_SRC>(instr,
+			[this, dst](const op_info rm)
+			{
+				MOVAPS(XMM0, MEMD128(RCX, dst.val));
+				XORPS(XMM0, MEMD128(RCX, rm.val));
+				MOVAPS(MEMD128(RCX, dst.val), XMM0);
+			},
+			[this, dst](const op_info rm)
+			{
+				gen_simd_mem_align_check();
+				LD_MEM128();
+				MOVAPS(XMM0, MEMD128(RCX, dst.val));
+				XORPS(XMM0, MEM128(RAX));
+				MOVAPS(MEMD128(RCX, dst.val), XMM0);
+			});
 	}
 }
 
