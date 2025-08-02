@@ -468,6 +468,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define FCHS() m_a.fchs()
 
 #define MOVD(dst, src) m_a.movd(dst, src)
+#define MOVSS(dst, src) m_a.movss(dst, src)
 #define MOVAPS(dst, src) m_a.movaps(dst, src)
 #define XORPS(dst, src) m_a.xorps(dst, src)
 #define ADDPS(dst, src) m_a.addps(dst, src)
@@ -7953,6 +7954,64 @@ lc86_jit::movs(decoded_instr *instr)
 
 	default:
 		LIB86CPU_ABORT();
+	}
+}
+
+void
+lc86_jit::movss(decoded_instr *instr)
+{
+	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
+		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
+	}
+	else {
+		gen_vzeroupper();
+
+		switch (instr->i.opcode)
+		{
+		case 0x10: {
+			const auto dst = GET_REG(OPNUM_DST);
+			MOVAPS(XMM0, MEMD128(RCX, dst.val));
+
+			// This instruction is peculiar and changes behaviour depending on the type of the source operand. If it's a memory location, it zeros out the upper bits
+			// of the destination operand, while they are preserved if the the source is another register
+
+			get_rm<OPNUM_SRC>(instr,
+				[this](const op_info rm)
+				{
+					MOVAPS(XMM1, MEMD128(RCX, rm.val));
+					MOVSS(XMM0, XMM1);
+				},
+				[this](const op_info rm)
+				{
+					LD_MEMs(SIZE32);
+					MOV(MEMD32(RSP, LOCAL_VARS_off(0)), EAX);
+					MOVSS(XMM0, MEMD32(RSP, LOCAL_VARS_off(0)));
+				});
+
+			MOVAPS(MEMD128(RCX, dst.val), XMM0);
+		}
+		break;
+
+		case 0x11: {
+			const auto src = GET_REG(OPNUM_SRC);
+
+			get_rm<OPNUM_DST>(instr,
+				[this, src](const op_info rm)
+				{
+					MOV(EAX, MEMD32(RCX, src.val));
+					MOV(MEMD32(RCX, rm.val), EAX);
+				},
+				[this, src](const op_info rm)
+				{
+					MOV(R8D, MEMD32(RCX, src.val));
+					ST_MEMs(SIZE32);
+				});
+		}
+		break;
+
+		default:
+			LIB86CPU_ABORT();
+		}
 	}
 }
 

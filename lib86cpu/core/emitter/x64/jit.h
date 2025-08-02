@@ -146,6 +146,7 @@ public:
 	void movaps(decoded_instr *instr);
 	void movntps(decoded_instr *instr);
 	void movs(decoded_instr *instr);
+	void movss(decoded_instr *instr);
 	void movsx(decoded_instr *instr);
 	void movzx(decoded_instr *instr);
 	void mul(decoded_instr *instr);
