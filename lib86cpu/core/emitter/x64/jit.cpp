@@ -475,6 +475,8 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define ADDSS(dst, src) m_a.addss(dst, src)
 #define MULPS(dst, src) m_a.mulps(dst, src)
 #define MULSS(dst, src) m_a.mulss(dst, src)
+#define RCPPS(dst, src) m_a.rcpps(dst, src)
+#define RCPSS(dst, src) m_a.rcpss(dst, src)
 #define CVTTSS2SI(dst, src) m_a.cvttss2si(dst, src)
 #define SHUFPS(dst, src, imm) m_a.shufps(dst, src, imm)
 #define LDMXCSR(dst) m_a.ldmxcsr(dst)
@@ -2673,7 +2675,7 @@ lc86_jit::gen_vzeroupper()
 template<unsigned idx>
 void lc86_jit::simd_arithmetic(decoded_instr *instr, bool is_packed)
 {
-	// idx 0 -> mul(p|s)s, 1 -> add(p|s)s
+	// idx 0 -> mul(p|s)s, 1 -> add(p|s)s, 2 -> rcp(p|s)s
 
 	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
 		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
@@ -2710,6 +2712,10 @@ void lc86_jit::simd_arithmetic(decoded_instr *instr, bool is_packed)
 
 		case 1:
 			is_packed ? ADDPS(XMM0, XMM1) : ADDSS(XMM0, XMM1);
+			break;
+
+		case 2:
+			is_packed ? RCPPS(XMM0, XMM1) : RCPSS(XMM0, XMM1);
 			break;
 
 		default:
@@ -9035,6 +9041,18 @@ void
 lc86_jit::rcl(decoded_instr *instr)
 {
 	rotate<0>(instr);
+}
+
+void
+lc86_jit::rcpps(decoded_instr *instr)
+{
+	simd_arithmetic<2>(instr, true);
+}
+
+void
+lc86_jit::rcpss(decoded_instr *instr)
+{
+	simd_arithmetic<2>(instr, false);
 }
 
 void

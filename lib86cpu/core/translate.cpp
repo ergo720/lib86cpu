@@ -1513,6 +1513,14 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->rcl(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_RCPPS:
+			cpu->jit->rcpps(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_RCPSS:
+			cpu->jit->rcpss(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_RCR:
 			cpu->jit->rcr(&instr);
 			break;

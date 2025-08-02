@@ -164,6 +164,8 @@ public:
 	void pusha(decoded_instr *instr);
 	void pushf(decoded_instr *instr);
 	void rcl(decoded_instr *instr);
+	void rcpps(decoded_instr *instr);
+	void rcpss(decoded_instr *instr);
 	void rcr(decoded_instr *instr);
 	void rdmsr(decoded_instr *instr);
 	void rdtsc(decoded_instr *instr);
