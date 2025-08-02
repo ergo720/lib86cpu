@@ -172,6 +172,8 @@ public:
 	void ret(decoded_instr *instr);
 	void rol(decoded_instr *instr);
 	void ror(decoded_instr *instr);
+	void rsqrtps(decoded_instr *instr);
+	void rsqrtss(decoded_instr *instr);
 	void sahf(decoded_instr *instr);
 	void sar(decoded_instr *instr);
 	void sbb(decoded_instr *instr);

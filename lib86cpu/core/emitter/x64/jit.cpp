@@ -477,6 +477,8 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define MULSS(dst, src) m_a.mulss(dst, src)
 #define RCPPS(dst, src) m_a.rcpps(dst, src)
 #define RCPSS(dst, src) m_a.rcpss(dst, src)
+#define RSQRTPS(dst, src) m_a.rsqrtps(dst, src)
+#define RSQRTSS(dst, src) m_a.rsqrtss(dst, src)
 #define CVTTSS2SI(dst, src) m_a.cvttss2si(dst, src)
 #define SHUFPS(dst, src, imm) m_a.shufps(dst, src, imm)
 #define LDMXCSR(dst) m_a.ldmxcsr(dst)
@@ -2675,13 +2677,14 @@ lc86_jit::gen_vzeroupper()
 template<unsigned idx>
 void lc86_jit::simd_arithmetic(decoded_instr *instr, bool is_packed)
 {
-	// idx 0 -> mul(p|s)s, 1 -> add(p|s)s, 2 -> rcp(p|s)s
+	// idx 0 -> mul(p|s)s, 1 -> add(p|s)s, 2 -> rcp(p|s)s, 3 -> rsqrt(p|s)s
 
 	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
 		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
 	}
 	else {
 		gen_vzeroupper();
+		constexpr bool check_exp = (idx == 0) || (idx == 1);
 		const auto dst = GET_REG(OPNUM_DST);
 		MOVAPS(XMM0, MEMD128(RCX, dst.val));
 
@@ -2702,7 +2705,9 @@ void lc86_jit::simd_arithmetic(decoded_instr *instr, bool is_packed)
 				}
 			});
 
-		gen_set_host_simd_ctx();
+		if constexpr (check_exp) {
+			gen_set_host_simd_ctx();
+		}
 
 		switch (idx)
 		{
@@ -2718,13 +2723,22 @@ void lc86_jit::simd_arithmetic(decoded_instr *instr, bool is_packed)
 			is_packed ? RCPPS(XMM0, XMM1) : RCPSS(XMM0, XMM1);
 			break;
 
+		case 3:
+			is_packed ? RSQRTPS(XMM0, XMM1) : RSQRTSS(XMM0, XMM1);
+			break;
+
 		default:
 			LIB86CPU_ABORT();
 		}
 
-		gen_simd_exp_post_check();
-		MOVAPS(MEMD128(RCX, dst.val), XMM0);
-		RESTORE_SIMD_CTX();
+		if constexpr (check_exp) {
+			gen_simd_exp_post_check();
+			MOVAPS(MEMD128(RCX, dst.val), XMM0);
+			RESTORE_SIMD_CTX();
+		}
+		else {
+			MOVAPS(MEMD128(RCX, dst.val), XMM0);
+		}
 	}
 }
 
@@ -9186,6 +9200,18 @@ void
 lc86_jit::ror(decoded_instr *instr)
 {
 	rotate<3>(instr);
+}
+
+void
+lc86_jit::rsqrtps(decoded_instr *instr)
+{
+	simd_arithmetic<3>(instr, true);
+}
+
+void
+lc86_jit::rsqrtss(decoded_instr *instr)
+{
+	simd_arithmetic<3>(instr, false);
 }
 
 void

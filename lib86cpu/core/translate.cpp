@@ -1546,6 +1546,14 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->ror(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_RSQRTPS:
+			cpu->jit->rsqrtps(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_RSQRTSS:
+			cpu->jit->rsqrtss(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_RSM:         BAD;
 		case ZYDIS_MNEMONIC_SAHF:
 			cpu->jit->sahf(&instr);
