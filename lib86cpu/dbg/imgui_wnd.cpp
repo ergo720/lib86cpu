@@ -84,16 +84,17 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 							if (!disas_data.empty()) { // it will happen if the first instr cannot be decoded
 								addr_t addr = (disas_data.begin() + instr_sel)->first;
 								if (break_list.contains(addr)) {
+									dbg_remove_sw_breakpoints(cpu, addr);
 									break_list.erase(addr);
 								}
 								else {
-									if (dbg_insert_sw_breakpoint(cpu, addr)) {
+									if (const auto &opt = dbg_insert_sw_breakpoint(cpu, addr); opt) {
 										show_popup = false;
-										break_list.insert({ addr, 0 });
+										break_list.insert({ addr, *opt });
 									}
 									else {
 										show_popup = true;
-										ImGui::OpenPopup("Error");
+										ImGui::OpenPopup("Failed to insert breakpoint");
 									}
 								}
 							}
@@ -142,6 +143,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 				ImGui::SetNextWindowPos(ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() * 0.5f,
 					ImGui::GetWindowPos().y + ImGui::GetWindowHeight() * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 				ImGui::SetNextWindowSize(ImVec2(235.0f, 75.0f));
+				ImGui::OpenPopup("Error");
 				if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_NoResize)) {
 					ImGui::Text("Failed to insert the breakpoint");
 					if (ImGui::Button("OK")) {

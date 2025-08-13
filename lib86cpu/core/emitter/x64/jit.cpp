@@ -3378,11 +3378,6 @@ void lc86_jit::load_sys_seg_reg(decoded_instr *instr)
 		if constexpr (idx == IDTR_idx) {
 			ST_SEG_BASE(CPU_CTX_IDTR, EAX);
 			ST_SEG_LIMIT(CPU_CTX_IDTR, EBX);
-
-			if (m_cpu->cpu_flags & CPU_DBG_PRESENT) {
-				// hook the breakpoint exception handler so that the debugger can catch it
-				CALL_F(&dbg_update_exp_hook);
-			}
 		}
 		else {
 			ST_SEG_BASE(CPU_CTX_GDTR, EAX);

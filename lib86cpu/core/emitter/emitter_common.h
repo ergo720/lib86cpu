@@ -214,7 +214,6 @@ inline constexpr auto all_callable_funcs = std::make_tuple(
 	fpu_update_tag<true>,
 	fpu_update_tag<false>,
 	cpu_runtime_abort,
-	dbg_update_exp_hook,
 	invlpg_helper,
 	fpu_stack_overflow,
 	fpu_stack_fault_fpatan,

@@ -604,7 +604,9 @@ get_code_addr(cpu_t *cpu, addr_t addr)
 {
 	// This is only used for ram fetching, so we don't need to check for privileged accesses
 	if (auto opt = tlb_get_code_addr(cpu, addr); opt) {
-		return *opt;
+		addr_t phys_addr = *opt;
+		cpu->smc.set(phys_addr >> PAGE_SHIFT);
+		return phys_addr;
 	}
 
 	return mmu_translate_addr<true>(cpu, addr, MMU_SET_CODE);
@@ -616,7 +618,11 @@ addr_t get_code_addr(cpu_t *cpu, addr_t addr, exp_data_t *exp_data)
 	// Overloaded get_code_addr that does not throw host exceptions, used in cpu_translate and by the debugger
 	// NOTE: the debugger should not set the smc, since it doesn't execute the instructions
 	if (auto opt = tlb_get_code_addr(cpu, addr); opt) {
-		return *opt;
+		addr_t phys_addr = *opt;
+		if constexpr (set_smc) {
+			cpu->smc.set(phys_addr >> PAGE_SHIFT);
+		}
+		return phys_addr;
 	}
 
 	return mmu_translate_addr<true>(cpu, addr, set_smc ? MMU_SET_CODE : 0, exp_data);

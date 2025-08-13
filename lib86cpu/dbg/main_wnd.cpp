@@ -46,66 +46,78 @@ dbg_draw_wnd(GLFWwindow *wnd, int fb_w, int fb_h)
 void
 dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 {
-	read_setting_files(cpu);
+	bool init_has_err = true;
 
-	if (!glfwInit()) {
-		last_error = "Failed to initialize glfw";
-		has_err.set_value(true);
-		return;
+	try {
+		read_setting_files(cpu);
+		dbg_setup_sw_breakpoints(cpu);
+
+		if (!glfwInit()) {
+			last_error = "Failed to initialize glfw";
+			has_err.set_value(init_has_err);
+			return;
+		}
+
+		main_wnd = glfwCreateWindow(main_wnd_w, main_wnd_h, "Lib86dbg", nullptr, nullptr);
+		if (!main_wnd) {
+			last_error = "Failed to create the debugger window";
+			glfwTerminate();
+			has_err.set_value(init_has_err);
+			return;
+		}
+
+		glfwMakeContextCurrent(main_wnd);
+
+		if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
+			last_error = "Failed to load OpenGL functions";
+			glfwTerminate();
+			has_err.set_value(init_has_err);
+			return;
+		}
+
+		if (!GLAD_GL_VERSION_4_6) {
+			last_error = "Failed to meet the minimum required OpenGL version";
+			glfwTerminate();
+			has_err.set_value(init_has_err);
+			return;
+		}
+
+		glfwSetFramebufferSizeCallback(main_wnd, dbg_draw_wnd);
+
+		IMGUI_CHECKVERSION();
+		ImGui::CreateContext();
+		ImGui::StyleColorsDark();
+		ImGui_ImplGlfw_InitForOpenGL(main_wnd, true);
+		ImGui_ImplOpenGL3_Init();
+
+		break_pc = get_pc(&cpu->cpu_ctx);
+		mem_pc = break_pc;
+		g_cpu = cpu;
+
+		init_has_err = false;
+		has_terminated.clear();
+		exit_requested.clear();
+		guest_running.clear();
+		has_err.set_value(init_has_err);
+
+		while (!glfwWindowShouldClose(main_wnd)) {
+			int fb_w, fb_h;
+			glfwGetFramebufferSize(main_wnd, &fb_w, &fb_h);
+			dbg_draw_wnd(main_wnd, fb_w, fb_h);
+
+			glfwWaitEventsTimeout(0.5);
+		}
 	}
-	
-	main_wnd = glfwCreateWindow(main_wnd_w, main_wnd_h, "Lib86dbg", nullptr, nullptr);
-	if (!main_wnd) {
-		last_error = "Failed to create the debugger window";
-		glfwTerminate();
-		has_err.set_value(true);
-		return;
-	}
-
-	glfwMakeContextCurrent(main_wnd);
-
-	if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
-		last_error = "Failed to load opengl functions";
-		glfwTerminate();
-		has_err.set_value(true);
-		return;
-	}
-
-	if (!GLAD_GL_VERSION_4_6) {
-		last_error = "Failed to meet the minimum required opengl version";
-		glfwTerminate();
-		has_err.set_value(true);
-		return;
-	}
-
-	glfwSetFramebufferSizeCallback(main_wnd, dbg_draw_wnd);
-
-	IMGUI_CHECKVERSION();
-	ImGui::CreateContext();
-	ImGui::StyleColorsDark();
-	ImGui_ImplGlfw_InitForOpenGL(main_wnd, true);
-	ImGui_ImplOpenGL3_Init();
-
-	for (const auto &elem : break_list) {
-		dbg_insert_sw_breakpoint(cpu, elem.first);
-	}
-
-	dbg_add_exp_hook(&cpu->cpu_ctx);
-	break_pc = get_pc(&cpu->cpu_ctx);
-	mem_pc = break_pc;
-	g_cpu = cpu;
-
-	has_terminated.clear();
-	exit_requested.clear();
-	guest_running.clear();
-	has_err.set_value(false);
-
-	while (!glfwWindowShouldClose(main_wnd)) {
-		int fb_w, fb_h;
-		glfwGetFramebufferSize(main_wnd, &fb_w, &fb_h);
-		dbg_draw_wnd(main_wnd, fb_w, fb_h);
-
-		glfwWaitEventsTimeout(0.5);
+	catch (host_exp_t) {
+		if (init_has_err) {
+			// simply terminate this thread, this happens when the initialization fails in dbg_setup_sw_breakpoints
+			has_err.set_value(init_has_err);
+			return;
+		}
+		// fallthrough to the handling code below, this happens when dbg_draw_wnd fails to update the breakpoints
+		cpu->raise_int_fn(&cpu->cpu_ctx, CPU_ABORT_INT);
+		guest_running.test_and_set();
+		guest_running.notify_one();
 	}
 
 	// raise an abort interrupt and wait until the guest stops execution

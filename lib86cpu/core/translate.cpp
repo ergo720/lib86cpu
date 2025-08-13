@@ -173,8 +173,16 @@ check_dbl_exp(cpu_ctx_t *cpu_ctx)
 template<unsigned is_intn, bool is_hw_int>
 translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 {
-	// is_intn -> not a int instruction(0), int3(1), intn(2), into(3), is_hw_int -> hardware interrupt
+	// If lib86dbg is present, we will forward to it all debug and breakpoint exceptions and let it handle them
+	if (cpu_ctx->cpu->cpu_flags & CPU_DBG_PRESENT) [[unlikely]] {
+		uint32_t idx = cpu_ctx->exp_info.exp_data.idx;
+		if ((idx == EXP_DB) || (idx == EXP_BP)) {
+			dbg_exp_handler(cpu_ctx);
+			return nullptr;
+		}
+	}
 
+	// is_intn -> not a int instruction(0), int3(1), intn(2), into(3), is_hw_int -> hardware interrupt
 	if constexpr (!(is_intn) && !(is_hw_int)) {
 		check_dbl_exp(cpu_ctx);
 	}
@@ -2021,7 +2029,6 @@ lc86_status cpu_start(cpu_t *cpu)
 		std::thread(dbg_main_wnd, cpu, std::ref(promise)).detach();
 		bool has_err = fut.get();
 		if (has_err) {
-			// When this fails, last_error is set to a custom message
 			return set_last_error(lc86_status::internal_error);
 		}
 		// wait until the debugger continues execution, so that users have a chance to set breakpoints and/or inspect the guest code

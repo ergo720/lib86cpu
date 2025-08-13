@@ -5,6 +5,7 @@
 #pragma once
 
 #include <array>
+#include <optional>
 
 
 enum class brk_t : int {
@@ -14,13 +15,12 @@ enum class brk_t : int {
 
 void read_setting_files(cpu_t *cpu);
 void write_setting_files(cpu_t *cpu);
-bool dbg_insert_sw_breakpoint(cpu_t *cpu, addr_t addr);
+void dbg_setup_sw_breakpoints(cpu_t *cpu);
+std::optional<uint8_t> dbg_insert_sw_breakpoint(cpu_t *cpu, addr_t addr);
 void dbg_apply_sw_breakpoints(cpu_t *cpu);
 void dbg_apply_sw_breakpoints(cpu_t *cpu, addr_t addr);
 void dbg_remove_sw_breakpoints(cpu_t *cpu);
 void dbg_remove_sw_breakpoints(cpu_t *cpu, addr_t addr);
-JIT_API void dbg_update_exp_hook(cpu_ctx_t *cpu_ctx);
-void dbg_add_exp_hook(cpu_ctx_t *cpu_ctx);
 std::vector<std::pair<addr_t, std::string>> dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num);
 void dbg_exp_handler(cpu_ctx_t *cpu_ctx);
 void dbg_ram_read(cpu_t *cpu, uint8_t *buff);

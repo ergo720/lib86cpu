@@ -7,6 +7,7 @@
 #include "memory_management.h"
 #include "debugger.h"
 #include "instructions.h"
+#include "main_wnd.h"
 #include <fstream>
 #include <charconv>
 
@@ -209,113 +210,6 @@ write_setting_files(cpu_t *cpu)
 	write_breakpoints_file(cpu);
 }
 
-void
-dbg_update_exp_hook(cpu_ctx_t *cpu_ctx)
-{
-	hook_remove(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr);
-	hook_remove(cpu_ctx->cpu, cpu_ctx->cpu->db_addr);
-	dbg_add_exp_hook(cpu_ctx);
-}
-
-void
-dbg_add_exp_hook(cpu_ctx_t *cpu_ctx)
-{
-	try {
-		// NOTE: we don't need to change the cpl and wp of cr0 because we only perform privileged read accesses
-		if (cpu_ctx->hflags & HFLG_PE_MODE) {
-			if (EXP_BP * 8 + 7 > cpu_ctx->regs.idtr_hidden.limit) {
-				LOG(log_level::warn, "Failed to install hook for the exception handler: IDT limit exceeded");
-				return;
-			}
-			unsigned exp_idx = EXP_BP;
-			for (int i = 0; i < 2; ++i) {
-				uint64_t desc = mem_read_helper<uint64_t>(cpu_ctx, cpu_ctx->regs.idtr_hidden.base + exp_idx * 8, 2);
-				uint16_t type = (desc >> 40) & 0x1F;
-				uint32_t new_eip, new_base;
-				switch (type)
-				{
-				case 6:  // interrupt gate, 16 bit
-				case 14: // interrupt gate, 32 bit
-					new_eip = ((desc & 0xFFFF000000000000) >> 32) | (desc & 0xFFFF);
-					break;
-
-				case 7:  // trap gate, 16 bit
-				case 15: // trap gate, 32 bit
-					new_eip = ((desc & 0xFFFF000000000000) >> 32) | (desc & 0xFFFF);
-					break;
-
-				default:
-					// task gates are not supported
-					LOG(log_level::warn, "Failed to install hook for the exception handler: unknown IDT descriptor type");
-					return;
-				}
-				if ((desc & SEG_DESC_P) == 0) {
-					LOG(log_level::warn, "Failed to install hook for the exception handler: IDT descriptor not present");
-					return;
-				}
-				uint16_t sel = (desc & 0xFFFF0000) >> 16;
-				if ((sel & 0xFFFC) == 0) {
-					LOG(log_level::warn, "Failed to install hook for the exception handler: selector specified by the IDT descriptor points to the null GDT descriptor");
-					return;
-				}
-				uint32_t sel_idx = sel >> 3;
-				uint32_t base, limit;
-				if (sel & 4) {
-					base = cpu_ctx->regs.ldtr_hidden.base;
-					limit = cpu_ctx->regs.ldtr_hidden.limit;
-				}
-				else {
-					base = cpu_ctx->regs.gdtr_hidden.base;
-					limit = cpu_ctx->regs.gdtr_hidden.limit;
-				}
-
-				if (sel_idx * 8 + 7 > limit) {
-					LOG(log_level::warn, "Failed to install hook for the exception handler: GDT or LDT limit exceeded");
-					return;
-				}
-				desc = mem_read_helper<uint64_t>(cpu_ctx, base + sel_idx * 8, 2);
-				if ((desc & SEG_DESC_P) == 0) {
-					LOG(log_level::warn, "Failed to install hook for the exception handler: GDT or LDT descriptor not present");
-					return;
-				}
-				new_base = uint32_t(((desc & 0xFFFF0000) >> 16) | ((desc & 0xFF00000000) >> 16) | ((desc & 0xFF00000000000000) >> 32));
-				if (exp_idx == EXP_BP) {
-					cpu_ctx->cpu->bp_addr = new_base + new_eip;
-					exp_idx = EXP_DB;
-				}
-				else {
-					cpu_ctx->cpu->db_addr = new_base + new_eip;
-				}
-			}
-		}
-		else {
-			if (EXP_BP * 4 + 3 > cpu_ctx->regs.idtr_hidden.limit) {
-				LOG(log_level::warn, "Failed to install hook for the exception handler: IDT limit exceeded");
-				return;
-			}
-			uint32_t vec_bp_entry = mem_read_helper<uint32_t>(cpu_ctx, cpu_ctx->regs.idtr_hidden.base + EXP_BP * 4, 0);
-			cpu_ctx->cpu->bp_addr = ((vec_bp_entry >> 16) << 4) + (vec_bp_entry & 0xFFFF);
-			uint32_t vec_db_entry = mem_read_helper<uint32_t>(cpu_ctx, cpu_ctx->regs.idtr_hidden.base + EXP_DB * 4, 0);
-			cpu_ctx->cpu->db_addr = ((vec_db_entry >> 16) << 4) + (vec_db_entry & 0xFFFF);
-		}
-	}
-	catch (host_exp_t) {
-		// this is either a page fault or a debug exception
-		LOG(log_level::warn, "Failed to install hook for the exception handler: a guest exception was raised");
-		return;
-	}
-
-	uint8_t status = (hook_add(cpu_ctx->cpu, cpu_ctx->cpu->bp_addr, reinterpret_cast<hook_t>(&dbg_exp_handler)) == lc86_status::success);
-	status &= (hook_add(cpu_ctx->cpu, cpu_ctx->cpu->db_addr, reinterpret_cast<hook_t>(&dbg_exp_handler)) == lc86_status::success);
-
-	if (status) {
-		LOG(log_level::info, "Successfully installed hook for the exception handler");
-	}
-	else {
-		LOG(log_level::warn, "Failed to install hook for the exception handler: hook_add failed");
-	}
-}
-
 static std::vector<std::pair<addr_t, std::string>>
 dbg_disas_code_block(cpu_t *cpu, disas_ctx_t *disas_ctx, ZydisDecoder *decoder, unsigned instr_num)
 {
@@ -443,55 +337,28 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 static void
 dbg_single_step_handler(cpu_ctx_t *cpu_ctx)
 {
-	// NOTE1: this is called from the emulation thread
-	// NOTE2: since the cpu has just pushed the ret_eip on the stack of the exception handler and no other guest code runs before we are called
-	// in this hook, then mem_read_helper cannot raise page faults now
-	uint32_t ret_eip = mem_read_helper<uint32_t>(cpu_ctx, cpu_ctx->regs.esp, 0);
-	addr_t pc = cpu_ctx->regs.cs_hidden.base + ret_eip;
-	if (cpu_ctx->cpu->cpu_flags & CPU_SINGLE_STEP) {
-		// disable all breakpoints so that we can show the original instructions in the disassembler
-		dbg_remove_sw_breakpoints(cpu_ctx->cpu);
+	// NOTE: this is called from the emulation thread
 
-		// wait until the debugger continues execution
-		break_pc = mem_pc = pc;
-		mem_editor_update = true;
-		guest_running.clear();
-		guest_running.notify_one();
-		guest_running.wait(false);
+	cpu_ctx->regs.dr[6] &= ~DR6_BS_MASK;
 
-		cpu_ctx->regs.dr[6] &= ~DR6_BS_MASK;
+	// disable all breakpoints so that we can show the original instructions in the disassembler
+	dbg_remove_sw_breakpoints(cpu_ctx->cpu);
 
-		try {
-			// execute an iret instruction so that we can correctly return to the interrupted code
-			if	(cpu_ctx->hflags & HFLG_PE_MODE) {
-				if (lret_pe_helper<true>(cpu_ctx, (cpu_ctx->hflags & HFLG_CS32) ? SIZE32 : SIZE16)) {
-					// we can't handle an exception here, so abort
-					LIB86CPU_ABORT_msg("Unhandled exception while returning from a single step");
-				}
-			}
-			else {
-				iret_real_helper(cpu_ctx, (cpu_ctx->hflags & HFLG_CS32) ? SIZE32 : SIZE16);
-			}
-		}
-		catch (host_exp_t) {
-			// we can't handle an exception here, so abort
-			LIB86CPU_ABORT_msg("Unhandled exception while returning from a single step");
-		}
-	}
-	else {
-		// this debug exception wasn't generated by the debugger, so handle control back to the guest
-		cpu_exec_trampoline(cpu_ctx->cpu, ret_eip);
-	}
+	// wait until the debugger continues execution
+	break_pc = mem_pc = cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
+	mem_editor_update = true;
+	guest_running.clear();
+	guest_running.notify_one();
+	guest_running.wait(false);
+	dbg_apply_sw_breakpoints(cpu_ctx->cpu);
 }
 
 static void
 dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 {
-	// NOTE1: this is called from the emulation thread
-	// NOTE2: since the cpu has just pushed the ret_eip on the stack of the exception handler and no other guest code runs before we are called
-	// in this hook, then mem_read_helper cannot raise page faults now
-	uint32_t ret_eip = mem_read_helper<uint32_t>(cpu_ctx, cpu_ctx->regs.esp, 0);
-	addr_t pc = cpu_ctx->regs.cs_hidden.base + ret_eip - 1; // if this is our int3, it will always be one byte large
+	// NOTE: this is called from the emulation thread
+
+	addr_t pc = cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip - 1; // if this is our int3, it will always be one byte large
 	if (break_list.contains(pc)) {
 		// disable all breakpoints so that we can show the original instructions in the disassembler
 		dbg_remove_sw_breakpoints(cpu_ctx->cpu);
@@ -503,70 +370,44 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 		guest_running.notify_one();
 		guest_running.wait(false);
 
-		try {
-			// execute an iret instruction so that we can correctly return to the interrupted code
-			if (cpu_ctx->hflags & HFLG_PE_MODE) {
-				if (lret_pe_helper<true>(cpu_ctx, (cpu_ctx->hflags & HFLG_CS32) ? SIZE32 : SIZE16)) {
-					// we can't handle an exception here, so abort
-					LIB86CPU_ABORT_msg("Unhandled exception while returning from a breakpoint");
-				}
-			}
-			else {
-				iret_real_helper(cpu_ctx, (cpu_ctx->hflags & HFLG_CS32) ? SIZE32 : SIZE16);
-			}
-			cpu_ctx->regs.eip = ret_eip - 1;
-			dbg_remove_sw_breakpoints(cpu_ctx->cpu, pc);
-			dbg_exec_original_instr(cpu_ctx->cpu);
-			dbg_apply_sw_breakpoints(cpu_ctx->cpu, pc);
-		}
-		catch (host_exp_t) {
-			// we can't handle an exception here, so abort
-			LIB86CPU_ABORT_msg("Unhandled exception while returning from a breakpoint");
-		}
-	}
-	else {
-		// this breakpoint exception wasn't generated by the debugger, so handle control back to the guest
-		cpu_exec_trampoline(cpu_ctx->cpu, ret_eip);
+		cpu_ctx->regs.eip -= 1;
+		dbg_remove_sw_breakpoints(cpu_ctx->cpu, pc);
+		dbg_exec_original_instr(cpu_ctx->cpu);
+		dbg_apply_sw_breakpoints(cpu_ctx->cpu);
 	}
 }
 
 void
 dbg_exp_handler(cpu_ctx_t *cpu_ctx)
 {
-	// NOTE: the guest could be using the same exception handler for both DB and BP exceptions, so we distinguish them by looking at dr6
-	if (cpu_ctx->regs.dr[6] & DR6_BS_MASK) {
-		dbg_single_step_handler(cpu_ctx);
-	}
-	else {
-		dbg_sw_breakpoint_handler(cpu_ctx);
-	}
-}
+	// NOTE: task switches are currently not supported, so we don't check for DR6_BT_MASK
 
-bool
-dbg_insert_sw_breakpoint(cpu_t *cpu, addr_t addr)
-{
-	// we don't need to disable debug exp because get_write_addr does not access memory
-	// set cpl to zero and clear wp of cr0, so that we can write to read-only pages
-	bool inserted = false;
-	uint8_t old_cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
-	cpu->cpu_ctx.hflags &= ~HFLG_CPL;
-	uint32_t old_wp = cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK;
-	cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK;
+	if (cpu_ctx->regs.dr[6] & (DR6_B0_MASK | DR6_B1_MASK | DR6_B2_MASK | DR6_B3_MASK | DR6_BD_MASK)) {
+		// If it is an instruction breakpoint or a general detect condition, clear the corresponding flags in dr6/7, to avoid triggering the exception again
+		uint32_t dr7_mask = DR7_GD_MASK, dr7 = cpu_ctx->regs.dr[7];
+		for (int i = 0; i < 4; ++i) {
+			int dr7_type = cpu_get_watchpoint_type(cpu_ctx->cpu, i);
+			if (dr7_type == DR7_TYPE_INSTR) {
+				dr7_mask |= (3 << i);
+			}
+		}
 
-	bool is_code;
-	exp_data_t exp_data{0, 0, EXP_INVALID};
-	uint32_t page_info;
-	addr_t phys_addr = query_write_addr(cpu, addr, 0, &is_code, &exp_data, &page_info);
-	if (exp_data.idx == EXP_INVALID) {
-		if (as_memory_search_addr(cpu, phys_addr)->type == mem_type::ram) { // we can only set breakpoints in ram
-			inserted = true;
+		cpu_ctx->regs.dr[6] &= ~(DR6_B0_MASK | DR6_B1_MASK | DR6_B2_MASK | DR6_B3_MASK | DR6_BD_MASK);
+		cpu_ctx->regs.dr[7] &= ~dr7_mask;
+		update_drN_helper(cpu_ctx, 7, cpu_ctx->regs.dr[7]);
+	}
+
+	try {
+		if (cpu_ctx->regs.dr[6] & DR6_BS_MASK) {
+			dbg_single_step_handler(cpu_ctx);
+		} else {
+			dbg_sw_breakpoint_handler(cpu_ctx);
 		}
 	}
-
-	(cpu->cpu_ctx.hflags &= ~HFLG_CPL) |= old_cpl;
-	(cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK) |= old_wp;
-
-	return inserted;
+	catch (host_exp_t) {
+		// this happens when there is an unhandled exception while attempting to update the breakpoints
+		LIB86CPU_ABORT_msg("Failed to update breakpoints");
+	}
 }
 
 template<typename T>
@@ -593,16 +434,72 @@ static void dbg_update_sw_breakpoints(cpu_t *cpu, T &&lambda)
 }
 
 void
-dbg_apply_sw_breakpoints(cpu_t *cpu)
+dbg_setup_sw_breakpoints(cpu_t *cpu)
 {
 	dbg_update_sw_breakpoints(cpu, [](cpu_t *cpu) {
 		for (const auto &elem : break_list) {
 			addr_t addr = elem.first;
-
-			// the mem accesses below cannot raise page faults since break_list can only contain valid pages because of the checks done in dbg_insert_sw_breakpoint
 			uint8_t original_byte = mem_read_helper<uint8_t>(&cpu->cpu_ctx, addr, 0);
-			mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, 0xCC, 0);
 			break_list.insert_or_assign(addr, original_byte);
+		}
+		});
+}
+
+std::optional<uint8_t>
+dbg_insert_sw_breakpoint(cpu_t *cpu, addr_t addr)
+{
+	// we don't need to disable debug exp because query_write_addr does not access memory
+	// set cpl to zero and clear wp of cr0, so that we can write to read-only pages
+	bool inserted = false;
+	uint8_t original_byte, old_cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
+	cpu->cpu_ctx.hflags &= ~HFLG_CPL;
+	uint32_t old_wp = cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK;
+	cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK;
+
+	bool is_code;
+	exp_data_t exp_data{0, 0, EXP_INVALID};
+	uint32_t page_info;
+	addr_t phys_addr = query_write_addr(cpu, addr, 0, &is_code, &exp_data, &page_info);
+	if (exp_data.idx == EXP_INVALID) {
+		retry:
+		auto region = as_memory_search_addr(cpu, phys_addr);
+		if (region->type == mem_type::ram) { // we can only set breakpoints in ram
+			inserted = true;
+			original_byte = as_memory_dispatch_read<uint8_t>(cpu, phys_addr, region);
+		}
+		else if (region->type == mem_type::alias) { // if it's an alias to ram, we can still insert it
+			const memory_region_t<addr_t> *alias = region;
+			AS_RESOLVE_ALIAS();
+			phys_addr = region->start + alias_offset + (phys_addr - alias->start);
+			goto retry;
+		}
+	}
+
+	(cpu->cpu_ctx.hflags &= ~HFLG_CPL) |= old_cpl;
+	(cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK) |= old_wp;
+
+	return inserted ? std::optional<uint8_t>(original_byte) : std::nullopt;
+}
+
+static void
+dbg_apply_sw_breakpoints_(cpu_t *cpu, addr_t addr)
+{
+	uint8_t original_byte = mem_read_helper<uint8_t>(&cpu->cpu_ctx, addr, 0);
+	if (original_byte != 0xCC) {
+		// NOTE: original_byte can be 0xCC (=int3) when applying a breakpoint on an existing int3 on the guest. It can also happen if this was already called by a nested
+		// call to dbg_sw_breakpoint_handler from dbg_single_step_handler, that is, single-stepping a breakpoint
+		mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, 0xCC, 0); // write int3
+		cpu->clear_int_fn(&g_cpu->cpu_ctx, CPU_HALT_TC_INT);
+		break_list.insert_or_assign(addr, original_byte);
+	}
+}
+
+void
+dbg_apply_sw_breakpoints(cpu_t *cpu)
+{
+	dbg_update_sw_breakpoints(cpu, [](cpu_t *cpu) {
+		for (const auto &elem : break_list) {
+			dbg_apply_sw_breakpoints_(cpu, elem.first);
 		}
 		});
 }
@@ -610,12 +507,16 @@ dbg_apply_sw_breakpoints(cpu_t *cpu)
 void
 dbg_apply_sw_breakpoints(cpu_t *cpu, addr_t addr)
 {
-	dbg_update_sw_breakpoints(cpu, [addr](cpu_t *cpu) {
-		// the mem accesses below cannot raise page faults since break_list can only contain valid pages because of the checks done in dbg_insert_sw_breakpoint
-		uint8_t original_byte = mem_read_helper<uint8_t>(&cpu->cpu_ctx, addr, 0);
-		mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, 0xCC, 0);
-		break_list.insert_or_assign(addr, original_byte);
+	dbg_update_sw_breakpoints(cpu, [&](cpu_t *cpu) {
+		dbg_apply_sw_breakpoints_(cpu, addr);
 		});
+}
+
+static void
+dbg_remove_sw_breakpoints(cpu_t *cpu, addr_t addr, uint8_t original_byte)
+{
+	mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, original_byte, 0); // restore original byte
+	cpu->clear_int_fn(&g_cpu->cpu_ctx, CPU_HALT_TC_INT);
 }
 
 void
@@ -623,14 +524,7 @@ dbg_remove_sw_breakpoints(cpu_t *cpu)
 {
 	dbg_update_sw_breakpoints(cpu, [](cpu_t *cpu) {
 		for (const auto &elem : break_list) {
-			const auto &[addr, original_byte] = elem;
-
-			try {
-				mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, original_byte, 0);
-			}
-			catch (host_exp_t) {
-				LIB86CPU_ABORT_msg("Unhandled page fault while removing a sw breakpoint");
-			}
+			dbg_remove_sw_breakpoints(cpu, elem.first, elem.second);
 		}
 		});
 }
@@ -638,14 +532,9 @@ dbg_remove_sw_breakpoints(cpu_t *cpu)
 void
 dbg_remove_sw_breakpoints(cpu_t *cpu, addr_t addr)
 {
-	dbg_update_sw_breakpoints(cpu, [addr](cpu_t *cpu) {
-		if (auto it = break_list.find(addr); it != break_list.end()) {
-			try {
-				mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, it->second, 0);
-			}
-			catch (host_exp_t) {
-				LIB86CPU_ABORT_msg("Unhandled page fault while removing a sw breakpoint");
-			}
+	dbg_update_sw_breakpoints(cpu, [&](cpu_t *cpu) {
+		if (const auto it = break_list.find(addr); it != break_list.end()) {
+			dbg_remove_sw_breakpoints(cpu, it->first, it->second);
 		}
 		});
 }

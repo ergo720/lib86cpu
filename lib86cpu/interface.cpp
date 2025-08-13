@@ -347,8 +347,8 @@ cpu_set_flags(cpu_t *cpu, uint32_t flags)
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 
-	if ((cpu->cpu_flags & (CPU_DBG_PRESENT | CPU_ABORT_ON_HLT)) != (flags & (CPU_DBG_PRESENT | CPU_ABORT_ON_HLT))) {
-		// CPU_DBG_PRESENT and CPU_ABORT_ON_HLT change the code emitted for lidt and hlt respectively, so we need to flush the cache if those changed
+	if ((cpu->cpu_flags & CPU_ABORT_ON_HLT) != (flags & CPU_ABORT_ON_HLT)) {
+		// CPU_ABORT_ON_HLT changes the code emitted for hlt, so we need to flush the cache if it changes
 		tc_cache_clear(cpu);
 	}
 
