@@ -13,8 +13,79 @@
 #include <charconv>
 #include <algorithm>
 
-#define DISAS_INSTR_NUM_FACTOR 5
+#define DISAS_INSTR_CACHED_NUM 50
 
+
+static void
+dbg_handle_continue(cpu_t *cpu, std::vector<std::pair<addr_t, std::string>> &disas_data, unsigned &instr_sel) // default: F5
+{
+	cpu->cpu_flags &= ~CPU_SINGLE_STEP;
+	disas_data.clear();
+	instr_sel = 0;
+	dbg_apply_sw_breakpoints(cpu);
+	const char *text = "Not available while debuggee is running";
+	ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
+	ImGui::Text("%s", text);
+	guest_running.test_and_set();
+	guest_running.notify_one();
+}
+
+static void
+dbg_handle_breakpoint_toggle(cpu_t *cpu, std::vector<std::pair<addr_t, std::string>> disas_data, unsigned instr_sel, bool &show_popup) // default: F9
+{
+	if (!disas_data.empty()) { // it will happen if the first instr cannot be decoded
+		addr_t addr = (disas_data.begin() + instr_sel)->first;
+		if (break_list.contains(addr)) {
+			dbg_remove_sw_breakpoints(cpu, addr);
+			break_list.erase(addr);
+		}
+		else {
+			if (const auto &opt = dbg_insert_sw_breakpoint(cpu, addr); opt) {
+				show_popup = false;
+				break_list.emplace(addr, brk_info{ *opt, brk_t::breakpoint });
+			}
+			else {
+				show_popup = true;
+			}
+		}
+	}
+}
+
+static void
+dbg_handle_step_into(cpu_t *cpu, std::vector<std::pair<addr_t, std::string>> &disas_data, unsigned &instr_sel) // default: F11
+{
+	// don't reinstall the sw breakpoints because, if we are single-stepping one of them, we will receive a bp exp again, instead of a db exp
+	cpu->cpu_flags |= CPU_SINGLE_STEP;
+	disas_data.clear();
+	instr_sel = 0;
+	const char *text = "Not available while debuggee is running";
+	ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
+	ImGui::Text("%s", text);
+	guest_running.test_and_set();
+	guest_running.notify_one();
+}
+
+static void
+dbg_handle_step_over(cpu_t *cpu, std::vector<std::pair<addr_t, std::string>> &disas_data, unsigned &instr_sel, bool &show_popup) // default: F10
+{
+	if (!disas_data.empty()) { // it will happen if the first instr cannot be decoded
+		std::string_view curr_instr = disas_data.begin()->second;
+		if (curr_instr.starts_with("call")) {
+			addr_t addr = (++disas_data.begin())->first;
+			if (const auto &opt = dbg_insert_sw_breakpoint(cpu, addr); opt) {
+				show_popup = false;
+				break_list.emplace(addr, brk_info{ *opt, brk_t::step_over });
+				dbg_handle_continue(cpu, disas_data, instr_sel);
+			}
+			else {
+				show_popup = true;
+			}
+		}
+		else {
+			dbg_handle_step_into(cpu, disas_data, instr_sel);
+		}
+	}
+}
 
 void
 dbg_draw_imgui_wnd(cpu_t *cpu)
@@ -46,7 +117,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 			static bool show_popup = false;
 			if (!show_popup) {
 				if (!ImGui::IsKeyPressed(ImGuiKey_F5)) {
-					unsigned instr_to_print = ImGui::GetWindowHeight() / ImGui::GetTextLineHeightWithSpacing() * DISAS_INSTR_NUM_FACTOR;
+					unsigned instr_to_print = DISAS_INSTR_CACHED_NUM;
 					if (enter_pressed) {
 						// NOTE: it can't fail because ImGui::InputText only accepts hex digits and break_pc is large enough to store every possible 32 bit address
 						[[maybe_unused]] auto ret = std::from_chars(buff, buff + sizeof(buff), break_pc, 16);
@@ -69,35 +140,14 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 						}) == disas_data.end()
 					);
 					if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
-						// don't reinstall the sw breakpoints because, if we are single-stepping one of them, we will receive a bp exp again, instead of a db exp
-						cpu->cpu_flags |= CPU_SINGLE_STEP;
-						disas_data.clear();
-						instr_sel = 0;
-						const char *text = "Not available while debuggee is running";
-						ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
-						ImGui::Text("%s", text);
-						guest_running.test_and_set();
-						guest_running.notify_one();
+						dbg_handle_step_into(cpu, disas_data, instr_sel);
+					}
+					else if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
+						dbg_handle_step_over(cpu, disas_data, instr_sel, show_popup);
 					}
 					else {
 						if (ImGui::IsKeyPressed(ImGuiKey_F9)) {
-							if (!disas_data.empty()) { // it will happen if the first instr cannot be decoded
-								addr_t addr = (disas_data.begin() + instr_sel)->first;
-								if (break_list.contains(addr)) {
-									dbg_remove_sw_breakpoints(cpu, addr);
-									break_list.erase(addr);
-								}
-								else {
-									if (const auto &opt = dbg_insert_sw_breakpoint(cpu, addr); opt) {
-										show_popup = false;
-										break_list.insert({ addr, *opt });
-									}
-									else {
-										show_popup = true;
-										ImGui::OpenPopup("Failed to insert breakpoint");
-									}
-								}
-							}
+							dbg_handle_breakpoint_toggle(cpu, disas_data, instr_sel, show_popup);
 						}
 
 						unsigned num_instr_printed = 0;
@@ -128,15 +178,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 					}
 				}
 				else {
-					cpu->cpu_flags &= ~CPU_SINGLE_STEP;
-					disas_data.clear();
-					instr_sel = 0;
-					dbg_apply_sw_breakpoints(cpu);
-					const char *text = "Not available while debuggee is running";
-					ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
-					ImGui::Text("%s", text);
-					guest_running.test_and_set();
-					guest_running.notify_one();
+					dbg_handle_continue(cpu, disas_data, instr_sel);
 				}
 			}
 			else {

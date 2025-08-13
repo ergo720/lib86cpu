@@ -108,7 +108,7 @@ read_breakpoints_file(cpu_t *cpu)
 					continue;
 				}
 			}
-			break_list.emplace(addr, 0);
+			break_list.emplace(addr, brk_info{ 0, brk_t::breakpoint });
 		}
 	}
 	else {
@@ -164,7 +164,7 @@ write_breakpoints_file(cpu_t *cpu)
 	std::string brk_file = cpu->dbg_name + ".ini";
 	std::ofstream ofs(brk_file, std::ios_base::out | std::ios_base::trunc);
 	if (ofs.is_open()) {
-		std::for_each(break_list.begin(), break_list.end(), [&ofs](const std::pair<addr_t, uint8_t> &elem) {
+		std::for_each(break_list.begin(), break_list.end(), [&ofs](const std::pair<addr_t, brk_info> &elem) {
 			std::array<char, 14> line;
 			line[0] = '0';
 			line[1] = 'x';
@@ -359,9 +359,12 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 	// NOTE: this is called from the emulation thread
 
 	addr_t pc = cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip - 1; // if this is our int3, it will always be one byte large
-	if (break_list.contains(pc)) {
+	if (auto it = break_list.find(pc); it != break_list.end()) {
 		// disable all breakpoints so that we can show the original instructions in the disassembler
 		dbg_remove_sw_breakpoints(cpu_ctx->cpu);
+		if (it->second.type == brk_t::step_over) {
+			break_list.erase(it);
+		}
 
 		// wait until the debugger continues execution
 		break_pc = mem_pc = pc;
@@ -440,7 +443,7 @@ dbg_setup_sw_breakpoints(cpu_t *cpu)
 		for (const auto &elem : break_list) {
 			addr_t addr = elem.first;
 			uint8_t original_byte = mem_read_helper<uint8_t>(&cpu->cpu_ctx, addr, 0);
-			break_list.insert_or_assign(addr, original_byte);
+			break_list.insert_or_assign(addr, brk_info{ original_byte, brk_t::breakpoint });
 		}
 		});
 }
@@ -482,7 +485,7 @@ dbg_insert_sw_breakpoint(cpu_t *cpu, addr_t addr)
 }
 
 static void
-dbg_apply_sw_breakpoints_(cpu_t *cpu, addr_t addr)
+dbg_apply_sw_breakpoints(cpu_t *cpu, addr_t addr, brk_t type)
 {
 	uint8_t original_byte = mem_read_helper<uint8_t>(&cpu->cpu_ctx, addr, 0);
 	if (original_byte != 0xCC) {
@@ -490,7 +493,7 @@ dbg_apply_sw_breakpoints_(cpu_t *cpu, addr_t addr)
 		// call to dbg_sw_breakpoint_handler from dbg_single_step_handler, that is, single-stepping a breakpoint
 		mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, 0xCC, 0); // write int3
 		cpu->clear_int_fn(&g_cpu->cpu_ctx, CPU_HALT_TC_INT);
-		break_list.insert_or_assign(addr, original_byte);
+		break_list.insert_or_assign(addr, brk_info{ original_byte, type });
 	}
 }
 
@@ -499,16 +502,8 @@ dbg_apply_sw_breakpoints(cpu_t *cpu)
 {
 	dbg_update_sw_breakpoints(cpu, [](cpu_t *cpu) {
 		for (const auto &elem : break_list) {
-			dbg_apply_sw_breakpoints_(cpu, elem.first);
+			dbg_apply_sw_breakpoints(cpu, elem.first, elem.second.type);
 		}
-		});
-}
-
-void
-dbg_apply_sw_breakpoints(cpu_t *cpu, addr_t addr)
-{
-	dbg_update_sw_breakpoints(cpu, [&](cpu_t *cpu) {
-		dbg_apply_sw_breakpoints_(cpu, addr);
 		});
 }
 
@@ -524,7 +519,7 @@ dbg_remove_sw_breakpoints(cpu_t *cpu)
 {
 	dbg_update_sw_breakpoints(cpu, [](cpu_t *cpu) {
 		for (const auto &elem : break_list) {
-			dbg_remove_sw_breakpoints(cpu, elem.first, elem.second);
+			dbg_remove_sw_breakpoints(cpu, elem.first, elem.second.original_byte);
 		}
 		});
 }
@@ -534,7 +529,7 @@ dbg_remove_sw_breakpoints(cpu_t *cpu, addr_t addr)
 {
 	dbg_update_sw_breakpoints(cpu, [&](cpu_t *cpu) {
 		if (const auto it = break_list.find(addr); it != break_list.end()) {
-			dbg_remove_sw_breakpoints(cpu, it->first, it->second);
+			dbg_remove_sw_breakpoints(cpu, it->first, it->second.original_byte);
 		}
 		});
 }

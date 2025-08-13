@@ -11,6 +11,12 @@
 enum class brk_t : int {
 	breakpoint,
 	watchpoint,
+	step_over,
+};
+
+struct brk_info {
+	uint8_t original_byte;
+	brk_t type;
 };
 
 void read_setting_files(cpu_t *cpu);
@@ -18,7 +24,6 @@ void write_setting_files(cpu_t *cpu);
 void dbg_setup_sw_breakpoints(cpu_t *cpu);
 std::optional<uint8_t> dbg_insert_sw_breakpoint(cpu_t *cpu, addr_t addr);
 void dbg_apply_sw_breakpoints(cpu_t *cpu);
-void dbg_apply_sw_breakpoints(cpu_t *cpu, addr_t addr);
 void dbg_remove_sw_breakpoints(cpu_t *cpu);
 void dbg_remove_sw_breakpoints(cpu_t *cpu, addr_t addr);
 std::vector<std::pair<addr_t, std::string>> dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num);
@@ -33,7 +38,7 @@ inline std::atomic_flag guest_running;
 inline uint32_t break_pc;
 inline uint32_t mem_pc;
 
-inline std::unordered_map<addr_t, uint8_t> break_list;
+inline std::unordered_map<addr_t, brk_info> break_list;
 inline std::array<std::pair<addr_t, size_t>, 4> watch_list;
 
 inline int main_wnd_w = 1280;
