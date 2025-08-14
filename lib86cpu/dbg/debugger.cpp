@@ -365,6 +365,18 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 		if (it->second.type == brk_t::step_over) {
 			break_list.erase(it);
 		}
+		else {
+			std::vector<decltype(break_list)::key_type> key_vec;
+			for (auto &&elem : break_list) {
+				if (elem.second.type == brk_t::step_over) {
+					key_vec.emplace_back(elem.first);
+				}
+			}
+			for (auto &&key : key_vec) {
+				break_list.erase(key);
+			}
+			g_step_out_active = false;
+		}
 
 		// wait until the debugger continues execution
 		break_pc = mem_pc = pc;

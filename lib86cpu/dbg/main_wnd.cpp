@@ -139,10 +139,14 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 	glfwTerminate();
 
 	// don't save the breakpoints used for stepping over
-	for (const auto &elem : break_list) {
+	std::vector<decltype(break_list)::key_type> key_vec;
+	for (auto &&elem : break_list) {
 		if (elem.second.type == brk_t::step_over) {
-			break_list.erase(elem.first);
+			key_vec.emplace_back(elem.first);
 		}
+	}
+	for (auto &&key : key_vec) {
+		break_list.erase(key);
 	}
 	write_setting_files(cpu);
 

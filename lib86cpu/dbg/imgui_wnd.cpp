@@ -16,12 +16,16 @@
 #define DISAS_INSTR_CACHED_NUM 50
 
 
+static std::vector<std::pair<addr_t, std::string>> g_disas_data;
+static unsigned g_instr_sel = 0;
+static bool g_show_popup = false;
+
 static void
-dbg_handle_continue(cpu_t *cpu, std::vector<std::pair<addr_t, std::string>> &disas_data, unsigned &instr_sel) // default: F5
+dbg_handle_continue(cpu_t *cpu) // default: F5
 {
 	cpu->cpu_flags &= ~CPU_SINGLE_STEP;
-	disas_data.clear();
-	instr_sel = 0;
+	g_disas_data.clear();
+	g_instr_sel = 0;
 	dbg_apply_sw_breakpoints(cpu);
 	const char *text = "Not available while debuggee is running";
 	ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
@@ -31,33 +35,33 @@ dbg_handle_continue(cpu_t *cpu, std::vector<std::pair<addr_t, std::string>> &dis
 }
 
 static void
-dbg_handle_breakpoint_toggle(cpu_t *cpu, std::vector<std::pair<addr_t, std::string>> disas_data, unsigned instr_sel, bool &show_popup) // default: F9
+dbg_handle_breakpoint_toggle(cpu_t *cpu) // default: F9
 {
-	if (!disas_data.empty()) { // it will happen if the first instr cannot be decoded
-		addr_t addr = (disas_data.begin() + instr_sel)->first;
+	if (!g_disas_data.empty()) { // it will happen if the first instr cannot be decoded
+		addr_t addr = (g_disas_data.begin() + g_instr_sel)->first;
 		if (break_list.contains(addr)) {
 			dbg_remove_sw_breakpoints(cpu, addr);
 			break_list.erase(addr);
 		}
 		else {
 			if (const auto &opt = dbg_insert_sw_breakpoint(cpu, addr); opt) {
-				show_popup = false;
+				g_show_popup = false;
 				break_list.emplace(addr, brk_info{ *opt, brk_t::breakpoint });
 			}
 			else {
-				show_popup = true;
+				g_show_popup = true;
 			}
 		}
 	}
 }
 
 static void
-dbg_handle_step_into(cpu_t *cpu, std::vector<std::pair<addr_t, std::string>> &disas_data, unsigned &instr_sel) // default: F11
+dbg_handle_step_into(cpu_t *cpu) // default: F11
 {
 	// don't reinstall the sw breakpoints because, if we are single-stepping one of them, we will receive a bp exp again, instead of a db exp
 	cpu->cpu_flags |= CPU_SINGLE_STEP;
-	disas_data.clear();
-	instr_sel = 0;
+	g_disas_data.clear();
+	g_instr_sel = 0;
 	const char *text = "Not available while debuggee is running";
 	ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
 	ImGui::Text("%s", text);
@@ -66,23 +70,39 @@ dbg_handle_step_into(cpu_t *cpu, std::vector<std::pair<addr_t, std::string>> &di
 }
 
 static void
-dbg_handle_step_over(cpu_t *cpu, std::vector<std::pair<addr_t, std::string>> &disas_data, unsigned &instr_sel, bool &show_popup) // default: F10
+dbg_handle_step_over(cpu_t *cpu) // default: F10
 {
-	if (!disas_data.empty()) { // it will happen if the first instr cannot be decoded
-		std::string_view curr_instr = disas_data.begin()->second;
+	if (g_disas_data.size() >= 2) { // it will happen if the first or second instr cannot be decoded
+		std::string_view curr_instr = g_disas_data.begin()->second;
 		if (curr_instr.starts_with("call")) {
-			addr_t addr = (++disas_data.begin())->first;
+			addr_t addr = (++g_disas_data.begin())->first;
 			if (const auto &opt = dbg_insert_sw_breakpoint(cpu, addr); opt) {
-				show_popup = false;
+				g_show_popup = false;
 				break_list.emplace(addr, brk_info{ *opt, brk_t::step_over });
-				dbg_handle_continue(cpu, disas_data, instr_sel);
+				dbg_handle_continue(cpu);
 			}
 			else {
-				show_popup = true;
+				g_show_popup = true;
 			}
 		}
 		else {
-			dbg_handle_step_into(cpu, disas_data, instr_sel);
+			dbg_handle_step_into(cpu);
+		}
+	}
+}
+
+static void
+dbg_handle_step_out(cpu_t *cpu) // default: SHIFT + F11
+{
+	if (!g_disas_data.empty()) { // it will happen if the first instr cannot be decoded
+		std::string_view curr_instr = g_disas_data.begin()->second;
+		if (curr_instr.starts_with("ret") || curr_instr.starts_with("iret")) {
+			g_step_out_active = false;
+			dbg_handle_step_into(cpu);
+		}
+		else {
+			dbg_handle_step_over(cpu);
+			g_step_out_active = g_show_popup ? false : true;
 		}
 	}
 }
@@ -112,61 +132,61 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 		ImGui::BeginChild("Disassembler view");
 		if (!guest_running.test()) {
 			// F5: continue execution, F9: toggle breakpoint, F11: step into
-			static std::vector<std::pair<addr_t, std::string>> disas_data;
-			static unsigned instr_sel = 0;
-			static bool show_popup = false;
-			if (!show_popup) {
-				if (!ImGui::IsKeyPressed(ImGuiKey_F5)) {
+			if (!g_show_popup) {
+				if (g_step_out_active || !ImGui::IsKeyPressed(ImGuiKey_F5)) {
 					unsigned instr_to_print = DISAS_INSTR_CACHED_NUM;
 					if (enter_pressed) {
 						// NOTE: it can't fail because ImGui::InputText only accepts hex digits and break_pc is large enough to store every possible 32 bit address
 						[[maybe_unused]] auto ret = std::from_chars(buff, buff + sizeof(buff), break_pc, 16);
 						assert(ret.ec == std::errc());
-						disas_data.clear();
-						instr_sel = 0;
+						g_disas_data.clear();
+						g_instr_sel = 0;
 					}
-					if (disas_data.empty()) {
+					if (g_disas_data.empty()) {
 						// this happens the first time the disassembler window is displayed
-						disas_data = dbg_disas_code_block(cpu, break_pc, instr_to_print);
+						g_disas_data = dbg_disas_code_block(cpu, break_pc, instr_to_print);
 					}
 					else if (ImGui::GetScrollY() == ImGui::GetScrollMaxY()) {
 						// the user has scrolled up to the end of the instr block we previously cached, so we need to disassemble a new block
 						// and append it to the end of the cached data
 						const auto &disas_next_block = dbg_disas_code_block(cpu, break_pc, instr_to_print);
-						disas_data.insert(disas_data.end(), std::make_move_iterator(disas_next_block.begin()), std::make_move_iterator(disas_next_block.end()));
+						g_disas_data.insert(g_disas_data.end(), std::make_move_iterator(disas_next_block.begin()), std::make_move_iterator(disas_next_block.end()));
 					}
-					assert(std::adjacent_find(disas_data.begin(), disas_data.end(), [](const auto &lhs, const auto &rhs) {
+					assert(std::adjacent_find(g_disas_data.begin(), g_disas_data.end(), [](const auto &lhs, const auto &rhs) {
 						return lhs.first == rhs.first;
-						}) == disas_data.end()
+						}) == g_disas_data.end()
 					);
-					if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
-						dbg_handle_step_into(cpu, disas_data, instr_sel);
+					if (g_step_out_active || (ImGui::IsKeyPressed(ImGuiKey_F11) && (ImGui::IsKeyPressed(ImGuiKey_LeftShift) || ImGui::IsKeyPressed(ImGuiKey_RightShift)))) {
+						dbg_handle_step_out(cpu);
+					}
+					else if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
+						dbg_handle_step_into(cpu);
 					}
 					else if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
-						dbg_handle_step_over(cpu, disas_data, instr_sel, show_popup);
+						dbg_handle_step_over(cpu);
 					}
 					else {
 						if (ImGui::IsKeyPressed(ImGuiKey_F9)) {
-							dbg_handle_breakpoint_toggle(cpu, disas_data, instr_sel, show_popup);
+							dbg_handle_breakpoint_toggle(cpu);
 						}
 
 						unsigned num_instr_printed = 0;
-						for (; num_instr_printed < disas_data.size(); ++num_instr_printed) {
+						for (; num_instr_printed < g_disas_data.size(); ++num_instr_printed) {
 							// buffer size = buff_size used in log_instr for instr string + 12 chars need to print its addr
 							char buffer[256 + 12 + 1];
-							addr_t addr = (disas_data.begin() + num_instr_printed)->first;
-							std::snprintf(buffer, sizeof(buffer), "0x%08X  %s", addr, (disas_data.begin() + num_instr_printed)->second.c_str());
+							addr_t addr = (g_disas_data.begin() + num_instr_printed)->first;
+							std::snprintf(buffer, sizeof(buffer), "0x%08X  %s", addr, (g_disas_data.begin() + num_instr_printed)->second.c_str());
 							if (break_list.contains(addr)) {
 								// draw breakpoint with a different text color
 								ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(break_r, break_g, break_b, 1.0f));
-								if (ImGui::Selectable(buffer, instr_sel == num_instr_printed)) {
-									instr_sel = num_instr_printed;
+								if (ImGui::Selectable(buffer, g_instr_sel == num_instr_printed)) {
+									g_instr_sel = num_instr_printed;
 								}
 								ImGui::PopStyleColor();
 							}
 							else {
-								if (ImGui::Selectable(buffer, instr_sel == num_instr_printed)) {
-									instr_sel = num_instr_printed;
+								if (ImGui::Selectable(buffer, g_instr_sel == num_instr_printed)) {
+									g_instr_sel = num_instr_printed;
 								}
 							}
 						}
@@ -178,7 +198,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 					}
 				}
 				else {
-					dbg_handle_continue(cpu, disas_data, instr_sel);
+					dbg_handle_continue(cpu);
 				}
 			}
 			else {
@@ -189,7 +209,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 				if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_NoResize)) {
 					ImGui::Text("Failed to insert the breakpoint");
 					if (ImGui::Button("OK")) {
-						show_popup = false;
+						g_show_popup = false;
 						ImGui::CloseCurrentPopup();
 					}
 					ImGui::EndPopup();
