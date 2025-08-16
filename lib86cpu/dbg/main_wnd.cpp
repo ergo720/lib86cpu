@@ -30,7 +30,7 @@ dbg_draw_wnd(GLFWwindow *wnd, int fb_w, int fb_h)
 	ImGui_ImplGlfw_NewFrame();
 	ImGui::NewFrame();
 
-	glfwGetWindowSize(wnd, &main_wnd_w, &main_wnd_h);
+	glfwGetWindowSize(wnd, &g_main_wnd_w, &g_main_wnd_h);
 	dbg_draw_imgui_wnd(g_cpu);
 
 	ImGui::Render();
@@ -49,7 +49,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 	bool init_has_err = true;
 
 	try {
-		read_setting_files(cpu);
+		read_dbg_opt();
 		dbg_setup_sw_breakpoints(cpu);
 
 		if (!glfwInit()) {
@@ -58,7 +58,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 			return;
 		}
 
-		main_wnd = glfwCreateWindow(main_wnd_w, main_wnd_h, "Lib86dbg", nullptr, nullptr);
+		main_wnd = glfwCreateWindow(g_main_wnd_w, g_main_wnd_h, "Lib86dbg", nullptr, nullptr);
 		if (!main_wnd) {
 			last_error = "Failed to create the debugger window";
 			glfwTerminate();
@@ -130,7 +130,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 
 	exit_requested.wait(false);
 
-	glfwGetWindowSize(main_wnd, &main_wnd_w, &main_wnd_h);
+	glfwGetWindowSize(main_wnd, &g_main_wnd_w, &g_main_wnd_h);
 
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
@@ -138,17 +138,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 
 	glfwTerminate();
 
-	// don't save the breakpoints used for stepping over
-	std::vector<decltype(break_list)::key_type> key_vec;
-	for (auto &&elem : break_list) {
-		if (elem.second.type == brk_t::step_over) {
-			key_vec.emplace_back(elem.first);
-		}
-	}
-	for (auto &&key : key_vec) {
-		break_list.erase(key);
-	}
-	write_setting_files(cpu);
+	write_dbg_opt();
 
 	main_wnd = nullptr;
 	g_cpu = nullptr;

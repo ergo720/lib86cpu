@@ -19,8 +19,8 @@ struct brk_info {
 	brk_t type;
 };
 
-void read_setting_files(cpu_t *cpu);
-void write_setting_files(cpu_t *cpu);
+void read_dbg_opt();
+void write_dbg_opt();
 void dbg_setup_sw_breakpoints(cpu_t *cpu);
 std::optional<uint8_t> dbg_insert_sw_breakpoint(cpu_t *cpu, addr_t addr);
 void dbg_apply_sw_breakpoints(cpu_t *cpu);
@@ -42,9 +42,9 @@ inline bool g_step_out_active = false;
 inline std::unordered_map<addr_t, brk_info> break_list;
 inline std::array<std::pair<addr_t, size_t>, 4> watch_list;
 
-inline int main_wnd_w = 1280;
-inline int main_wnd_h = 720;
+inline int g_main_wnd_w;
+inline int g_main_wnd_h;
 
-inline float text_col[3] = { 1.0f, 1.0f, 1.0f }; // default text color: white
-inline float break_col[3] = { 1.0f, 0.0f, 0.0f }; // default breakpoint color: red
-inline float bk_col[3] = { 0.0f, 0.0f, 0.0f }; // default background color: black
+inline float g_txt_col[3]; // rgb
+inline float g_brk_col[3]; // rgb
+inline float g_bkg_col[3]; // rgb

@@ -248,7 +248,6 @@ struct cpu_t {
 	raise_int_t raise_int_fn;
 	clear_int_t clear_int_fn;
 	std::pair<fp_int, void *> int_data;
-	std::string dbg_name;
 	addr_t instr_eip;
 	addr_t virt_pc;
 	uint32_t instr_bytes;

@@ -10,6 +10,8 @@
 #include <string>
 #include <vector>
 #include <functional>
+#include <mutex>
+#include <unordered_map>
 
 // lib86cpu error flags
 enum class lc86_status : int32_t {
@@ -35,6 +37,7 @@ using logfn_t = void(*)(log_level, const unsigned, const char *, ...);
 using hook_t = void(*)();
 
 #define LC86_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::success)
+#define DEBUGGER_OPTIONS_ID 0
 
 #define CPU_ATT_SYNTAX          0  // use att syntax for instruction decoding
 #define CPU_MASM_SYNTAX         1  // use intel masm syntax for instruction decoding
@@ -89,11 +92,22 @@ struct ram_save_state_t {
 	std::vector<uint8_t> ram;
 };
 
+struct dbg_opt_t {
+	std::mutex lock; // acquire this lock before accessing the other members
+	const uint32_t id = DEBUGGER_OPTIONS_ID; // updated whenever the other members change
+	int width = 1280;
+	int height = 720;
+	float txt_col[3] = { 1.0f, 1.0f, 1.0f }; // default text color: white
+	float brk_col[3] = { 1.0f, 0.0f, 0.0f }; // default breakpoint color: red
+	float bkg_col[3] = { 0.0f, 0.0f, 0.0f }; // default background color: black
+	std::unordered_map<addr_t, int> brk_map;
+};
+
 // forward declare
 struct cpu_t;
 
 // cpu api
-API_FUNC lc86_status cpu_new(uint64_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data = { nullptr, nullptr }, const char *debuggee = nullptr);
+API_FUNC lc86_status cpu_new(uint64_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data = { nullptr, nullptr });
 API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC lc86_status cpu_run(cpu_t *cpu);
 API_FUNC lc86_status cpu_run_until(cpu_t *cpu, uint64_t timeout_time);
@@ -149,3 +163,6 @@ API_FUNC void trampoline_call(cpu_t *cpu, const uint32_t ret_eip);
 // logging api
 API_FUNC void register_log_func(logfn_t logger);
 API_FUNC std::string get_last_error();
+
+// debugger api
+API_FUNC inline dbg_opt_t g_dbg_opt; // only used when starting with the debugger

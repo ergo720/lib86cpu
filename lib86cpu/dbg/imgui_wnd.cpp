@@ -110,25 +110,25 @@ dbg_handle_step_out(cpu_t *cpu) // default: SHIFT + F11
 void
 dbg_draw_imgui_wnd(cpu_t *cpu)
 {
-	const int wnd_w = main_wnd_w;
-	const int wnd_h = main_wnd_h;
-	static const auto &[text_r, text_g, text_b] = text_col;
-	static const auto &[break_r, break_g, break_b] = break_col;
-	static const auto &[bk_r, bk_g, bk_b] = bk_col;
+	const int wnd_w = g_main_wnd_w;
+	const int wnd_h = g_main_wnd_h;
+	static const auto &[txt_r, txt_g, txt_b] = g_txt_col;
+	static const auto &[brk_r, brk_g, brk_b] = g_brk_col;
+	static const auto &[bkg_r, bkg_g, bkg_b] = g_bkg_col;
 
 	ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2((wnd_w - 30) / 2, (wnd_h - 30) / 2), ImGuiCond_FirstUseEver);
-	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(text_r, text_g, text_b, 1.0f));
-	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(bk_r, bk_g, bk_b, 1.0f));
-	ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(bk_r, bk_g, bk_b, 1.0f));
+	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(txt_r, txt_g, txt_b, 1.0f));
+	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(bkg_r, bkg_g, bkg_b, 1.0f));
+	ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(bkg_r, bkg_g, bkg_b, 1.0f));
 	if (ImGui::Begin("Disassembler")) {
 		static char buff[9];
 		ImGui::PushItemWidth(80.0f);
 		bool enter_pressed = ImGui::InputText("Address", buff, IM_ARRAYSIZE(buff), ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue);
 		ImGui::PopItemWidth();
-		ImGui::ColorEdit3("Text color", text_col);
-		ImGui::ColorEdit3("Breakpoint color", break_col);
-		ImGui::ColorEdit3("Background color", bk_col);
+		ImGui::ColorEdit3("Text color", g_txt_col);
+		ImGui::ColorEdit3("Breakpoint color", g_brk_col);
+		ImGui::ColorEdit3("Background color", g_bkg_col);
 		ImGui::BeginChild("Disassembler view");
 		if (!guest_running.test()) {
 			// F5: continue execution, F9: toggle breakpoint, F11: step into
@@ -178,7 +178,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 							std::snprintf(buffer, sizeof(buffer), "0x%08X  %s", addr, (g_disas_data.begin() + num_instr_printed)->second.c_str());
 							if (break_list.contains(addr)) {
 								// draw breakpoint with a different text color
-								ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(break_r, break_g, break_b, 1.0f));
+								ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(brk_r, brk_g, brk_b, 1.0f));
 								if (ImGui::Selectable(buffer, g_instr_sel == num_instr_printed)) {
 									g_instr_sel = num_instr_printed;
 								}
@@ -232,8 +232,8 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 		ImGui::PushItemWidth(80.0f);
 		bool enter_pressed = ImGui::InputText("Address", buff, IM_ARRAYSIZE(buff), ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue);
 		ImGui::PopItemWidth();
-		ImGui::ColorEdit3("Text color", text_col);
-		ImGui::ColorEdit3("Background color", bk_col);
+		ImGui::ColorEdit3("Text color", g_txt_col);
+		ImGui::ColorEdit3("Background color", g_bkg_col);
 		ImGui::BeginChild("Memory view");
 		if (!guest_running.test()) {
 			static uint8_t mem_buff[PAGE_SIZE];
@@ -263,8 +263,8 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 	ImGui::SetNextWindowPos(ImVec2(10, wnd_h / 2 + 5), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2(wnd_w - 20, (wnd_h - 30) / 2), ImGuiCond_FirstUseEver);
 	if (ImGui::Begin("Registers")) {
-		ImGui::ColorEdit3("Text color", text_col);
-		ImGui::ColorEdit3("Background color", bk_col);
+		ImGui::ColorEdit3("Text color", g_txt_col);
+		ImGui::ColorEdit3("Background color", g_bkg_col);
 		ImGui::BeginChild("Registers view");
 		if (!guest_running.test()) {
 			ImGui::Text("eax: 0x%08X  ecx: 0x%08X  edx: 0x%08X  ebx: 0x%08X  esp: 0x%08X  ebp: 0x%08X  esi: 0x%08X  edi: 0x%08X",

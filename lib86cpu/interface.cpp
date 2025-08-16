@@ -111,11 +111,10 @@ default_pmio_write_handler32(addr_t addr, const uint32_t value, void *opaque)
 * out: returned cpu instance
 * (optional) int_fn: a pair where 1st is a function that returns the vector number when a hw interrupt is serviced, and 2nd is an opaque argument passed to
 * the function when lib86cpu calls it. Not necessary if you never generate hw interrupts
-* (optional) debuggee: name of the debuggee program to run
 * ret: the status of the operation
 */
 lc86_status
-cpu_new(uint64_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data, const char *debuggee)
+cpu_new(uint64_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data)
 {
 	out = nullptr;
 
@@ -153,7 +152,6 @@ cpu_new(uint64_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data, const
 		return set_last_error(lc86_status::no_memory);
 	}
 
-	cpu->dbg_name = debuggee ? debuggee : "";
 	cpu->int_data = int_data.first ? int_data : std::pair<fp_int, void *>{ default_get_int_vec, nullptr };
 
 	cpu->memory_space_tree = address_space<addr_t>::create();

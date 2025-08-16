@@ -12,202 +12,53 @@
 #include <charconv>
 
 
-template<typename T>
-static void
-read_value_from_ini(std::ifstream *ifs, std::string_view key, T *value)
+void
+read_dbg_opt()
 {
-	std::string line;
-	if (std::getline(*ifs, line)) {
-		if (line.starts_with(key)) {
-			auto ret = std::from_chars(line.data() + key.size(), line.data() + line.size(), *value);
-			if ((ret.ec == std::errc::invalid_argument) || (ret.ec == std::errc::result_out_of_range)) {
-				// missing value or garbage line
-				LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
-				return;
-			}
+	g_dbg_opt.lock.lock();
+	g_main_wnd_w = g_dbg_opt.width;
+	g_main_wnd_h = g_dbg_opt.height;
+	g_txt_col[0] = g_dbg_opt.txt_col[0];
+	g_txt_col[1] = g_dbg_opt.txt_col[1];
+	g_txt_col[2] = g_dbg_opt.txt_col[2];
+	g_brk_col[0] = g_dbg_opt.brk_col[0];
+	g_brk_col[1] = g_dbg_opt.brk_col[1];
+	g_brk_col[2] = g_dbg_opt.brk_col[2];
+	g_bkg_col[0] = g_dbg_opt.bkg_col[0];
+	g_bkg_col[1] = g_dbg_opt.bkg_col[1];
+	g_bkg_col[2] = g_dbg_opt.bkg_col[2];
+	std::for_each(g_dbg_opt.brk_map.begin(), g_dbg_opt.brk_map.end(), [](const decltype(g_dbg_opt.brk_map)::value_type &elem) {
+		brk_t brk_type = static_cast<brk_t>(elem.second);
+		if ((brk_type == brk_t::breakpoint) || (brk_type == brk_t::watchpoint)) {
+			break_list.emplace(elem.first, brk_info{ 0, brk_type });
 		}
-		else {
-			// missing prefix or garbage line
-			LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
-		}
-	}
-	else {
-		// missing key option
-		LOG(log_level::error, "Missing option with key %s", key.data());
-	}
-}
-
-static void
-read_ini_file()
-{
-	std::ifstream ifs("lib86dbg.ini", std::ios_base::in);
-	if (ifs.is_open()) {
-		read_value_from_ini(&ifs, "width=", &main_wnd_w);
-		read_value_from_ini(&ifs, "height=", &main_wnd_h);
-		read_value_from_ini(&ifs, "text_r=", &text_col[0]);
-		read_value_from_ini(&ifs, "text_g=", &text_col[1]);
-		read_value_from_ini(&ifs, "text_b=", &text_col[2]);
-		read_value_from_ini(&ifs, "break_r=", &break_col[0]);
-		read_value_from_ini(&ifs, "break_g=", &break_col[1]);
-		read_value_from_ini(&ifs, "break_b=", &break_col[2]);
-		read_value_from_ini(&ifs, "bk_r=", &bk_col[0]);
-		read_value_from_ini(&ifs, "bk_g=", &bk_col[1]);
-		read_value_from_ini(&ifs, "bk_b=", &bk_col[2]);
-	}
-	else {
-		LOG(log_level::info, "Could not open lib86dbg.ini file");
-	}
-}
-
-static void
-read_breakpoints_file(cpu_t *cpu)
-{
-	int watch_num = 0;
-	std::string brk_file = cpu->dbg_name + ".ini";
-	std::ifstream ifs(brk_file, std::ios_base::in);
-	if (ifs.is_open()) {
-		std::string line;
-		while (std::getline(ifs, line)) {
-			addr_t addr;
-			int brk_type;
-			size_t watch_size;
-			if ((line.size() < 2) || (line[0] != '0') || (line[1] != 'x')) {
-				// missing 0x prefix or garbage line
-				LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
-				continue;
-			}
-			auto ret = std::from_chars(line.data() + 2, line.data() + line.size(), addr, 16);
-			if ((ret.ec == std::errc::invalid_argument) || (ret.ec == std::errc::result_out_of_range)) {
-				// missing comma delimiter or garbage line
-				LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
-				continue;
-			}
-			ret = std::from_chars(ret.ptr + 1, line.data() + line.size(), brk_type, 10);
-			if ((ret.ec == std::errc::invalid_argument) || (ret.ec == std::errc::result_out_of_range) ||
-				((static_cast<brk_t>(brk_type) != brk_t::breakpoint) && (static_cast<brk_t>(brk_type) != brk_t::watchpoint))) {
-				// invalid break/watchpoint type or garbage line
-				LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
-				continue;
-			}
-			if (static_cast<brk_t>(brk_type) == brk_t::watchpoint) {
-				if ((ret.ptr != line.data() + line.size()) && watch_num < 4) {
-					ret = std::from_chars(ret.ptr + 1, line.data() + line.size(), watch_size, 10);
-					if ((ret.ec == std::errc::invalid_argument) || (ret.ec == std::errc::result_out_of_range) ||
-						((watch_size != 1U) && (watch_size != 2U) && (watch_size != 4U) && (watch_size != 8U))) {
-						// invalid watchpoint size or garbage line
-						LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
-						continue;
-					}
-					watch_list[watch_num] = std::make_pair(addr, watch_size);
-					++watch_num;
-					continue;
-				}
-				else {
-					// missing watch size or more than four watchpoints
-					LOG(log_level::error, "Ignoring invalid line %s", line.c_str());
-					continue;
-				}
-			}
-			break_list.emplace(addr, brk_info{ 0, brk_t::breakpoint });
-		}
-	}
-	else {
-		LOG(log_level::info, "Could not open breakpoint file %s", brk_file.c_str());
-	}
+	});
+	g_dbg_opt.lock.unlock();
 }
 
 void
-read_setting_files(cpu_t *cpu)
+write_dbg_opt()
 {
-	read_ini_file();
-	read_breakpoints_file(cpu);
-}
-
-template<typename T>
-static void
-write_value_to_ini(std::ofstream *ofs, std::string_view key, T value)
-{
-	std::array<char, 50> line; // hopefully large enough to store any value
-	std::copy(key.begin(), key.end(), line.begin());
-	auto ret = std::to_chars(line.data() + key.size(), line.data() + line.size(), value);
-	assert(ret.ec == std::errc());
-	*ret.ptr++ = '\n';
-	*ret.ptr = '\0';
-	*ofs << std::string_view(line.data(), ret.ptr);
-}
-
-static void
-write_ini_file()
-{
-	std::ofstream ofs("lib86dbg.ini", std::ios_base::out | std::ios_base::trunc);
-	if (ofs.is_open()) {
-		write_value_to_ini(&ofs, "width=", main_wnd_w);
-		write_value_to_ini(&ofs, "height=", main_wnd_h);
-		write_value_to_ini(&ofs, "text_r=", text_col[0]);
-		write_value_to_ini(&ofs, "text_g=", text_col[1]);
-		write_value_to_ini(&ofs, "text_b=", text_col[2]);
-		write_value_to_ini(&ofs, "break_r=", break_col[0]);
-		write_value_to_ini(&ofs, "break_g=", break_col[1]);
-		write_value_to_ini(&ofs, "break_b=", break_col[2]);
-		write_value_to_ini(&ofs, "bk_r=", bk_col[0]);
-		write_value_to_ini(&ofs, "bk_g=", bk_col[1]);
-		write_value_to_ini(&ofs, "bk_b=", bk_col[2]);
-	}
-	else {
-		LOG(log_level::info, "Could not save lib86dbg.ini file");
-	}
-}
-
-static void
-write_breakpoints_file(cpu_t *cpu)
-{
-	std::string brk_file = cpu->dbg_name + ".ini";
-	std::ofstream ofs(brk_file, std::ios_base::out | std::ios_base::trunc);
-	if (ofs.is_open()) {
-		std::for_each(break_list.begin(), break_list.end(), [&ofs](const std::pair<addr_t, brk_info> &elem) {
-			std::array<char, 14> line;
-			line[0] = '0';
-			line[1] = 'x';
-			auto ret = std::to_chars(line.data() + 2, line.data() + line.size(), elem.first, 16);
-			assert(ret.ec == std::errc());
-			*ret.ptr++ = ',';
-			*ret.ptr++ = '0';
-			*ret.ptr++ = '\n';
-			*ret.ptr = '\0';
-			ofs << std::string_view(line.data(), ret.ptr);
-			});
-
-		for (const auto &[addr, watch_size] : watch_list) {
-			if (watch_size) {
-				std::array<char, 16> line;
-				line[0] = '0';
-				line[1] = 'x';
-				auto ret = std::to_chars(line.data() + 2, line.data() + line.size(), addr, 16);
-				assert(ret.ec == std::errc());
-				*ret.ptr++ = ',';
-				*ret.ptr++ = '1';
-				*ret.ptr++ = ',';
-				ret = std::to_chars(ret.ptr, line.data() + line.size(), watch_size, 10);
-				assert(ret.ec == std::errc());
-				*ret.ptr++ = '\n';
-				*ret.ptr = '\0';
-				ofs << std::string_view(line.data(), ret.ptr);
-			}
+	g_dbg_opt.lock.lock();
+	g_dbg_opt.width = g_main_wnd_w;
+	g_dbg_opt.height = g_main_wnd_h;
+	g_dbg_opt.txt_col[0] = g_txt_col[0];
+	g_dbg_opt.txt_col[1] = g_txt_col[1];
+	g_dbg_opt.txt_col[2] = g_txt_col[2];
+	g_dbg_opt.brk_col[0] = g_brk_col[0];
+	g_dbg_opt.brk_col[1] = g_brk_col[1];
+	g_dbg_opt.brk_col[2] = g_brk_col[2];
+	g_dbg_opt.bkg_col[0] = g_bkg_col[0];
+	g_dbg_opt.bkg_col[1] = g_bkg_col[1];
+	g_dbg_opt.bkg_col[2] = g_bkg_col[2];
+	g_dbg_opt.brk_map.clear();
+	std::for_each(break_list.begin(), break_list.end(), [](const decltype(break_list)::value_type &elem) {
+		brk_t brk_type = elem.second.type;
+		if ((brk_type == brk_t::breakpoint) || (brk_type == brk_t::watchpoint)) {
+			g_dbg_opt.brk_map.emplace(elem.first, static_cast<int>(brk_type) );
 		}
-	}
-	else {
-		LOG(log_level::error, "Could not save breakpoint file %s", brk_file.c_str());
-	}
-
-	break_list.clear();
-	watch_list.fill(std::make_pair(0, 0));
-}
-
-void
-write_setting_files(cpu_t *cpu)
-{
-	write_ini_file();
-	write_breakpoints_file(cpu);
+	});
+	g_dbg_opt.lock.unlock();
 }
 
 static std::vector<std::pair<addr_t, std::string>>
