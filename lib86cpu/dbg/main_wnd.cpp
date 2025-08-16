@@ -18,9 +18,9 @@
 #include "debugger.h"
 
 
-static GLFWwindow *main_wnd = nullptr;
-static std::atomic_flag has_terminated;
-static std::atomic_flag exit_requested;
+static GLFWwindow *g_main_wnd = nullptr;
+static std::atomic_flag g_has_terminated;
+static std::atomic_flag g_exit_requested;
 
 
 void
@@ -58,15 +58,15 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 			return;
 		}
 
-		main_wnd = glfwCreateWindow(g_main_wnd_w, g_main_wnd_h, "Lib86dbg", nullptr, nullptr);
-		if (!main_wnd) {
+		g_main_wnd = glfwCreateWindow(g_main_wnd_w, g_main_wnd_h, "Lib86dbg", nullptr, nullptr);
+		if (!g_main_wnd) {
 			last_error = "Failed to create the debugger window";
 			glfwTerminate();
 			has_err.set_value(init_has_err);
 			return;
 		}
 
-		glfwMakeContextCurrent(main_wnd);
+		glfwMakeContextCurrent(g_main_wnd);
 
 		if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
 			last_error = "Failed to load OpenGL functions";
@@ -82,28 +82,28 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 			return;
 		}
 
-		glfwSetFramebufferSizeCallback(main_wnd, dbg_draw_wnd);
+		glfwSetFramebufferSizeCallback(g_main_wnd, dbg_draw_wnd);
 
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
 		ImGui::StyleColorsDark();
-		ImGui_ImplGlfw_InitForOpenGL(main_wnd, true);
+		ImGui_ImplGlfw_InitForOpenGL(g_main_wnd, true);
 		ImGui_ImplOpenGL3_Init();
 
-		break_pc = get_pc(&cpu->cpu_ctx);
-		mem_pc = break_pc;
+		g_break_pc = get_pc(&cpu->cpu_ctx);
+		g_mem_pc = g_break_pc;
 		g_cpu = cpu;
 
 		init_has_err = false;
-		has_terminated.clear();
-		exit_requested.clear();
-		guest_running.clear();
+		g_has_terminated.clear();
+		g_exit_requested.clear();
+		g_guest_running.clear();
 		has_err.set_value(init_has_err);
 
-		while (!glfwWindowShouldClose(main_wnd)) {
+		while (!glfwWindowShouldClose(g_main_wnd)) {
 			int fb_w, fb_h;
-			glfwGetFramebufferSize(main_wnd, &fb_w, &fb_h);
-			dbg_draw_wnd(main_wnd, fb_w, fb_h);
+			glfwGetFramebufferSize(g_main_wnd, &fb_w, &fb_h);
+			dbg_draw_wnd(g_main_wnd, fb_w, fb_h);
 
 			glfwWaitEventsTimeout(0.5);
 		}
@@ -116,21 +116,21 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		}
 		// fallthrough to the handling code below, this happens when dbg_draw_wnd fails to update the breakpoints
 		cpu->raise_int_fn(&cpu->cpu_ctx, CPU_ABORT_INT);
-		guest_running.test_and_set();
-		guest_running.notify_one();
+		g_guest_running.test_and_set();
+		g_guest_running.notify_one();
 	}
 
 	// raise an abort interrupt and wait until the guest stops execution
 	cpu->raise_int_fn(&cpu->cpu_ctx, CPU_ABORT_INT);
-	guest_running.wait(true);
+	g_guest_running.wait(true);
 
-	// set guest_running in the case the guest is waiting in dbg_sw_breakpoint_handler
-	guest_running.test_and_set();
-	guest_running.notify_one();
+	// set g_guest_running in the case the guest is waiting in dbg_sw_breakpoint_handler
+	g_guest_running.test_and_set();
+	g_guest_running.notify_one();
 
-	exit_requested.wait(false);
+	g_exit_requested.wait(false);
 
-	glfwGetWindowSize(main_wnd, &g_main_wnd_w, &g_main_wnd_h);
+	glfwGetWindowSize(g_main_wnd, &g_main_wnd_w, &g_main_wnd_h);
 
 	ImGui_ImplOpenGL3_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
@@ -140,21 +140,21 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 
 	write_dbg_opt();
 
-	main_wnd = nullptr;
+	g_main_wnd = nullptr;
 	g_cpu = nullptr;
-	exit_requested.clear();
-	has_terminated.test_and_set();
-	has_terminated.notify_one();
+	g_exit_requested.clear();
+	g_has_terminated.test_and_set();
+	g_has_terminated.notify_one();
 }
 
 void
 dbg_should_close()
 {
-	glfwSetWindowShouldClose(main_wnd, GLFW_TRUE);
+	glfwSetWindowShouldClose(g_main_wnd, GLFW_TRUE);
 	glfwPostEmptyEvent();
-	guest_running.clear();
-	guest_running.notify_one();
-	exit_requested.test_and_set();
-	exit_requested.notify_one();
-	has_terminated.wait(false);
+	g_guest_running.clear();
+	g_guest_running.notify_one();
+	g_exit_requested.test_and_set();
+	g_exit_requested.notify_one();
+	g_has_terminated.wait(false);
 }

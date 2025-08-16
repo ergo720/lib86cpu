@@ -30,7 +30,7 @@ read_dbg_opt()
 	std::for_each(g_dbg_opt.brk_map.begin(), g_dbg_opt.brk_map.end(), [](const decltype(g_dbg_opt.brk_map)::value_type &elem) {
 		brk_t brk_type = static_cast<brk_t>(elem.second);
 		if ((brk_type == brk_t::breakpoint) || (brk_type == brk_t::watchpoint)) {
-			break_list.emplace(elem.first, brk_info{ 0, brk_type });
+			g_break_list.emplace(elem.first, brk_info{ 0, brk_type });
 		}
 	});
 	g_dbg_opt.lock.unlock();
@@ -52,7 +52,7 @@ write_dbg_opt()
 	g_dbg_opt.bkg_col[1] = g_bkg_col[1];
 	g_dbg_opt.bkg_col[2] = g_bkg_col[2];
 	g_dbg_opt.brk_map.clear();
-	std::for_each(break_list.begin(), break_list.end(), [](const decltype(break_list)::value_type &elem) {
+	std::for_each(g_break_list.begin(), g_break_list.end(), [](const decltype(g_break_list)::value_type &elem) {
 		brk_t brk_type = elem.second.type;
 		if ((brk_type == brk_t::breakpoint) || (brk_type == brk_t::watchpoint)) {
 			g_dbg_opt.brk_map.emplace(elem.first, static_cast<int>(brk_type) );
@@ -119,7 +119,7 @@ dbg_disas_code_block(cpu_t *cpu, addr_t pc, unsigned instr_num)
 	ZydisDecoder decoder;
 	init_instr_decoder(&disas_ctx, &decoder);
 	const auto &ret = dbg_disas_code_block(cpu, &disas_ctx, &decoder, instr_num);
-	break_pc = disas_ctx.virt_pc;
+	g_break_pc = disas_ctx.virt_pc;
 	wp_data.swap(cpu->wp_data);
 	wp_io.swap(cpu->wp_io);
 	return ret;
@@ -129,9 +129,9 @@ void
 dbg_ram_read(cpu_t *cpu, uint8_t *buff)
 {
 	uint64_t actual_size;
-	if (!LC86_SUCCESS(mem_read_block_virt(cpu, mem_pc, PAGE_SIZE, buff, &actual_size))) {
+	if (!LC86_SUCCESS(mem_read_block_virt(cpu, g_mem_pc, PAGE_SIZE, buff, &actual_size))) {
 		std::memset(&buff[actual_size], 0, PAGE_SIZE - actual_size);
-		LOG(log_level::info, "Failed to read at address 0x%08" PRIX32, mem_pc);
+		LOG(log_level::info, "Failed to read at address 0x%08" PRIX32, g_mem_pc);
 	}
 }
 
@@ -140,7 +140,7 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 {
 	// NOTE: off is the offset from the address that is displayed in the memory editor
 
-	addr_t addr = static_cast<addr_t>(off) + mem_pc;
+	addr_t addr = static_cast<addr_t>(off) + g_mem_pc;
 
 	// clear wp of cr0, so that we can write to read-only pages
 	uint32_t old_wp = g_cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK;
@@ -196,11 +196,11 @@ dbg_single_step_handler(cpu_ctx_t *cpu_ctx)
 	dbg_remove_sw_breakpoints(cpu_ctx->cpu);
 
 	// wait until the debugger continues execution
-	break_pc = mem_pc = cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
-	mem_editor_update = true;
-	guest_running.clear();
-	guest_running.notify_one();
-	guest_running.wait(false);
+	g_break_pc = g_mem_pc = cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
+	g_mem_editor_update = true;
+	g_guest_running.clear();
+	g_guest_running.notify_one();
+	g_guest_running.wait(false);
 	dbg_apply_sw_breakpoints(cpu_ctx->cpu);
 }
 
@@ -210,31 +210,31 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 	// NOTE: this is called from the emulation thread
 
 	addr_t pc = cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip - 1; // if this is our int3, it will always be one byte large
-	if (auto it = break_list.find(pc); it != break_list.end()) {
+	if (auto it = g_break_list.find(pc); it != g_break_list.end()) {
 		// disable all breakpoints so that we can show the original instructions in the disassembler
 		dbg_remove_sw_breakpoints(cpu_ctx->cpu);
 		if (it->second.type == brk_t::step_over) {
-			break_list.erase(it);
+			g_break_list.erase(it);
 		}
 		else {
-			std::vector<decltype(break_list)::key_type> key_vec;
-			for (auto &&elem : break_list) {
+			std::vector<decltype(g_break_list)::key_type> key_vec;
+			for (auto &&elem : g_break_list) {
 				if (elem.second.type == brk_t::step_over) {
 					key_vec.emplace_back(elem.first);
 				}
 			}
 			for (auto &&key : key_vec) {
-				break_list.erase(key);
+				g_break_list.erase(key);
 			}
 			g_step_out_active = false;
 		}
 
 		// wait until the debugger continues execution
-		break_pc = mem_pc = pc;
-		mem_editor_update = true;
-		guest_running.clear();
-		guest_running.notify_one();
-		guest_running.wait(false);
+		g_break_pc = g_mem_pc = pc;
+		g_mem_editor_update = true;
+		g_guest_running.clear();
+		g_guest_running.notify_one();
+		g_guest_running.wait(false);
 
 		cpu_ctx->regs.eip -= 1;
 		dbg_remove_sw_breakpoints(cpu_ctx->cpu, pc);
@@ -303,10 +303,10 @@ void
 dbg_setup_sw_breakpoints(cpu_t *cpu)
 {
 	dbg_update_sw_breakpoints(cpu, [](cpu_t *cpu) {
-		for (const auto &elem : break_list) {
+		for (const auto &elem : g_break_list) {
 			addr_t addr = elem.first;
 			uint8_t original_byte = mem_read_helper<uint8_t>(&cpu->cpu_ctx, addr, 0);
-			break_list.insert_or_assign(addr, brk_info{ original_byte, brk_t::breakpoint });
+			g_break_list.insert_or_assign(addr, brk_info{ original_byte, brk_t::breakpoint });
 		}
 		});
 }
@@ -356,7 +356,7 @@ dbg_apply_sw_breakpoints(cpu_t *cpu, addr_t addr, brk_t type)
 		// call to dbg_sw_breakpoint_handler from dbg_single_step_handler, that is, single-stepping a breakpoint
 		mem_write_helper<uint8_t>(&cpu->cpu_ctx, addr, 0xCC, 0); // write int3
 		cpu->clear_int_fn(&g_cpu->cpu_ctx, CPU_HALT_TC_INT);
-		break_list.insert_or_assign(addr, brk_info{ original_byte, type });
+		g_break_list.insert_or_assign(addr, brk_info{ original_byte, type });
 	}
 }
 
@@ -364,7 +364,7 @@ void
 dbg_apply_sw_breakpoints(cpu_t *cpu)
 {
 	dbg_update_sw_breakpoints(cpu, [](cpu_t *cpu) {
-		for (const auto &elem : break_list) {
+		for (const auto &elem : g_break_list) {
 			dbg_apply_sw_breakpoints(cpu, elem.first, elem.second.type);
 		}
 		});
@@ -381,7 +381,7 @@ void
 dbg_remove_sw_breakpoints(cpu_t *cpu)
 {
 	dbg_update_sw_breakpoints(cpu, [](cpu_t *cpu) {
-		for (const auto &elem : break_list) {
+		for (const auto &elem : g_break_list) {
 			dbg_remove_sw_breakpoints(cpu, elem.first, elem.second.original_byte);
 		}
 		});
@@ -391,7 +391,7 @@ void
 dbg_remove_sw_breakpoints(cpu_t *cpu, addr_t addr)
 {
 	dbg_update_sw_breakpoints(cpu, [&](cpu_t *cpu) {
-		if (const auto it = break_list.find(addr); it != break_list.end()) {
+		if (const auto it = g_break_list.find(addr); it != g_break_list.end()) {
 			dbg_remove_sw_breakpoints(cpu, it->first, it->second.original_byte);
 		}
 		});

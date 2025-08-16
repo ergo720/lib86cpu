@@ -33,14 +33,14 @@ void dbg_ram_write(uint8_t *data, size_t off, uint8_t val);
 void dbg_exec_original_instr(cpu_t *cpu);
 
 inline cpu_t *g_cpu;
-inline bool mem_editor_update = true;
-inline std::atomic_flag guest_running;
-inline uint32_t break_pc;
-inline uint32_t mem_pc;
+inline bool g_mem_editor_update = true;
+inline std::atomic_flag g_guest_running;
+inline uint32_t g_break_pc;
+inline uint32_t g_mem_pc;
 inline bool g_step_out_active = false;
 
-inline std::unordered_map<addr_t, brk_info> break_list;
-inline std::array<std::pair<addr_t, size_t>, 4> watch_list;
+inline std::unordered_map<addr_t, brk_info> g_break_list;
+inline std::array<std::pair<addr_t, size_t>, 4> g_watch_list;
 
 inline int g_main_wnd_w;
 inline int g_main_wnd_h;

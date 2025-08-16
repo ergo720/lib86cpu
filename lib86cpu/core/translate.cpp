@@ -2032,7 +2032,7 @@ lc86_status cpu_start(cpu_t *cpu)
 			return set_last_error(lc86_status::internal_error);
 		}
 		// wait until the debugger continues execution, so that users have a chance to set breakpoints and/or inspect the guest code
-		guest_running.wait(false);
+		g_guest_running.wait(false);
 	}
 
 	if constexpr (run_forever == false) {

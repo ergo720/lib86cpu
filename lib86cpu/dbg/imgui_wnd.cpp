@@ -30,8 +30,8 @@ dbg_handle_continue(cpu_t *cpu) // default: F5
 	const char *text = "Not available while debuggee is running";
 	ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
 	ImGui::Text("%s", text);
-	guest_running.test_and_set();
-	guest_running.notify_one();
+	g_guest_running.test_and_set();
+	g_guest_running.notify_one();
 }
 
 static void
@@ -39,14 +39,14 @@ dbg_handle_breakpoint_toggle(cpu_t *cpu) // default: F9
 {
 	if (!g_disas_data.empty()) { // it will happen if the first instr cannot be decoded
 		addr_t addr = (g_disas_data.begin() + g_instr_sel)->first;
-		if (break_list.contains(addr)) {
+		if (g_break_list.contains(addr)) {
 			dbg_remove_sw_breakpoints(cpu, addr);
-			break_list.erase(addr);
+			g_break_list.erase(addr);
 		}
 		else {
 			if (const auto &opt = dbg_insert_sw_breakpoint(cpu, addr); opt) {
 				g_show_popup = false;
-				break_list.emplace(addr, brk_info{ *opt, brk_t::breakpoint });
+				g_break_list.emplace(addr, brk_info{ *opt, brk_t::breakpoint });
 			}
 			else {
 				g_show_popup = true;
@@ -65,8 +65,8 @@ dbg_handle_step_into(cpu_t *cpu) // default: F11
 	const char *text = "Not available while debuggee is running";
 	ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
 	ImGui::Text("%s", text);
-	guest_running.test_and_set();
-	guest_running.notify_one();
+	g_guest_running.test_and_set();
+	g_guest_running.notify_one();
 }
 
 static void
@@ -78,7 +78,7 @@ dbg_handle_step_over(cpu_t *cpu) // default: F10
 			addr_t addr = (++g_disas_data.begin())->first;
 			if (const auto &opt = dbg_insert_sw_breakpoint(cpu, addr); opt) {
 				g_show_popup = false;
-				break_list.emplace(addr, brk_info{ *opt, brk_t::step_over });
+				g_break_list.emplace(addr, brk_info{ *opt, brk_t::step_over });
 				dbg_handle_continue(cpu);
 			}
 			else {
@@ -136,26 +136,26 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 		ImGui::ColorEdit3("Breakpoint color", g_brk_col);
 		ImGui::ColorEdit3("Background color", g_bkg_col);
 		ImGui::BeginChild("Disassembler view");
-		if (!guest_running.test()) {
+		if (!g_guest_running.test()) {
 			if (ImGui::IsKeyPressed(ImGuiKey_F5)) {
 				dbg_handle_continue(cpu);
 			}
 			else {
 				unsigned instr_to_print = DISAS_INSTR_CACHED_NUM;
 				if (enter_pressed) {
-					// NOTE: it can't fail because ImGui::InputText only accepts hex digits and break_pc is large enough to store every possible 32 bit address
-					[[maybe_unused]] auto ret = std::from_chars(buff, buff + sizeof(buff), break_pc, 16);
+					// NOTE: it can't fail because ImGui::InputText only accepts hex digits and g_break_pc is large enough to store every possible 32 bit address
+					[[maybe_unused]] auto ret = std::from_chars(buff, buff + sizeof(buff), g_break_pc, 16);
 					assert(ret.ec == std::errc());
 					g_disas_data.clear();
 					g_instr_sel = 0;
 				}
 				if (g_disas_data.empty()) {
 					// this happens the first time the disassembler window is displayed
-					g_disas_data = dbg_disas_code_block(cpu, break_pc, instr_to_print);
+					g_disas_data = dbg_disas_code_block(cpu, g_break_pc, instr_to_print);
 				} else if (ImGui::GetScrollY() == ImGui::GetScrollMaxY()) {
 					// the user has scrolled up to the end of the instr block we previously cached, so we need to disassemble a new block
 					// and append it to the end of the cached data
-					const auto &disas_next_block = dbg_disas_code_block(cpu, break_pc, instr_to_print);
+					const auto &disas_next_block = dbg_disas_code_block(cpu, g_break_pc, instr_to_print);
 					g_disas_data.insert(g_disas_data.end(), std::make_move_iterator(disas_next_block.begin()), std::make_move_iterator(disas_next_block.end()));
 				}
 				assert(std::adjacent_find(g_disas_data.begin(), g_disas_data.end(), [](const auto &lhs, const auto &rhs)
@@ -170,7 +170,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 						char buffer[256 + 12 + 1];
 						addr_t addr = (g_disas_data.begin() + num_instr_printed)->first;
 						std::snprintf(buffer, sizeof(buffer), "0x%08X  %s", addr, (g_disas_data.begin() + num_instr_printed)->second.c_str());
-						if (break_list.contains(addr)) {
+						if (g_break_list.contains(addr)) {
 							// draw breakpoint with a different text color
 							ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(brk_r, brk_g, brk_b, 1.0f));
 							if (ImGui::Selectable(buffer, g_instr_sel == num_instr_printed)) {
@@ -239,21 +239,21 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 		ImGui::ColorEdit3("Text color", g_txt_col);
 		ImGui::ColorEdit3("Background color", g_bkg_col);
 		ImGui::BeginChild("Memory view");
-		if (!guest_running.test()) {
+		if (!g_guest_running.test()) {
 			static uint8_t mem_buff[PAGE_SIZE];
 			static MemoryEditor mem_editor;
 			mem_editor.WriteFn = &dbg_ram_write;
 			if (enter_pressed) {
-				// NOTE: it can't fail because ImGui::InputText only accepts hex digits and mem_pc is large enough to store every possible 32 bit address
-				[[maybe_unused]] auto ret = std::from_chars(buff, buff + sizeof(buff), mem_pc, 16);
+				// NOTE: it can't fail because ImGui::InputText only accepts hex digits and g_mem_pc is large enough to store every possible 32 bit address
+				[[maybe_unused]] auto ret = std::from_chars(buff, buff + sizeof(buff), g_mem_pc, 16);
 				assert(ret.ec == std::errc());
-				mem_editor_update = true;
+				g_mem_editor_update = true;
 			}
-			if (mem_editor_update) {
+			if (g_mem_editor_update) {
 				dbg_ram_read(cpu, mem_buff);
-				mem_editor_update = false;
+				g_mem_editor_update = false;
 			}
-			mem_editor.DrawContents(mem_buff, PAGE_SIZE, mem_pc);
+			mem_editor.DrawContents(mem_buff, PAGE_SIZE, g_mem_pc);
 		}
 		else {
 			const char *text = "Not available while debuggee is running";
@@ -270,7 +270,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 		ImGui::ColorEdit3("Text color", g_txt_col);
 		ImGui::ColorEdit3("Background color", g_bkg_col);
 		ImGui::BeginChild("Registers view");
-		if (!guest_running.test()) {
+		if (!g_guest_running.test()) {
 			ImGui::Text("eax: 0x%08X  ecx: 0x%08X  edx: 0x%08X  ebx: 0x%08X  esp: 0x%08X  ebp: 0x%08X  esi: 0x%08X  edi: 0x%08X",
 				cpu->cpu_ctx.regs.eax,
 				cpu->cpu_ctx.regs.ecx,

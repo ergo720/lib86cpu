@@ -909,7 +909,7 @@ uint32_t update_crN_helper(cpu_ctx_t *cpu_ctx, uint32_t new_cr, uint8_t idx)
 				// remove all breakpoints if the debugger is present
 				if (cpu_ctx->cpu->cpu_flags & CPU_DBG_PRESENT) {
 					dbg_remove_sw_breakpoints(cpu_ctx->cpu);
-					break_list.clear();
+					g_break_list.clear();
 					LOG(log_level::info, "Removed all breakpoints because cpu mode changed");
 				}
 			}
