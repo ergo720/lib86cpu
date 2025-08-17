@@ -16,13 +16,41 @@
 #define DISAS_INSTR_CACHED_NUM 50
 
 
+enum class dbg_command_t {
+	step_into,
+	step_out,
+	step_over,
+	toggle_brk,
+	continue_,
+};
+
 static std::vector<std::pair<addr_t, std::string>> g_disas_data;
 static unsigned g_instr_sel = 0;
 static bool g_show_popup = false;
+static regs_t g_last_regs;
+static uint32_t g_last_eflags;
+static uint16_t g_last_fstatus;
+static uint16_t g_last_ftags;
+static bool g_regs_need_update;
+
+static_assert(std::is_trivially_copyable_v<regs_t>); // make sure we can use std::copy on regs_t
+
+void
+dbg_copy_registers(cpu_t *cpu)
+{
+	std::copy(&cpu->cpu_ctx.regs, &cpu->cpu_ctx.regs + 1, &g_last_regs);
+	g_last_eflags = read_eflags(cpu);
+	g_last_fstatus = read_fstatus(cpu);
+	g_last_ftags = read_ftags(cpu);
+	g_regs_need_update = false;
+}
 
 static void
 dbg_handle_continue(cpu_t *cpu) // default: F5
 {
+	if (!g_step_out_active) {
+		dbg_copy_registers(cpu);
+	}
 	cpu->cpu_flags &= ~CPU_SINGLE_STEP;
 	g_disas_data.clear();
 	g_instr_sel = 0;
@@ -59,6 +87,9 @@ static void
 dbg_handle_step_into(cpu_t *cpu) // default: F11
 {
 	// don't reinstall the sw breakpoints because, if we are single-stepping one of them, we will receive a bp exp again, instead of a db exp
+	if (!g_step_out_active) {
+		dbg_copy_registers(cpu);
+	}
 	cpu->cpu_flags |= CPU_SINGLE_STEP;
 	g_disas_data.clear();
 	g_instr_sel = 0;
@@ -107,6 +138,35 @@ dbg_handle_step_out(cpu_t *cpu) // default: F12
 	}
 }
 
+template<dbg_command_t command>
+void exec_dbg_command(cpu_t *cpu)
+{
+	if constexpr (command != dbg_command_t::toggle_brk) {
+		if (g_step_out_active == false) {
+			g_regs_need_update = true;
+		}
+	}
+
+	if constexpr (command == dbg_command_t::step_into) {
+		dbg_handle_step_into(cpu);
+	}
+	else if constexpr (command == dbg_command_t::step_out) {
+		dbg_handle_step_out(cpu);
+	}
+	else if constexpr (command == dbg_command_t::step_over) {
+		dbg_handle_step_over(cpu);
+	}
+	else if constexpr (command == dbg_command_t::toggle_brk) {
+		dbg_handle_breakpoint_toggle(cpu);
+	}
+	else if constexpr (command == dbg_command_t::continue_) {
+		dbg_handle_continue(cpu);
+	}
+	else {
+		throw std::logic_error("Unknown debugger command");
+	}
+}
+
 void
 dbg_draw_imgui_wnd(cpu_t *cpu)
 {
@@ -121,6 +181,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 	static const auto &[txt_r, txt_g, txt_b] = g_txt_col;
 	static const auto &[brk_r, brk_g, brk_b] = g_brk_col;
 	static const auto &[bkg_r, bkg_g, bkg_b] = g_bkg_col;
+	static const auto &[reg_r, reg_g, reg_b] = g_reg_col;
 
 	ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
 	ImGui::SetNextWindowSize(ImVec2((wnd_w - 30) / 2, (wnd_h - 30) / 2), ImGuiCond_FirstUseEver);
@@ -138,7 +199,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 		ImGui::BeginChild("Disassembler view");
 		if (!g_guest_running.test()) {
 			if (ImGui::IsKeyPressed(ImGuiKey_F5)) {
-				dbg_handle_continue(cpu);
+				exec_dbg_command<dbg_command_t::continue_>(cpu);
 			}
 			else {
 				unsigned instr_to_print = DISAS_INSTR_CACHED_NUM;
@@ -206,16 +267,16 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 				}
 				else {
 					if (g_step_out_active || (ImGui::IsKeyPressed(ImGuiKey_F12))) {
-						dbg_handle_step_out(cpu);
+						exec_dbg_command<dbg_command_t::step_out>(cpu);
 					}
 					else if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
-						dbg_handle_step_into(cpu);
+						exec_dbg_command<dbg_command_t::step_into>(cpu);
 					}
 					else if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
-						dbg_handle_step_over(cpu);
+						exec_dbg_command<dbg_command_t::step_over>(cpu);
 					}
 					else if (ImGui::IsKeyPressed(ImGuiKey_F9)) {
-						dbg_handle_breakpoint_toggle(cpu);
+						exec_dbg_command<dbg_command_t::toggle_brk>(cpu);
 					}
 				}
 			}
@@ -269,135 +330,208 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 	if (ImGui::Begin("Registers")) {
 		ImGui::ColorEdit3("Text color", g_txt_col);
 		ImGui::ColorEdit3("Background color", g_bkg_col);
+		ImGui::ColorEdit3("Register change color", g_reg_col);
 		ImGui::BeginChild("Registers view");
 		if (!g_guest_running.test()) {
-			ImGui::Text("eax: 0x%08X  ecx: 0x%08X  edx: 0x%08X  ebx: 0x%08X  esp: 0x%08X  ebp: 0x%08X  esi: 0x%08X  edi: 0x%08X",
-				cpu->cpu_ctx.regs.eax,
-				cpu->cpu_ctx.regs.ecx,
-				cpu->cpu_ctx.regs.edx,
-				cpu->cpu_ctx.regs.ebx,
-				cpu->cpu_ctx.regs.esp,
-				cpu->cpu_ctx.regs.ebp,
-				cpu->cpu_ctx.regs.esi,
-				cpu->cpu_ctx.regs.edi
-			);
-			ImGui::Text("eflags: 0x%08X  eip: 0x%08X  cs: 0x%04hX  es: 0x%04hX  ss: 0x%04hX  ds: 0x%04hX  fs 0x%04hX  gs: 0x%04hX",
-				read_eflags(cpu),
-				cpu->cpu_ctx.regs.eip,
-				cpu->cpu_ctx.regs.cs,
-				cpu->cpu_ctx.regs.es,
-				cpu->cpu_ctx.regs.ss,
-				cpu->cpu_ctx.regs.ds,
-				cpu->cpu_ctx.regs.fs,
-				cpu->cpu_ctx.regs.gs
-			);
-			ImGui::Text("cs.base: 0x%08X  cs.limit: 0x%08X  cs.flags: 0x%08X  es.base: 0x%08X  es.limit: 0x%08X  es.flags: 0x%08X  ss.base: 0x%08X  ss.limit: 0x%08X",
-				cpu->cpu_ctx.regs.cs_hidden.base,
-				cpu->cpu_ctx.regs.cs_hidden.limit,
-				cpu->cpu_ctx.regs.cs_hidden.flags,
-				cpu->cpu_ctx.regs.es_hidden.base,
-				cpu->cpu_ctx.regs.es_hidden.limit,
-				cpu->cpu_ctx.regs.es_hidden.flags,
-				cpu->cpu_ctx.regs.ss_hidden.base,
-				cpu->cpu_ctx.regs.ss_hidden.limit
-			);
-			ImGui::Text("ss.limit: 0x%08X  ds.base: 0x%08X  ds.limit: 0x%08X  ds.flags: 0x%08X  fs.base: 0x%08X  fs.limit: 0x%08X  fs.flags: 0x%08X  gs.base: 0x%08X",
-				cpu->cpu_ctx.regs.ss_hidden.flags,
-				cpu->cpu_ctx.regs.ds_hidden.base,
-				cpu->cpu_ctx.regs.ds_hidden.limit,
-				cpu->cpu_ctx.regs.ds_hidden.flags,
-				cpu->cpu_ctx.regs.fs_hidden.base,
-				cpu->cpu_ctx.regs.fs_hidden.limit,
-				cpu->cpu_ctx.regs.fs_hidden.flags,
-				cpu->cpu_ctx.regs.gs_hidden.base
-			);
-			ImGui::Text("gs.limit: 0x%08X  gs.flags: 0x%08X  ldtr: 0x%04hX  tr: 0x%04hX  idtr.base: 0x%08X  idtr.limit: 0x%08X  gdtr.base: 0x%08X  gdtr.limit: 0x%08X",
-				cpu->cpu_ctx.regs.gs_hidden.limit,
-				cpu->cpu_ctx.regs.gs_hidden.flags,
-				cpu->cpu_ctx.regs.ldtr,
-				cpu->cpu_ctx.regs.tr,
-				cpu->cpu_ctx.regs.idtr_hidden.base,
-				cpu->cpu_ctx.regs.idtr_hidden.limit,
-				cpu->cpu_ctx.regs.gdtr_hidden.base,
-				cpu->cpu_ctx.regs.gdtr_hidden.limit
-			);
-			ImGui::Text("ldtr.base: 0x%08X  ldtr.limit: 0x%08X  ldtr.flags: 0x%08X  tr.base: 0x%08X  tr.limit: 0x%08X  tr.flags: 0x%08X",
-				cpu->cpu_ctx.regs.ldtr_hidden.base,
-				cpu->cpu_ctx.regs.ldtr_hidden.limit,
-				cpu->cpu_ctx.regs.ldtr_hidden.flags,
-				cpu->cpu_ctx.regs.tr_hidden.base,
-				cpu->cpu_ctx.regs.tr_hidden.limit,
-				cpu->cpu_ctx.regs.tr_hidden.flags
-			);
-			ImGui::Text("cr0: 0x%08X  cr2: 0x%08X  cr3: 0x%08X  cr4: 0x%08X",
-				cpu->cpu_ctx.regs.cr0,
-				cpu->cpu_ctx.regs.cr2,
-				cpu->cpu_ctx.regs.cr3,
-				cpu->cpu_ctx.regs.cr4
-			);
-			ImGui::Text("dr0: 0x%08X  dr1: 0x%08X  dr2: 0x%08X  dr3: 0x%08X  dr4: 0x%08X  dr5: 0x%08X  dr6: 0x%08X  dr7: 0x%08X",
-				cpu->cpu_ctx.regs.dr[0],
-				cpu->cpu_ctx.regs.dr[1],
-				cpu->cpu_ctx.regs.dr[2],
-				cpu->cpu_ctx.regs.dr[3],
-				cpu->cpu_ctx.regs.dr[4],
-				cpu->cpu_ctx.regs.dr[5],
-				cpu->cpu_ctx.regs.dr[6],
-				cpu->cpu_ctx.regs.dr[7]
-			);
-			ImGui::Text("r0.h: 0x%04hX  r0.l: 0x%016" PRIX64 "  r1.h: 0x%04hX  r1.l: 0x%016" PRIX64 "  r2.h: 0x%04hX  r2.l: 0x%016" PRIX64 "  r3.h: 0x%04hX  r3.l: 0x%016" PRIX64,
-				cpu->cpu_ctx.regs.fr[0].high,
-				cpu->cpu_ctx.regs.fr[0].low,
-				cpu->cpu_ctx.regs.fr[1].high,
-				cpu->cpu_ctx.regs.fr[1].low,
-				cpu->cpu_ctx.regs.fr[2].high,
-				cpu->cpu_ctx.regs.fr[2].low,
-				cpu->cpu_ctx.regs.fr[3].high,
-				cpu->cpu_ctx.regs.fr[3].low
-			);
-			ImGui::Text("r4.h: 0x%04hX  r4.l: 0x%016" PRIX64 "  r5.h: 0x%04hX  r5.l: 0x%016" PRIX64 "  r6.h: 0x%04hX  r6.l: 0x%016" PRIX64 "  r7.h: 0x%04hX  r7.l: 0x%016" PRIX64,
-				cpu->cpu_ctx.regs.fr[4].high,
-				cpu->cpu_ctx.regs.fr[4].low,
-				cpu->cpu_ctx.regs.fr[5].high,
-				cpu->cpu_ctx.regs.fr[5].low,
-				cpu->cpu_ctx.regs.fr[6].high,
-				cpu->cpu_ctx.regs.fr[6].low,
-				cpu->cpu_ctx.regs.fr[7].high,
-				cpu->cpu_ctx.regs.fr[7].low
-			);
-			ImGui::Text("fctrl: 0x%04hX  fstatus: 0x%04hX  ftags: 0x%04hX",
-				cpu->cpu_ctx.regs.fctrl,
-				read_fstatus(cpu),
-				read_ftags(cpu)
-			);
-			ImGui::Text("fcs: 0x%04hX  fip: 0x%08hX  fds: 0x%04hX  fdp: 0x%08hX  fop: 0x%04hX  mxcsr: 0x%08hX",
-				cpu->cpu_ctx.regs.fcs,
-				cpu->cpu_ctx.regs.fip,
-				cpu->cpu_ctx.regs.fds,
-				cpu->cpu_ctx.regs.fdp,
-				cpu->cpu_ctx.regs.fop,
-				cpu->cpu_ctx.regs.mxcsr
-			);
-			ImGui::Text("xmm0.h: 0x%016" PRIX64 "  xmm0.l: 0x%016" PRIX64 "  xmm1.h: 0x%016" PRIX64 "  xmm1.l: 0x%016" PRIX64 "  xmm2.h: 0x%016" PRIX64 "  xmm2.l: 0x%016" PRIX64 "  xmm3.h: 0x%016" PRIX64 "  xmm3.l: 0x%016" PRIX64,
-				cpu->cpu_ctx.regs.xmm[0].high,
-				cpu->cpu_ctx.regs.xmm[0].low,
-				cpu->cpu_ctx.regs.xmm[1].high,
-				cpu->cpu_ctx.regs.xmm[1].low,
-				cpu->cpu_ctx.regs.xmm[2].high,
-				cpu->cpu_ctx.regs.xmm[2].low,
-				cpu->cpu_ctx.regs.xmm[3].high,
-				cpu->cpu_ctx.regs.xmm[3].low
-			);
-			ImGui::Text("xmm4.h: 0x%016" PRIX64 "  xmm4.l: 0x%016" PRIX64 "  xmm5.h: 0x%016" PRIX64 "  xmm5.l: 0x%016" PRIX64 "  xmm6.h: 0x%016" PRIX64 "  xmm6.l: 0x%016" PRIX64 "  xmm7.h: 0x%016" PRIX64 "  xmm7.l: 0x%016" PRIX64,
-				cpu->cpu_ctx.regs.xmm[4].high,
-				cpu->cpu_ctx.regs.xmm[4].low,
-				cpu->cpu_ctx.regs.xmm[5].high,
-				cpu->cpu_ctx.regs.xmm[5].low,
-				cpu->cpu_ctx.regs.xmm[6].high,
-				cpu->cpu_ctx.regs.xmm[6].low,
-				cpu->cpu_ctx.regs.xmm[7].high,
-				cpu->cpu_ctx.regs.xmm[7].low
-			);
+			ImVec4 regs_col(reg_r, reg_g, reg_b, 1.0f);
+			ImVec4 txt_col(txt_r, txt_g, txt_b, 1.0f);
+			ImGui::TextColored(cpu->cpu_ctx.regs.eax != g_last_regs.eax ? regs_col : txt_col, "eax: 0x%08X", cpu->cpu_ctx.regs.eax);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.ecx != g_last_regs.ecx ? regs_col : txt_col, "ecx: 0x%08X", cpu->cpu_ctx.regs.ecx);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.edx != g_last_regs.edx ? regs_col : txt_col, "edx: 0x%08X", cpu->cpu_ctx.regs.edx);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.ebx != g_last_regs.ebx ? regs_col : txt_col, "ebx: 0x%08X", cpu->cpu_ctx.regs.ebx);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.esp != g_last_regs.esp ? regs_col : txt_col, "esp: 0x%08X", cpu->cpu_ctx.regs.esp);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.ebp != g_last_regs.ebp ? regs_col : txt_col, "ebp: 0x%08X", cpu->cpu_ctx.regs.ebp);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.esi != g_last_regs.esi ? regs_col : txt_col, "esi: 0x%08X", cpu->cpu_ctx.regs.esi);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.edi != g_last_regs.edi ? regs_col : txt_col, "edi: 0x%08X", cpu->cpu_ctx.regs.edi);
+
+			ImGui::TextColored(read_eflags(cpu) != g_last_eflags ? regs_col : txt_col, "eflags: 0x%08X", read_eflags(cpu));
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.eip != g_last_regs.eip ? regs_col : txt_col, "eip: 0x%08X", cpu->cpu_ctx.regs.eip);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.cs != g_last_regs.cs ? regs_col : txt_col, "cs: 0x%04hX", cpu->cpu_ctx.regs.cs);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.es != g_last_regs.es ? regs_col : txt_col, "es: 0x%04hX", cpu->cpu_ctx.regs.es);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.ss != g_last_regs.ss ? regs_col : txt_col, "ss: 0x%04hX", cpu->cpu_ctx.regs.ss);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.ds != g_last_regs.ds ? regs_col : txt_col, "ds: 0x%04hX", cpu->cpu_ctx.regs.ds);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fs != g_last_regs.fs ? regs_col : txt_col, "fs: 0x%04hX", cpu->cpu_ctx.regs.fs);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.gs != g_last_regs.gs ? regs_col : txt_col, "gs: 0x%04hX", cpu->cpu_ctx.regs.gs);
+
+			ImGui::TextColored(cpu->cpu_ctx.regs.cs_hidden.base != g_last_regs.cs_hidden.base ? regs_col : txt_col, "cs.base: 0x%08X", cpu->cpu_ctx.regs.cs_hidden.base);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.cs_hidden.limit != g_last_regs.cs_hidden.limit ? regs_col : txt_col, "cs.limit: 0x%08X", cpu->cpu_ctx.regs.cs_hidden.limit);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.cs_hidden.flags != g_last_regs.cs_hidden.flags ? regs_col : txt_col, "cs.flags: 0x%08X", cpu->cpu_ctx.regs.cs_hidden.flags);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.es_hidden.base != g_last_regs.es_hidden.base ? regs_col : txt_col, "es.base: 0x%08X", cpu->cpu_ctx.regs.es_hidden.base);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.es_hidden.limit != g_last_regs.es_hidden.limit ? regs_col : txt_col, "es.limit: 0x%08X", cpu->cpu_ctx.regs.es_hidden.limit);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.es_hidden.flags != g_last_regs.es_hidden.flags ? regs_col : txt_col, "es.flags: 0x%08X", cpu->cpu_ctx.regs.es_hidden.flags);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.ss_hidden.base != g_last_regs.ss_hidden.base ? regs_col : txt_col, "ss.base: 0x%08X", cpu->cpu_ctx.regs.ss_hidden.base);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.ss_hidden.limit != g_last_regs.ss_hidden.limit ? regs_col : txt_col, "ss.limit: 0x%08X", cpu->cpu_ctx.regs.ss_hidden.limit);
+
+			ImGui::TextColored(cpu->cpu_ctx.regs.ss_hidden.flags != g_last_regs.ss_hidden.flags ? regs_col : txt_col, "ss.flags: 0x%08X", cpu->cpu_ctx.regs.ss_hidden.flags);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.ds_hidden.base != g_last_regs.ds_hidden.base ? regs_col : txt_col, "ds.base: 0x%08X", cpu->cpu_ctx.regs.ds_hidden.base);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.ds_hidden.limit != g_last_regs.ds_hidden.limit ? regs_col : txt_col, "ds.limit: 0x%08X", cpu->cpu_ctx.regs.ds_hidden.limit);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.ds_hidden.flags != g_last_regs.ds_hidden.flags ? regs_col : txt_col, "ds.flags: 0x%08X", cpu->cpu_ctx.regs.ds_hidden.flags);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fs_hidden.base != g_last_regs.fs_hidden.base ? regs_col : txt_col, "fs.base: 0x%08X", cpu->cpu_ctx.regs.fs_hidden.base);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fs_hidden.limit != g_last_regs.fs_hidden.limit ? regs_col : txt_col, "fs.limit: 0x%08X", cpu->cpu_ctx.regs.fs_hidden.limit);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fs_hidden.flags != g_last_regs.fs_hidden.flags ? regs_col : txt_col, "fs.flags: 0x%08X", cpu->cpu_ctx.regs.fs_hidden.flags);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.gs_hidden.base != g_last_regs.gs_hidden.base ? regs_col : txt_col, "gs.base: 0x%08X", cpu->cpu_ctx.regs.gs_hidden.base);
+
+			ImGui::TextColored(cpu->cpu_ctx.regs.gs_hidden.limit != g_last_regs.gs_hidden.limit ? regs_col : txt_col, "gs.limit: 0x%08X", cpu->cpu_ctx.regs.gs_hidden.limit);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.gs_hidden.flags != g_last_regs.gs_hidden.flags ? regs_col : txt_col, "gs.flags: 0x%08X", cpu->cpu_ctx.regs.gs_hidden.flags);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.idtr_hidden.base != g_last_regs.idtr_hidden.base ? regs_col : txt_col, "idtr.base: 0x%08X", cpu->cpu_ctx.regs.idtr_hidden.base);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.idtr_hidden.limit != g_last_regs.idtr_hidden.limit ? regs_col : txt_col, "idtr.limit: 0x%08X", cpu->cpu_ctx.regs.idtr_hidden.limit);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.gdtr_hidden.base != g_last_regs.gdtr_hidden.base ? regs_col : txt_col, "gdtr.base: 0x%08X", cpu->cpu_ctx.regs.gdtr_hidden.base);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.gdtr_hidden.limit != g_last_regs.gdtr_hidden.limit ? regs_col : txt_col, "gdtr.limit: 0x%08X", cpu->cpu_ctx.regs.gdtr_hidden.limit);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.ldtr != g_last_regs.ldtr ? regs_col : txt_col, "ldtr: 0x%04hX", cpu->cpu_ctx.regs.ldtr);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.tr != g_last_regs.tr ? regs_col : txt_col, "tr: 0x%04hX", cpu->cpu_ctx.regs.tr);
+
+			ImGui::TextColored(cpu->cpu_ctx.regs.ldtr_hidden.base != g_last_regs.ldtr_hidden.base ? regs_col : txt_col, "ldtr.base: 0x%08X", cpu->cpu_ctx.regs.ldtr_hidden.base);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.ldtr_hidden.limit != g_last_regs.ldtr_hidden.limit ? regs_col : txt_col, "ldtr.limit: 0x%08X", cpu->cpu_ctx.regs.ldtr_hidden.limit);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.ldtr_hidden.flags != g_last_regs.ldtr_hidden.flags ? regs_col : txt_col, "ldtr.flags: 0x%08X", cpu->cpu_ctx.regs.ldtr_hidden.flags);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.tr_hidden.base != g_last_regs.tr_hidden.base ? regs_col : txt_col, "tr.base: 0x%08X", cpu->cpu_ctx.regs.tr_hidden.base);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.tr_hidden.limit != g_last_regs.tr_hidden.limit ? regs_col : txt_col, "tr.limit: 0x%08X", cpu->cpu_ctx.regs.tr_hidden.limit);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.tr_hidden.flags != g_last_regs.tr_hidden.flags ? regs_col : txt_col, "tr.flags: 0x%08X", cpu->cpu_ctx.regs.tr_hidden.flags);
+
+			ImGui::TextColored(cpu->cpu_ctx.regs.cr0 != g_last_regs.cr0 ? regs_col : txt_col, "cr0: 0x%08X", cpu->cpu_ctx.regs.cr0);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.cr2 != g_last_regs.cr2 ? regs_col : txt_col, "cr2: 0x%08X", cpu->cpu_ctx.regs.cr2);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.cr3 != g_last_regs.cr3 ? regs_col : txt_col, "cr3: 0x%08X", cpu->cpu_ctx.regs.cr3);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.cr4 != g_last_regs.cr4 ? regs_col : txt_col, "cr4: 0x%08X", cpu->cpu_ctx.regs.cr4);
+
+			ImGui::TextColored(cpu->cpu_ctx.regs.dr[0] != g_last_regs.dr[0] ? regs_col : txt_col, "dr0: 0x%08X", cpu->cpu_ctx.regs.dr[0]);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.dr[1] != g_last_regs.dr[1] ? regs_col : txt_col, "dr1: 0x%08X", cpu->cpu_ctx.regs.dr[1]);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.dr[2] != g_last_regs.dr[2] ? regs_col : txt_col, "dr2: 0x%08X", cpu->cpu_ctx.regs.dr[2]);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.dr[3] != g_last_regs.dr[3] ? regs_col : txt_col, "dr3: 0x%08X", cpu->cpu_ctx.regs.dr[3]);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.dr[4] != g_last_regs.dr[4] ? regs_col : txt_col, "dr4: 0x%08X", cpu->cpu_ctx.regs.dr[4]);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.dr[5] != g_last_regs.dr[5] ? regs_col : txt_col, "dr5: 0x%08X", cpu->cpu_ctx.regs.dr[5]);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.dr[6] != g_last_regs.dr[6] ? regs_col : txt_col, "dr6: 0x%08X", cpu->cpu_ctx.regs.dr[6]);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.dr[7] != g_last_regs.dr[7] ? regs_col : txt_col, "dr7: 0x%08X", cpu->cpu_ctx.regs.dr[7]);
+
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[0].high != g_last_regs.fr[0].high ? regs_col : txt_col, "r0.h: 0x%04hX", cpu->cpu_ctx.regs.fr[0].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[0].low != g_last_regs.fr[0].low ? regs_col : txt_col, "r0.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.fr[0].low);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[1].high != g_last_regs.fr[1].high ? regs_col : txt_col, "r1.h: 0x%04hX", cpu->cpu_ctx.regs.fr[1].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[1].low != g_last_regs.fr[1].low ? regs_col : txt_col, "r1.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.fr[1].low);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[2].high != g_last_regs.fr[2].high ? regs_col : txt_col, "r2.h: 0x%04hX", cpu->cpu_ctx.regs.fr[2].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[3].low != g_last_regs.fr[2].low ? regs_col : txt_col, "r2.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.fr[2].low);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[3].high != g_last_regs.fr[3].high ? regs_col : txt_col, "r3.h: 0x%04hX", cpu->cpu_ctx.regs.fr[3].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[3].low != g_last_regs.fr[3].low ? regs_col : txt_col, "r3.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.fr[3].low);
+
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[4].high != g_last_regs.fr[4].high ? regs_col : txt_col, "r4.h: 0x%04hX", cpu->cpu_ctx.regs.fr[4].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[4].low != g_last_regs.fr[4].low ? regs_col : txt_col, "r4.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.fr[4].low);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[5].high != g_last_regs.fr[5].high ? regs_col : txt_col, "r5.h: 0x%04hX", cpu->cpu_ctx.regs.fr[5].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[5].low != g_last_regs.fr[5].low ? regs_col : txt_col, "r5.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.fr[5].low);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[6].high != g_last_regs.fr[6].high ? regs_col : txt_col, "r6.h: 0x%04hX", cpu->cpu_ctx.regs.fr[6].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[6].low != g_last_regs.fr[6].low ? regs_col : txt_col, "r6.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.fr[6].low);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[7].high != g_last_regs.fr[7].high ? regs_col : txt_col, "r7.h: 0x%04hX", cpu->cpu_ctx.regs.fr[7].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fr[7].low != g_last_regs.fr[7].low ? regs_col : txt_col, "r7.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.fr[7].low);
+
+			ImGui::TextColored(cpu->cpu_ctx.regs.fctrl != g_last_regs.fctrl ? regs_col : txt_col, "fctrl: 0x%04X", cpu->cpu_ctx.regs.fctrl);
+			ImGui::SameLine();
+			ImGui::TextColored(read_fstatus(cpu) != g_last_fstatus ? regs_col : txt_col, "fstatus: 0x%04hX", read_fstatus(cpu));
+			ImGui::SameLine();
+			ImGui::TextColored(read_ftags(cpu) != g_last_ftags ? regs_col : txt_col, "ftags: 0x%04hX", read_ftags(cpu));
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fcs != g_last_regs.fcs ? regs_col : txt_col, "fcs: 0x%04X", cpu->cpu_ctx.regs.fcs);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fip != g_last_regs.fip ? regs_col : txt_col, "fip: 0x%08X", cpu->cpu_ctx.regs.fip);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fds != g_last_regs.fds ? regs_col : txt_col, "fds: 0x%04X", cpu->cpu_ctx.regs.fds);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fdp != g_last_regs.fdp ? regs_col : txt_col, "fdp: 0x%08X", cpu->cpu_ctx.regs.fdp);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.fop != g_last_regs.fop ? regs_col : txt_col, "fop: 0x%04X", cpu->cpu_ctx.regs.fop);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.mxcsr != g_last_regs.mxcsr ? regs_col : txt_col, "mxcsr: 0x%08X", cpu->cpu_ctx.regs.mxcsr);
+
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[0].high != g_last_regs.xmm[0].high ? regs_col : txt_col, "xmm0.h: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[0].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[0].low != g_last_regs.xmm[0].low ? regs_col : txt_col, "xmm0.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[0].low);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[1].high != g_last_regs.xmm[1].high ? regs_col : txt_col, "xmm1.h: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[1].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[1].low != g_last_regs.xmm[1].low ? regs_col : txt_col, "xmm1.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[1].low);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[2].high != g_last_regs.xmm[2].high ? regs_col : txt_col, "xmm2.h: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[2].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[2].low != g_last_regs.xmm[2].low ? regs_col : txt_col, "xmm2.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[2].low);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[3].high != g_last_regs.xmm[3].high ? regs_col : txt_col, "xmm3.h: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[3].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[3].low != g_last_regs.xmm[3].low ? regs_col : txt_col, "xmm3.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[3].low);
+
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[4].high != g_last_regs.xmm[4].high ? regs_col : txt_col, "xmm4.h: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[4].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[4].low != g_last_regs.xmm[4].low ? regs_col : txt_col, "xmm4.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[4].low);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[5].high != g_last_regs.xmm[5].high ? regs_col : txt_col, "xmm5.h: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[5].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[5].low != g_last_regs.xmm[5].low ? regs_col : txt_col, "xmm5.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[5].low);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[6].high != g_last_regs.xmm[6].high ? regs_col : txt_col, "xmm6.h: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[6].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[6].low != g_last_regs.xmm[6].low ? regs_col : txt_col, "xmm6.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[6].low);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[7].high != g_last_regs.xmm[7].high ? regs_col : txt_col, "xmm7.h: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[7].high);
+			ImGui::SameLine();
+			ImGui::TextColored(cpu->cpu_ctx.regs.xmm[7].low != g_last_regs.xmm[7].low ? regs_col : txt_col, "xmm7.l: 0x%016" PRIX64, cpu->cpu_ctx.regs.xmm[7].low);
 		}
 		else {
 			const char *text = "Not available while debuggee is running";

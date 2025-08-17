@@ -27,6 +27,9 @@ read_dbg_opt()
 	g_bkg_col[0] = g_dbg_opt.bkg_col[0];
 	g_bkg_col[1] = g_dbg_opt.bkg_col[1];
 	g_bkg_col[2] = g_dbg_opt.bkg_col[2];
+	g_reg_col[0] = g_dbg_opt.reg_col[0];
+	g_reg_col[1] = g_dbg_opt.reg_col[1];
+	g_reg_col[2] = g_dbg_opt.reg_col[2];
 	std::for_each(g_dbg_opt.brk_map.begin(), g_dbg_opt.brk_map.end(), [](const decltype(g_dbg_opt.brk_map)::value_type &elem) {
 		brk_t brk_type = static_cast<brk_t>(elem.second);
 		if ((brk_type == brk_t::breakpoint) || (brk_type == brk_t::watchpoint)) {

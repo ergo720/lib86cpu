@@ -22,6 +22,7 @@ struct brk_info {
 void read_dbg_opt();
 void write_dbg_opt();
 void dbg_setup_sw_breakpoints(cpu_t *cpu);
+void dbg_copy_registers(cpu_t *cpu);
 std::optional<uint8_t> dbg_insert_sw_breakpoint(cpu_t *cpu, addr_t addr);
 void dbg_apply_sw_breakpoints(cpu_t *cpu);
 void dbg_remove_sw_breakpoints(cpu_t *cpu);
@@ -48,3 +49,4 @@ inline int g_main_wnd_h;
 inline float g_txt_col[3]; // rgb
 inline float g_brk_col[3]; // rgb
 inline float g_bkg_col[3]; // rgb
+inline float g_reg_col[3]; // rgb

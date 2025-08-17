@@ -51,6 +51,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 	try {
 		read_dbg_opt();
 		dbg_setup_sw_breakpoints(cpu);
+		dbg_copy_registers(cpu);
 
 		if (!glfwInit()) {
 			last_error = "Failed to initialize glfw";
