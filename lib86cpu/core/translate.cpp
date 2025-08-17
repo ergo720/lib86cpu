@@ -1716,7 +1716,10 @@ cpu_translate(cpu_t *cpu)
 
 		// Only generate an interrupt check if the current instruction didn't terminate this tc. Terminating instructions already check for interrupts
 		if (cpu->translate_next == 1) {
-			cpu->jit->gen_interrupt_check<true>();
+			cpu->jit->update_eip();
+			if ((disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR | DISAS_FLG_PAGE_CROSS_NEXT)) == 0) {
+				cpu->jit->gen_interrupt_check();
+			}
 		}
 
 	} while ((cpu->translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR | DISAS_FLG_PAGE_CROSS_NEXT))) == 1);
