@@ -30,7 +30,11 @@ read_dbg_opt()
 	g_reg_col[0] = g_dbg_opt.reg_col[0];
 	g_reg_col[1] = g_dbg_opt.reg_col[1];
 	g_reg_col[2] = g_dbg_opt.reg_col[2];
-	g_mem_pc = g_dbg_opt.mem_editor_addr;
+	for (unsigned i = 0; i < 4; ++i) {
+		g_mem_pc[i] = g_dbg_opt.mem_editor_addr[i];
+	}
+	g_mem_active = g_dbg_opt.mem_active & 3;
+	g_mem_button_text[g_mem_button_text.size() - 1] = '0' + g_mem_active;
 	std::for_each(g_dbg_opt.brk_map.begin(), g_dbg_opt.brk_map.end(), [](const decltype(g_dbg_opt.brk_map)::value_type &elem) {
 		brk_t brk_type = static_cast<brk_t>(elem.second);
 		if ((brk_type == brk_t::breakpoint) || (brk_type == brk_t::watchpoint)) {
@@ -55,7 +59,10 @@ write_dbg_opt()
 	g_dbg_opt.bkg_col[0] = g_bkg_col[0];
 	g_dbg_opt.bkg_col[1] = g_bkg_col[1];
 	g_dbg_opt.bkg_col[2] = g_bkg_col[2];
-	g_dbg_opt.mem_editor_addr = g_mem_pc;
+	for (unsigned i = 0; i < 4; ++i) {
+		g_dbg_opt.mem_editor_addr[i] = g_mem_pc[i];
+	}
+	g_dbg_opt.mem_active = g_mem_active;
 	g_dbg_opt.brk_map.clear();
 	std::for_each(g_break_list.begin(), g_break_list.end(), [](const decltype(g_break_list)::value_type &elem) {
 		brk_t brk_type = elem.second.type;
@@ -134,9 +141,9 @@ void
 dbg_ram_read(cpu_t *cpu, uint8_t *buff)
 {
 	uint64_t actual_size;
-	if (!LC86_SUCCESS(mem_read_block_virt(cpu, g_mem_pc, PAGE_SIZE, buff, &actual_size))) {
+	if (!LC86_SUCCESS(mem_read_block_virt(cpu, g_mem_pc[g_mem_active], PAGE_SIZE, buff, &actual_size))) {
 		std::memset(&buff[actual_size], 0, PAGE_SIZE - actual_size);
-		LOG(log_level::info, "Failed to read at address 0x%08" PRIX32, g_mem_pc);
+		LOG(log_level::info, "Failed to read at address 0x%08" PRIX32, g_mem_pc[g_mem_active]);
 	}
 }
 
@@ -145,7 +152,7 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 {
 	// NOTE: off is the offset from the address that is displayed in the memory editor
 
-	addr_t addr = static_cast<addr_t>(off) + g_mem_pc;
+	addr_t addr = static_cast<addr_t>(off) + g_mem_pc[g_mem_active];
 
 	// clear wp of cr0, so that we can write to read-only pages
 	uint32_t old_wp = g_cpu->cpu_ctx.regs.cr0 & CR0_WP_MASK;

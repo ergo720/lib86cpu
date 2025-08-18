@@ -296,6 +296,12 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 		static char buff[9];
 		ImGui::PushItemWidth(80.0f);
 		bool enter_pressed = ImGui::InputText("Address", buff, IM_ARRAYSIZE(buff), ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue);
+		ImGui::SameLine();
+		bool change_mem_view = ImGui::Button(g_mem_button_text.data());
+		if (change_mem_view) {
+			(++g_mem_active) &= 3;
+			g_mem_button_text[g_mem_button_text.size() - 1] = '0' + g_mem_active;
+		}
 		ImGui::PopItemWidth();
 		ImGui::ColorEdit3("Text color", g_txt_col);
 		ImGui::ColorEdit3("Background color", g_bkg_col);
@@ -306,15 +312,15 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 			mem_editor.WriteFn = &dbg_ram_write;
 			if (enter_pressed) {
 				// NOTE: it can't fail because ImGui::InputText only accepts hex digits and g_mem_pc is large enough to store every possible 32 bit address
-				[[maybe_unused]] auto ret = std::from_chars(buff, buff + sizeof(buff), g_mem_pc, 16);
+				[[maybe_unused]] auto ret = std::from_chars(buff, buff + sizeof(buff), g_mem_pc[g_mem_active], 16);
 				assert(ret.ec == std::errc());
 				g_mem_editor_update = true;
 			}
-			if (g_mem_editor_update) {
+			if (g_mem_editor_update || change_mem_view) {
 				dbg_ram_read(cpu, mem_buff);
 				g_mem_editor_update = false;
 			}
-			mem_editor.DrawContents(mem_buff, PAGE_SIZE, g_mem_pc);
+			mem_editor.DrawContents(mem_buff, PAGE_SIZE, g_mem_pc[g_mem_active]);
 		}
 		else {
 			const char *text = "Not available while debuggee is running";
