@@ -92,7 +92,6 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		ImGui_ImplOpenGL3_Init();
 
 		g_break_pc = get_pc(&cpu->cpu_ctx);
-		g_mem_pc = g_break_pc;
 		g_cpu = cpu;
 
 		init_has_err = false;

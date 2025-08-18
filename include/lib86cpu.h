@@ -37,7 +37,7 @@ using logfn_t = void(*)(log_level, const unsigned, const char *, ...);
 using hook_t = void(*)();
 
 #define LC86_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::success)
-#define DEBUGGER_OPTIONS_ID 1
+#define DEBUGGER_OPTIONS_ID 2
 
 #define CPU_ATT_SYNTAX          0  // use att syntax for instruction decoding
 #define CPU_MASM_SYNTAX         1  // use intel masm syntax for instruction decoding
@@ -102,6 +102,7 @@ struct dbg_opt_t {
 	float bkg_col[3] = { 0.0f, 0.0f, 0.0f }; // default background color: black
 	float reg_col[3] = { 1.0f, 0.0f, 0.0f }; // default updated register color: red
 	std::unordered_map<addr_t, int> brk_map;
+	addr_t mem_editor_addr = 0;
 };
 
 // forward declare

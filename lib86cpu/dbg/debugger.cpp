@@ -30,6 +30,7 @@ read_dbg_opt()
 	g_reg_col[0] = g_dbg_opt.reg_col[0];
 	g_reg_col[1] = g_dbg_opt.reg_col[1];
 	g_reg_col[2] = g_dbg_opt.reg_col[2];
+	g_mem_pc = g_dbg_opt.mem_editor_addr;
 	std::for_each(g_dbg_opt.brk_map.begin(), g_dbg_opt.brk_map.end(), [](const decltype(g_dbg_opt.brk_map)::value_type &elem) {
 		brk_t brk_type = static_cast<brk_t>(elem.second);
 		if ((brk_type == brk_t::breakpoint) || (brk_type == brk_t::watchpoint)) {
@@ -54,6 +55,7 @@ write_dbg_opt()
 	g_dbg_opt.bkg_col[0] = g_bkg_col[0];
 	g_dbg_opt.bkg_col[1] = g_bkg_col[1];
 	g_dbg_opt.bkg_col[2] = g_bkg_col[2];
+	g_dbg_opt.mem_editor_addr = g_mem_pc;
 	g_dbg_opt.brk_map.clear();
 	std::for_each(g_break_list.begin(), g_break_list.end(), [](const decltype(g_break_list)::value_type &elem) {
 		brk_t brk_type = elem.second.type;
@@ -199,7 +201,7 @@ dbg_single_step_handler(cpu_ctx_t *cpu_ctx)
 	dbg_remove_sw_breakpoints(cpu_ctx->cpu);
 
 	// wait until the debugger continues execution
-	g_break_pc = g_mem_pc = cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
+	g_break_pc = cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
 	g_mem_editor_update = true;
 	g_guest_running.clear();
 	g_guest_running.notify_one();
@@ -233,7 +235,7 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 		}
 
 		// wait until the debugger continues execution
-		g_break_pc = g_mem_pc = pc;
+		g_break_pc = pc;
 		g_mem_editor_update = true;
 		g_guest_running.clear();
 		g_guest_running.notify_one();
