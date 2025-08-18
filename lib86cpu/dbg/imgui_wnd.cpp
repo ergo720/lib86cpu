@@ -123,7 +123,7 @@ dbg_handle_step_over(cpu_t *cpu) // default: F10
 }
 
 static void
-dbg_handle_step_out(cpu_t *cpu) // default: F12
+dbg_handle_step_out(cpu_t *cpu) // default: F11 + SHIFT
 {
 	if (!g_disas_data.empty()) { // it will happen if the first instr cannot be decoded
 		std::string_view curr_instr = g_disas_data.begin()->second;
@@ -174,7 +174,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 	// F9: toggle breakpoint
 	// F10: step over
 	// F11: step into
-	// F12: step out
+	// F11 + SHIFT: step out
 
 	const int wnd_w = g_main_wnd_w;
 	const int wnd_h = g_main_wnd_h;
@@ -266,7 +266,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 					}
 				}
 				else {
-					if (g_step_out_active || (ImGui::IsKeyPressed(ImGuiKey_F12))) {
+					if (g_step_out_active || (ImGui::IsKeyPressed(ImGuiKey_F11) && (ImGui::IsKeyPressed(ImGuiKey_LeftShift) || ImGui::IsKeyPressed(ImGuiKey_RightShift)))) {
 						exec_dbg_command<dbg_command_t::step_out>(cpu);
 					}
 					else if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
