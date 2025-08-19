@@ -247,6 +247,12 @@ static void cpu_sync_state(cpu_t *cpu)
 	if (cpu->cpu_ctx.regs.cr0 & CR0_TS_MASK) {
 		cpu->cpu_ctx.hflags |= HFLG_CR0_TS;
 	}
+	if (cpu->cpu_ctx.regs.cr0 & CR0_NE_MASK) {
+		cpu->cpu_ctx.hflags |= HFLG_CR0_NE;
+	}
+	if (cpu->cpu_ctx.regs.cr0 & CR0_MP_MASK) {
+		cpu->cpu_ctx.hflags |= HFLG_CR0_MP;
+	}
 	if (cpu->cpu_ctx.regs.cr4 & CR4_OSFXSR_MASK) {
 		cpu->cpu_ctx.hflags |= HFLG_CR4_OSFXSR;
 	}
@@ -256,6 +262,10 @@ static void cpu_sync_state(cpu_t *cpu)
 	if (cpu->cpu_ctx.regs.cr4 & CR4_PVI_MASK) {
 		cpu->cpu_ctx.hflags |= HFLG_CR4_PVI;
 	}
+	if (cpu->cpu_ctx.regs.cr4 & CR4_OSXMMEXCPT_MASK) {
+		cpu->cpu_ctx.hflags |= HFLG_CR4_OSXMMEXCPT;
+	}
+	update_drN_helper(&cpu->cpu_ctx, 7, cpu->cpu_ctx.regs.dr[7]);
 }
 
 /*
