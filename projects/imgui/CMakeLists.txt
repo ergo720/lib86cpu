@@ -17,6 +17,7 @@ file (GLOB HEADERS
  "${LIB86CPU_ROOT_DIR}/import/imgui/imstb_textedit.h"
  "${LIB86CPU_ROOT_DIR}/import/imgui/imstb_truetype.h"
  "${LIB86CPU_ROOT_DIR}/import/imgui/backends/imgui_impl_glfw.h"
+ "${LIB86CPU_ROOT_DIR}/import/imgui/backends/imgui_impl_opengl2.h"
  "${LIB86CPU_ROOT_DIR}/import/imgui/backends/imgui_impl_opengl3.h"
 )
 
@@ -26,6 +27,7 @@ file (GLOB SOURCES
  "${LIB86CPU_ROOT_DIR}/import/imgui/imgui_tables.cpp"
  "${LIB86CPU_ROOT_DIR}/import/imgui/imgui_widgets.cpp"
  "${LIB86CPU_ROOT_DIR}/import/imgui/backends/imgui_impl_glfw.cpp"
+ "${LIB86CPU_ROOT_DIR}/import/imgui/backends/imgui_impl_opengl2.cpp"
  "${LIB86CPU_ROOT_DIR}/import/imgui/backends/imgui_impl_opengl3.cpp"
 )
 

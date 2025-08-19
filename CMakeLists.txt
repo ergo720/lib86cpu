@@ -228,6 +228,9 @@ else ()
 endif()
 
 target_link_libraries(cpu PRIVATE asmjit Zydis glfw imgui)
+if (${COMPILER_IS_MSVC})
+ target_link_libraries(cpu PRIVATE opengl32.lib)
+endif()
 
 if (${LIB86CPU_BUILD_TEST})
 message("Building test")

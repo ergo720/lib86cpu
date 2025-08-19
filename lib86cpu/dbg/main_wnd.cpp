@@ -6,6 +6,7 @@
 
 #include "imgui.h"
 #include "imgui_impl_glfw.h"
+#include "imgui_impl_opengl2.h"
 #include "imgui_impl_opengl3.h"
 
 #include "glad/glad.h"
@@ -23,8 +24,8 @@ static std::atomic_flag g_has_terminated;
 static std::atomic_flag g_exit_requested;
 
 
-void
-dbg_draw_wnd(GLFWwindow *wnd, int fb_w, int fb_h)
+static void
+dbg_draw_wnd_gl3(GLFWwindow *wnd, int fb_w, int fb_h)
 {
 	ImGui_ImplOpenGL3_NewFrame();
 	ImGui_ImplGlfw_NewFrame();
@@ -43,10 +44,31 @@ dbg_draw_wnd(GLFWwindow *wnd, int fb_w, int fb_h)
 	glfwSwapBuffers(wnd);
 }
 
+static void
+dbg_draw_wnd_gl2(GLFWwindow *wnd, int fb_w, int fb_h)
+{
+	ImGui_ImplOpenGL2_NewFrame();
+	ImGui_ImplGlfw_NewFrame();
+	ImGui::NewFrame();
+
+	glfwGetWindowSize(wnd, &g_main_wnd_w, &g_main_wnd_h);
+	dbg_draw_imgui_wnd(g_cpu);
+
+	ImGui::Render();
+
+	glViewport(0, 0, fb_w, fb_h);
+	glClearColor(0.45f, 0.55f, 0.60f, 1.00f);
+	glClear(GL_COLOR_BUFFER_BIT);
+	ImGui_ImplOpenGL2_RenderDrawData(ImGui::GetDrawData());
+
+	glfwSwapBuffers(wnd);
+}
+
 void
 dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 {
 	bool init_has_err = true;
+	bool using_gl3 = true;
 
 	try {
 		read_dbg_opt();
@@ -76,20 +98,25 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 			return;
 		}
 
-		if (!GLAD_GL_VERSION_4_6) {
-			last_error = "Failed to meet the minimum required OpenGL version";
-			glfwTerminate();
-			has_err.set_value(init_has_err);
-			return;
+		if (!GLAD_GL_VERSION_3_0) {
+			if (!GLAD_GL_VERSION_2_0) {
+				last_error = "Failed to meet the minimum required OpenGL version";
+				glfwTerminate();
+				has_err.set_value(init_has_err);
+				return;
+			}
+			using_gl3 = false;
 		}
+		LOG(log_level::info, "Using OpenGL %s for the debugger", using_gl3 ? "3.0" : "2.0");
 
-		glfwSetFramebufferSizeCallback(g_main_wnd, dbg_draw_wnd);
+		GLFWframebuffersizefun draw_callback = using_gl3 ? dbg_draw_wnd_gl3 : dbg_draw_wnd_gl2;
+		glfwSetFramebufferSizeCallback(g_main_wnd, draw_callback);
 
 		IMGUI_CHECKVERSION();
 		ImGui::CreateContext();
 		ImGui::StyleColorsDark();
 		ImGui_ImplGlfw_InitForOpenGL(g_main_wnd, true);
-		ImGui_ImplOpenGL3_Init();
+		using_gl3 ? ImGui_ImplOpenGL3_Init() : ImGui_ImplOpenGL2_Init();
 
 		g_break_pc = get_pc(&cpu->cpu_ctx);
 		g_cpu = cpu;
@@ -103,7 +130,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 		while (!glfwWindowShouldClose(g_main_wnd)) {
 			int fb_w, fb_h;
 			glfwGetFramebufferSize(g_main_wnd, &fb_w, &fb_h);
-			dbg_draw_wnd(g_main_wnd, fb_w, fb_h);
+			draw_callback(g_main_wnd, fb_w, fb_h);
 
 			glfwWaitEventsTimeout(0.5);
 		}
@@ -132,7 +159,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 
 	glfwGetWindowSize(g_main_wnd, &g_main_wnd_w, &g_main_wnd_h);
 
-	ImGui_ImplOpenGL3_Shutdown();
+	using_gl3 ? ImGui_ImplOpenGL3_Shutdown() : ImGui_ImplOpenGL2_Shutdown();
 	ImGui_ImplGlfw_Shutdown();
 	ImGui::DestroyContext();
 
