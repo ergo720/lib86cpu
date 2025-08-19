@@ -428,7 +428,7 @@ cpu_is_suspended(cpu_t *cpu)
 }
 
 /*
-* cpu_raise_hw_int -> raises the hardware interrupt line (this function is multi-thread safe)
+* cpu_raise_hw_int_line -> raises the hardware interrupt line (this function is multi-thread safe)
 * cpu: a valid cpu instance
 * ret: nothing
 */
@@ -439,7 +439,7 @@ cpu_raise_hw_int_line(cpu_t *cpu)
 }
 
 /*
-* cpu_raise_hw_int -> lowers the hardware interrupt line (this function is multi-thread safe)
+* cpu_lower_hw_int_line -> lowers the hardware interrupt line (this function is multi-thread safe)
 * cpu: a valid cpu instance
 * ret: nothing
 */
