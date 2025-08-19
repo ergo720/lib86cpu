@@ -14,6 +14,10 @@
 #include <algorithm>
 
 #define DISAS_INSTR_CACHED_NUM 50
+#define DISAS_TXT "Disassembly"
+#define BRK_TXT "Breakpoints"
+#define BRK_TYPE_TXT "Breakpoint"
+#define WATCH_TYPE_TXT "Watchpoint"
 
 
 enum class dbg_command_t {
@@ -32,8 +36,27 @@ static uint32_t g_last_eflags;
 static uint16_t g_last_fstatus;
 static uint16_t g_last_ftags;
 static bool g_regs_need_update;
+static std::array<char, std::max(std::string(DISAS_TXT).size(), std::string(BRK_TXT).size()) + 1> g_disas_button_text(DISAS_TXT);
+static uint32_t g_disas_view_active = 1;
 
 static_assert(std::is_trivially_copyable_v<regs_t>); // make sure we can use std::copy on regs_t
+
+void
+dbg_draw_error_popup()
+{
+	ImGui::SetNextWindowPos(ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() * 0.5f,
+		ImGui::GetWindowPos().y + ImGui::GetWindowHeight() * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+	ImGui::SetNextWindowSize(ImVec2(235.0f, 75.0f));
+	ImGui::OpenPopup("Error");
+	if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_NoResize)) {
+		ImGui::Text("Failed to insert the breakpoint");
+		if (ImGui::Button("OK")) {
+			g_show_popup = false;
+			ImGui::CloseCurrentPopup();
+		}
+		ImGui::EndPopup();
+	}
+}
 
 void
 dbg_copy_registers(cpu_t *cpu)
@@ -192,91 +215,201 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 		static char buff[9];
 		ImGui::PushItemWidth(80.0f);
 		bool enter_pressed = ImGui::InputText("Address", buff, IM_ARRAYSIZE(buff), ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue);
+		ImGui::SameLine();
+		bool change_disas_view = ImGui::Button(g_disas_button_text.data());
 		ImGui::PopItemWidth();
 		ImGui::ColorEdit3("Text color", g_txt_col);
 		ImGui::ColorEdit3("Breakpoint color", g_brk_col);
 		ImGui::ColorEdit3("Background color", g_bkg_col);
 		ImGui::BeginChild("Disassembler view");
 		if (!g_guest_running.test()) {
-			if (ImGui::IsKeyPressed(ImGuiKey_F5)) {
-				exec_dbg_command<dbg_command_t::continue_>(cpu);
+			if (change_disas_view) {
+				constexpr auto disas_txt_size = std::string(DISAS_TXT).size();
+				constexpr auto brk_txt_size = std::string(BRK_TXT).size();
+				g_disas_view_active ^= 1;
+				std::copy_n(g_disas_view_active ? DISAS_TXT : BRK_TXT, g_disas_view_active ? disas_txt_size : brk_txt_size, g_disas_button_text.begin());
+				g_disas_button_text[g_disas_view_active ? disas_txt_size : brk_txt_size] = '\0';
 			}
-			else {
-				unsigned instr_to_print = DISAS_INSTR_CACHED_NUM;
-				if (enter_pressed) {
-					// NOTE: it can't fail because ImGui::InputText only accepts hex digits and g_break_pc is large enough to store every possible 32 bit address
-					[[maybe_unused]] auto ret = std::from_chars(buff, buff + sizeof(buff), g_break_pc, 16);
-					assert(ret.ec == std::errc());
-					g_disas_data.clear();
-					g_instr_sel = 0;
-				}
-				if (g_disas_data.empty()) {
-					// this happens the first time the disassembler window is displayed
-					g_disas_data = dbg_disas_code_block(cpu, g_break_pc, instr_to_print);
-				} else if (ImGui::GetScrollY() == ImGui::GetScrollMaxY()) {
-					// the user has scrolled up to the end of the instr block we previously cached, so we need to disassemble a new block
-					// and append it to the end of the cached data
-					const auto &disas_next_block = dbg_disas_code_block(cpu, g_break_pc, instr_to_print);
-					g_disas_data.insert(g_disas_data.end(), std::make_move_iterator(disas_next_block.begin()), std::make_move_iterator(disas_next_block.end()));
-				}
-				assert(std::adjacent_find(g_disas_data.begin(), g_disas_data.end(), [](const auto &lhs, const auto &rhs)
-					{
-						return lhs.first == rhs.first;
-					}) == g_disas_data.end());
 
-				if (!g_step_out_active) {
-					unsigned num_instr_printed = 0;
-					for (; num_instr_printed < g_disas_data.size(); ++num_instr_printed) {
-						// buffer size = buff_size used in log_instr for instr string + 12 chars need to print its addr
-						char buffer[256 + 12 + 1];
-						addr_t addr = (g_disas_data.begin() + num_instr_printed)->first;
-						std::snprintf(buffer, sizeof(buffer), "0x%08X  %s", addr, (g_disas_data.begin() + num_instr_printed)->second.c_str());
-						if (g_break_list.contains(addr)) {
-							// draw breakpoint with a different text color
-							ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(brk_r, brk_g, brk_b, 1.0f));
-							if (ImGui::Selectable(buffer, g_instr_sel == num_instr_printed)) {
-								g_instr_sel = num_instr_printed;
-							}
-							ImGui::PopStyleColor();
-						} else {
-							if (ImGui::Selectable(buffer, g_instr_sel == num_instr_printed)) {
-								g_instr_sel = num_instr_printed;
-							}
-						}
+			if (g_disas_view_active == 0) {
+				// render the breakpoint list window
+				constexpr auto brk_type_txt_size = std::string(BRK_TYPE_TXT).size();
+				constexpr auto watch_type_txt_size = std::string(WATCH_TYPE_TXT).size();
+				static decltype(g_break_list)::iterator sel_it = g_break_list.begin();
+				static std::array<char, 9> addr_buff;
+				static std::array<char, std::max(brk_type_txt_size, watch_type_txt_size) + 12 + 1> txt_buff; // name type + ": " + 10 chars needed to print its addr
+				static uint32_t brk_sel = 0;
+				static bool show_brk_popup = false;
+				static int brk_type_sel = 0; // 0: brk, 1: watch
+				uint32_t num_brk_printed = 0;
+
+				for (auto it = g_break_list.begin(); it != g_break_list.end(); ++it) {
+					const auto &elem = *it;
+					if (elem.second.type == brk_t::breakpoint) {
+						std::snprintf(txt_buff.data(), txt_buff.size(), BRK_TYPE_TXT ": 0x%08X", elem.first);
 					}
-					if (num_instr_printed != instr_to_print) {
-						for (unsigned instr_left_to_print = num_instr_printed; instr_left_to_print < instr_to_print; ++instr_left_to_print) {
-							ImGui::Text("????");
-						}
+					else if (elem.second.type == brk_t::watchpoint) {
+						assert(0); // not supported yet
 					}
+
+					if (ImGui::Selectable(txt_buff.data(), brk_sel == num_brk_printed)) {
+						[[maybe_unused]] const auto &ret = std::to_chars(addr_buff.data(), addr_buff.data() + addr_buff.size(), it->first, 16);
+						assert(ret.ec == std::errc());
+						show_brk_popup = true;
+						brk_sel = num_brk_printed;
+						sel_it = it;
+					}
+					++num_brk_printed;
 				}
 
-				if (g_show_popup) {
+				if ((show_brk_popup == false) && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+					std::fill(addr_buff.begin(), addr_buff.end(), 0); // show an empty address
+					show_brk_popup = true;
+					sel_it = g_break_list.end();
+				}
+
+				if (show_brk_popup) {
 					ImGui::SetNextWindowPos(ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() * 0.5f,
 						ImGui::GetWindowPos().y + ImGui::GetWindowHeight() * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-					ImGui::SetNextWindowSize(ImVec2(235.0f, 75.0f));
-					ImGui::OpenPopup("Error");
-					if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_NoResize)) {
-						ImGui::Text("Failed to insert the breakpoint");
-						if (ImGui::Button("OK")) {
-							g_show_popup = false;
-							ImGui::CloseCurrentPopup();
+					ImGui::SetNextWindowSize(ImVec2(250.0f, 100.0f));
+					ImGui::OpenPopup("New breakpoint");
+					if (ImGui::BeginPopupModal("New breakpoint", nullptr, ImGuiWindowFlags_NoResize)) {
+						if (ImGui::BeginCombo("breakpoint type", BRK_TYPE_TXT)) {
+							if (ImGui::Selectable(BRK_TYPE_TXT, false)) {
+								brk_type_sel = 0;
+							}
+							if (ImGui::Selectable(WATCH_TYPE_TXT, false)) {
+								brk_type_sel = 1;
+							}
+							ImGui::EndCombo();
+						}
+						ImGui::InputText("address", addr_buff.data(), addr_buff.size(), ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue);
+						bool close_brk_popup = ImGui::Button("OK");
+						ImGui::SameLine();
+						bool delete_brk_popup = ImGui::Button("Delete");
+						if (g_show_popup) {
+							dbg_draw_error_popup();
+						}
+						if (close_brk_popup) {
+							if (brk_type_sel == 0) { // breakpoint was selected
+								uint32_t addr;
+								const auto &ret = std::from_chars(addr_buff.data(), addr_buff.data() + addr_buff.size(), addr, 16);
+								if (ret.ec != std::errc()) { // the conversion might fail when the popup is open with a right click
+									g_show_popup = true;
+								}
+								else {
+									if (const auto &opt = dbg_insert_sw_breakpoint(cpu, addr); opt) {
+										if (sel_it != g_break_list.end()) {
+											g_break_list.erase(sel_it);
+										}
+										g_break_list.emplace(addr, brk_info{ *opt, brk_t::breakpoint });
+										g_show_popup = show_brk_popup = false;
+									}
+									else {
+										g_show_popup = true;
+									}
+								}
+
+								ImGui::CloseCurrentPopup();
+							}
+							else {
+								assert(0); // not supported yet
+							}
+						}
+						else if (delete_brk_popup) {
+							if (sel_it != g_break_list.end()) {
+								g_break_list.erase(sel_it);
+							}
+							show_brk_popup = false;
 						}
 						ImGui::EndPopup();
 					}
 				}
+			}
+			else {
+				// render the disassembler window
+				if (ImGui::IsKeyPressed(ImGuiKey_F5)) {
+					exec_dbg_command<dbg_command_t::continue_>(cpu);
+				}
 				else {
-					if (g_step_out_active || (ImGui::IsKeyPressed(ImGuiKey_F11) && (ImGui::IsKeyPressed(ImGuiKey_LeftShift) || ImGui::IsKeyPressed(ImGuiKey_RightShift)))) {
-						exec_dbg_command<dbg_command_t::step_out>(cpu);
+					unsigned instr_to_print = DISAS_INSTR_CACHED_NUM;
+					if (enter_pressed) {
+						// NOTE: it can't fail because ImGui::InputText only accepts hex digits and g_break_pc is large enough to store every possible 32 bit address
+						[[maybe_unused]] auto ret = std::from_chars(buff, buff + sizeof(buff), g_break_pc, 16);
+						assert(ret.ec == std::errc());
+						g_disas_data.clear();
+						g_instr_sel = 0;
 					}
-					else if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
-						exec_dbg_command<dbg_command_t::step_into>(cpu);
+					if (g_disas_data.empty()) {
+						// this happens the first time the disassembler window is displayed
+						g_disas_data = dbg_disas_code_block(cpu, g_break_pc, instr_to_print);
 					}
-					else if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
-						exec_dbg_command<dbg_command_t::step_over>(cpu);
+					else if (ImGui::GetScrollY() == ImGui::GetScrollMaxY()) {
+						// the user has scrolled up to the end of the instr block we previously cached, so we need to disassemble a new block
+						// and append it to the end of the cached data
+						const auto &disas_next_block = dbg_disas_code_block(cpu, g_break_pc, instr_to_print);
+						g_disas_data.insert(g_disas_data.end(), std::make_move_iterator(disas_next_block.begin()), std::make_move_iterator(disas_next_block.end()));
 					}
-					else if (ImGui::IsKeyPressed(ImGuiKey_F9)) {
-						exec_dbg_command<dbg_command_t::toggle_brk>(cpu);
+					assert(std::adjacent_find(g_disas_data.begin(), g_disas_data.end(), [](const auto &lhs, const auto &rhs)
+						{
+							return lhs.first == rhs.first;
+						}) == g_disas_data.end());
+
+					if (!g_step_out_active) {
+						unsigned num_instr_printed = 0;
+						for (; num_instr_printed < g_disas_data.size(); ++num_instr_printed) {
+							// buffer size = buff_size used in log_instr for instr string + 12 chars need to print its addr
+							char buffer[256 + 12 + 1];
+							addr_t addr = (g_disas_data.begin() + num_instr_printed)->first;
+							std::snprintf(buffer, sizeof(buffer), "0x%08X  %s", addr, (g_disas_data.begin() + num_instr_printed)->second.c_str());
+							if (g_break_list.contains(addr)) {
+								// draw breakpoint with a different text color
+								ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(brk_r, brk_g, brk_b, 1.0f));
+								if (ImGui::Selectable(buffer, g_instr_sel == num_instr_printed)) {
+									g_instr_sel = num_instr_printed;
+								}
+								ImGui::PopStyleColor();
+							}
+							else {
+								if (ImGui::Selectable(buffer, g_instr_sel == num_instr_printed)) {
+									g_instr_sel = num_instr_printed;
+								}
+							}
+						}
+						if (num_instr_printed != instr_to_print) {
+							for (unsigned instr_left_to_print = num_instr_printed; instr_left_to_print < instr_to_print; ++instr_left_to_print) {
+								ImGui::Text("????");
+							}
+						}
+					}
+
+					if (g_show_popup) {
+						ImGui::SetNextWindowPos(ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() * 0.5f,
+							ImGui::GetWindowPos().y + ImGui::GetWindowHeight() * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+						ImGui::SetNextWindowSize(ImVec2(235.0f, 75.0f));
+						ImGui::OpenPopup("Error");
+						if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_NoResize)) {
+							ImGui::Text("Failed to insert the breakpoint");
+							if (ImGui::Button("OK")) {
+								g_show_popup = false;
+								ImGui::CloseCurrentPopup();
+							}
+							ImGui::EndPopup();
+						}
+					}
+					else {
+						if (g_step_out_active || (ImGui::IsKeyPressed(ImGuiKey_F11) && (ImGui::IsKeyPressed(ImGuiKey_LeftShift) || ImGui::IsKeyPressed(ImGuiKey_RightShift)))) {
+							exec_dbg_command<dbg_command_t::step_out>(cpu);
+						}
+						else if (ImGui::IsKeyPressed(ImGuiKey_F11)) {
+							exec_dbg_command<dbg_command_t::step_into>(cpu);
+						}
+						else if (ImGui::IsKeyPressed(ImGuiKey_F10)) {
+							exec_dbg_command<dbg_command_t::step_over>(cpu);
+						}
+						else if (ImGui::IsKeyPressed(ImGuiKey_F9)) {
+							exec_dbg_command<dbg_command_t::toggle_brk>(cpu);
+						}
 					}
 				}
 			}

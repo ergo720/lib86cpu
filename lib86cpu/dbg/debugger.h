@@ -42,7 +42,7 @@ inline uint32_t g_mem_active;
 inline bool g_step_out_active = false;
 inline std::array<char, 8> g_mem_button_text("Memory ");
 
-inline std::unordered_map<addr_t, brk_info> g_break_list;
+inline std::map<addr_t, brk_info> g_break_list;
 inline std::array<std::pair<addr_t, size_t>, 4> g_watch_list;
 
 inline int g_main_wnd_w;

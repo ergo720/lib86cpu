@@ -11,7 +11,7 @@
 #include <vector>
 #include <functional>
 #include <mutex>
-#include <unordered_map>
+#include <map>
 
 // lib86cpu error flags
 enum class lc86_status : int32_t {
@@ -37,7 +37,7 @@ using logfn_t = void(*)(log_level, const unsigned, const char *, ...);
 using hook_t = void(*)();
 
 #define LC86_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::success)
-#define DEBUGGER_OPTIONS_ID 3
+#define DEBUGGER_OPTIONS_ID 4
 
 #define CPU_ATT_SYNTAX          0  // use att syntax for instruction decoding
 #define CPU_MASM_SYNTAX         1  // use intel masm syntax for instruction decoding
@@ -101,7 +101,7 @@ struct dbg_opt_t {
 	float brk_col[3] = { 1.0f, 0.0f, 0.0f }; // default breakpoint color: red
 	float bkg_col[3] = { 0.0f, 0.0f, 0.0f }; // default background color: black
 	float reg_col[3] = { 1.0f, 0.0f, 0.0f }; // default updated register color: red
-	std::unordered_map<addr_t, int> brk_map;
+	std::map<addr_t, int> brk_map;
 	addr_t mem_editor_addr[4] = { 0 };
 	uint32_t mem_active = 0;
 };
