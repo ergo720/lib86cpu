@@ -287,10 +287,12 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 						bool close_brk_popup = ImGui::Button("OK");
 						ImGui::SameLine();
 						bool delete_brk_popup = ImGui::Button("Delete");
+						ImGui::SameLine();
+						bool cancel_brk_popup = ImGui::Button("Cancel");
 						if (g_show_popup) {
 							dbg_draw_error_popup();
 						}
-						if (close_brk_popup) {
+						else if (close_brk_popup) {
 							if (brk_type_sel == 0) { // breakpoint was selected
 								uint32_t addr;
 								const auto &ret = std::from_chars(addr_buff.data(), addr_buff.data() + addr_buff.size(), addr, 16);
@@ -320,6 +322,9 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 							if (sel_it != g_break_list.end()) {
 								g_break_list.erase(sel_it);
 							}
+							show_brk_popup = false;
+						}
+						else if (cancel_brk_popup) {
 							show_brk_popup = false;
 						}
 						ImGui::EndPopup();
