@@ -18,6 +18,17 @@
 #define BRK_TXT "Breakpoints"
 #define BRK_TYPE_TXT "Breakpoint"
 #define WATCH_TYPE_TXT "Watchpoint"
+#define WATCH_NUM0_TXT "zero"
+#define WATCH_NUM1_TXT "one"
+#define WATCH_NUM2_TXT "two"
+#define WATCH_NUM3_TXT "three"
+#define WATCH_WO_TXT "data write only"
+#define WATCH_IO_TXT "i/o read/write"
+#define WATCH_RW_TXT "data read/write"
+#define WATCH_SIZE1_TXT "one"
+#define WATCH_SIZE2_TXT "two"
+#define WATCH_SIZE4_TXT "four"
+#define WATCH_SIZE8_TXT "eight"
 
 
 enum class dbg_command_t {
@@ -37,19 +48,20 @@ static uint16_t g_last_fstatus;
 static uint16_t g_last_ftags;
 static bool g_regs_need_update;
 static std::array<char, std::max(std::string(DISAS_TXT).size(), std::string(BRK_TXT).size()) + 1> g_disas_button_text(DISAS_TXT);
+static constexpr std::array<const char *, 4> g_watch_num_txt = { WATCH_NUM0_TXT, WATCH_NUM1_TXT, WATCH_NUM2_TXT, WATCH_NUM3_TXT };
+static constexpr std::array<const char *, 4> g_watch_rw_txt = { nullptr, WATCH_WO_TXT, WATCH_IO_TXT, WATCH_RW_TXT };
+static constexpr std::array<const char *, 4> g_watch_size_txt = { WATCH_SIZE1_TXT, WATCH_SIZE2_TXT, WATCH_SIZE8_TXT, WATCH_SIZE4_TXT };
 static uint32_t g_disas_view_active = 1;
 
-static_assert(std::is_trivially_copyable_v<regs_t>); // make sure we can use std::copy on regs_t
-
 void
-dbg_draw_error_popup()
+dbg_draw_error_popup(uint32_t brk_type_sel)
 {
 	ImGui::SetNextWindowPos(ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() * 0.5f,
 		ImGui::GetWindowPos().y + ImGui::GetWindowHeight() * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
 	ImGui::SetNextWindowSize(ImVec2(235.0f, 75.0f));
 	ImGui::OpenPopup("Error");
 	if (ImGui::BeginPopupModal("Error", nullptr, ImGuiWindowFlags_NoResize)) {
-		ImGui::Text("Failed to insert the breakpoint");
+		ImGui::Text("Failed to insert the %s", brk_type_sel ? "watchpoint" : "breakpoint");
 		if (ImGui::Button("OK")) {
 			g_show_popup = false;
 			ImGui::CloseCurrentPopup();
@@ -77,7 +89,6 @@ dbg_handle_continue(cpu_t *cpu) // default: F5
 	cpu->cpu_flags &= ~CPU_SINGLE_STEP;
 	g_disas_data.clear();
 	g_instr_sel = 0;
-	dbg_apply_sw_breakpoints(cpu);
 	const char *text = "Not available while debuggee is running";
 	ImGui::SetCursorPos(ImVec2(ImGui::GetWindowWidth() / 2 - (ImGui::CalcTextSize(text).x / 2), ImGui::GetWindowHeight() / 2 - (ImGui::CalcTextSize(text).y / 2)));
 	ImGui::Text("%s", text);
@@ -235,34 +246,64 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 				// render the breakpoint list window
 				constexpr auto brk_type_txt_size = std::string(BRK_TYPE_TXT).size();
 				constexpr auto watch_type_txt_size = std::string(WATCH_TYPE_TXT).size();
+				constexpr auto watch_wo_txt_size = std::string(WATCH_WO_TXT).size();
+				constexpr auto watch_io_txt_size = std::string(WATCH_IO_TXT).size();
+				constexpr auto watch_rw_txt_size = std::string(WATCH_RW_TXT).size();
+				constexpr auto txt_buff_size = std::max(brk_type_txt_size, watch_type_txt_size) + // name type
+					12 + // ": " + 10 chars needed to print the addr in hex
+					4 + 1 + // ";idx" + number of watchpoint
+					5 + 1 + // ";size" + size of watchpoint
+					(std::max(std::max(watch_wo_txt_size, watch_io_txt_size), watch_rw_txt_size)) + 1 + // ";" + watchpoint type
+					1; // terminating null character
 				static decltype(g_break_list)::iterator sel_it = g_break_list.begin();
 				static std::array<char, 9> addr_buff;
-				static std::array<char, std::max(brk_type_txt_size, watch_type_txt_size) + 12 + 1> txt_buff; // name type + ": " + 10 chars needed to print its addr
-				static uint32_t brk_sel = 0;
+				static std::array<char, txt_buff_size> txt_buff; // watchpoint: 0xAABBCCDD;idx0;size1;type name / breakpoint: 0xAABBCCDD
 				static bool show_brk_popup = false;
-				static int brk_type_sel = 0; // 0: brk, 1: watch
-				uint32_t num_brk_printed = 0;
+				static uint32_t brk_type_sel = 0; // 0: brk, 1: watch
+				static uint32_t brk_type_num = 0; // 0, 1, 2, 3
+				static uint32_t brk_type_rw = 3; // 1: wo, 2: I/O rw, 3: rw
+				static uint32_t brk_type_size = 3; // 0: 1, 1: 2, 2: 8, 3: 4
+
+				for (unsigned idx = 0; idx < 4; ++idx) {
+					if (cpu_check_watchpoint_enabled(cpu, idx)) {
+						addr_t addr = cpu->cpu_ctx.regs.dr[idx];
+						uint32_t size = cpu_get_watchpoint_length(cpu, idx);
+						uint32_t type = cpu_get_watchpoint_type(cpu, idx);
+						const char *type_name = (type == DR7_TYPE_DATA_W) ? WATCH_WO_TXT : (type == DR7_TYPE_IO_RW) ? WATCH_IO_TXT : WATCH_RW_TXT;
+						std::snprintf(txt_buff.data(), txt_buff.size(), WATCH_TYPE_TXT ": 0x%08X;idx%u;size%u;%s", addr, idx, size, type_name);
+
+						if (ImGui::Selectable(txt_buff.data(), false)) {
+							// if selected, then update an existing entry
+							[[maybe_unused]] const auto &ret = std::to_chars(addr_buff.data(), addr_buff.data() + addr_buff.size(), addr, 16);
+							assert(ret.ec == std::errc());
+							show_brk_popup = true;
+							sel_it = g_break_list.end();
+							brk_type_sel = 1;
+							brk_type_size = (size == 8) ? 2 : size - 1;
+							brk_type_rw = type;
+							brk_type_num = idx;
+						}
+					}
+				}
 
 				for (auto it = g_break_list.begin(); it != g_break_list.end(); ++it) {
 					const auto &elem = *it;
 					if (elem.second.type == brk_t::breakpoint) {
 						std::snprintf(txt_buff.data(), txt_buff.size(), BRK_TYPE_TXT ": 0x%08X", elem.first);
 					}
-					else if (elem.second.type == brk_t::watchpoint) {
-						assert(0); // not supported yet
-					}
 
-					if (ImGui::Selectable(txt_buff.data(), brk_sel == num_brk_printed)) {
+					if (ImGui::Selectable(txt_buff.data(), false)) {
+						// if selected, then update an existing entry
 						[[maybe_unused]] const auto &ret = std::to_chars(addr_buff.data(), addr_buff.data() + addr_buff.size(), it->first, 16);
 						assert(ret.ec == std::errc());
 						show_brk_popup = true;
-						brk_sel = num_brk_printed;
 						sel_it = it;
+						brk_type_sel = 0;
 					}
-					++num_brk_printed;
 				}
 
 				if ((show_brk_popup == false) && ImGui::IsMouseClicked(ImGuiMouseButton_Right)) {
+					// if right-clicked, then add a new entry
 					std::fill(addr_buff.begin(), addr_buff.end(), 0); // show an empty address
 					show_brk_popup = true;
 					sel_it = g_break_list.end();
@@ -271,35 +312,78 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 				if (show_brk_popup) {
 					ImGui::SetNextWindowPos(ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() * 0.5f,
 						ImGui::GetWindowPos().y + ImGui::GetWindowHeight() * 0.5f), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
-					ImGui::SetNextWindowSize(ImVec2(250.0f, 100.0f));
+					ImGui::SetNextWindowSize(ImVec2(250.0f, 170.0f));
 					ImGui::OpenPopup("New breakpoint");
 					if (ImGui::BeginPopupModal("New breakpoint", nullptr, ImGuiWindowFlags_NoResize)) {
-						if (ImGui::BeginCombo("breakpoint type", BRK_TYPE_TXT)) {
-							if (ImGui::Selectable(BRK_TYPE_TXT, false)) {
+						if (ImGui::BeginCombo("breakpoint type", brk_type_sel ? WATCH_TYPE_TXT : BRK_TYPE_TXT)) {
+							if (ImGui::Selectable(BRK_TYPE_TXT, !brk_type_sel ? true : false)) {
 								brk_type_sel = 0;
 							}
-							if (ImGui::Selectable(WATCH_TYPE_TXT, false)) {
+							if (ImGui::Selectable(WATCH_TYPE_TXT, brk_type_sel ? true : false)) {
 								brk_type_sel = 1;
 							}
 							ImGui::EndCombo();
 						}
 						ImGui::InputText("address", addr_buff.data(), addr_buff.size(), ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue);
+						int selectable_disabled = brk_type_sel ? 0 : ImGuiSelectableFlags_Disabled;
+						if (ImGui::BeginCombo("number", g_watch_num_txt[brk_type_num])) {
+							if (ImGui::Selectable(WATCH_NUM0_TXT, false, selectable_disabled)) {
+								brk_type_num = 0;
+							}
+							if (ImGui::Selectable(WATCH_NUM1_TXT, false, selectable_disabled)) {
+								brk_type_num = 1;
+							}
+							if (ImGui::Selectable(WATCH_NUM2_TXT, false, selectable_disabled)) {
+								brk_type_num = 2;
+							}
+							if (ImGui::Selectable(WATCH_NUM3_TXT, false, selectable_disabled)) {
+								brk_type_num = 3;
+							}
+							ImGui::EndCombo();
+						}
+						if (ImGui::BeginCombo("read/write", g_watch_rw_txt[brk_type_rw])) {
+							if (ImGui::Selectable(WATCH_WO_TXT, false, selectable_disabled)) {
+								brk_type_rw = DR7_TYPE_DATA_W;
+							}
+							if (ImGui::Selectable(WATCH_IO_TXT, false, selectable_disabled)) {
+								brk_type_rw = DR7_TYPE_IO_RW;
+							}
+							if (ImGui::Selectable(WATCH_RW_TXT, false, selectable_disabled)) {
+								brk_type_rw = DR7_TYPE_DATA_RW;
+							}
+							ImGui::EndCombo();
+						}
+						if (ImGui::BeginCombo("length", g_watch_size_txt[brk_type_size])) {
+							if (ImGui::Selectable(WATCH_SIZE1_TXT, false, selectable_disabled)) {
+								brk_type_size = 0;
+							}
+							if (ImGui::Selectable(WATCH_SIZE2_TXT, false, selectable_disabled)) {
+								brk_type_size = 1;
+							}
+							if (ImGui::Selectable(WATCH_SIZE4_TXT, false, selectable_disabled)) {
+								brk_type_size = 3;
+							}
+							if (ImGui::Selectable(WATCH_SIZE8_TXT, false, selectable_disabled)) {
+								brk_type_size = 2;
+							}
+							ImGui::EndCombo();
+						}
 						bool close_brk_popup = ImGui::Button("OK");
 						ImGui::SameLine();
 						bool delete_brk_popup = ImGui::Button("Delete");
 						ImGui::SameLine();
 						bool cancel_brk_popup = ImGui::Button("Cancel");
 						if (g_show_popup) {
-							dbg_draw_error_popup();
+							dbg_draw_error_popup(brk_type_sel);
 						}
 						else if (close_brk_popup) {
-							if (brk_type_sel == 0) { // breakpoint was selected
-								uint32_t addr;
-								const auto &ret = std::from_chars(addr_buff.data(), addr_buff.data() + addr_buff.size(), addr, 16);
-								if (ret.ec != std::errc()) { // the conversion might fail when the popup is open with a right click
-									g_show_popup = true;
-								}
-								else {
+							uint32_t addr;
+							const auto &ret = std::from_chars(addr_buff.data(), addr_buff.data() + addr_buff.size(), addr, 16);
+							if (ret.ec != std::errc()) { // the conversion might fail when the popup is open with a right click
+								g_show_popup = true;
+							}
+							else {
+								if (brk_type_sel == 0) { // breakpoint was selected
 									if (const auto &opt = dbg_insert_sw_breakpoint(cpu, addr); opt) {
 										if (sel_it != g_break_list.end()) {
 											g_break_list.erase(sel_it);
@@ -311,16 +395,20 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 										g_show_popup = true;
 									}
 								}
-
-								ImGui::CloseCurrentPopup();
-							}
-							else {
-								assert(0); // not supported yet
+								else { // watchpoint was selected
+									dbg_update_watchpoint(cpu, brk_type_num, addr, brk_type_rw, brk_type_size, true);
+									show_brk_popup = false;
+								}
 							}
 						}
 						else if (delete_brk_popup) {
-							if (sel_it != g_break_list.end()) {
-								g_break_list.erase(sel_it);
+							if (brk_type_sel == 0) { // breakpoint was selected
+								if (sel_it != g_break_list.end()) {
+									g_break_list.erase(sel_it);
+								}
+							}
+							else { // watchpoint was selected
+								dbg_update_watchpoint(cpu, brk_type_num, 0, 3, 3, false);
 							}
 							show_brk_popup = false;
 						}
@@ -438,7 +526,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 		bool change_mem_view = ImGui::Button(g_mem_button_text.data());
 		if (change_mem_view) {
 			(++g_mem_active) &= 3;
-			g_mem_button_text[g_mem_button_text.size() - 1] = '0' + g_mem_active;
+			g_mem_button_text[g_mem_button_text.size() - 2] = '0' + g_mem_active;
 		}
 		ImGui::PopItemWidth();
 		ImGui::ColorEdit3("Text color", g_txt_col);

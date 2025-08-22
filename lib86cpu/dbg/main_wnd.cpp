@@ -71,7 +71,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 	bool using_gl3 = true;
 
 	try {
-		read_dbg_opt();
+		read_dbg_opt(cpu);
 		dbg_setup_sw_breakpoints(cpu);
 		dbg_copy_registers(cpu);
 
@@ -165,7 +165,7 @@ dbg_main_wnd(cpu_t *cpu, std::promise<bool> &has_err)
 
 	glfwTerminate();
 
-	write_dbg_opt();
+	write_dbg_opt(cpu);
 
 	g_main_wnd = nullptr;
 	g_cpu = nullptr;

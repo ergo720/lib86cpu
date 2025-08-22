@@ -217,7 +217,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} \
  "
 )
 elseif (${COMPILER_IS_GNU})
-add_compile_options(-m64 -msse2 -fexceptions -funwind-tables)
+add_compile_options(-m64 -msse2 -fexceptions -funwind-tables -lGL -lGLU -lglut)
 endif()
 
 if (${LIB86CPU_BUILD_SHARED_LIB})

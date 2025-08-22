@@ -135,6 +135,7 @@ JIT_API uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 #define DISAS_FLG_PE               HFLG_PE_MODE          // (1 << 4)
 #define DISAS_FLG_FETCH_FAULT      DISAS_FLG_PAGE_CROSS  // (1 << 2)
 #define DISAS_FLG_ONE_INSTR        CPU_DISAS_ONE         // (1 << 7)
+#define DISAS_INSTR_BREAKPOINT     DISAS_FLG_PAGE_CROSS  // (1 << 2)
 
 // tc flags
 #define TC_FLG_JMP        (1 << 0)

@@ -7,6 +7,9 @@
 #include "instructions.h"
 #include "debugger.h"
 #include "clock.h"
+#if XBOX_CPU
+#include "ipt.h"
+#endif
 
 
 template<unsigned reg>
@@ -1003,6 +1006,11 @@ update_drN_helper(cpu_ctx_t *cpu_ctx, uint8_t dr_idx, uint32_t new_dr)
 						size_t watch_len = cpu_get_watchpoint_length(cpu_ctx->cpu, dr_idx);
 						data.watch_addr = cpu_ctx->regs.dr[dr_idx] & ~(watch_len - 1);
 						data.watch_end = data.watch_addr + watch_len - 1;
+#if XBOX_CPU
+						if (cpu_get_watchpoint_type(cpu_ctx->cpu, dr_idx) != DR7_TYPE_INSTR) {
+							ipt_protect_debug_page(cpu_ctx->cpu, data.watch_addr, data.watch_end);
+						}
+#endif
 						break;
 					}
 				}
@@ -1019,7 +1027,7 @@ update_drN_helper(cpu_ctx_t *cpu_ctx, uint8_t dr_idx, uint32_t new_dr)
 		for (unsigned idx = 0; idx < 4; ++idx) {
 			if (cpu_check_watchpoint_enabled(cpu_ctx->cpu, idx)) {
 				size_t watch_len = cpu_get_watchpoint_length(cpu_ctx->cpu, idx);
-				if (cpu_get_watchpoint_type(cpu_ctx->cpu, idx) == DR7_TYPE_IO_RW) {
+				if (int type = cpu_get_watchpoint_type(cpu_ctx->cpu, idx); type == DR7_TYPE_IO_RW) {
 					port_t watch_addr = cpu_ctx->regs.dr[idx] & ~(watch_len - 1);
 					port_t watch_end = watch_addr + watch_len - 1;
 					cpu_ctx->cpu->wp_io.emplace_back(idx, watch_addr, watch_end);
@@ -1028,6 +1036,11 @@ update_drN_helper(cpu_ctx_t *cpu_ctx, uint8_t dr_idx, uint32_t new_dr)
 					addr_t watch_addr = cpu_ctx->regs.dr[idx] & ~(watch_len - 1);
 					addr_t watch_end = watch_addr + watch_len - 1;
 					cpu_ctx->cpu->wp_data.emplace_back(idx, watch_addr, watch_end);
+#if XBOX_CPU
+					if (type != DR7_TYPE_INSTR) {
+						ipt_protect_debug_page(cpu_ctx->cpu, watch_addr, watch_end);
+					}
+#endif
 				}
 			}
 		}

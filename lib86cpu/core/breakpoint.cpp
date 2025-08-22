@@ -9,29 +9,29 @@
 
 
 bool
-cpu_check_watchpoint_enabled(cpu_t *cpu, int idx)
+cpu_check_watchpoint_enabled(cpu_t *cpu, unsigned idx)
 {
 	// we don't support task switches, so local and global enable flags are the same for now
 	return (cpu->cpu_ctx.regs.dr[7] >> (idx * 2)) & 3;
 }
 
-int
-cpu_get_watchpoint_type(cpu_t *cpu, int idx)
+uint32_t
+cpu_get_watchpoint_type(cpu_t *cpu, unsigned idx)
 {
 	return (cpu->cpu_ctx.regs.dr[7] >> (DR7_TYPE_SHIFT + idx * 4)) & 3;
 }
 
-size_t
-cpu_get_watchpoint_length(cpu_t *cpu, int idx)
+uint32_t
+cpu_get_watchpoint_length(cpu_t *cpu, unsigned idx)
 {
-	size_t len = ((cpu->cpu_ctx.regs.dr[7] >> (DR7_LEN_SHIFT + idx * 4)) & 3);
+	uint32_t len = ((cpu->cpu_ctx.regs.dr[7] >> (DR7_LEN_SHIFT + idx * 4)) & 3);
 	return (len == 2) ? 8 : len + 1;
 }
 
 static bool
-cpu_check_watchpoint_overlap(cpu_t *cpu, addr_t addr, size_t size, int idx)
+cpu_check_watchpoint_overlap(cpu_t *cpu, addr_t addr, uint32_t size, unsigned idx)
 {
-	size_t watch_len = cpu_get_watchpoint_length(cpu, idx);
+	uint32_t watch_len = cpu_get_watchpoint_length(cpu, idx);
 	addr_t watch_addr = cpu->cpu_ctx.regs.dr[idx] & ~(watch_len - 1);
 	addr_t watch_end = watch_addr + watch_len - 1;
 	addr_t end = addr + size - 1;
@@ -40,7 +40,7 @@ cpu_check_watchpoint_overlap(cpu_t *cpu, addr_t addr, size_t size, int idx)
 }
 
 static void
-cpu_check_watchpoints(cpu_t *cpu, addr_t addr, int dr_idx, int type)
+cpu_check_watchpoints(cpu_t *cpu, addr_t addr, unsigned dr_idx, int type)
 {
 	bool match = false;
 	int dr7_type = cpu_get_watchpoint_type(cpu, dr_idx);
@@ -73,7 +73,7 @@ cpu_check_watchpoints(cpu_t *cpu, addr_t addr, int dr_idx, int type)
 }
 
 void
-cpu_check_data_watchpoints(cpu_t *cpu, addr_t addr, size_t size, int type)
+cpu_check_data_watchpoints(cpu_t *cpu, addr_t addr, uint32_t size, int type)
 {
 	for (const auto &wp : cpu->wp_data) {
 		if ((wp.watch_addr <= (addr + size - 1)) && (addr <= wp.watch_end)) [[unlikely]] {
@@ -83,7 +83,7 @@ cpu_check_data_watchpoints(cpu_t *cpu, addr_t addr, size_t size, int type)
 }
 
 void
-cpu_check_io_watchpoints(cpu_t *cpu, port_t port, size_t size, int type)
+cpu_check_io_watchpoints(cpu_t *cpu, port_t port, uint32_t size, int type)
 {
 	for (const auto &wp : cpu->wp_io) {
 		if ((wp.watch_addr <= (port + size - 1)) && (port <= wp.watch_end)) [[unlikely]] {

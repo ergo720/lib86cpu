@@ -10,10 +10,13 @@
 #include "main_wnd.h"
 #include <fstream>
 #include <charconv>
+#if XBOX_CPU
+#include "ipt.h"
+#endif
 
 
 void
-read_dbg_opt()
+read_dbg_opt(cpu_t *cpu)
 {
 	g_dbg_opt.lock.lock();
 	g_main_wnd_w = g_dbg_opt.width;
@@ -34,18 +37,34 @@ read_dbg_opt()
 		g_mem_pc[i] = g_dbg_opt.mem_editor_addr[i];
 	}
 	g_mem_active = g_dbg_opt.mem_active & 3;
-	g_mem_button_text[g_mem_button_text.size() - 1] = '0' + g_mem_active;
-	std::for_each(g_dbg_opt.brk_map.begin(), g_dbg_opt.brk_map.end(), [](const decltype(g_dbg_opt.brk_map)::value_type &elem) {
-		brk_t brk_type = static_cast<brk_t>(elem.second);
-		if ((brk_type == brk_t::breakpoint) || (brk_type == brk_t::watchpoint)) {
-			g_break_list.emplace(elem.first, brk_info{ 0, brk_type });
-		}
+	g_mem_button_text[g_mem_button_text.size() - 2] = '0' + g_mem_active;
+	std::for_each(g_dbg_opt.brk_vec.begin(), g_dbg_opt.brk_vec.end(), [](const decltype(g_dbg_opt.brk_vec)::value_type &elem) {
+		g_break_list.emplace(elem, brk_info{ 0, brk_t::breakpoint });
 	});
+	for (unsigned idx = 0; idx < 4; ++idx) {
+		addr_t addr = g_dbg_opt.wp_arr[idx].addr;
+		uint32_t size = g_dbg_opt.wp_arr[idx].size;
+		uint32_t type = g_dbg_opt.wp_arr[idx].type;
+		if (type == DR7_TYPE_INSTR) { // considered as invalid as the debugger never sets this
+			cpu->cpu_ctx.regs.dr[7] &= ~(3 << (idx * 2));
+			continue;
+		}
+		uint32_t enable_shift = idx * 2;
+		uint32_t rw_shift = DR7_TYPE_SHIFT + idx * 4;
+		uint32_t size_shift = DR7_LEN_SHIFT + idx * 4;
+		uint32_t dr7 = cpu->cpu_ctx.regs.dr[7] & ~((3 << enable_shift) | (3 << rw_shift) | (3 << size_shift));
+		dr7 |= (3 << enable_shift);
+		dr7 |= (type << rw_shift);
+		dr7 |= (size << size_shift);
+		cpu->cpu_ctx.regs.dr[7] = dr7;
+		cpu->cpu_ctx.regs.dr[idx] = addr;
+	}
+	update_drN_helper(&cpu->cpu_ctx, 7, cpu->cpu_ctx.regs.dr[7]);
 	g_dbg_opt.lock.unlock();
 }
 
 void
-write_dbg_opt()
+write_dbg_opt(cpu_t *cpu)
 {
 	g_dbg_opt.lock.lock();
 	g_dbg_opt.width = g_main_wnd_w;
@@ -63,13 +82,25 @@ write_dbg_opt()
 		g_dbg_opt.mem_editor_addr[i] = g_mem_pc[i];
 	}
 	g_dbg_opt.mem_active = g_mem_active;
-	g_dbg_opt.brk_map.clear();
+	g_dbg_opt.brk_vec.clear();
 	std::for_each(g_break_list.begin(), g_break_list.end(), [](const decltype(g_break_list)::value_type &elem) {
 		brk_t brk_type = elem.second.type;
-		if ((brk_type == brk_t::breakpoint) || (brk_type == brk_t::watchpoint)) {
-			g_dbg_opt.brk_map.emplace(elem.first, static_cast<int>(brk_type) );
+		if (brk_type == brk_t::breakpoint) {
+			g_dbg_opt.brk_vec.emplace_back(elem.first);
 		}
 	});
+	for (unsigned idx = 0; idx < 4; ++idx) {
+		addr_t addr = 0;
+		uint32_t size = 0;
+		uint32_t type = DR7_TYPE_INSTR; // considered as invalid as the debugger never sets this
+		if (cpu_check_watchpoint_enabled(cpu, idx)) {
+			size = cpu_get_watchpoint_length(cpu, idx);
+			size = (size == 8) ? 2 : size - 1;
+			type = cpu_get_watchpoint_type(cpu, idx);
+			addr = cpu->cpu_ctx.regs.dr[idx];
+		}
+		g_dbg_opt.wp_arr[idx] = { .addr = addr, .size = size, .type = type };
+	}
 	g_dbg_opt.lock.unlock();
 }
 
@@ -197,97 +228,6 @@ dbg_ram_write(uint8_t *data, size_t off, uint8_t val)
 	(g_cpu->cpu_ctx.regs.cr0 &= ~CR0_WP_MASK) |= old_wp;
 }
 
-static void
-dbg_single_step_handler(cpu_ctx_t *cpu_ctx)
-{
-	// NOTE: this is called from the emulation thread
-
-	cpu_ctx->regs.dr[6] &= ~DR6_BS_MASK;
-
-	// disable all breakpoints so that we can show the original instructions in the disassembler
-	dbg_remove_sw_breakpoints(cpu_ctx->cpu);
-
-	// wait until the debugger continues execution
-	g_break_pc = cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
-	g_mem_editor_update = true;
-	g_guest_running.clear();
-	g_guest_running.notify_one();
-	g_guest_running.wait(false);
-	dbg_apply_sw_breakpoints(cpu_ctx->cpu);
-}
-
-static void
-dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
-{
-	// NOTE: this is called from the emulation thread
-
-	addr_t pc = cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip - 1; // if this is our int3, it will always be one byte large
-	if (auto it = g_break_list.find(pc); it != g_break_list.end()) {
-		// disable all breakpoints so that we can show the original instructions in the disassembler
-		dbg_remove_sw_breakpoints(cpu_ctx->cpu);
-		if (it->second.type == brk_t::step_over) {
-			g_break_list.erase(it);
-		}
-		else {
-			std::vector<decltype(g_break_list)::key_type> key_vec;
-			for (auto &&elem : g_break_list) {
-				if (elem.second.type == brk_t::step_over) {
-					key_vec.emplace_back(elem.first);
-				}
-			}
-			for (auto &&key : key_vec) {
-				g_break_list.erase(key);
-			}
-			g_step_out_active = false;
-		}
-
-		// wait until the debugger continues execution
-		g_break_pc = pc;
-		g_mem_editor_update = true;
-		g_guest_running.clear();
-		g_guest_running.notify_one();
-		g_guest_running.wait(false);
-
-		cpu_ctx->regs.eip -= 1;
-		dbg_remove_sw_breakpoints(cpu_ctx->cpu, pc);
-		dbg_exec_original_instr(cpu_ctx->cpu);
-		dbg_apply_sw_breakpoints(cpu_ctx->cpu);
-	}
-}
-
-void
-dbg_exp_handler(cpu_ctx_t *cpu_ctx)
-{
-	// NOTE: task switches are currently not supported, so we don't check for DR6_BT_MASK
-
-	if (cpu_ctx->regs.dr[6] & (DR6_B0_MASK | DR6_B1_MASK | DR6_B2_MASK | DR6_B3_MASK | DR6_BD_MASK)) {
-		// If it is an instruction breakpoint or a general detect condition, clear the corresponding flags in dr6/7, to avoid triggering the exception again
-		uint32_t dr7_mask = DR7_GD_MASK, dr7 = cpu_ctx->regs.dr[7];
-		for (int i = 0; i < 4; ++i) {
-			int dr7_type = cpu_get_watchpoint_type(cpu_ctx->cpu, i);
-			if (dr7_type == DR7_TYPE_INSTR) {
-				dr7_mask |= (3 << i);
-			}
-		}
-
-		cpu_ctx->regs.dr[6] &= ~(DR6_B0_MASK | DR6_B1_MASK | DR6_B2_MASK | DR6_B3_MASK | DR6_BD_MASK);
-		cpu_ctx->regs.dr[7] &= ~dr7_mask;
-		update_drN_helper(cpu_ctx, 7, cpu_ctx->regs.dr[7]);
-	}
-
-	try {
-		if (cpu_ctx->regs.dr[6] & DR6_BS_MASK) {
-			dbg_single_step_handler(cpu_ctx);
-		} else {
-			dbg_sw_breakpoint_handler(cpu_ctx);
-		}
-	}
-	catch (host_exp_t) {
-		// this happens when there is an unhandled exception while attempting to update the breakpoints
-		LIB86CPU_ABORT_msg("Failed to update breakpoints");
-	}
-}
-
 template<typename T>
 static void dbg_update_sw_breakpoints(cpu_t *cpu, T &&lambda)
 {
@@ -407,4 +347,138 @@ dbg_remove_sw_breakpoints(cpu_t *cpu, addr_t addr)
 			dbg_remove_sw_breakpoints(cpu, it->first, it->second.original_byte);
 		}
 		});
+}
+
+void
+dbg_update_watchpoint(cpu_t *cpu, uint32_t dr_idx, addr_t addr, uint32_t brk_type_rw, uint32_t brk_type_size, bool enable)
+{
+	assert(brk_type_rw != DR7_TYPE_INSTR);
+	assert(dr_idx < 4);
+
+	uint32_t enable_shift = dr_idx * 2;
+	uint32_t rw_shift = DR7_TYPE_SHIFT + dr_idx * 4;
+	uint32_t size_shift = DR7_LEN_SHIFT + dr_idx * 4;
+	uint32_t dr7 = cpu->cpu_ctx.regs.dr[7] & ~((3 << enable_shift) | (3 << rw_shift) | (3 << size_shift));
+	dr7 |= (enable ? 3 : 0) << enable_shift;
+	dr7 |= (brk_type_rw << rw_shift);
+	dr7 |= (brk_type_size << size_shift);
+	cpu->cpu_ctx.regs.dr[7] = dr7;
+	cpu->cpu_ctx.regs.dr[dr_idx] = addr;
+}
+
+void
+dbg_apply_watchpoints(cpu_t *cpu)
+{
+	update_drN_helper(&cpu->cpu_ctx, 7, cpu->cpu_ctx.regs.dr[7]);
+}
+
+static void
+dbg_wait(cpu_ctx_t *cpu_ctx)
+{
+	// disable all breakpoints so that we can show the original instructions in the disassembler
+	dbg_remove_sw_breakpoints(cpu_ctx->cpu);
+
+	// wait until the debugger continues execution
+	g_break_pc = cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip;
+	g_mem_editor_update = true;
+	g_guest_running.clear();
+	g_guest_running.notify_one();
+	g_guest_running.wait(false);
+	dbg_apply_sw_breakpoints(cpu_ctx->cpu);
+	dbg_apply_watchpoints(cpu_ctx->cpu);
+}
+
+static void
+dbg_watchpoint_handler(cpu_ctx_t *cpu_ctx)
+{
+	// NOTE: this is called from the emulation thread
+
+	cpu_ctx->regs.dr[6] &= ~(DR6_B0_MASK | DR6_B1_MASK | DR6_B2_MASK | DR6_B3_MASK);
+
+	dbg_wait(cpu_ctx);
+}
+
+static void
+dbg_single_step_handler(cpu_ctx_t *cpu_ctx)
+{
+	// NOTE: this is called from the emulation thread
+
+	cpu_ctx->regs.dr[6] &= ~DR6_BS_MASK;
+
+	dbg_wait(cpu_ctx);
+}
+
+static void
+dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
+{
+	// NOTE: this is called from the emulation thread
+
+	addr_t pc = cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip - 1; // if this is our int3, it will always be one byte large
+	if (auto it = g_break_list.find(pc); it != g_break_list.end()) {
+		// disable all breakpoints so that we can show the original instructions in the disassembler
+		dbg_remove_sw_breakpoints(cpu_ctx->cpu);
+		if (it->second.type == brk_t::step_over) {
+			g_break_list.erase(it);
+		}
+		else {
+			std::vector<decltype(g_break_list)::key_type> key_vec;
+			for (auto &&elem : g_break_list) {
+				if (elem.second.type == brk_t::step_over) {
+					key_vec.emplace_back(elem.first);
+				}
+			}
+			for (auto &&key : key_vec) {
+				g_break_list.erase(key);
+			}
+			g_step_out_active = false;
+		}
+
+		// wait until the debugger continues execution
+		g_break_pc = pc;
+		g_mem_editor_update = true;
+		g_guest_running.clear();
+		g_guest_running.notify_one();
+		g_guest_running.wait(false);
+
+		cpu_ctx->regs.eip -= 1;
+		dbg_remove_sw_breakpoints(cpu_ctx->cpu, pc);
+		dbg_exec_original_instr(cpu_ctx->cpu);
+		dbg_apply_sw_breakpoints(cpu_ctx->cpu);
+		dbg_apply_watchpoints(cpu_ctx->cpu);
+	}
+}
+
+void
+dbg_exp_handler(cpu_ctx_t *cpu_ctx)
+{
+	// NOTE: task switches are currently not supported, so we don't check for DR6_BT_MASK
+
+	if (cpu_ctx->regs.dr[6] & (DR6_B0_MASK | DR6_B1_MASK | DR6_B2_MASK | DR6_B3_MASK | DR6_BD_MASK)) {
+		// If it is an instruction breakpoint or a general detect condition, clear the corresponding flags in dr6
+		uint32_t dr6_mask = DR6_BD_MASK;
+		for (int i = 0; i < 4; ++i) {
+			int dr7_type = cpu_get_watchpoint_type(cpu_ctx->cpu, i);
+			if (dr7_type == DR7_TYPE_INSTR) {
+				dr6_mask |= (1 << i);
+			}
+		}
+
+		cpu_ctx->regs.dr[6] &= ~dr6_mask;
+	}
+
+	try {
+		if (cpu_ctx->regs.dr[6] & DR6_BS_MASK) {
+			dbg_single_step_handler(cpu_ctx);
+		}
+		else if (cpu_ctx->regs.dr[6] & (DR6_B0_MASK | DR6_B1_MASK | DR6_B2_MASK | DR6_B3_MASK)) {
+			dbg_watchpoint_handler(cpu_ctx);
+		}
+		else {
+			dbg_sw_breakpoint_handler(cpu_ctx);
+		}
+	}
+	catch (host_exp_t) {
+		// this happens when there is an unhandled exception while attempting to update the breakpoints
+		LIB86CPU_ABORT_msg("Failed to update breakpoints");
+	}
 }

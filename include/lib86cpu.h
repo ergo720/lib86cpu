@@ -12,6 +12,7 @@
 #include <functional>
 #include <mutex>
 #include <map>
+#include <array>
 
 // lib86cpu error flags
 enum class lc86_status : int32_t {
@@ -37,7 +38,7 @@ using logfn_t = void(*)(log_level, const unsigned, const char *, ...);
 using hook_t = void(*)();
 
 #define LC86_SUCCESS(status) (static_cast<lc86_status>(status) == lc86_status::success)
-#define DEBUGGER_OPTIONS_ID 4
+#define DEBUGGER_OPTIONS_ID 5
 
 #define CPU_ATT_SYNTAX          0  // use att syntax for instruction decoding
 #define CPU_MASM_SYNTAX         1  // use intel masm syntax for instruction decoding
@@ -92,6 +93,12 @@ struct ram_save_state_t {
 	std::vector<uint8_t> ram;
 };
 
+struct wp_data {
+	addr_t addr;
+	uint32_t size;
+	uint32_t type;
+};
+
 struct dbg_opt_t {
 	std::mutex lock; // acquire this lock before accessing the other members
 	const uint32_t id = DEBUGGER_OPTIONS_ID; // updated whenever the other members change
@@ -101,7 +108,8 @@ struct dbg_opt_t {
 	float brk_col[3] = { 1.0f, 0.0f, 0.0f }; // default breakpoint color: red
 	float bkg_col[3] = { 0.0f, 0.0f, 0.0f }; // default background color: black
 	float reg_col[3] = { 1.0f, 0.0f, 0.0f }; // default updated register color: red
-	std::map<addr_t, int> brk_map;
+	std::vector<addr_t> brk_vec;
+	std::array<wp_data, 4> wp_arr;
 	addr_t mem_editor_addr[4] = { 0 };
 	uint32_t mem_active = 0;
 };

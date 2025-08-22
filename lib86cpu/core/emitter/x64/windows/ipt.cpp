@@ -21,8 +21,7 @@ static bool raise_page_fault;
 // Ipt mechanism of working. At first, every ipt element points to the guard page, which causes a fault when accessed. If the page is valid in the guest, the ipt element
 // is updated with the base address of the host page that maps it (if ram or rom), otherwise is backpatched with a call to a memory handler. Also, when a page is valid,
 // the memory permission of the host page are updated to reflect the memory permissions of the guest page. Finally, when the page is flushed from the tlb, the page
-// reverts to no-access because the ipt points to the guard page again, and the cycle repeats. Note that the current approach doesn't support debug data breakpoints, mostly
-// because the debug comparisons are done with virtual addresses
+// reverts to no-access because the ipt points to the guard page again, and the cycle repeats
 
 void
 ipt_ram_init(cpu_t *cpu, uint64_t ramsize)
@@ -177,6 +176,13 @@ ipt_protect_code_page(cpu_t *cpu, addr_t phys_addr)
 }
 
 void
+ipt_protect_debug_page(cpu_t *cpu, addr_t addr, addr_t addr_end)
+{
+	cpu->cpu_ctx.ipt[addr >> PAGE_SHIFT] = cpu->guard_page;
+	cpu->cpu_ctx.ipt[addr_end >> PAGE_SHIFT] = cpu->guard_page;
+}
+
+void
 ipt_flush(cpu_t *cpu)
 {
 	std::fill(std::begin(cpu->cpu_ctx.ipt), std::end(cpu->cpu_ctx.ipt), cpu->guard_page);
@@ -285,9 +291,37 @@ ipt_exception_filter(cpu_t *cpu, EXCEPTION_POINTERS *e)
 			return EXCEPTION_EXECUTE_HANDLER;
 		}
 
+		uint8_t *faulting_host_addr = (uint8_t *)e->ContextRecord->Rip;
+		for (const auto &wp : cpu->wp_data) {
+
+			// Note that's not enough to just check if the memory access overlaps with a watchpoint because, even if it doesn't, there might be other
+			// watchpoints in the same page we are trying to access
+			if ((wp.watch_addr <= ((faulting_guest_addr & ~PAGE_MASK) + PAGE_MASK)) && ((faulting_guest_addr & ~PAGE_MASK) <= wp.watch_end)) [[unlikely]] {
+
+				// There's at least one watchpoint in this page, so we patch the access
+				if (e->ExceptionRecord->ExceptionInformation[0] == 0) { // fault was a read
+					const auto it = read_instr_bytes.find(*(uint32_t *)faulting_host_addr);
+					assert(it != read_instr_bytes.end());
+					ipt_backpatch<false>(cpu, faulting_host_addr, it->second.first, it->second.second);
+					e->ContextRecord->Rip -= it->second.second; // adjust rip to point to the start of the patched code
+				}
+				else { // fault was a write
+					const auto it = write_instr_bytes.find(*(uint32_t *)faulting_host_addr);
+					assert(it != write_instr_bytes.end());
+					ipt_backpatch<true>(cpu, faulting_host_addr, it->second.first, it->second.second);
+					e->ContextRecord->Rip -= it->second.second; // adjust rip to point to the start of the patched code
+				}
+
+				// Clear the trap flag. While debugging, sometimes a single step exception is immediately triggered upon resuming execution and the debugger will not catch it for unknown
+				// reasons. This will be caught by us here, and because we reject it in the below code, it will terminate the emulation. Clearing the flag here seems to fix this
+				e->ContextRecord->EFlags &= ~(1 << 8);
+
+				return EXCEPTION_CONTINUE_EXECUTION;
+			}
+		}
+
 		// Page is valid, figure out how to handle it
 		const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
-		uint8_t *faulting_host_addr = (uint8_t *)e->ContextRecord->Rip;
 
 		retry:
 		switch (region->type)

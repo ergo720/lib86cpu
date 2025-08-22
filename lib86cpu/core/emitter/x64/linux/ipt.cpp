@@ -37,8 +37,7 @@ static cpu_t *g_cpu;
 // Ipt mechanism of working. At first, every ipt element points to the guard page, which causes a fault when accessed. If the page is valid in the guest, the ipt element
 // is updated with the base address of the host page that maps it (if ram or rom), otherwise is backpatched with a call to a memory handler. Also, when a page is valid,
 // the memory permission of the host page are updated to reflect the memory permissions of the guest page. Finally, when the page is flushed from the tlb, the page
-// reverts to no-access because the ipt points to the guard page again, and the cycle repeats. Note that the current approach doesn't support debug data breakpoints, mostly
-// because the debug comparisons are done with virtual addresses
+// reverts to no-access because the ipt points to the guard page again, and the cycle repeats
 
 static void
 ipt_signal_init()
@@ -245,6 +244,13 @@ ipt_protect_code_page(cpu_t *cpu, addr_t phys_addr)
 }
 
 void
+ipt_protect_debug_page(cpu_t *cpu, addr_t addr, addr_t addr_end)
+{
+	cpu->cpu_ctx.ipt[addr >> PAGE_SHIFT] = cpu->guard_page;
+	cpu->cpu_ctx.ipt[addr_end >> PAGE_SHIFT] = cpu->guard_page;
+}
+
+void
 ipt_flush(cpu_t *cpu)
 {
 	std::fill(std::begin(cpu->cpu_ctx.ipt), std::end(cpu->cpu_ctx.ipt), cpu->guard_page);
@@ -350,9 +356,33 @@ ipt_segfault_sigaction(int signal, siginfo_t *si, void *ctx)
 		siglongjmp(env, SIG_GUEST_PF);
 	}
 
+	uint8_t *faulting_host_addr = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
+	for (const auto &wp : g_cpu->wp_data) {
+
+		// Note that's not enough to just check if the memory access overlaps with a watchpoint because, even if it doesn't, there might be other
+		// watchpoints in the same page we are trying to access
+		if ((wp.watch_addr <= ((faulting_guest_addr & ~PAGE_MASK) + PAGE_MASK)) && ((faulting_guest_addr & ~PAGE_MASK) <= wp.watch_end)) [[unlikely]] {
+
+			// There's at least one watchpoint in this page, so we patch the access
+			if (!(uc->uc_mcontext.gregs[REG_ERR] & 2)) { // fault was a read
+				const auto it = read_instr_bytes.find(*(uint32_t *)faulting_host_addr);
+				assert(it != read_instr_bytes.end());
+				ipt_backpatch<false>(g_cpu, faulting_host_addr, it->second.first, it->second.second);
+				uc->uc_mcontext.gregs[REG_RIP] -= it->second.second; // adjust rip to point to the start of the patched code
+			}
+			else { // fault was a write
+				const auto it = write_instr_bytes.find(*(uint32_t *)faulting_host_addr);
+				assert(it != write_instr_bytes.end());
+				ipt_backpatch<true>(g_cpu, faulting_host_addr, it->second.first, it->second.second);
+				uc->uc_mcontext.gregs[REG_RIP] -= it->second.second; // adjust rip to point to the start of the patched code
+			}
+
+			return;
+		}
+	}
+
 	// Page is valid, figure out how to handle it
 	const memory_region_t<addr_t> *region = as_memory_search_addr(g_cpu, phys_addr);
-	uint8_t *faulting_host_addr = (uint8_t *)uc->uc_mcontext.gregs[REG_RIP];
 
 	retry:
 	switch (region->type)

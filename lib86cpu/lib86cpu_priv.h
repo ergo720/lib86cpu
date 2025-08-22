@@ -148,11 +148,11 @@ struct disas_ctx_t {
 
 template<typename T>
 struct wp_info {
-	int dr_idx;
+	unsigned dr_idx;
 	T watch_addr;
 	T watch_end;
 	wp_info() : dr_idx(0), watch_addr(0), watch_end(0) {}
-	wp_info(int idx, T addr, T end) : dr_idx(idx), watch_addr(addr), watch_end(end) {}
+	wp_info(unsigned idx, T addr, T end) : dr_idx(idx), watch_addr(addr), watch_end(end) {}
 };
 
 // the lazy eflags idea comes from reading these two papers:

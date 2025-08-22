@@ -7551,12 +7551,9 @@ lc86_jit::mov(decoded_instr *instr)
 
 	case 0x23: {
 		Label ok1 = m_a.newLabel();
-		LD_R32(EAX, CPU_CTX_DR7);
-		AND(EAX, DR7_GD_MASK);
+		TEST(MEMD32(RCX, CPU_CTX_DR7), DR7_GD_MASK);
 		BR_EQ(ok1);
-		LD_R32(EDX, CPU_CTX_DR6);
-		OR(EDX, DR6_BD_MASK);
-		ST_R32(CPU_CTX_DR6, EDX);
+		OR(MEMD32(RCX, CPU_CTX_DR6), DR6_BD_MASK);
 		RAISEin0_f(EXP_DB);
 		m_a.bind(ok1);
 		if (m_cpu->cpu_ctx.hflags & HFLG_CPL) {
@@ -7578,8 +7575,7 @@ lc86_jit::mov(decoded_instr *instr)
 
 			case DR4_idx: {
 				Label ok = m_a.newLabel();
-				LD_R32(EDX, CPU_CTX_CR4);
-				AND(EDX, CR4_DE_MASK);
+				TEST(MEMD32(RCX, CPU_CTX_CR4), CR4_DE_MASK);
 				BR_EQ(ok);
 				RAISEin0_f(EXP_UD);
 				m_a.bind(ok);
@@ -7593,8 +7589,7 @@ lc86_jit::mov(decoded_instr *instr)
 
 			case DR5_idx: {
 				Label ok = m_a.newLabel();
-				LD_R32(EDX, CPU_CTX_CR4);
-				AND(EDX, CR4_DE_MASK);
+				TEST(MEMD32(RCX, CPU_CTX_CR4), CR4_DE_MASK);
 				BR_EQ(ok);
 				RAISEin0_f(EXP_UD);
 				m_a.bind(ok);
