@@ -6,6 +6,10 @@ project(lib86cpu)
 # Suppress build failures caused by deprecation warnings treated as errors. CI seems to be using "-Werror=deprecated" which causes the issue
 set(CMAKE_ERROR_DEPRECATED FALSE CACHE BOOL "" FORCE)
 
+if (POLICY CMP0072)
+ set(OpenGL_GL_PREFERENCE LEGACY)
+endif(POLICY CMP0072)
+
 if(NOT DEFINED CMAKE_RUNTIME_OUTPUT_DIRECTORY)
  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${lib86cpu_BINARY_DIR}/bin")
 endif()
@@ -15,6 +19,11 @@ set(LIB86CPU_ROOT_DIR ${CMAKE_CURRENT_LIST_DIR})
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+
+find_package(OpenGL)
+if(NOT OpenGL_OpenGL_FOUND)
+ message(FATAL_ERROR "OpenGL was not found")
+endif()
 
 option(LIB86CPU_BUILD_SHARED_LIB
     "Build shared library"
@@ -217,7 +226,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} \
  "
 )
 elseif (${COMPILER_IS_GNU})
-add_compile_options(-m64 -msse2 -fexceptions -funwind-tables -lGL -lGLU -lglut)
+add_compile_options(-m64 -msse2 -fexceptions -funwind-tables)
 endif()
 
 if (${LIB86CPU_BUILD_SHARED_LIB})
@@ -227,10 +236,7 @@ else ()
  add_library(cpu STATIC ${HEADERS} ${SOURCES})
 endif()
 
-target_link_libraries(cpu PRIVATE asmjit Zydis glfw imgui)
-if (${COMPILER_IS_MSVC})
- target_link_libraries(cpu PRIVATE opengl32.lib)
-endif()
+target_link_libraries(cpu PRIVATE asmjit Zydis glfw imgui ${OPENGL_LIBRARIES})
 
 if (${LIB86CPU_BUILD_TEST})
 message("Building test")
