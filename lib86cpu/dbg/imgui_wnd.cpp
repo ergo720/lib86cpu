@@ -523,8 +523,16 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 		ImGui::PushItemWidth(80.0f);
 		bool enter_pressed = ImGui::InputText("Address", buff, IM_ARRAYSIZE(buff), ImGuiInputTextFlags_CharsHexadecimal | ImGuiInputTextFlags_EnterReturnsTrue);
 		ImGui::SameLine();
-		bool change_mem_view = ImGui::Button(g_mem_button_text.data());
-		if (change_mem_view) {
+		bool left_pressed = ImGui::ArrowButton("Left", ImGuiDir_Left);
+		ImGui::SameLine();
+		ImGui::Text(g_mem_button_text.data());
+		ImGui::SameLine();
+		bool right_pressed = ImGui::ArrowButton("Right", ImGuiDir_Right);
+		if (left_pressed) {
+			(--g_mem_active) &= 3;
+			g_mem_button_text[g_mem_button_text.size() - 2] = '0' + g_mem_active;
+		}
+		else if (right_pressed) {
 			(++g_mem_active) &= 3;
 			g_mem_button_text[g_mem_button_text.size() - 2] = '0' + g_mem_active;
 		}
@@ -542,7 +550,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 				assert(ret.ec == std::errc());
 				g_mem_editor_update = true;
 			}
-			if (g_mem_editor_update || change_mem_view) {
+			if (g_mem_editor_update || left_pressed || right_pressed) {
 				dbg_ram_read(cpu, mem_buff);
 				g_mem_editor_update = false;
 			}
