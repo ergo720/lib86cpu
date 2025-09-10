@@ -349,6 +349,21 @@ dbg_remove_sw_breakpoints(cpu_t *cpu, addr_t addr)
 		});
 }
 
+static void
+dbg_update_sw_breakpoints(cpu_t *cpu)
+{
+	dbg_update_sw_breakpoints(cpu, [](cpu_t *cpu) {
+		for (auto &elem : g_break_list) {
+			uint8_t original_byte = mem_read_helper<uint8_t>(&cpu->cpu_ctx, elem.first, 0);
+			if (original_byte != 0xCC) {
+				// Because this is called before the breakpoints are removed, if the byte read is not 0xCC, then it means the running sw has overwritten it.
+				// In this case we update the original byte with the new updated value that the sw has written to memory.
+				elem.second.original_byte = original_byte;
+			}
+		}
+		});
+}
+
 void
 dbg_update_watchpoint(cpu_t *cpu, uint32_t dr_idx, addr_t addr, uint32_t brk_type_rw, uint32_t brk_type_size, bool enable)
 {
@@ -376,6 +391,7 @@ static void
 dbg_wait(cpu_ctx_t *cpu_ctx)
 {
 	// disable all breakpoints so that we can show the original instructions in the disassembler
+	dbg_update_sw_breakpoints(cpu_ctx->cpu);
 	dbg_remove_sw_breakpoints(cpu_ctx->cpu);
 
 	// wait until the debugger continues execution
@@ -416,6 +432,7 @@ dbg_sw_breakpoint_handler(cpu_ctx_t *cpu_ctx)
 	addr_t pc = cpu_ctx->regs.cs_hidden.base + cpu_ctx->regs.eip - 1; // if this is our int3, it will always be one byte large
 	if (auto it = g_break_list.find(pc); it != g_break_list.end()) {
 		// disable all breakpoints so that we can show the original instructions in the disassembler
+		dbg_update_sw_breakpoints(cpu_ctx->cpu);
 		dbg_remove_sw_breakpoints(cpu_ctx->cpu);
 		if (it->second.type == brk_t::step_over) {
 			g_break_list.erase(it);
