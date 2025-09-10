@@ -78,6 +78,9 @@ write_dbg_opt(cpu_t *cpu)
 	g_dbg_opt.bkg_col[0] = g_bkg_col[0];
 	g_dbg_opt.bkg_col[1] = g_bkg_col[1];
 	g_dbg_opt.bkg_col[2] = g_bkg_col[2];
+	g_dbg_opt.reg_col[0] = g_reg_col[0];
+	g_dbg_opt.reg_col[1] = g_reg_col[1];
+	g_dbg_opt.reg_col[2] = g_reg_col[2];
 	for (unsigned i = 0; i < 4; ++i) {
 		g_dbg_opt.mem_editor_addr[i] = g_mem_pc[i];
 	}
