@@ -85,8 +85,9 @@ public:
 	void div(decoded_instr *instr);
 	void enter(decoded_instr *instr);
 	void fadd(decoded_instr *instr);
-	void fcom(decoded_instr *instr);
 	void fchs(decoded_instr *instr);
+	void fcom(decoded_instr *instr);
+	void fcos(decoded_instr *instr);
 	void fdiv(decoded_instr *instr);
 	void fdivr(decoded_instr *instr);
 	void fild(decoded_instr *instr);
@@ -106,6 +107,7 @@ public:
 	void fnstcw(decoded_instr *instr);
 	void fnstsw(decoded_instr *instr);
 	void fpatan(decoded_instr *instr);
+	void fsin(decoded_instr *instr);
 	void fsincos(decoded_instr *instr);
 	void fsqrt(decoded_instr *instr);
 	void fstp(decoded_instr *instr);

@@ -1159,6 +1159,10 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->fcom(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_FCOS:
+			cpu->jit->fcos(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_FDIV:
 		case ZYDIS_MNEMONIC_FDIVP:
 		case ZYDIS_MNEMONIC_FIDIV:
@@ -1240,6 +1244,10 @@ cpu_translate(cpu_t *cpu)
 
 		case ZYDIS_MNEMONIC_FPATAN:
 			cpu->jit->fpatan(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_FSIN:
+			cpu->jit->fsin(&instr);
 			break;
 
 		case ZYDIS_MNEMONIC_FSINCOS:
