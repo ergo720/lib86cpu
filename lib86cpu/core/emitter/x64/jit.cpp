@@ -1133,6 +1133,9 @@ op_info lc86_jit::get_operand(decoded_instr *instr, const unsigned opnum)
 		case 32:
 			return { offset, SIZE32 };
 
+		case 64:
+			return { offset, SIZE64 };
+
 		case 80:
 			return { offset, SIZE80 };
 
@@ -7850,6 +7853,51 @@ lc86_jit::movaps(decoded_instr *instr)
 				});
 		}
 		break;
+
+		default:
+			LIB86CPU_ABORT();
+		}
+	}
+}
+
+void
+lc86_jit::movhps(decoded_instr *instr)
+{
+	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
+		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
+	}
+	else {
+		switch (instr->i.opcode)
+		{
+		case 0x16:
+			get_rm<OPNUM_SRC>(instr,
+				[](const op_info rm)
+				{
+					assert(0);
+				},
+				[this, instr](const op_info rm)
+				{
+					const auto dst = GET_REG(OPNUM_DST);
+					LD_MEMs(SIZE64);
+					LEA(RDX, MEMD64(RCX, dst.val));
+					MOV(MEMD64(RDX, 8), RAX); // skip low qword of dst xmm
+				});
+				break;
+
+		case 0x17:
+			get_rm<OPNUM_DST>(instr,
+				[](const op_info rm)
+				{
+					assert(0);
+				},
+				[this, instr](const op_info rm)
+				{
+					const auto src = GET_REG(OPNUM_SRC);
+					LEA(RBX, MEMD64(RCX, src.val));
+					MOV(R8, MEMD64(RBX, 8)); // skip low qword of src xmm
+					ST_MEMs(SIZE64);
+				});
+				break;
 
 		default:
 			LIB86CPU_ABORT();
