@@ -512,21 +512,17 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #ifdef XBOX_CPU
 #define LD_MEM() load_ipt(m_cpu->size_mode)
 #define LD_MEMs(size) load_ipt(size)
-#define LD_MEM128() load_ipt(SIZE128)
 #define LD_MEM_off(info) load_moffset(m_cpu->size_mode, info)
 #define ST_MEM() store_ipt(m_cpu->size_mode)
 #define ST_MEMs(size) store_ipt(size)
-#define ST_MEM128() store_ipt(SIZE128)
 #define ST_MEM_off(info) store_moffset(m_cpu->size_mode, info)
 #define ST_MEMv() store_mem<true>(m_cpu->size_mode)
 #else
 #define LD_MEM() load_mem(m_cpu->size_mode)
 #define LD_MEMs(size) load_mem(size)
-#define LD_MEM128() load_mem(SIZE128)
 #define LD_MEM_off(info) load_mem(m_cpu->size_mode)
 #define ST_MEM() store_mem(m_cpu->size_mode)
 #define ST_MEMs(size) store_mem(size)
-#define ST_MEM128() store_mem(SIZE128)
 #define ST_MEM_off(info) store_mem(m_cpu->size_mode)
 #define ST_MEMv() store_mem<true>(m_cpu->size_mode)
 #endif
@@ -2716,7 +2712,7 @@ void lc86_jit::simd_arithmetic(decoded_instr *instr, bool is_packed)
 			[this, is_packed](const op_info rm)
 			{
 				if (is_packed) {
-					LD_MEM128();
+					LD_MEMs(SIZE128);
 					MOVAPS(XMM1, MEM128(RAX));
 				}
 				else {
@@ -7940,7 +7936,7 @@ lc86_jit::movaps(decoded_instr *instr)
 				[this, dst](const op_info rm)
 				{
 					gen_simd_mem_align_check();
-					LD_MEM128();
+					LD_MEMs(SIZE128);
 					MOVAPS(XMM0, MEM128(RAX));
 					MOVAPS(MEMD128(RCX, dst.val), XMM0);
 				});
@@ -7959,7 +7955,7 @@ lc86_jit::movaps(decoded_instr *instr)
 				{
 					gen_simd_mem_align_check();
 					LEA(R8, MEMD64(RCX, src.val));
-					ST_MEM128();
+					ST_MEMs(SIZE128);
 				});
 		}
 		break;
@@ -8037,7 +8033,7 @@ lc86_jit::movntps(decoded_instr *instr)
 				// we don't emulate the processor's caches, so we don't care about the write-combine policy that this instruction uses
 				gen_simd_mem_align_check();
 				LEA(R8, MEMD64(RCX, src.val));
-				ST_MEM128();
+				ST_MEMs(SIZE128);
 			});
 	}
 }
@@ -9835,7 +9831,7 @@ lc86_jit::shufps(decoded_instr *instr)
 			[this](const op_info rm)
 			{
 				gen_simd_mem_align_check();
-				LD_MEM128();
+				LD_MEMs(SIZE128);
 				MOVAPS(XMM1, MEM128(RAX));
 			});
 
@@ -10467,7 +10463,7 @@ lc86_jit::xorps(decoded_instr *instr)
 			[this, dst](const op_info rm)
 			{
 				gen_simd_mem_align_check();
-				LD_MEM128();
+				LD_MEMs(SIZE128);
 				MOVAPS(XMM0, MEMD128(RCX, dst.val));
 				XORPS(XMM0, MEM128(RAX));
 				MOVAPS(MEMD128(RCX, dst.val), XMM0);
