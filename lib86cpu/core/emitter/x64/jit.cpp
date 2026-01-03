@@ -473,6 +473,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define MOVD(dst, src) m_a.movd(dst, src)
 #define MOVSS(dst, src) m_a.movss(dst, src)
 #define MOVAPS(dst, src) m_a.movaps(dst, src)
+#define UNPCKLPS(dst, src) m_a.unpcklps(dst, src)
 #define XORPS(dst, src) m_a.xorps(dst, src)
 #define ADDPS(dst, src) m_a.addps(dst, src)
 #define ADDSS(dst, src) m_a.addss(dst, src)
@@ -10164,6 +10165,35 @@ lc86_jit::test(decoded_instr *instr)
 
 	default:
 		LIB86CPU_ABORT();
+	}
+}
+
+void
+lc86_jit::unpcklps(decoded_instr *instr)
+{
+	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
+		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
+	}
+	else {
+		gen_vzeroupper();
+		const auto dst = GET_REG(OPNUM_DST);
+
+		get_rm<OPNUM_SRC>(instr,
+			[this, dst](const op_info rm)
+			{
+				MOVAPS(XMM1, MEMD128(RCX, dst.val));
+				MOVAPS(XMM2, MEMD128(RCX, rm.val));
+				UNPCKLPS(XMM1, XMM2);
+			},
+			[this, dst](const op_info rm)
+			{
+				gen_simd_mem_align_check();
+				LD_MEMs(SIZE128);
+				MOVAPS(XMM1, MEMD128(RCX, dst.val));
+				UNPCKLPS(XMM1, MEM128(RAX));
+			});
+
+		MOVAPS(MEMD128(RCX, dst.val), XMM1);
 	}
 }
 

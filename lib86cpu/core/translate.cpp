@@ -1696,6 +1696,10 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->test(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_UNPCKLPS:
+			cpu->jit->unpcklps(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_UD1:         BAD;
 		case ZYDIS_MNEMONIC_UD2:         BAD;
 		case ZYDIS_MNEMONIC_VERR:

@@ -200,6 +200,7 @@ public:
 	void subps(decoded_instr *instr);
 	void subss(decoded_instr *instr);
 	void test(decoded_instr *instr);
+	void unpcklps(decoded_instr *instr);
 	void verr(decoded_instr *instr);
 	void verw(decoded_instr *instr);
 	void wbinvd(decoded_instr *instr);
