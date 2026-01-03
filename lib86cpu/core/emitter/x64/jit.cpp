@@ -2707,7 +2707,6 @@ void lc86_jit::simd_arithmetic(decoded_instr *instr, bool is_packed)
 		gen_vzeroupper();
 		constexpr bool check_exp = (idx == 0) || (idx == 1);
 		const auto dst = GET_REG(OPNUM_DST);
-		MOVAPS(XMM0, MEMD128(RCX, dst.val));
 
 		get_rm<OPNUM_SRC>(instr,
 			[this](const op_info rm)
@@ -2725,6 +2724,8 @@ void lc86_jit::simd_arithmetic(decoded_instr *instr, bool is_packed)
 					MOVD(XMM1, EAX);
 				}
 			});
+
+		MOVAPS(XMM0, MEMD128(RCX, dst.val));
 
 		if constexpr (check_exp) {
 			gen_set_host_simd_ctx();
@@ -9825,20 +9826,20 @@ lc86_jit::shufps(decoded_instr *instr)
 		gen_vzeroupper();
 		const auto dst = GET_REG(OPNUM_DST);
 		const auto imm = GET_OP(OPNUM_THIRD);
-		MOVAPS(XMM0, MEMD128(RCX, dst.val));
 
 		get_rm<OPNUM_SRC>(instr,
-			[this, dst](const op_info rm)
+			[this](const op_info rm)
 			{
 				MOVAPS(XMM1, MEMD128(RCX, rm.val));
 			},
-			[this, dst](const op_info rm)
+			[this](const op_info rm)
 			{
 				gen_simd_mem_align_check();
 				LD_MEM128();
 				MOVAPS(XMM1, MEM128(RAX));
 			});
 
+		MOVAPS(XMM0, MEMD128(RCX, dst.val));
 		SHUFPS(XMM0, XMM1, imm.val);
 		MOVAPS(MEMD128(RCX, dst.val), XMM0);
 	}
