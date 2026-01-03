@@ -460,6 +460,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define FIDIV(dst) m_a.fidiv(dst)
 #define FDIVR(...) m_a.fdivr(__VA_ARGS__)
 #define FIDIVR(dst) m_a.fidivr(dst)
+#define FSQRT() m_a.fsqrt()
 #define FSINCOS() m_a.fsincos()
 #define FPATAN() m_a.fpatan()
 #define FXCH(op) m_a.fxch(op)
@@ -6215,6 +6216,37 @@ lc86_jit::fsincos(decoded_instr *instr)
 		CALL_F(&fpu_update_tag<true>); // update dst st0 tag
 		MOV(EDX, 1);
 		CALL_F(&fpu_update_tag<true>); // update dst st1 tag
+		m_a.bind(end_instr);
+	}
+}
+
+void
+lc86_jit::fsqrt(decoded_instr *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t(EXP_NM);
+	}
+	else {
+		Label end_instr = m_a.newLabel();
+
+		gen_check_fpu_unmasked_exp();
+		gen_update_fpu_ptr(instr);
+		FPU_CLEAR_C1();
+		gen_fpu_check_stack_underflow(0, 0, false);
+		TEST(EAX, EAX);
+		BR_NE(end_instr);
+		gen_set_host_fpu_ctx();
+		gen_fpu_load_stx(0); // load st0_g to st0_h
+		FSQRT();
+		gen_fpu_exp_post_check<true>(FPU_EXP_ALL, [this, end_instr]() {
+			FSTP(MEMD80(RSP, LOCAL_VARS_off(0))); // do a dummy pop to restore host fpu stack
+			RESTORE_FPU_CTX();
+			BR_UNCOND(end_instr);
+			});
+		gen_fpu_store_stx(0); // store fsqrt result to st0_g
+		RESTORE_FPU_CTX();
+		XOR(EDX, EDX);
+		CALL_F(&fpu_update_tag<true>); // update st0 tag
 		m_a.bind(end_instr);
 	}
 }

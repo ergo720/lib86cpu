@@ -107,6 +107,7 @@ public:
 	void fnstsw(decoded_instr *instr);
 	void fpatan(decoded_instr *instr);
 	void fsincos(decoded_instr *instr);
+	void fsqrt(decoded_instr *instr);
 	void fstp(decoded_instr *instr);
 	void fsub(decoded_instr *instr);
 	void fsubr(decoded_instr *instr);

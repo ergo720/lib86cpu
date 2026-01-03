@@ -1246,6 +1246,10 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->fsincos(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_FSQRT:
+			cpu->jit->fsqrt(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_FST:
 		case ZYDIS_MNEMONIC_FSTP:
 			cpu->jit->fstp(&instr);
