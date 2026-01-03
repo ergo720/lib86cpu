@@ -7967,6 +7967,51 @@ lc86_jit::movaps(decoded_instr *instr)
 }
 
 void
+lc86_jit::movlps(decoded_instr *instr)
+{
+	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
+		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
+	}
+	else {
+		switch (instr->i.opcode)
+		{
+		case 0x12:
+			get_rm<OPNUM_SRC>(instr,
+				[](const op_info rm)
+				{
+					assert(0);
+				},
+				[this, instr](const op_info rm)
+				{
+					const auto dst = GET_REG(OPNUM_DST);
+					LD_MEMs(SIZE64);
+					LEA(RDX, MEMD64(RCX, dst.val));
+					MOV(MEM64(RDX), RAX); // write low qword of dst xmm only
+				});
+			break;
+
+		case 0x13:
+			get_rm<OPNUM_DST>(instr,
+				[](const op_info rm)
+				{
+					assert(0);
+				},
+				[this, instr](const op_info rm)
+				{
+					const auto src = GET_REG(OPNUM_SRC);
+					LEA(RBX, MEMD64(RCX, src.val));
+					MOV(R8, MEM64(RBX)); // write low qword of src xmm only
+					ST_MEMs(SIZE64);
+				});
+			break;
+
+		default:
+			LIB86CPU_ABORT();
+		}
+	}
+}
+
+void
 lc86_jit::movhps(decoded_instr *instr)
 {
 	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR4_OSFXSR | HFLG_CR0_EM)) == HFLG_CR4_OSFXSR)) {
