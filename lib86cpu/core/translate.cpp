@@ -1670,6 +1670,14 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->sub(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_SUBPS:
+			cpu->jit->subps(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_SUBSS:
+			cpu->jit->subss(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_SYSENTER:    BAD;
 		case ZYDIS_MNEMONIC_SYSEXIT:     BAD;
 		case ZYDIS_MNEMONIC_TEST:
