@@ -1526,6 +1526,13 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->popf(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_PREFETCHNTA:
+		case ZYDIS_MNEMONIC_PREFETCHT0:
+		case ZYDIS_MNEMONIC_PREFETCHT1:
+		case ZYDIS_MNEMONIC_PREFETCHT2:
+			// nothing to do, because we don't emulate the processor's caches
+			break;
+
 		case ZYDIS_MNEMONIC_PUSH:
 			cpu->jit->push(&instr);
 			break;
