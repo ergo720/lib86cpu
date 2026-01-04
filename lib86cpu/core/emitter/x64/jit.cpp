@@ -5789,6 +5789,26 @@ lc86_jit::div(decoded_instr *instr)
 }
 
 void
+lc86_jit::emms(decoded_instr *instr)
+{
+	if (m_cpu->cpu_ctx.hflags & (HFLG_CR0_EM | HFLG_CR0_TS)) {
+		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
+	}
+	else {
+		gen_check_fpu_unmasked_exp();
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS0), FPU_TAG_EMPTY);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS1), FPU_TAG_EMPTY);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS2), FPU_TAG_EMPTY);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS3), FPU_TAG_EMPTY);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS4), FPU_TAG_EMPTY);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS5), FPU_TAG_EMPTY);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS6), FPU_TAG_EMPTY);
+		MOV(MEMD8(RCX, CPU_CTX_FTAGS7), FPU_TAG_EMPTY);
+		ST_R16(FPU_DATA_FTOP, 0);
+	}
+}
+
+void
 lc86_jit::enter(decoded_instr *instr)
 {
 	uint32_t stack_sub, nesting_lv = instr->o[OPNUM_SRC].imm.value.u & 0x1F;
@@ -8089,6 +8109,32 @@ lc86_jit::movntps(decoded_instr *instr)
 				LEA(R8, MEMD64(RCX, src.val));
 				ST_MEMs(SIZE128);
 			});
+	}
+}
+
+void
+lc86_jit::movntq(decoded_instr *instr)
+{
+	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR0_EM)) == 0)) {
+		RAISEin0_t(((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR0_EM)) == HFLG_CR0_TS) ? EXP_NM : EXP_UD);
+	}
+	else {
+		gen_check_fpu_unmasked_exp();
+		const auto src = GET_REG(OPNUM_SRC);
+		MOV(R8, MEMD64(RCX, src.val));
+
+		get_rm<OPNUM_DST>(instr,
+			[](const op_info rm)
+			{
+				assert(0);
+			},
+			[this](const op_info rm)
+			{
+				// we don't emulate the processor's caches, so we don't care about the non-temporal caching hint that this instruction uses
+				ST_MEMs(SIZE64);
+			});
+
+		gen_fpu2mmx_transition();
 	}
 }
 

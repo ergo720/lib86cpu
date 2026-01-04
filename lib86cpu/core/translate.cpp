@@ -1139,6 +1139,10 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->div(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_EMMS:
+			cpu->jit->emms(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_ENTER:
 			cpu->jit->enter(&instr);
 			break;
@@ -1450,6 +1454,10 @@ cpu_translate(cpu_t *cpu)
 
 		case ZYDIS_MNEMONIC_MOVNTPS:
 			cpu->jit->movntps(&instr);
+			break;
+
+		case ZYDIS_MNEMONIC_MOVNTQ:
+			cpu->jit->movntq(&instr);
 			break;
 
 		case ZYDIS_MNEMONIC_MOVQ:

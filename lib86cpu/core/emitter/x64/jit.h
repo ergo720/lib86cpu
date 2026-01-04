@@ -83,6 +83,7 @@ public:
 	void das(decoded_instr *instr);
 	void dec(decoded_instr *instr);
 	void div(decoded_instr *instr);
+	void emms(decoded_instr *instr);
 	void enter(decoded_instr *instr);
 	void fadd(decoded_instr *instr);
 	void fchs(decoded_instr *instr);
@@ -150,6 +151,7 @@ public:
 	void movlps(decoded_instr *instr);
 	void movhps(decoded_instr *instr);
 	void movntps(decoded_instr *instr);
+	void movntq(decoded_instr *instr);
 	void movq(decoded_instr *instr);
 	void movs(decoded_instr *instr);
 	void movss(decoded_instr *instr);
