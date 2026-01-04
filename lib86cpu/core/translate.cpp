@@ -1700,6 +1700,10 @@ cpu_translate(cpu_t *cpu)
 			cpu->jit->test(&instr);
 			break;
 
+		case ZYDIS_MNEMONIC_UNPCKHPS:
+			cpu->jit->unpckhps(&instr);
+			break;
+
 		case ZYDIS_MNEMONIC_UNPCKLPS:
 			cpu->jit->unpcklps(&instr);
 			break;
