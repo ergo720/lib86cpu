@@ -509,6 +509,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define ST_SEG(seg_offset, val) MOV(MEMD16(RCX, seg_offset), val)
 #define ST_SEG_BASE(seg_offset, val) MOV(MEMD32(RCX, seg_offset + seg_base_offset), val)
 #define ST_SEG_LIMIT(seg_offset, val) MOV(MEMD32(RCX, seg_offset + seg_limit_offset), val)
+#define ST_MM(reg_offset, val) MOV(MEMD64(RCX, reg_offset), val); MOV(MEMD16(RCX, reg_offset + 8), 0xFFFF) // guaranteed by assertion in registers.h
 
 #ifdef XBOX_CPU
 #define LD_MEM() load_ipt(m_cpu->size_mode)
@@ -2690,6 +2691,13 @@ lc86_jit::gen_vzeroupper()
 	if (g_is_avx_supported) {
 		VZEROUPPER();
 	}
+}
+
+void
+lc86_jit::gen_fpu2mmx_transition()
+{
+	MOV(MEMD64(RCX, CPU_CTX_FTAGS0), FPU_TAG_VALID); // zeros out the entire ftag array
+	ST_R16(FPU_DATA_FTOP, 0);
 }
 
 template<unsigned idx>
@@ -8081,6 +8089,58 @@ lc86_jit::movntps(decoded_instr *instr)
 				LEA(R8, MEMD64(RCX, src.val));
 				ST_MEMs(SIZE128);
 			});
+	}
+}
+
+void
+lc86_jit::movq(decoded_instr *instr)
+{
+	if (!((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR0_EM)) == 0)) {
+		RAISEin0_t(((m_cpu->cpu_ctx.hflags & (HFLG_CR0_TS | HFLG_CR0_EM)) == HFLG_CR0_TS) ? EXP_NM : EXP_UD);
+	}
+	else {
+		gen_check_fpu_unmasked_exp();
+
+		switch (instr->i.opcode)
+		{
+		case 0x6F: {
+			get_rm<OPNUM_SRC>(instr,
+				[this](const op_info rm)
+				{
+					MOV(RAX, MEMD64(RCX, rm.val));
+				},
+				[this](const op_info rm)
+				{
+					LD_MEMs(SIZE64);
+				});
+
+			const auto dst = GET_REG(OPNUM_DST);
+			ST_MM(dst.val, RAX);
+			gen_fpu2mmx_transition();
+		}
+		break;
+
+		case 0x7F: {
+			const auto src = GET_REG(OPNUM_SRC);
+			MOV(R8, MEMD64(RCX, src.val));
+
+			get_rm<OPNUM_DST>(instr,
+				[this](const op_info rm)
+				{
+					ST_MM(rm.val, R8);
+				},
+				[this](const op_info rm)
+				{
+					ST_MEMs(SIZE64);
+				});
+
+			gen_fpu2mmx_transition();
+		}
+		break;
+
+		default:
+			LIB86CPU_ABORT();
+		}
 	}
 }
 

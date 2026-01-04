@@ -150,6 +150,7 @@ public:
 	void movlps(decoded_instr *instr);
 	void movhps(decoded_instr *instr);
 	void movntps(decoded_instr *instr);
+	void movq(decoded_instr *instr);
 	void movs(decoded_instr *instr);
 	void movss(decoded_instr *instr);
 	void movsx(decoded_instr *instr);
@@ -343,6 +344,7 @@ private:
 	void gen_fpu_load_stx(uint32_t st_num);
 	void gen_fpu_store_stx(uint32_t st_num);
 	void gen_vzeroupper();
+	void gen_fpu2mmx_transition();
 
 	cpu_t *m_cpu;
 	CodeHolder m_code;
