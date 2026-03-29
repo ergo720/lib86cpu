@@ -132,6 +132,7 @@ API_FUNC void cpu_resume(cpu_t *cpu);
 API_FUNC bool cpu_is_suspended(cpu_t *cpu);
 API_FUNC void cpu_raise_hw_int_line(cpu_t *cpu);
 API_FUNC void cpu_lower_hw_int_line(cpu_t *cpu);
+API_FUNC void cpu_set_int_func(cpu_t *cpu, std::pair<fp_int, void *> int_data = { nullptr, nullptr });
 API_FUNC lc86_status cpu_take_snapshot(cpu_t* cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state);
 API_FUNC lc86_status cpu_restore_snapshot(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, std::pair<fp_int, void *> int_data = { nullptr, nullptr });
 

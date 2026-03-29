@@ -459,6 +459,18 @@ cpu_lower_hw_int_line(cpu_t *cpu)
 	cpu->clear_int_fn(&cpu->cpu_ctx, CPU_HW_INT);
 }
 
+/*
+* cpu_set_int_func -> sets a new interrupt function
+* cpu: a valid cpu instance
+* int_fn: a pair where 1st is a function that returns the vector number when a hw interrupt is serviced, and 2nd is an opaque argument passed to
+* the function when lib86cpu calls it
+*/
+void
+cpu_set_int_func(cpu_t *cpu, std::pair<fp_int, void *> int_data)
+{
+	cpu->int_data = int_data.first ? int_data : std::pair<fp_int, void *>{ default_get_int_vec, nullptr };
+}
+
 template<bool is_save>
 static lc86_status cpu_snapshot_handler(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_state, std::pair<fp_int, void *> int_data = { nullptr, nullptr })
 {
