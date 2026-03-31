@@ -568,8 +568,8 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 lc86_jit::lc86_jit(cpu_t *cpu)
 {
 	m_cpu = cpu;
-	_environment = Environment::host();
-	_environment.setObjectFormat(ObjectFormat::kJIT);
+	m_environment = Environment::host();
+	m_environment.setObjectFormat(ObjectFormat::kJIT);
 	gen_aux_funcs();
 }
 
@@ -577,7 +577,7 @@ void
 lc86_jit::start_new_session()
 {
 	m_code.reset();
-	m_code.init(_environment);
+	m_code.init(m_environment);
 	m_code.attach(m_a.as<BaseEmitter>());
 }
 

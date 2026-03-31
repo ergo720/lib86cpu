@@ -26,7 +26,7 @@ struct op_info {
 };
 
 
-class lc86_jit : public Target {
+class lc86_jit {
 public:
 	enum class ret_tc_t {
 	zero,
@@ -351,6 +351,7 @@ private:
 	cpu_t *m_cpu;
 	CodeHolder m_code;
 	x86::Assembler m_a;
+	Environment m_environment;
 	mem_manager m_mem;
 	Label m_exit_int, m_next_instr;
 };
