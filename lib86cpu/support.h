@@ -8,6 +8,7 @@
 
 #include "lib86cpu_priv.h"
 #include "endianness.h"
+#include <cassert>
 
 
 // these flags are ORed with the flags in lib86cpu.h, so avoid conflicts
@@ -33,6 +34,13 @@ do {\
     cpu_abort(static_cast<int32_t>(lc86_status::internal_error), msg __VA_OPT__(,) __VA_ARGS__);\
 } while (0)
 
+#ifndef _MSC_VER
+#define ASSUME(x) assert((x));\
+[[assume((x))]]
+#else
+#define ASSUME(x) assert((x));\
+__assume((x))
+#endif
 
 template<typename T>
 consteval auto sizeof_type()

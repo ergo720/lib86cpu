@@ -19,12 +19,321 @@
 #include "ipt.h"
 #endif
 
-#define BAD LIB86CPU_ABORT_msg("Encountered unimplemented instruction %s", log_instr(disas_ctx->virt_pc - cpu->instr_bytes, &instr).c_str())
-
 // Make sure we can safely use memset on the register structs
 static_assert(std::is_trivially_copyable_v<regs_t>);
 static_assert(std::is_trivially_copyable_v<msr_t>);
 
+
+// NOTE: msvc has a hard limit of 128 nesting levels while compiling code, which will be reached if putting all instruction cases
+// in a single function. To avoid that, we split the if/else statements in multiple functions after 100 instructions
+
+#define INSTR_BEGIN(func, ...) if (instr == ZydisMnemonic::ZYDIS_MNEMONIC_ ## func) {\
+return &lc86_jit::func ## __VA_ARGS__;\
+}
+#define INSTR_CASE(func, ...) else if (instr == ZydisMnemonic::ZYDIS_MNEMONIC_ ## func) {\
+return &lc86_jit::func ## __VA_ARGS__;\
+}
+#define INSTR_END() \
+return &lc86_jit::unimplemented
+
+#define INSTR_CALL(func) \
+return func(instr)
+
+constexpr instr_func dispatch_func3(int instr)
+{
+	INSTR_BEGIN(RCL, _)
+		INSTR_CASE(RCPPS, _)
+		INSTR_CASE(RCPSS, _)
+		INSTR_CASE(RCR, _)
+		INSTR_CASE(RDMSR)
+		INSTR_CASE(RDTSC)
+		INSTR_CASE(RET, _)
+		INSTR_CASE(ROL, _)
+		INSTR_CASE(ROR, _)
+		INSTR_CASE(RSQRTPS, _)
+		INSTR_CASE(RSQRTSS, _)
+		INSTR_CASE(SAHF)
+		INSTR_CASE(SAR, _)
+		INSTR_CASE(SBB)
+		INSTR_CASE(SCASB)
+		INSTR_CASE(SCASD)
+		INSTR_CASE(SCASW)
+		INSTR_CASE(SETB)
+		INSTR_CASE(SETBE)
+		INSTR_CASE(SETL)
+		INSTR_CASE(SETLE)
+		INSTR_CASE(SETNB)
+		INSTR_CASE(SETNBE)
+		INSTR_CASE(SETNL)
+		INSTR_CASE(SETNLE)
+		INSTR_CASE(SETNO)
+		INSTR_CASE(SETNP)
+		INSTR_CASE(SETNS)
+		INSTR_CASE(SETNZ, _)
+		INSTR_CASE(SETO, _)
+		INSTR_CASE(SETP)
+		INSTR_CASE(SETS)
+		INSTR_CASE(SETZ)
+		INSTR_CASE(SFENCE)
+		INSTR_CASE(SGDT)
+		INSTR_CASE(SHL, _)
+		INSTR_CASE(SHLD, _)
+		INSTR_CASE(SHR, _)
+		INSTR_CASE(SHRD, _)
+		INSTR_CASE(SHUFPS, _)
+		INSTR_CASE(SIDT)
+		INSTR_CASE(SLDT)
+		INSTR_CASE(STC, _)
+		INSTR_CASE(STD)
+		INSTR_CASE(STI)
+		INSTR_CASE(STOSB)
+		INSTR_CASE(STOSD)
+		INSTR_CASE(STOSW)
+		INSTR_CASE(STR)
+		INSTR_CASE(SUB, _)
+		INSTR_CASE(SUBPS, _)
+		INSTR_CASE(SUBSS, _)
+		INSTR_CASE(TEST, _)
+		INSTR_CASE(UNPCKHPS, _)
+		INSTR_CASE(UNPCKLPS, _)
+		INSTR_CASE(VERR)
+		INSTR_CASE(VERW)
+		INSTR_CASE(WBINVD)
+		INSTR_CASE(WRMSR)
+		INSTR_CASE(XADD)
+		INSTR_CASE(XCHG, _)
+		INSTR_CASE(XLAT)
+		INSTR_CASE(XOR, _)
+		INSTR_CASE(XORPS, _)
+	INSTR_END();
+}
+
+constexpr instr_func dispatch_func2(int instr)
+{
+	INSTR_BEGIN(FISUB, _)
+		INSTR_CASE(FSUBR, _)
+		INSTR_CASE(FSUBRP)
+		INSTR_CASE(FISUBR, _)
+		INSTR_CASE(FWAIT)
+		INSTR_CASE(FXCH, _)
+		INSTR_CASE(FXRSTOR)
+		INSTR_CASE(FXSAVE)
+		INSTR_CASE(HLT)
+		INSTR_CASE(IDIV, _)
+		INSTR_CASE(IMUL)
+		INSTR_CASE(IN)
+		INSTR_CASE(INC, _)
+		INSTR_CASE(INSB)
+		INSTR_CASE(INSD)
+		INSTR_CASE(INSW)
+		INSTR_CASE(INT3, _)
+		INSTR_CASE(INT, N)
+		INSTR_CASE(INTO)
+		INSTR_CASE(INVLPG)
+		INSTR_CASE(IRET)
+		INSTR_CASE(IRETD)
+		INSTR_CASE(JCXZ)
+		INSTR_CASE(JECXZ)
+		INSTR_CASE(JO)
+		INSTR_CASE(JNO)
+		INSTR_CASE(JB)
+		INSTR_CASE(JNB)
+		INSTR_CASE(JZ)
+		INSTR_CASE(JNZ)
+		INSTR_CASE(JBE)
+		INSTR_CASE(JNBE)
+		INSTR_CASE(JS)
+		INSTR_CASE(JNS)
+		INSTR_CASE(JP)
+		INSTR_CASE(JNP)
+		INSTR_CASE(JL)
+		INSTR_CASE(JNL)
+		INSTR_CASE(JLE)
+		INSTR_CASE(JNLE)
+		INSTR_CASE(JMP)
+		INSTR_CASE(LAHF)
+		INSTR_CASE(LDS)
+		INSTR_CASE(LEA, _)
+		INSTR_CASE(LEAVE)
+		INSTR_CASE(LES)
+		INSTR_CASE(LFS)
+		INSTR_CASE(LGDT)
+		INSTR_CASE(LGS)
+		INSTR_CASE(LIDT)
+		INSTR_CASE(LLDT)
+		INSTR_CASE(LMSW)
+		INSTR_CASE(LODSB)
+		INSTR_CASE(LODSD)
+		INSTR_CASE(LODSW)
+		INSTR_CASE(LOOP)
+		INSTR_CASE(LOOPE)
+		INSTR_CASE(LOOPNE)
+		INSTR_CASE(LSS)
+		INSTR_CASE(LTR)
+		INSTR_CASE(MOV, _)
+		INSTR_CASE(MOVAPS, _)
+		INSTR_CASE(MOVLPS)
+		INSTR_CASE(MOVHPS)
+		INSTR_CASE(MOVNTPS)
+		INSTR_CASE(MOVNTQ)
+		INSTR_CASE(MOVQ)
+		INSTR_CASE(MOVSB)
+		INSTR_CASE(MOVSD)
+		INSTR_CASE(MOVSW)
+		INSTR_CASE(MOVSS, _)
+		INSTR_CASE(MOVSX, _)
+		INSTR_CASE(MOVZX, _)
+		INSTR_CASE(MUL, _)
+		INSTR_CASE(MULSS, _)
+		INSTR_CASE(MULPS, _)
+		INSTR_CASE(NEG, _)
+		INSTR_CASE(NOP)
+		INSTR_CASE(NOT, _)
+		INSTR_CASE(OR, _)
+		INSTR_CASE(OUT)
+		INSTR_CASE(OUTSB)
+		INSTR_CASE(OUTSD)
+		INSTR_CASE(OUTSW)
+		INSTR_CASE(PAUSE)
+		INSTR_CASE(POP, _)
+		INSTR_CASE(POPA)
+		INSTR_CASE(POPAD)
+		INSTR_CASE(POPF)
+		INSTR_CASE(POPFD)
+		INSTR_CASE(PREFETCHNTA)
+		INSTR_CASE(PREFETCHT0)
+		INSTR_CASE(PREFETCHT1)
+		INSTR_CASE(PREFETCHT2)
+		INSTR_CASE(PUSH, _)
+		INSTR_CASE(PUSHA)
+		INSTR_CASE(PUSHAD)
+		INSTR_CASE(PUSHF)
+		INSTR_CASE(PUSHFD)
+	INSTR_CALL(dispatch_func3);
+}
+
+constexpr instr_func dispatch_func1(int instr)
+{
+	INSTR_BEGIN(AAA)
+		INSTR_CASE(AAD)
+		INSTR_CASE(AAM)
+		INSTR_CASE(AAS)
+		INSTR_CASE(ADC)
+		INSTR_CASE(ADD, _)
+		INSTR_CASE(ADDSS, _)
+		INSTR_CASE(ADDPS, _)
+		INSTR_CASE(AND, _)
+		INSTR_CASE(ARPL)
+		INSTR_CASE(BOUND)
+		INSTR_CASE(BSF, _)
+		INSTR_CASE(BSR, _)
+		INSTR_CASE(BSWAP, _)
+		INSTR_CASE(BT, _)
+		INSTR_CASE(BTC, _)
+		INSTR_CASE(BTR, _)
+		INSTR_CASE(BTS, _)
+		INSTR_CASE(CALL, _)
+		INSTR_CASE(CBW)
+		INSTR_CASE(CDQ)
+		INSTR_CASE(CLC, _)
+		INSTR_CASE(CLD)
+		INSTR_CASE(CLI)
+		INSTR_CASE(CLTS)
+		INSTR_CASE(CMC)
+		INSTR_CASE(CMOVB)
+		INSTR_CASE(CMOVBE)
+		INSTR_CASE(CMOVL)
+		INSTR_CASE(CMOVLE)
+		INSTR_CASE(CMOVNB)
+		INSTR_CASE(CMOVNBE)
+		INSTR_CASE(CMOVNL)
+		INSTR_CASE(CMOVNLE)
+		INSTR_CASE(CMOVNO)
+		INSTR_CASE(CMOVNP)
+		INSTR_CASE(CMOVNS)
+		INSTR_CASE(CMOVNZ)
+		INSTR_CASE(CMOVO)
+		INSTR_CASE(CMOVP)
+		INSTR_CASE(CMOVS)
+		INSTR_CASE(CMOVZ)
+		INSTR_CASE(CMP, _)
+		INSTR_CASE(CMPSB)
+		INSTR_CASE(CMPSW)
+		INSTR_CASE(CMPSD)
+		INSTR_CASE(CMPXCHG)
+		INSTR_CASE(CMPXCHG8B)
+		INSTR_CASE(CPUID)
+		INSTR_CASE(CVTTSS2SI, _)
+		INSTR_CASE(CWD)
+		INSTR_CASE(CWDE)
+		INSTR_CASE(DAA)
+		INSTR_CASE(DAS)
+		INSTR_CASE(DEC, _)
+		INSTR_CASE(DIV, _)
+		INSTR_CASE(EMMS, _)
+		INSTR_CASE(ENTER)
+		INSTR_CASE(FADD, _)
+		INSTR_CASE(FADDP, _)
+		INSTR_CASE(FIADD, _)
+		INSTR_CASE(FCHS, _)
+		INSTR_CASE(FCOM)
+		INSTR_CASE(FCOMP, _)
+		INSTR_CASE(FCOMPP, _)
+		INSTR_CASE(FCOS, _)
+		INSTR_CASE(FDIV, _)
+		INSTR_CASE(FDIVP, _)
+		INSTR_CASE(FIDIV, _)
+		INSTR_CASE(FDIVR, _)
+		INSTR_CASE(FDIVRP, _)
+		INSTR_CASE(FIDIVR, _)
+		INSTR_CASE(FILD, _)
+		INSTR_CASE(FIST)
+		INSTR_CASE(FISTP, _)
+		INSTR_CASE(FLD, _)
+		INSTR_CASE(FLD1, _)
+		INSTR_CASE(FLDCW, _)
+		INSTR_CASE(FLDL2E, _)
+		INSTR_CASE(FLDL2T, _)
+		INSTR_CASE(FLDLG2, _)
+		INSTR_CASE(FLDLN2, _)
+		INSTR_CASE(FLDPI, _)
+		INSTR_CASE(FLDZ, _)
+		INSTR_CASE(FMUL, _)
+		INSTR_CASE(FMULP)
+		INSTR_CASE(FIMUL, _)
+		INSTR_CASE(FNCLEX, _)
+		INSTR_CASE(FNINIT)
+		INSTR_CASE(FNSTCW, _)
+		INSTR_CASE(FNSTSW, _)
+		INSTR_CASE(FPATAN, _)
+		INSTR_CASE(FSIN, _)
+		INSTR_CASE(FSINCOS, _)
+		INSTR_CASE(FSQRT, _)
+		INSTR_CASE(FST, P_)
+		INSTR_CASE(FSTP, _)
+		INSTR_CASE(FSUB, _)
+		INSTR_CASE(FSUBP)
+	INSTR_CALL(dispatch_func2);
+}
+
+template<std::size_t Length, typename Generator, std::size_t... Indexes>
+constexpr auto gen_func_table_impl(Generator&& f, std::index_sequence<Indexes...>)
+{
+	return std::array<instr_func, Length> {{ f(Indexes)... }};
+}
+
+template<std::size_t Length, typename Generator>
+constexpr auto gen_func_table(Generator&& f)
+{
+	return gen_func_table_impl<Length>(std::forward<Generator>(f), std::make_index_sequence<Length>{});
+}
+
+constexpr static std::array<instr_func, ZYDIS_MNEMONIC_MAX_VALUE + 1> s_instr_table = gen_func_table<ZYDIS_MNEMONIC_MAX_VALUE + 1>(dispatch_func1);
+
+#undef INSTR_BEGIN
+#undef INSTR_CASE
+#undef INSTR_END
+#undef INSTR_CALL
 
 #ifdef XBOX_CPU
 template<typename T>
@@ -964,810 +1273,9 @@ cpu_translate(cpu_t *cpu)
 			cpu->addr_mode = ADDR16;
 		}
 
-		switch (instr.i.mnemonic)
-		{
-		case ZYDIS_MNEMONIC_AAA:
-			cpu->jit->aaa(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_AAD:
-			cpu->jit->aad(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_AAM:
-			cpu->jit->aam(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_AAS:
-			cpu->jit->aas(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_ADC:
-			cpu->jit->adc(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_ADD:
-			cpu->jit->add(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_ADDSS:
-			cpu->jit->addss(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_ADDPS:
-			cpu->jit->addps(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_AND:
-			cpu->jit->and_(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_ARPL:
-			cpu->jit->arpl(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_BOUND:
-			cpu->jit->bound(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_BSF:
-			cpu->jit->bsf(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_BSR:
-			cpu->jit->bsr(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_BSWAP:
-			cpu->jit->bswap(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_BT:
-			cpu->jit->bt(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_BTC:
-			cpu->jit->btc(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_BTR:
-			cpu->jit->btr(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_BTS:
-			cpu->jit->bts(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CALL:
-			cpu->jit->call(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CBW:
-			cpu->jit->cbw(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CDQ:
-			cpu->jit->cdq(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CLC:
-			cpu->jit->clc(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CLD:
-			cpu->jit->cld(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CLI:
-			cpu->jit->cli(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CLTS:
-			cpu->jit->clts(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CMC:
-			cpu->jit->cmc(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CMOVB:
-		case ZYDIS_MNEMONIC_CMOVBE:
-		case ZYDIS_MNEMONIC_CMOVL:
-		case ZYDIS_MNEMONIC_CMOVLE:
-		case ZYDIS_MNEMONIC_CMOVNB:
-		case ZYDIS_MNEMONIC_CMOVNBE:
-		case ZYDIS_MNEMONIC_CMOVNL:
-		case ZYDIS_MNEMONIC_CMOVNLE:
-		case ZYDIS_MNEMONIC_CMOVNO:
-		case ZYDIS_MNEMONIC_CMOVNP:
-		case ZYDIS_MNEMONIC_CMOVNS:
-		case ZYDIS_MNEMONIC_CMOVNZ:
-		case ZYDIS_MNEMONIC_CMOVO:
-		case ZYDIS_MNEMONIC_CMOVP:
-		case ZYDIS_MNEMONIC_CMOVS:
-		case ZYDIS_MNEMONIC_CMOVZ:
-			cpu->jit->cmovcc(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CMP:
-			cpu->jit->cmp(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CMPSB:
-		case ZYDIS_MNEMONIC_CMPSW:
-		case ZYDIS_MNEMONIC_CMPSD:
-			cpu->jit->cmps(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CMPXCHG:
-			cpu->jit->cmpxchg(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CMPXCHG8B:
-			cpu->jit->cmpxchg8b(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CPUID:
-			cpu->jit->cpuid(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CVTTSS2SI:
-			cpu->jit->cvttss2si(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CWD:
-			cpu->jit->cwd(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_CWDE:
-			cpu->jit->cwde(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_DAA:
-			cpu->jit->daa(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_DAS:
-			cpu->jit->das(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_DEC:
-			cpu->jit->dec(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_DIV:
-			cpu->jit->div(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_EMMS:
-			cpu->jit->emms(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_ENTER:
-			cpu->jit->enter(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FADD:
-		case ZYDIS_MNEMONIC_FADDP:
-		case ZYDIS_MNEMONIC_FIADD:
-			cpu->jit->fadd(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FCHS:
-			cpu->jit->fchs(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FCOM:
-		case ZYDIS_MNEMONIC_FCOMP:
-		case ZYDIS_MNEMONIC_FCOMPP:
-			cpu->jit->fcom(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FCOS:
-			cpu->jit->fcos(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FDIV:
-		case ZYDIS_MNEMONIC_FDIVP:
-		case ZYDIS_MNEMONIC_FIDIV:
-			cpu->jit->fdiv(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FDIVR:
-		case ZYDIS_MNEMONIC_FDIVRP:
-		case ZYDIS_MNEMONIC_FIDIVR:
-			cpu->jit->fdivr(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FILD:
-			cpu->jit->fild(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FIST:
-		case ZYDIS_MNEMONIC_FISTP:
-			cpu->jit->fistp(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FLD:
-			cpu->jit->fld(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FLD1:
-			cpu->jit->fld1(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FLDCW:
-			cpu->jit->fldcw(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FLDL2E:
-			cpu->jit->fldl2e(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FLDL2T:
-			cpu->jit->fldl2t(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FLDLG2:
-			cpu->jit->fldlg2(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FLDLN2:
-			cpu->jit->fldln2(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FLDPI:
-			cpu->jit->fldpi(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FLDZ:
-			cpu->jit->fldz(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FMUL:
-		case ZYDIS_MNEMONIC_FMULP:
-		case ZYDIS_MNEMONIC_FIMUL:
-			cpu->jit->fmul(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FNCLEX:
-			cpu->jit->fnclex(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FNINIT:
-			cpu->jit->fninit(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FNSTCW:
-			cpu->jit->fnstcw(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FNSTSW:
-			cpu->jit->fnstsw(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FPATAN:
-			cpu->jit->fpatan(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FSIN:
-			cpu->jit->fsin(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FSINCOS:
-			cpu->jit->fsincos(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FSQRT:
-			cpu->jit->fsqrt(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FST:
-		case ZYDIS_MNEMONIC_FSTP:
-			cpu->jit->fstp(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FSUB:
-		case ZYDIS_MNEMONIC_FSUBP:
-		case ZYDIS_MNEMONIC_FISUB:
-			cpu->jit->fsub(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FSUBR:
-		case ZYDIS_MNEMONIC_FSUBRP:
-		case ZYDIS_MNEMONIC_FISUBR:
-			cpu->jit->fsubr(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FWAIT:
-			cpu->jit->fwait(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FXCH:
-			cpu->jit->fxch(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FXRSTOR:
-			cpu->jit->fxrstor(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_FXSAVE:
-			cpu->jit->fxsave(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_HLT:
-			cpu->jit->hlt(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_IDIV:
-			cpu->jit->idiv(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_IMUL:
-			cpu->jit->imul(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_IN:
-			cpu->jit->in(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_INC:
-			cpu->jit->inc(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_INSB:
-		case ZYDIS_MNEMONIC_INSD:
-		case ZYDIS_MNEMONIC_INSW:
-			cpu->jit->ins(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_INT3:
-			cpu->jit->int3(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_INT:
-			cpu->jit->intn(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_INTO:
-			cpu->jit->into(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_INVD:        BAD;
-		case ZYDIS_MNEMONIC_INVLPG:
-			cpu->jit->invlpg(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_IRET:
-		case ZYDIS_MNEMONIC_IRETD:
-			cpu->jit->iret(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_JCXZ:
-		case ZYDIS_MNEMONIC_JECXZ:
-		case ZYDIS_MNEMONIC_JO:
-		case ZYDIS_MNEMONIC_JNO:
-		case ZYDIS_MNEMONIC_JB:
-		case ZYDIS_MNEMONIC_JNB:
-		case ZYDIS_MNEMONIC_JZ:
-		case ZYDIS_MNEMONIC_JNZ:
-		case ZYDIS_MNEMONIC_JBE:
-		case ZYDIS_MNEMONIC_JNBE:
-		case ZYDIS_MNEMONIC_JS:
-		case ZYDIS_MNEMONIC_JNS:
-		case ZYDIS_MNEMONIC_JP:
-		case ZYDIS_MNEMONIC_JNP:
-		case ZYDIS_MNEMONIC_JL:
-		case ZYDIS_MNEMONIC_JNL:
-		case ZYDIS_MNEMONIC_JLE:
-		case ZYDIS_MNEMONIC_JNLE:
-			cpu->jit->jcc(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_JMP:
-			cpu->jit->jmp(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LAHF:
-			cpu->jit->lahf(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LAR:         BAD;
-		case ZYDIS_MNEMONIC_LDS:
-			cpu->jit->lds(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LEA:
-			cpu->jit->lea(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LEAVE:
-			cpu->jit->leave(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LES:
-			cpu->jit->les(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LFS:
-			cpu->jit->lfs(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LGDT:
-			cpu->jit->lgdt(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LGS:
-			cpu->jit->lgs(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LIDT:
-			cpu->jit->lidt(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LLDT:
-			cpu->jit->lldt(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LMSW:
-			cpu->jit->lmsw(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LODSB:
-		case ZYDIS_MNEMONIC_LODSD:
-		case ZYDIS_MNEMONIC_LODSW:
-			cpu->jit->lods(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LOOP:
-		case ZYDIS_MNEMONIC_LOOPE:
-		case ZYDIS_MNEMONIC_LOOPNE:
-			cpu->jit->loop(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LSL:         BAD;
-		case ZYDIS_MNEMONIC_LSS:
-			cpu->jit->lss(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_LTR:
-			cpu->jit->ltr(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_MOV:
-			cpu->jit->mov(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_MOVAPS:
-			cpu->jit->movaps(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_MOVLPS:
-			cpu->jit->movlps(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_MOVHPS:
-			cpu->jit->movhps(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_MOVD:BAD;
-
-		case ZYDIS_MNEMONIC_MOVNTPS:
-			cpu->jit->movntps(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_MOVNTQ:
-			cpu->jit->movntq(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_MOVQ:
-			cpu->jit->movq(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_MOVSB:
-		case ZYDIS_MNEMONIC_MOVSD:
-		case ZYDIS_MNEMONIC_MOVSW:
-			cpu->jit->movs(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_MOVSS:
-			cpu->jit->movss(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_MOVSX:
-			cpu->jit->movsx(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_MOVZX:
-			cpu->jit->movzx(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_MUL:
-			cpu->jit->mul(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_MULSS:
-			cpu->jit->mulss(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_MULPS:
-			cpu->jit->mulps(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_NEG:
-			cpu->jit->neg(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_NOP:
-			// nothing to do
-			break;
-
-		case ZYDIS_MNEMONIC_NOT:
-			cpu->jit->not_(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_OR:
-			cpu->jit->or_(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_OUT:
-			cpu->jit->out(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_OUTSB:
-		case ZYDIS_MNEMONIC_OUTSD:
-		case ZYDIS_MNEMONIC_OUTSW:
-			cpu->jit->outs(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_PAUSE:
-			// nothing to do
-			break;
-
-		case ZYDIS_MNEMONIC_POP:
-			cpu->jit->pop(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_POPA:
-		case ZYDIS_MNEMONIC_POPAD:
-			cpu->jit->popa(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_POPF:
-		case ZYDIS_MNEMONIC_POPFD:
-			cpu->jit->popf(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_PREFETCHNTA:
-		case ZYDIS_MNEMONIC_PREFETCHT0:
-		case ZYDIS_MNEMONIC_PREFETCHT1:
-		case ZYDIS_MNEMONIC_PREFETCHT2:
-			// nothing to do, because we don't emulate the processor's caches
-			break;
-
-		case ZYDIS_MNEMONIC_PUSH:
-			cpu->jit->push(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_PUSHA:
-		case ZYDIS_MNEMONIC_PUSHAD:
-			cpu->jit->pusha(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_PUSHF:
-		case ZYDIS_MNEMONIC_PUSHFD:
-			cpu->jit->pushf(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_RCL:
-			cpu->jit->rcl(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_RCPPS:
-			cpu->jit->rcpps(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_RCPSS:
-			cpu->jit->rcpss(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_RCR:
-			cpu->jit->rcr(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_RDMSR:
-			cpu->jit->rdmsr(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_RDPMC:       BAD;
-		case ZYDIS_MNEMONIC_RDTSC:
-			cpu->jit->rdtsc(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_RET:
-			cpu->jit->ret(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_ROL:
-			cpu->jit->rol(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_ROR:
-			cpu->jit->ror(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_RSQRTPS:
-			cpu->jit->rsqrtps(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_RSQRTSS:
-			cpu->jit->rsqrtss(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_RSM:         BAD;
-		case ZYDIS_MNEMONIC_SAHF:
-			cpu->jit->sahf(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SAR:
-			cpu->jit->sar(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SBB:
-			cpu->jit->sbb(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SCASB:
-		case ZYDIS_MNEMONIC_SCASD:
-		case ZYDIS_MNEMONIC_SCASW:
-			cpu->jit->scas(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SETB:
-		case ZYDIS_MNEMONIC_SETBE:
-		case ZYDIS_MNEMONIC_SETL:
-		case ZYDIS_MNEMONIC_SETLE:
-		case ZYDIS_MNEMONIC_SETNB:
-		case ZYDIS_MNEMONIC_SETNBE:
-		case ZYDIS_MNEMONIC_SETNL:
-		case ZYDIS_MNEMONIC_SETNLE:
-		case ZYDIS_MNEMONIC_SETNO:
-		case ZYDIS_MNEMONIC_SETNP:
-		case ZYDIS_MNEMONIC_SETNS:
-		case ZYDIS_MNEMONIC_SETNZ:
-		case ZYDIS_MNEMONIC_SETO:
-		case ZYDIS_MNEMONIC_SETP:
-		case ZYDIS_MNEMONIC_SETS:
-		case ZYDIS_MNEMONIC_SETZ:
-			cpu->jit->setcc(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SFENCE:
-			// ignored, because we don't reorder instructions
-			break;
-
-		case ZYDIS_MNEMONIC_SGDT:
-			cpu->jit->sgdt(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SHL:
-			cpu->jit->shl(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SHLD:
-			cpu->jit->shld(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SHR:
-			cpu->jit->shr(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SHRD:
-			cpu->jit->shrd(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SHUFPS:
-			cpu->jit->shufps(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SIDT:
-			cpu->jit->sidt(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SLDT:
-			cpu->jit->sldt(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SMSW:        BAD;
-		case ZYDIS_MNEMONIC_STC:
-			cpu->jit->stc(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_STD:
-			cpu->jit->std(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_STI:
-			cpu->jit->sti(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_STOSB:
-		case ZYDIS_MNEMONIC_STOSD:
-		case ZYDIS_MNEMONIC_STOSW:
-			cpu->jit->stos(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_STR:
-			cpu->jit->str(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SUB:
-			cpu->jit->sub(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SUBPS:
-			cpu->jit->subps(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SUBSS:
-			cpu->jit->subss(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_SYSENTER:    BAD;
-		case ZYDIS_MNEMONIC_SYSEXIT:     BAD;
-		case ZYDIS_MNEMONIC_TEST:
-			cpu->jit->test(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_UNPCKHPS:
-			cpu->jit->unpckhps(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_UNPCKLPS:
-			cpu->jit->unpcklps(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_UD1:         BAD;
-		case ZYDIS_MNEMONIC_UD2:         BAD;
-		case ZYDIS_MNEMONIC_VERR:
-			cpu->jit->verr(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_VERW:
-			cpu->jit->verw(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_WBINVD:
-			cpu->jit->wbinvd(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_WRMSR:
-			cpu->jit->wrmsr(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_XADD:
-			cpu->jit->xadd(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_XCHG:
-			cpu->jit->xchg(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_XLAT:
-			cpu->jit->xlat(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_XOR:
-			cpu->jit->xor_(&instr);
-			break;
-
-		case ZYDIS_MNEMONIC_XORPS:
-			cpu->jit->xorps(&instr);
-			break;
-
-		default:
-			BAD;
-		}
+		instr_func func = s_instr_table[instr.i.mnemonic];
+		ASSUME(func);
+		(cpu->jit.get()->*func)(&instr);
 
 		cpu->virt_pc += cpu->instr_bytes;
 		cpu->tc->size += cpu->instr_bytes;
