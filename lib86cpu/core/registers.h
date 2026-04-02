@@ -30,8 +30,8 @@ struct alignas(16) uint128_t {
 	uint128_t();
 	uint128_t(uint64_t val);
 	uint128_t &operator|=(const uint128_t &rhs);
-	uint128_t operator>>(int shift);
-	uint128_t operator<<(int shift);
+	uint128_t operator>>(uint64_t shift);
+	uint128_t operator<<(uint64_t shift);
 	explicit operator uint8_t();
 };
 
@@ -42,8 +42,8 @@ struct uint80_t {
 	uint80_t(uint64_t val);
 	constexpr uint80_t(uint64_t l, uint16_t h) : low(l), high(h) {}
 	uint80_t &operator|=(const uint80_t &rhs);
-	uint80_t operator>>(int shift);
-	uint80_t operator<<(int shift);
+	uint80_t operator>>(uint64_t shift);
+	uint80_t operator<<(uint64_t shift);
 	explicit operator uint8_t();
 	operator uint128_t ();
 };

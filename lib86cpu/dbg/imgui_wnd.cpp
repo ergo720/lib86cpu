@@ -218,7 +218,7 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 	static const auto &[reg_r, reg_g, reg_b] = g_reg_col;
 
 	ImGui::SetNextWindowPos(ImVec2(10, 10), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2((wnd_w - 30) / 2, (wnd_h - 30) / 2), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2((wnd_w - 30.f) / 2.f, (wnd_h - 30.f) / 2.f), ImGuiCond_FirstUseEver);
 	ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(txt_r, txt_g, txt_b, 1.0f));
 	ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(bkg_r, bkg_g, bkg_b, 1.0f));
 	ImGui::PushStyleColor(ImGuiCol_PopupBg, ImVec4(bkg_r, bkg_g, bkg_b, 1.0f));
@@ -516,8 +516,8 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 	}
 	ImGui::End();
 
-	ImGui::SetNextWindowPos(ImVec2(wnd_w / 2 + 5, 10), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2((wnd_w - 30) / 2, (wnd_h - 30) / 2), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(wnd_w / 2.f + 5.f, 10), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2((wnd_w - 30.f) / 2.f, (wnd_h - 30.f) / 2.f), ImGuiCond_FirstUseEver);
 	if (ImGui::Begin("Memory editor")) {
 		static char buff[9];
 		ImGui::PushItemWidth(80.0f);
@@ -565,8 +565,8 @@ dbg_draw_imgui_wnd(cpu_t *cpu)
 	}
 	ImGui::End();
 
-	ImGui::SetNextWindowPos(ImVec2(10, wnd_h / 2 + 5), ImGuiCond_FirstUseEver);
-	ImGui::SetNextWindowSize(ImVec2(wnd_w - 20, (wnd_h - 30) / 2), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowPos(ImVec2(10, wnd_h / 2.f + 5.f), ImGuiCond_FirstUseEver);
+	ImGui::SetNextWindowSize(ImVec2(wnd_w - 20.f, (wnd_h - 30.f) / 2.f), ImGuiCond_FirstUseEver);
 	if (ImGui::Begin("Registers")) {
 		ImGui::ColorEdit3("Text color", g_txt_col);
 		ImGui::ColorEdit3("Background color", g_bkg_col);

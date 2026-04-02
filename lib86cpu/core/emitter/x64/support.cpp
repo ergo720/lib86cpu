@@ -64,7 +64,7 @@ verify_cpu_features()
 }
 
 uint128_t
-uint128_t::operator>>(int shift)
+uint128_t::operator>>(uint64_t shift)
 {
 	// NOTE: the shift amount used by the intrinsic is expressed in bytes, not bits
 
@@ -146,7 +146,7 @@ uint128_t::operator>>(int shift)
 }
 
 uint128_t
-uint128_t::operator<<(int shift)
+uint128_t::operator<<(uint64_t shift)
 {
 	// NOTE: the shift amount used by the intrinsic is expressed in bytes, not bits
 

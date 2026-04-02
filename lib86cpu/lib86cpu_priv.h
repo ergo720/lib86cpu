@@ -135,7 +135,7 @@ struct translated_code_t {
 	entry_t ptr_code;
 	entry_t ptr_exit;
 	uint32_t flags;
-	uint32_t size;
+	uint64_t size;
 	explicit translated_code_t() noexcept;
 };
 

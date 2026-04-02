@@ -150,7 +150,7 @@ set_access_flg_seg_desc_helper(cpu_t *cpu, uint64_t desc, addr_t desc_addr)
 uint32_t
 read_seg_desc_base_helper(cpu_t *cpu, uint64_t desc)
 {
-	return (((desc & 0xFFFF0000) >> 16) | ((desc & 0xFF00000000) >> 16)) | ((desc & 0xFF00000000000000) >> 32);
+	return uint32_t(((desc & 0xFFFF0000) >> 16) | ((desc & 0xFF00000000) >> 16) | ((desc & 0xFF00000000000000) >> 32));
 }
 
 uint32_t
@@ -180,19 +180,19 @@ check_ss_desc_priv_helper(cpu_t *cpu, uint16_t sel, uint16_t *cs, addr_t &desc_a
 		return 1;
 	}
 
-	uint16_t s = (desc & SEG_DESC_S) >> 44; // cannot be a system segment
-	uint16_t d = (desc & SEG_DESC_DC) >> 42; // cannot be a code segment
-	uint16_t w = (desc & SEG_DESC_W) >> 39; // cannot be a non-writable data segment
-	uint16_t dpl = (desc & SEG_DESC_DPL) >> 42;
-	uint16_t rpl = (sel & 3) << 5;
-	uint16_t val;
+	uint64_t s = (desc & SEG_DESC_S) >> 44; // cannot be a system segment
+	uint64_t d = (desc & SEG_DESC_DC) >> 42; // cannot be a code segment
+	uint64_t w = (desc & SEG_DESC_W) >> 39; // cannot be a non-writable data segment
+	uint64_t dpl = (desc & SEG_DESC_DPL) >> 42;
+	uint64_t rpl = (sel & 3) << 5;
+	uint64_t val;
 	// check for segment privilege violations
 	if (cs == nullptr) {
-		uint16_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
+		uint64_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
 		val = ((((s | d) | w) | dpl) | rpl) ^ ((5 | (cpl << 3)) | (cpl << 5));
 	}
 	else {
-		uint16_t rpl_cs = *cs & 3;
+		uint64_t rpl_cs = *cs & 3;
 		val = ((((s | d) | w) | dpl) | rpl) ^ ((5 | (rpl_cs << 3)) | (rpl_cs << 5));
 	}
 
@@ -219,16 +219,16 @@ check_seg_desc_priv_helper(cpu_t *cpu, uint16_t sel, addr_t &desc_addr, uint64_t
 		return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP);
 	}
 
-	uint16_t d = (desc & SEG_DESC_DC) >> 43;
-	uint16_t r = (desc & SEG_DESC_R) >> 40;
+	uint64_t d = (desc & SEG_DESC_DC) >> 43;
+	uint64_t r = (desc & SEG_DESC_R) >> 40;
 	if ((d | r) == 1) {
 		return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP);
 	}
 
 	if ((d == 0) || ((desc & SEG_DESC_C) == 0)) {
-		uint16_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
-		uint16_t dpl = (desc & SEG_DESC_DPL) >> 45;
-		uint16_t rpl = sel & 3;
+		uint64_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
+		uint64_t dpl = (desc & SEG_DESC_DPL) >> 45;
+		uint64_t rpl = sel & 3;
 		if ((rpl > dpl) && (cpl > dpl)) {
 			return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP);
 		}

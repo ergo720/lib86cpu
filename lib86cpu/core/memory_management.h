@@ -266,12 +266,12 @@ T mem_read_slow(cpu_t *cpu, addr_t addr, uint8_t is_priv)
 
 	if ((type_size != 1) && ((addr & ~PAGE_MASK) != ((addr + type_size - 1) & ~PAGE_MASK))) {
 		T value = 0;
-		uint8_t i = 0;
+		uint64_t i = 0;
 		addr_t phys_addr_s = get_read_addr_slow(cpu, addr, is_priv);
 		addr_t phys_addr_e = get_read_addr_slow(cpu, addr + type_size - 1, is_priv);
 		cpu_check_data_watchpoints(cpu, addr, type_size, DR7_TYPE_DATA_RW);
 		addr_t phys_addr = phys_addr_s;
-		uint8_t bytes_in_page = ((addr + type_size - 1) & ~PAGE_MASK) - addr;
+		uint64_t bytes_in_page = ((addr + type_size - 1) & ~PAGE_MASK) - addr;
 		while (i < type_size) {
 			const memory_region_t<addr_t> *region = as_memory_search_addr(cpu, phys_addr);
 			value |= (static_cast<T>(as_memory_dispatch_read<uint8_t>(cpu, phys_addr, region)) << (i * 8));
@@ -297,12 +297,12 @@ void mem_write_slow(cpu_t *cpu, addr_t addr, T value, uint8_t is_priv)
 
 	if ((type_size != 1) && ((addr & ~PAGE_MASK) != ((addr + type_size - 1) & ~PAGE_MASK))) {
 		bool is_code1, is_code2;
-		uint8_t i = 0;
+		uint64_t i = 0;
 		addr_t phys_addr_s = get_write_addr_slow(cpu, addr, is_priv, &is_code1);
 		addr_t phys_addr_e = get_write_addr_slow(cpu, addr + type_size - 1, is_priv, &is_code2);
 		cpu_check_data_watchpoints(cpu, addr, type_size, DR7_TYPE_DATA_W);
 		addr_t phys_addr = phys_addr_s;
-		uint8_t bytes_in_page = ((addr + type_size - 1) & ~PAGE_MASK) - addr;
+		uint64_t bytes_in_page = ((addr + type_size - 1) & ~PAGE_MASK) - addr;
 		if (is_code1) {
 			tc_invalidate(&cpu->cpu_ctx, phys_addr_s, bytes_in_page);
 		}

@@ -340,7 +340,7 @@ uint80_t::operator|=(const uint80_t &rhs)
 }
 
 uint80_t
-uint80_t::operator>>(int shift)
+uint80_t::operator>>(uint64_t shift)
 {
 	uint128_t val = static_cast<uint128_t>(*this) >> shift;
 	this->low = val.low;
@@ -349,7 +349,7 @@ uint80_t::operator>>(int shift)
 }
 
 uint80_t
-uint80_t::operator<<(int shift)
+uint80_t::operator<<(uint64_t shift)
 {
 	uint128_t val = static_cast<uint128_t>(*this) << shift;
 	this->low = val.low;

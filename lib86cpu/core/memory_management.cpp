@@ -666,9 +666,9 @@ ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer)
 	cpu_check_data_watchpoints(cpu, disas_ctx->virt_pc, 1, DR7_TYPE_INSTR);
 
 	if ((disas_ctx->virt_pc & ~PAGE_MASK) != ((disas_ctx->virt_pc + X86_MAX_INSTR_LENGTH - 1) & ~PAGE_MASK)) {
-		size_t bytes_to_read, bytes_in_first_page;
+		uint32_t bytes_to_read, bytes_in_first_page;
 		bytes_to_read = bytes_in_first_page = (PAGE_SIZE - (disas_ctx->virt_pc & PAGE_MASK));
-		bytes_to_read = as_ram_dispatch_read(cpu, disas_ctx->pc, bytes_to_read, as_memory_search_addr(cpu, disas_ctx->pc), buffer);
+		bytes_to_read = (uint32_t)as_ram_dispatch_read(cpu, disas_ctx->pc, bytes_to_read, as_memory_search_addr(cpu, disas_ctx->pc), buffer);
 		if (bytes_to_read < bytes_in_first_page) {
 			// ram/rom region ends before end of buffer
 			disas_ctx->instr_buff_size = bytes_to_read;
@@ -684,7 +684,7 @@ ram_fetch(cpu_t *cpu, disas_ctx_t *disas_ctx, uint8_t *buffer)
 
 		bytes_to_read = (X86_MAX_INSTR_LENGTH - bytes_to_read);
 		buffer += bytes_in_first_page;
-		bytes_to_read = as_ram_dispatch_read(cpu, addr, bytes_to_read, as_memory_search_addr(cpu, addr), buffer);
+		bytes_to_read = (uint32_t)as_ram_dispatch_read(cpu, addr, bytes_to_read, as_memory_search_addr(cpu, addr), buffer);
 		disas_ctx->instr_buff_size = bytes_to_read + bytes_in_first_page;
 	}
 	else {

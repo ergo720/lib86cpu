@@ -13,7 +13,7 @@
 
 
 template<bool remove_hook = false>
-void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint8_t size = 0);
+void tc_invalidate(cpu_ctx_t *cpu_ctx, addr_t phys_addr, [[maybe_unused]] uint64_t size = 0);
 void tc_unlink(cpu_t *cpu, addr_t virt_pc);
 void tc_unlink_page(cpu_t *cpu, addr_t virt_pc);
 void tc_unlink_all(cpu_t *cpu);

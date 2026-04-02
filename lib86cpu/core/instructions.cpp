@@ -350,7 +350,7 @@ uint32_t
 ljmp_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint8_t size_mode, uint32_t jmp_eip)
 {
 	cpu_t *cpu = cpu_ctx->cpu;
-	uint16_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
+	uint64_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
 
 	if ((sel >> 2) == 0) { // sel == NULL
 		return raise_exp_helper(cpu, 0, EXP_GP);
@@ -369,7 +369,7 @@ ljmp_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint8_t size_mode, uint32_t jmp
 			return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP);
 		}
 
-		uint16_t dpl = (desc & SEG_DESC_DPL) >> 45;
+		uint64_t dpl = (desc & SEG_DESC_DPL) >> 45;
 
 		if (desc & SEG_DESC_C) {
 			// conforming
@@ -381,7 +381,7 @@ ljmp_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint8_t size_mode, uint32_t jmp
 		else {
 			// non-conforming
 
-			uint16_t rpl = sel & 3;
+			uint64_t rpl = sel & 3;
 			if ((rpl > cpl) || (dpl != cpl)) { // rpl > cpl || dpl != cpl
 				return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP);
 			}
@@ -394,13 +394,13 @@ ljmp_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint8_t size_mode, uint32_t jmp
 		}
 
 		set_access_flg_seg_desc_helper(cpu, desc, desc_addr);
-		write_seg_reg_helper<CS_idx>(cpu, (sel & 0xFFFC) | cpl, read_seg_desc_base_helper(cpu, desc), read_seg_desc_limit_helper(cpu, desc), read_seg_desc_flags_helper(cpu, desc));
+		write_seg_reg_helper<CS_idx>(cpu, (sel & 0xFFFC) | uint16_t(cpl), read_seg_desc_base_helper(cpu, desc), read_seg_desc_limit_helper(cpu, desc), read_seg_desc_flags_helper(cpu, desc));
 		cpu_ctx->regs.eip = size_mode == SIZE16 ? jmp_eip & 0xFFFF : jmp_eip;
 	}
 	else {
 		// system desc
 
-		uint8_t sys_ty = (desc & SEG_DESC_TY) >> 40;
+		uint64_t sys_ty = (desc & SEG_DESC_TY) >> 40;
 		switch (sys_ty)
 		{
 		case 1:
@@ -417,8 +417,8 @@ ljmp_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint8_t size_mode, uint32_t jmp
 		}
 
 		sys_ty >>= 3;
-		uint16_t dpl = (desc & SEG_DESC_DPL) >> 45;
-		uint16_t rpl = sel & 3;
+		uint64_t dpl = (desc & SEG_DESC_DPL) >> 45;
+		uint64_t rpl = sel & 3;
 
 		if ((dpl < cpl) || (rpl > dpl)) { // dpl < cpl || rpl > dpl
 			return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP);
@@ -449,7 +449,7 @@ ljmp_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint8_t size_mode, uint32_t jmp
 		}
 
 		set_access_flg_seg_desc_helper(cpu, desc, desc_addr);
-		write_seg_reg_helper<CS_idx>(cpu, (sel & 0xFFFC) | cpl, read_seg_desc_base_helper(cpu, desc), read_seg_desc_limit_helper(cpu, desc), read_seg_desc_flags_helper(cpu, desc));
+		write_seg_reg_helper<CS_idx>(cpu, (sel & 0xFFFC) | uint16_t(cpl), read_seg_desc_base_helper(cpu, desc), read_seg_desc_limit_helper(cpu, desc), read_seg_desc_flags_helper(cpu, desc));
 
 		if (sys_ty == 0) {
 			jmp_eip &= 0xFFFF;
@@ -464,7 +464,7 @@ uint32_t
 lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t size_mode, uint32_t ret_eip)
 {
 	cpu_t *cpu = cpu_ctx->cpu;
-	uint16_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
+	uint64_t cpl = cpu->cpu_ctx.hflags & HFLG_CPL;
 
 	if ((sel >> 2) == 0) { // sel == NULL
 		return raise_exp_helper(cpu, 0, EXP_GP);
@@ -483,7 +483,7 @@ lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t siz
 			return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP);
 		}
 
-		uint16_t dpl = (cs_desc & SEG_DESC_DPL) >> 45;
+		uint64_t dpl = (cs_desc & SEG_DESC_DPL) >> 45;
 
 		if (cs_desc & SEG_DESC_C) {
 			// conforming
@@ -495,7 +495,7 @@ lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t siz
 		else {
 			// non-conforming
 
-			uint16_t rpl = sel & 3;
+			uint64_t rpl = sel & 3;
 			if ((rpl > cpl) || (dpl != cpl)) { // rpl > cpl || dpl != cpl
 				return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP);
 			}
@@ -511,14 +511,14 @@ lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t siz
 		stack_push_helper(cpu, cpu_ctx->regs.cs, size_mode, esp);
 		stack_push_helper(cpu, ret_eip, size_mode, esp);
 		set_access_flg_seg_desc_helper(cpu, cs_desc, cs_desc_addr);
-		write_seg_reg_helper<CS_idx>(cpu, (sel & 0xFFFC) | cpl, read_seg_desc_base_helper(cpu, cs_desc), read_seg_desc_limit_helper(cpu, cs_desc), read_seg_desc_flags_helper(cpu, cs_desc));
+		write_seg_reg_helper<CS_idx>(cpu, (sel & 0xFFFC) | uint16_t(cpl), read_seg_desc_base_helper(cpu, cs_desc), read_seg_desc_limit_helper(cpu, cs_desc), read_seg_desc_flags_helper(cpu, cs_desc));
 		cpu->cpu_ctx.regs.esp = esp;
 		cpu_ctx->regs.eip = call_eip; // call_eip is already appropriately masked by the caller
 	}
 	else {
 		// system desc
 
-		uint8_t sys_ty = (cs_desc & SEG_DESC_TY) >> 40;
+		uint64_t sys_ty = (cs_desc & SEG_DESC_TY) >> 40;
 		switch (sys_ty)
 		{
 		case 1:
@@ -535,8 +535,8 @@ lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t siz
 		}
 
 		sys_ty >>= 3;
-		uint16_t dpl = (cs_desc & SEG_DESC_DPL) >> 45;
-		uint16_t rpl = sel & 3;
+		uint64_t dpl = (cs_desc & SEG_DESC_DPL) >> 45;
+		uint64_t rpl = sel & 3;
 
 		if ((dpl < cpl) || (rpl > dpl)) { // dpl < cpl || rpl > dpl
 			return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP);
@@ -574,7 +574,7 @@ lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t siz
 			// more privileged
 
 			uint16_t ss;
-			if (read_stack_ptr_from_tss_helper(cpu, dpl, esp, ss)) {
+			if (read_stack_ptr_from_tss_helper(cpu, uint16_t(dpl), esp, ss)) {
 				return 1;
 			}
 
@@ -588,11 +588,11 @@ lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t siz
 				return 1;
 			}
 
-			uint16_t s = (ss_desc & SEG_DESC_S) >> 44; // !(sys desc)
-			uint16_t d = (ss_desc & SEG_DESC_DC) >> 42; // data desc
-			uint16_t w = (ss_desc & SEG_DESC_W) >> 39;	// writable
-			uint16_t dpl_ss = (ss_desc & SEG_DESC_DPL) >> 42; // dpl(ss) == dpl(code)
-			uint16_t rpl_ss = (ss & 3) << 5; // rpl(ss) == dpl(code)
+			uint64_t s = (ss_desc & SEG_DESC_S) >> 44; // !(sys desc)
+			uint64_t d = (ss_desc & SEG_DESC_DC) >> 42; // data desc
+			uint64_t w = (ss_desc & SEG_DESC_W) >> 39;	// writable
+			uint64_t dpl_ss = (ss_desc & SEG_DESC_DPL) >> 42; // dpl(ss) == dpl(code)
+			uint64_t rpl_ss = (ss & 3) << 5; // rpl(ss) == dpl(code)
 			if (((((s | d) | w) | dpl_ss) | rpl_ss) ^ ((5 | (dpl << 3)) | (dpl << 5))) {
 				return raise_exp_helper(cpu, ss & 0xFFFC, EXP_TS);
 			}
@@ -640,7 +640,7 @@ lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t siz
 			}
 
 			set_access_flg_seg_desc_helper(cpu, ss_desc, ss_desc_addr);
-			write_seg_reg_helper<SS_idx>(cpu, (ss & 0xFFFC) | dpl, read_seg_desc_base_helper(cpu, ss_desc), read_seg_desc_limit_helper(cpu, ss_desc), read_seg_desc_flags_helper(cpu, ss_desc));
+			write_seg_reg_helper<SS_idx>(cpu, (ss & 0xFFFC) | uint16_t(dpl), read_seg_desc_base_helper(cpu, ss_desc), read_seg_desc_limit_helper(cpu, ss_desc), read_seg_desc_flags_helper(cpu, ss_desc));
 		}
 		else {
 			// same privilege
@@ -665,7 +665,7 @@ lcall_pe_helper(cpu_ctx_t *cpu_ctx, uint16_t sel, uint32_t call_eip, uint8_t siz
 		}
 
 		set_access_flg_seg_desc_helper(cpu, code_desc, code_desc_addr);
-		write_seg_reg_helper<CS_idx>(cpu, (code_sel & 0xFFFC) | dpl, read_seg_desc_base_helper(cpu, code_desc), read_seg_desc_limit_helper(cpu, code_desc), read_seg_desc_flags_helper(cpu, code_desc));
+		write_seg_reg_helper<CS_idx>(cpu, (code_sel & 0xFFFC) | uint16_t(dpl), read_seg_desc_base_helper(cpu, code_desc), read_seg_desc_limit_helper(cpu, code_desc), read_seg_desc_flags_helper(cpu, code_desc));
 		cpu->cpu_ctx.regs.esp = esp;
 		cpu_ctx->regs.eip = (new_eip & ~eip_mask) | (new_eip & eip_mask);
 	}
@@ -772,7 +772,7 @@ void verrw_helper(cpu_ctx_t *cpu_ctx, uint16_t sel)
 		return;
 	}
 
-	uint16_t dpl = (desc & SEG_DESC_DPL) >> 45;
+	uint64_t dpl = (desc & SEG_DESC_DPL) >> 45;
 	if (((desc & SEG_DESC_S) == 0) || // system desc
 		(((desc & SEG_DESC_TYC) != 0xC0000000000) && // code, conf desc
 		(((cpu->cpu_ctx.hflags & HFLG_CPL) > dpl) || ((sel & 3) > dpl))) // cpl > dpl || rpl > dpl
@@ -815,8 +815,8 @@ ltr_helper(cpu_ctx_t *cpu_ctx, uint16_t sel)
 		return 1;
 	}
 
-	uint8_t s = (desc & SEG_DESC_S) >> 40;
-	uint8_t ty = (desc & SEG_DESC_TY) >> 40;
+	uint64_t s = (desc & SEG_DESC_S) >> 40;
+	uint64_t ty = (desc & SEG_DESC_TY) >> 40;
 	if (!(((s | ty) == SEG_DESC_TSS16AV) || ((s | ty) == SEG_DESC_TSS32AV))) { // must be an available tss
 		return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP);
 	}
@@ -847,8 +847,8 @@ lldt_helper(cpu_ctx_t *cpu_ctx, uint16_t sel)
 		return 1;
 	}
 
-	uint8_t s = (desc & SEG_DESC_S) >> 40;
-	uint8_t ty = (desc & SEG_DESC_TY) >> 40;
+	uint64_t s = (desc & SEG_DESC_S) >> 40;
+	uint64_t ty = (desc & SEG_DESC_TY) >> 40;
 	if ((s | ty) != SEG_DESC_LDT) { // must be ldt type
 		return raise_exp_helper(cpu, sel & 0xFFFC, EXP_GP);
 	}
@@ -991,7 +991,7 @@ update_drN_helper(cpu_ctx_t *cpu_ctx, uint8_t dr_idx, uint32_t new_dr)
 			if (cpu_check_watchpoint_enabled(cpu_ctx->cpu, dr_idx) && (cpu_ctx->regs.cr4 & CR4_DE_MASK)) {
 				for (auto &io : cpu_ctx->cpu->wp_io) {
 					if (io.dr_idx == dr_idx) {
-						size_t watch_len = cpu_get_watchpoint_length(cpu_ctx->cpu, dr_idx);
+						uint32_t watch_len = cpu_get_watchpoint_length(cpu_ctx->cpu, dr_idx);
 						io.watch_addr = cpu_ctx->regs.dr[dr_idx] & ~(watch_len - 1);
 						io.watch_end = io.watch_addr + watch_len - 1;
 						break;
@@ -1003,7 +1003,7 @@ update_drN_helper(cpu_ctx_t *cpu_ctx, uint8_t dr_idx, uint32_t new_dr)
 			if (cpu_check_watchpoint_enabled(cpu_ctx->cpu, dr_idx)) {
 				for (auto &data : cpu_ctx->cpu->wp_data) {
 					if (data.dr_idx == dr_idx) {
-						size_t watch_len = cpu_get_watchpoint_length(cpu_ctx->cpu, dr_idx);
+						uint32_t watch_len = cpu_get_watchpoint_length(cpu_ctx->cpu, dr_idx);
 						data.watch_addr = cpu_ctx->regs.dr[dr_idx] & ~(watch_len - 1);
 						data.watch_end = data.watch_addr + watch_len - 1;
 #if XBOX_CPU
@@ -1026,7 +1026,7 @@ update_drN_helper(cpu_ctx_t *cpu_ctx, uint8_t dr_idx, uint32_t new_dr)
 		cpu_ctx->regs.dr[7] = new_dr;
 		for (unsigned idx = 0; idx < 4; ++idx) {
 			if (cpu_check_watchpoint_enabled(cpu_ctx->cpu, idx)) {
-				size_t watch_len = cpu_get_watchpoint_length(cpu_ctx->cpu, idx);
+				uint32_t watch_len = cpu_get_watchpoint_length(cpu_ctx->cpu, idx);
 				if (int type = cpu_get_watchpoint_type(cpu_ctx->cpu, idx); type == DR7_TYPE_IO_RW) {
 					port_t watch_addr = cpu_ctx->regs.dr[idx] & ~(watch_len - 1);
 					port_t watch_end = watch_addr + watch_len - 1;
@@ -1177,7 +1177,7 @@ msr_read_helper(cpu_ctx_t *cpu_ctx)
 	}
 
 	cpu_ctx->regs.edx = (val >> 32);
-	cpu_ctx->regs.eax = val;
+	cpu_ctx->regs.eax = (uint32_t)val;
 
 	return 0;
 }
@@ -1353,8 +1353,8 @@ divd_helper(cpu_ctx_t *cpu_ctx, uint32_t d)
 	if (q > 0xFFFFFFFF) {
 		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE);
 	}
-	cpu_ctx->regs.eax = q;
-	cpu_ctx->regs.edx = r;
+	cpu_ctx->regs.eax = (uint32_t)q;
+	cpu_ctx->regs.edx = (uint32_t)r;
 
 	return 0;
 }
@@ -1411,8 +1411,8 @@ idivd_helper(cpu_ctx_t *cpu_ctx, uint32_t d)
 	if (q != static_cast<int32_t>(q)) {
 		return raise_exp_helper(cpu_ctx->cpu, 0, EXP_DE);
 	}
-	cpu_ctx->regs.eax = q;
-	cpu_ctx->regs.edx = r;
+	cpu_ctx->regs.eax = (uint32_t)q;
+	cpu_ctx->regs.edx = (uint32_t)r;
 
 	return 0;
 }
