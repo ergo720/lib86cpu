@@ -28,18 +28,18 @@ static_assert(std::is_trivially_copyable_v<msr_t>);
 // in a single function. To avoid that, we split the if/else statements in multiple functions after 100 instructions
 
 #define INSTR_BEGIN(func, ...) if (instr == ZydisMnemonic::ZYDIS_MNEMONIC_ ## func) {\
-return &lc86_jit::func ## __VA_ARGS__;\
+return std::pair<uint16_t, instr_func>{1, &lc86_jit::func ## __VA_ARGS__};\
 }
 #define INSTR_CASE(func, ...) else if (instr == ZydisMnemonic::ZYDIS_MNEMONIC_ ## func) {\
-return &lc86_jit::func ## __VA_ARGS__;\
+return std::pair<uint16_t, instr_func>{1, &lc86_jit::func ## __VA_ARGS__};\
 }
 #define INSTR_END() \
-return &lc86_jit::unimplemented
+return std::pair<uint16_t, instr_func>{0, &lc86_jit::unimplemented}
 
 #define INSTR_CALL(func) \
 return func(instr)
 
-constexpr instr_func dispatch_func3(int instr)
+constexpr auto dispatch_func3(int instr)
 {
 	INSTR_BEGIN(RCL, _)
 		INSTR_CASE(RCPPS, _)
@@ -108,7 +108,7 @@ constexpr instr_func dispatch_func3(int instr)
 	INSTR_END();
 }
 
-constexpr instr_func dispatch_func2(int instr)
+constexpr auto dispatch_func2(int instr)
 {
 	INSTR_BEGIN(FISUB, _)
 		INSTR_CASE(FSUBR, _)
@@ -212,7 +212,7 @@ constexpr instr_func dispatch_func2(int instr)
 	INSTR_CALL(dispatch_func3);
 }
 
-constexpr instr_func dispatch_func1(int instr)
+constexpr auto dispatch_func1(int instr)
 {
 	INSTR_BEGIN(AAA)
 		INSTR_CASE(AAD)
@@ -316,19 +316,58 @@ constexpr instr_func dispatch_func1(int instr)
 	INSTR_CALL(dispatch_func2);
 }
 
-template<std::size_t Length, typename Generator, std::size_t... Indexes>
+template<std::size_t Length, unsigned Action, typename Generator, std::size_t... Indexes>
 constexpr auto gen_func_table_impl(Generator&& f, std::index_sequence<Indexes...>)
 {
-	return std::array<instr_func, Length> {{ f(Indexes)... }};
+	if constexpr (Action == 0) {
+		std::array<uint16_t, Length> arr {{ f(Indexes).first... }}; // sets to 1 all positions with implemented instructions
+		int idx = 0;
+		for (auto &val : arr) {
+			if (val) {
+				val = ++idx; // converts all 1's to increasing index values
+			}
+		}
+		return arr;
+	}
+	else if constexpr (Action == 1) {
+		std::array<uint16_t, Length> arr {{ f(Indexes).first... }};
+		std::size_t num = 0;
+		for (auto val : arr) {
+			if (val) {
+				++num; // sums all 1's
+			}
+		}
+		return num;
+	}
+	else {
+		throw std::logic_error("Unknown action requested");
+	}
 }
 
-template<std::size_t Length, typename Generator>
+template<std::size_t Length, unsigned Action, typename Generator>
 constexpr auto gen_func_table(Generator&& f)
 {
-	return gen_func_table_impl<Length>(std::forward<Generator>(f), std::make_index_sequence<Length>{});
+	return gen_func_table_impl<Length, Action>(std::forward<Generator>(f), std::make_index_sequence<Length>{});
 }
 
-constexpr static std::array<instr_func, ZYDIS_MNEMONIC_MAX_VALUE + 1> s_instr_table = gen_func_table<ZYDIS_MNEMONIC_MAX_VALUE + 1>(dispatch_func1);
+template<std::size_t Length, std::array<uint16_t, ZYDIS_MNEMONIC_MAX_VALUE + 1> arr, typename Generator>
+constexpr auto gen_func_table(Generator &&f)
+{
+	std::array<instr_func, Length> local_arr {};
+	local_arr[0] = &lc86_jit::unimplemented;
+	int j = 1;
+	for (int i = 0; i < arr.size(); ++i) {
+		if (arr[i]) {
+			local_arr[j] = f(i).second;
+			++j;
+		}
+	}
+	return local_arr;
+}
+
+constexpr static std::array<uint16_t, ZYDIS_MNEMONIC_MAX_VALUE + 1> s_zydis2idx_table = gen_func_table<ZYDIS_MNEMONIC_MAX_VALUE + 1, 0>(dispatch_func1);
+constexpr static std::size_t instr_table_size = 1 + gen_func_table<ZYDIS_MNEMONIC_MAX_VALUE + 1, 1>(dispatch_func1);
+constexpr static std::array<instr_func, instr_table_size> s_instr_table = gen_func_table<instr_table_size, s_zydis2idx_table>(dispatch_func1);
 
 #undef INSTR_BEGIN
 #undef INSTR_CASE
@@ -1273,7 +1312,9 @@ cpu_translate(cpu_t *cpu)
 			cpu->addr_mode = ADDR16;
 		}
 
-		instr_func func = s_instr_table[instr.i.mnemonic];
+		uint16_t idx = s_zydis2idx_table[instr.i.mnemonic];
+		ASSUME(idx < instr_table_size);
+		instr_func func = s_instr_table[idx];
 		ASSUME(func);
 		(cpu->jit.get()->*func)(&instr);
 
