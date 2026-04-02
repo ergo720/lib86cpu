@@ -6,9 +6,9 @@
 
 #pragma once
 
-#include "lib86cpu_priv.h"
+#include "lib86cpu_priv.hpp"
 #include "Zydis/Zydis.h"
-#include <stdint.h>
+#include <cstdint>
 
 #define SIZE8   1
 #define SIZE16  2

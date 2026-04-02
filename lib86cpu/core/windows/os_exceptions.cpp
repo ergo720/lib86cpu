@@ -4,11 +4,11 @@
  * ergo720                Copyright (c) 2022
  */
 
-#include "lib86cpu_priv.h"
+#include "lib86cpu_priv.hpp"
 #ifdef LIB86CPU_X64_EMITTER
-#include "x64/jit.h"
+#include "x64/jit.hpp"
 #endif
-#include <assert.h>
+#include <cassert>
 #include "Windows.h"
 
 #if defined(_WIN64)

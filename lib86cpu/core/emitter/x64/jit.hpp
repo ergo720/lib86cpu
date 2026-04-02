@@ -7,9 +7,9 @@
 #pragma once
 
 #include <asmjit/asmjit.h>
-#include "lib86cpu_priv.h"
-#include "allocator.h"
-#include "../emitter_common.h"
+#include "lib86cpu_priv.hpp"
+#include "allocator.hpp"
+#include "../emitter_common.hpp"
 
 #ifdef LIB86CPU_X64_EMITTER
 

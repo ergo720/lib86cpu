@@ -6,9 +6,9 @@
 
 #pragma once
 
-#include "instructions.h"
-#include "debugger.h"
-#include "clock.h"
+#include "instructions.hpp"
+#include "debugger.hpp"
+#include "clock.hpp"
 
 
 #define CPU_CTX_REG          offsetof(cpu_ctx_t, regs)

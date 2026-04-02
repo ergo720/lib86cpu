@@ -15,7 +15,7 @@
 #include <list>
 #include <cinttypes>
 #include <thread>
-#include "lib86cpu.h"
+#include "lib86cpu.hpp"
 
 #ifdef LIB86CPU_X64_EMITTER
 #ifdef _MSC_VER
@@ -102,7 +102,7 @@ struct region_update_info_t {
 	void *opaque;
 };
 
-#include "as.h"
+#include "as.hpp"
 
 struct tlb_t {
 	uint64_t entry;

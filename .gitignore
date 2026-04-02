@@ -2,5 +2,5 @@
 [Bb]uild/
 [Bb]uild-*/
 llvm/
-include/config.h
+include/config.hpp
 .vscode/

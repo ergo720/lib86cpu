@@ -6,7 +6,7 @@
 
 #pragma once
 
-#include "lib86cpu_priv.h"
+#include "lib86cpu_priv.hpp"
 
 
 uint64_t get_current_time();

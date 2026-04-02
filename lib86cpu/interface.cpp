@@ -7,14 +7,14 @@
 
 #include <fstream>
 #include <cstring>
-#include "internal.h"
-#include "memory_management.h"
-#include "os_mem.h"
+#include "internal.hpp"
+#include "memory_management.hpp"
+#include "os_mem.hpp"
 #ifdef LIB86CPU_X64_EMITTER
-#include "x64/jit.h"
+#include "x64/jit.hpp"
 #endif
 #ifdef XBOX_CPU
-#include "ipt.h"
+#include "ipt.hpp"
 #endif
 
 

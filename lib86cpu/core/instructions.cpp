@@ -4,11 +4,11 @@
  * ergo720                Copyright (c) 2022
  */
 
-#include "instructions.h"
-#include "debugger.h"
-#include "clock.h"
+#include "instructions.hpp"
+#include "debugger.hpp"
+#include "clock.hpp"
 #if XBOX_CPU
-#include "ipt.h"
+#include "ipt.hpp"
 #endif
 
 

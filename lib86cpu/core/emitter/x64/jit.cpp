@@ -4,12 +4,12 @@
  * ergo720                Copyright (c) 2022
  */
 
-#include "jit.h"
-#include "support.h"
-#include "instructions.h"
-#include "debugger.h"
-#include "clock.h"
-#include <assert.h>
+#include "jit.hpp"
+#include "support.hpp"
+#include "instructions.hpp"
+#include "debugger.hpp"
+#include "clock.hpp"
+#include <cassert>
 #include <optional>
 
 #ifdef LIB86CPU_X64_EMITTER
@@ -509,7 +509,7 @@ static_assert((LOCAL_VARS_off(0) & 15) == 0); // must be 16 byte aligned so that
 #define ST_SEG(seg_offset, val) MOV(MEMD16(RCX, seg_offset), val)
 #define ST_SEG_BASE(seg_offset, val) MOV(MEMD32(RCX, seg_offset + seg_base_offset), val)
 #define ST_SEG_LIMIT(seg_offset, val) MOV(MEMD32(RCX, seg_offset + seg_limit_offset), val)
-#define ST_MM(reg_offset, val) MOV(MEMD64(RCX, reg_offset), val); MOV(MEMD16(RCX, reg_offset + 8), 0xFFFF) // guaranteed by assertion in registers.h
+#define ST_MM(reg_offset, val) MOV(MEMD64(RCX, reg_offset), val); MOV(MEMD16(RCX, reg_offset + 8), 0xFFFF) // guaranteed by assertion in registers.hpp
 
 #ifdef XBOX_CPU
 #define LD_MEM() load_ipt(m_cpu->size_mode)

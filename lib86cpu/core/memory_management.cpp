@@ -4,12 +4,12 @@
  * ergo720                Copyright (c) 2019
  */
 
-#include "internal.h"
-#include "memory_management.h"
+#include "internal.hpp"
+#include "memory_management.hpp"
 #ifdef XBOX_CPU
-#include "ipt.h"
+#include "ipt.hpp"
 #endif
-#include <assert.h>
+#include <cassert>
 #include <optional>
 
 

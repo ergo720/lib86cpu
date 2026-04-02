@@ -4,7 +4,7 @@
  * ergo720                Copyright (c) 2023
  */
 
-#include "internal.h"
+#include "internal.hpp"
 #include <immintrin.h>
 #if defined(_MSC_VER)
 #include <intrin.h>
@@ -12,7 +12,7 @@
 #include "cpuid.h"
 #endif
 #ifdef XBOX_CPU
-#include "ipt.h"
+#include "ipt.hpp"
 #endif
 
 #define FPU_SUPPORTED          (1 << 0) // edx

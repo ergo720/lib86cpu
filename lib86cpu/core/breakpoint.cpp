@@ -4,8 +4,8 @@
  * ergo720                Copyright (c) 2021
  */
 
-#include "internal.h"
-#include "breakpoint.h"
+#include "internal.hpp"
+#include "breakpoint.hpp"
 
 
 bool

@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include "lib86cpu_priv.h"
-#include "endianness.h"
+#include "lib86cpu_priv.hpp"
+#include "endianness.hpp"
 #include <cassert>
 
 

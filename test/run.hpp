@@ -1,6 +1,6 @@
 #pragma once
 
-#include "lib86cpu.h"
+#include "lib86cpu.hpp"
 #include <cstring>
 #include <memory>
 

@@ -4,10 +4,10 @@
  * ergo720                Copyright (c) 2019
  */
 
-#include "decode.h"
-#include "internal.h"
-#include "memory_management.h"
-#include "support.h"
+#include "decode.hpp"
+#include "internal.hpp"
+#include "memory_management.hpp"
+#include "support.hpp"
 
 
 static ZydisFormatter formatter;

@@ -4,14 +4,14 @@
  * ergo720                Copyright (c) 2022
  */
 
-#include "memory_management.h"
-#include "debugger.h"
-#include "instructions.h"
-#include "main_wnd.h"
+#include "memory_management.hpp"
+#include "debugger.hpp"
+#include "instructions.hpp"
+#include "main_wnd.hpp"
 #include <fstream>
 #include <charconv>
 #if XBOX_CPU
-#include "ipt.h"
+#include "ipt.hpp"
 #endif
 
 

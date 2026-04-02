@@ -12,11 +12,11 @@
 #include "glad/glad.h"
 #include "glfw3.h"
 
-#include "support.h"
-#include "internal.h"
-#include "main_wnd.h"
-#include "imgui_wnd.h"
-#include "debugger.h"
+#include "support.hpp"
+#include "internal.hpp"
+#include "main_wnd.hpp"
+#include "imgui_wnd.hpp"
+#include "debugger.hpp"
 
 
 static GLFWwindow *g_main_wnd = nullptr;

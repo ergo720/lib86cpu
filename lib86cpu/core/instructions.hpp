@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "helpers.h"
+#include "helpers.hpp"
 
 
 template<bool is_iret> JIT_API uint32_t lret_pe_helper(cpu_ctx_t *cpu_ctx, uint8_t size_mode);

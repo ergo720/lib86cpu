@@ -4,10 +4,10 @@
  * ergo720                Copyright (c) 2020
  */
 
-#include "support.h"
-#include "internal.h"
-#include "instructions.h"
-#include "clock.h"
+#include "support.hpp"
+#include "internal.hpp"
+#include "instructions.hpp"
+#include "clock.hpp"
 #include <cstdarg>
 #if defined(_MSC_VER)
 #include <intrin.h>

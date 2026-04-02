@@ -4,8 +4,8 @@
  * ergo720                Copyright (c) 2021
  */
 
-#include "clock.h"
-#include "internal.h"
+#include "clock.hpp"
+#include "internal.hpp"
 #include "Windows.h"
 
 

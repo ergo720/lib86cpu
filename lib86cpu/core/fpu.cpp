@@ -4,8 +4,8 @@
  * ergo720                Copyright (c) 2023
  */
 
-#include "internal.h"
-#include "memory_management.h"
+#include "internal.hpp"
+#include "memory_management.hpp"
 
 
 void

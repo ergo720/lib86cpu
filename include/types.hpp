@@ -7,9 +7,9 @@
 
 #pragma once
 
-#include <stdint.h>
+#include <cstdint>
 
 typedef uint32_t addr_t;
 typedef uint16_t port_t;
 
-#include "../lib86cpu/core/registers.h"
+#include "../lib86cpu/core/registers.hpp"

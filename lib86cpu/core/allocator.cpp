@@ -4,11 +4,11 @@
  * ergo720                Copyright (c) 2020
  */
 
-#include "lib86cpu_priv.h"
-#include "internal.h"
-#include "allocator.h"
-#include "os_mem.h"
-#include "os_exceptions.h"
+#include "lib86cpu_priv.hpp"
+#include "internal.hpp"
+#include "allocator.hpp"
+#include "os_mem.hpp"
+#include "os_exceptions.hpp"
 
 
 mem_manager::mem_manager()

@@ -4,19 +4,19 @@
  * ergo720                Copyright (c) 2019
  */
 
-#include "internal.h"
-#include "memory_management.h"
-#include "main_wnd.h"
-#include "debugger.h"
-#include "helpers.h"
-#include "clock.h"
+#include "internal.hpp"
+#include "memory_management.hpp"
+#include "main_wnd.hpp"
+#include "debugger.hpp"
+#include "helpers.hpp"
+#include "clock.hpp"
 
 #ifdef LIB86CPU_X64_EMITTER
-#include "x64/jit.h"
+#include "x64/jit.hpp"
 #endif
 
 #ifdef XBOX_CPU
-#include "ipt.h"
+#include "ipt.hpp"
 #endif
 
 // Make sure we can safely use memset on the register structs

@@ -4,7 +4,7 @@
  * ergo720                Copyright (c) 2022
  */
 
-#include "emitter_common.h"
+#include "emitter_common.hpp"
 
 
 // For gen_update_fpu_ptr

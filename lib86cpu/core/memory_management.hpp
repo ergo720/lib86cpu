@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include "lib86cpu_priv.h"
-#include "internal.h"
+#include "lib86cpu_priv.hpp"
+#include "internal.hpp"
 #include <algorithm>
 #include <cstring>
 

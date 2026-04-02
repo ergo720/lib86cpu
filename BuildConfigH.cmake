@@ -43,4 +43,4 @@ int main() {
 "
 HAVE_DECLSPEC_DLLEXPORT)
 
-configure_file(include/config.h.cmake ${PROJECT_SOURCE_DIR}/include/config.h)
+configure_file(include/config.hpp.cmake ${PROJECT_SOURCE_DIR}/include/config.hpp)

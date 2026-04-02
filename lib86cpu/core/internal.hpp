@@ -6,10 +6,10 @@
 
 #pragma once
 
-#include "decode.h"
-#include "support.h"
-#include "breakpoint.h"
-#include "fpu.h"
+#include "decode.hpp"
+#include "support.hpp"
+#include "breakpoint.hpp"
+#include "fpu.hpp"
 
 
 template<bool remove_hook = false>

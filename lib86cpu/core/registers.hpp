@@ -6,8 +6,8 @@
 
 #pragma once
 
-#include "config.h"
-#include "platform.h"
+#include "config.hpp"
+#include "platform.hpp"
 #include <cstddef>
 
 #define DEFINE_REG32(_reg) \

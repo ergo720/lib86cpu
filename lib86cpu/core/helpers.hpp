@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "memory_management.h"
+#include "memory_management.hpp"
 
 
 uint32_t stack_pop_helper(cpu_t *cpu, uint32_t size_mode, uint32_t &addr);

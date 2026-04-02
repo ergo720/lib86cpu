@@ -4,10 +4,10 @@
  * ergo720                Copyright (c) 2023
  */
 
-#include "internal.h"
-#include "allocator.h"
+#include "internal.hpp"
+#include "allocator.hpp"
 #include "Windows.h"
-#include "os_mem.h"
+#include "os_mem.hpp"
 
 
 void *

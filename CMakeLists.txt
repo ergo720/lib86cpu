@@ -64,9 +64,9 @@ if (${CMAKE_HOST_WIN32})
 message("Building for Windows")
 include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows)
 set(PLATFORM_HEADERS
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/clock.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/os_exceptions.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/os_mem.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/clock.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/os_exceptions.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/os_mem.hpp"
 )
 set(PLATFORM_SRC
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/windows/clock.cpp"
@@ -77,9 +77,9 @@ elseif (${CMAKE_HOST_LINUX})
 message("Building for Linux")
 include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux)
 set(PLATFORM_HEADERS
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/clock.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/os_exceptions.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/os_mem.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/clock.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/os_exceptions.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/os_mem.hpp"
 )
 set(PLATFORM_SRC
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/linux/clock.cpp"
@@ -94,7 +94,7 @@ if (${LIB86CPU_X64_EMITTER})
 if (${CMAKE_HOST_WIN32})
 include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/windows)
 set(PLATFORM_HEADERS ${PLATFORM_HEADERS}
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/windows/ipt.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/windows/ipt.hpp"
 )
 set(PLATFORM_SRC ${PLATFORM_SRC}
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/windows/ipt.cpp"
@@ -102,7 +102,7 @@ set(PLATFORM_SRC ${PLATFORM_SRC}
 elseif (${CMAKE_HOST_LINUX})
 include_directories(${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/linux)
 set(PLATFORM_HEADERS ${PLATFORM_HEADERS}
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/linux/ipt.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/linux/ipt.hpp"
 )
 set(PLATFORM_SRC ${PLATFORM_SRC}
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/linux/ipt.cpp"
@@ -113,7 +113,7 @@ endif()
 
 if (${LIB86CPU_X64_EMITTER})
 set(PLATFORM_HEADERS ${PLATFORM_HEADERS}
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/jit.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/jit.hpp"
 )
 set(PLATFORM_SRC ${PLATFORM_SRC}
  "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/x64/jit.cpp"
@@ -154,30 +154,30 @@ endif()
 add_subdirectory("import/asmjit")
 
 set(HEADERS
- "${LIB86CPU_ROOT_DIR}/include/config.h"
- "${LIB86CPU_ROOT_DIR}/include/lib86cpu.h"
- "${LIB86CPU_ROOT_DIR}/include/platform.h"
- "${LIB86CPU_ROOT_DIR}/include/types.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/as.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/endianness.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/lib86cpu_priv.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/support.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/debugger.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/imgui_memory_editor.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/imgui_wnd.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/main_wnd.h"
+ "${LIB86CPU_ROOT_DIR}/include/config.hpp"
+ "${LIB86CPU_ROOT_DIR}/include/lib86cpu.hpp"
+ "${LIB86CPU_ROOT_DIR}/include/platform.hpp"
+ "${LIB86CPU_ROOT_DIR}/include/types.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/as.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/endianness.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/lib86cpu_priv.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/support.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/debugger.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/imgui_memory_editor.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/imgui_wnd.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/main_wnd.hpp"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/glad/glad.h"
  "${LIB86CPU_ROOT_DIR}/lib86cpu/dbg/glad/KHR/khrplatform.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/allocator.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/breakpoint.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/decode.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/fpu.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/helpers.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/instructions.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/internal.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/memory_management.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/registers.h"
- "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/emitter_common.h"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/allocator.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/breakpoint.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/decode.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/fpu.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/helpers.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/instructions.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/internal.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/memory_management.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/registers.hpp"
+ "${LIB86CPU_ROOT_DIR}/lib86cpu/core/emitter/emitter_common.hpp"
 
   ${PLATFORM_HEADERS}
 )

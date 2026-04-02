@@ -4,7 +4,7 @@
 
 #pragma once
 
-#include "lib86cpu_priv.h"
+#include "lib86cpu_priv.hpp"
 
 
 enum class fpu_instr_t : uint32_t {
