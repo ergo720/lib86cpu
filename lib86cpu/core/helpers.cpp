@@ -275,5 +275,71 @@ read_stack_ptr_from_tss_helper(cpu_t *cpu, uint32_t dpl, uint32_t &esp, uint16_t
 	return 0;
 }
 
+void
+rsb_push(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint64_t code_offset, uint32_t target_pc)
+{
+	// code_offset must not exceed 2GB to avoid clashing with the valid entry flag
+	assert((code_offset & 0x80000000) == 0);
+
+	cpu_t *cpu = cpu_ctx->cpu;
+	cpu->rsb_ptr = (cpu->rsb_ptr - 1) & RSB_PTR_MASK;
+	cpu->rsb[cpu->rsb_ptr][0] = RSB_VALID_ENTRY | (code_offset << 32) | target_pc;
+	cpu->rsb[cpu->rsb_ptr][1] = (uint64_t)tc;
+}
+
+uint64_t
+rsb_pop(cpu_ctx_t *cpu_ctx)
+{
+	uint64_t ptr_code = 0;
+	cpu_t *cpu = cpu_ctx->cpu;
+	uint64_t rsb_entry0 = cpu->rsb[cpu->rsb_ptr][0];
+	uint64_t rsb_entry1 = cpu->rsb[cpu->rsb_ptr][1];
+	if ((rsb_entry0 & RSB_VALID_ENTRY) == 0) {
+		// empty entry, flush the buffer
+		rsb_flush(cpu);
+	}
+	else if (translated_code_t* tc = (translated_code_t *)rsb_entry1; tc == nullptr) {
+		// entry is valid but there's no target tc. Pop the entry and return to the translator loop
+		cpu->rsb[cpu->rsb_ptr][0] = 0;
+		cpu->rsb_ptr = (cpu->rsb_ptr + 1) & RSB_PTR_MASK;
+	}
+	else {
+		if (get_pc(cpu_ctx) == (rsb_entry0 & RSB_TARGET_PC_MASK) &&
+			cpu_ctx->regs.cs_hidden.base == tc->cs_base &&
+			((cpu_ctx->hflags & HFLG_CONST) | (cpu_ctx->regs.eflags & EFLAGS_CONST)) == tc->guest_flags) {
+			// rsb hit, pop the stack and jump to the target tc
+			cpu->rsb[cpu->rsb_ptr][0] = 0;
+			cpu->rsb_ptr = (cpu->rsb_ptr + 1) & RSB_PTR_MASK;
+			ptr_code = (uint64_t)tc->ptr_exit + ((rsb_entry0 & RSB_OFFSET_MASK) >> 32);
+		}
+		else {
+			// misprediction, flush the buffer
+			rsb_flush(cpu);
+		}
+	}
+
+	return ptr_code;
+}
+
+void
+rsb_flush(cpu_t *cpu)
+{
+	for (unsigned i = 0; i < RSB_MAX_SIZE; ++i) {
+		cpu->rsb[i][0] = 0;
+	}
+	cpu->rsb_ptr = 0;
+}
+
+void
+rsb_flush(cpu_t *cpu, addr_t addr)
+{
+	// This must check the entire page because addr might be tc->virt_pc, which also holds the target RET address
+	for (unsigned i = 0; i < RSB_MAX_SIZE; ++i) {
+		if ((cpu->rsb[i][0] & ~PAGE_MASK) == (addr & ~PAGE_MASK)) {
+			cpu->rsb[i][0] = 0;
+		}
+	}
+}
+
 template uint8_t read_seg_desc_helper<true>(cpu_t *cpu, uint16_t sel, addr_t &desc_addr, uint64_t &desc);
 template uint8_t read_seg_desc_helper<false>(cpu_t *cpu, uint16_t sel, addr_t &desc_addr, uint64_t &desc);

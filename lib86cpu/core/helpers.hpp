@@ -19,3 +19,7 @@ uint8_t check_ss_desc_priv_helper(cpu_t *cpu, uint16_t sel, uint16_t *cs, addr_t
 uint8_t check_seg_desc_priv_helper(cpu_t *cpu, uint16_t sel, addr_t &desc_addr, uint64_t &desc);
 void write_eflags_helper(cpu_t *cpu, uint32_t eflags, uint32_t mask);
 uint8_t read_stack_ptr_from_tss_helper(cpu_t *cpu, uint32_t dpl, uint32_t &esp, uint16_t &ss, uint8_t is_priv = 0);
+void rsb_push(cpu_ctx_t *cpu_ctx, translated_code_t *tc, uint64_t code_offset, uint32_t target_pc);
+uint64_t rsb_pop(cpu_ctx_t *cpu_ctx);
+void rsb_flush(cpu_t *cpu);
+void rsb_flush(cpu_t *cpu, addr_t addr);

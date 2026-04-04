@@ -228,5 +228,7 @@ inline constexpr auto all_callable_funcs = std::make_tuple(
 	fpu_stack_underflow_mem<uint64_t, FPU_QNAN_INT64>,
 	fpu_stack_underflow_mem<uint64_t, FPU_QNAN_FLOAT64>,
 	fpu_stack_underflow_mem<uint80_t, uint80_t{FPU_QNAN_FLOAT80_LOW, FPU_QNAN_FLOAT80_HIGH}>,
-	fpu_update_ptr
+	fpu_update_ptr,
+	rsb_push,
+	rsb_pop
 );

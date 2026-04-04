@@ -324,11 +324,13 @@ private:
 	void gen_tail_call(x86::Gp addr);
 	void gen_exit_func();
 	void gen_aux_funcs();
-	void gen_no_link_checks();
+	bool gen_no_link_checks();
 	void gen_timeout_check();
 	bool gen_check_rf_single_step();
 	template<typename T, bool emit_checks = true>
 	void gen_tc_linking_jmp(T target_addr);
+	void gen_rsb_push();
+	void gen_rsb_pop();
 	void gen_tc_linking_ret();
 	template<bool terminates, typename T1, typename T2, typename T3>
 	void gen_raise_exp_inline(T1 fault_addr, T2 code, T3 idx);
@@ -449,7 +451,8 @@ private:
 	x86::Assembler m_a;
 	Environment m_environment;
 	mem_manager m_mem;
-	Label m_exit_int, m_next_instr;
+	Label m_exit_int, m_next_instr, m_rsb_push;
+	std::size_t m_instr_after_call_byte_align;
 };
 
 using instr_func = void(lc86_jit::*)(decoded_instr *);

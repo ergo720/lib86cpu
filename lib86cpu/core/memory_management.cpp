@@ -615,7 +615,7 @@ get_code_addr(cpu_t *cpu, addr_t addr)
 template<bool set_smc>
 addr_t get_code_addr(cpu_t *cpu, addr_t addr, exp_data_t *exp_data)
 {
-	// Overloaded get_code_addr that does not throw host exceptions, used in cpu_translate and by the debugger
+	// Overloaded get_code_addr that does not throw host exceptions, used in cpu_translate, by the debugger and rsb_pop
 	// NOTE: the debugger should not set the smc, since it doesn't execute the instructions
 	if (auto opt = tlb_get_code_addr(cpu, addr); opt) {
 		addr_t phys_addr = *opt;

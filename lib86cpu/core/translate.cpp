@@ -420,6 +420,7 @@ cpu_reset(cpu_t *cpu)
 	for (unsigned i = 0; i < MCG_NUM_BANKS; ++i) {
 		cpu->msr.mca_banks[i][MCi_CTL] = MCi_CTL_ENABLE;
 	}
+	rsb_flush(cpu);
 	tsc_init(cpu);
 	fpu_init(cpu);
 	tlb_flush_g(cpu);
@@ -540,6 +541,7 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 	uint16_t code = cpu_ctx->exp_info.exp_data.code;
 	uint32_t idx = cpu_ctx->exp_info.exp_data.idx;
 	uint32_t eip = cpu_ctx->regs.eip;
+	uint32_t cs_base = cpu_ctx->regs.cs_hidden.base;
 	uint32_t old_eflags = read_eflags(cpu);
 
 	if (cpu_ctx->hflags & HFLG_PE_MODE) {
@@ -962,6 +964,9 @@ translated_code_t *cpu_raise_exception(cpu_ctx_t *cpu_ctx)
 		cpu_ctx->regs.dr[7] &= ~DR7_GD_MASK;
 	}
 
+	// Need to push a valid entry to the rsb, to avoid a misprediction at every exception
+	rsb_push(cpu_ctx, nullptr, 0, cs_base + eip);
+
 	return nullptr;
 }
 
@@ -973,9 +978,14 @@ get_pc(cpu_ctx_t *cpu_ctx)
 
 translated_code_t::translated_code_t() noexcept
 {
-	size = 0;
-	flags = 0;
+	cs_base = 0,
+	pc = 0,
+	virt_pc = 0;
+	guest_flags = 0;
 	ptr_code = nullptr;
+	ptr_exit = nullptr;
+	flags = 0;
+	size = 0;
 }
 
 static inline uint32_t
@@ -998,6 +1008,7 @@ tc_unlink(cpu_t *cpu, addr_t virt_pc)
 			jmp_elem_off->guest_flags = HFLG_INVALID;
 		}
 	}
+	rsb_flush(cpu, virt_pc);
 }
 
 void
@@ -1011,6 +1022,7 @@ tc_unlink_page(cpu_t *cpu, addr_t virt_pc)
 		}
 		cpu->jmp_page_map.erase(it_map);
 	}
+	rsb_flush(cpu, virt_pc);
 }
 
 void
@@ -1020,6 +1032,7 @@ tc_unlink_all(cpu_t *cpu)
 	for (unsigned i = 0; i < (sizeof(cpu->cpu_ctx.jmp_table) / JMP_TABLE_ELEMENT_SIZE); ++i) {
 		*((uint32_t *)(cpu->cpu_ctx.jmp_table + 8 + i * JMP_TABLE_ELEMENT_SIZE)) = HFLG_INVALID;
 	}
+	rsb_flush(cpu);
 }
 
 template<bool remove_hook>
@@ -1194,10 +1207,16 @@ tc_link_prev(cpu_t *cpu, translated_code_t *prev_tc, translated_code_t *ptr_tc)
 	if (prev_tc != nullptr) {
 		switch (prev_tc->flags)
 		{
+		case TC_FLG_JMP_RET:
+			// This happens when the terminating instruction after a CALL is a RET. In this case, we still need to link with prev_tc
+			[[fallthrough]];
 
 		case TC_FLG_JMP:
-		case TC_FLG_RET:
 			tc_link_jmp(cpu, ptr_tc);
+			break;
+
+		case TC_FLG_RET:
+			// already handled by rsb_pop
 			break;
 
 		default:
@@ -1494,7 +1513,7 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 		if (ptr_tc == nullptr) {
 
 			// code block for this pc not present, we need to translate new code
-			std::unique_ptr<translated_code_t> tc(new translated_code_t);
+			std::unique_ptr<translated_code_t> tc(new translated_code_t());
 
 			cpu->tc = tc.get();
 			cpu->jit->gen_tc_prologue();
@@ -1536,29 +1555,13 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			ptr_tc = cpu->tc;
 
 			if (cpu->disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR)) {
-				if (cpu->cpu_flags & CPU_FORCE_INSERT) {
-					if ((cpu->num_tc) == CODE_CACHE_MAX_SIZE) {
-						tc_cache_purge(cpu);
-						prev_tc = nullptr;
-					}
-					cpu->jit->gen_code_block();
-					tc_cache_insert(cpu, pc, std::move(tc));
-
-					// if the tc is forcefully inserted, then we can still link it
-					tc_link_prev(cpu, prev_tc, ptr_tc);
-				}
-				else {
-					cpu->jit->gen_code_block();
-				}
-
+				cpu->jit->gen_code_block();
 				uint32_t cpu_flags = cpu->cpu_flags;
 				cpu_suppress_trampolines<is_tramp>(cpu);
-				cpu->cpu_flags &= ~(CPU_DISAS_ONE | CPU_FORCE_INSERT);
-				prev_tc = tc_run_code(&cpu->cpu_ctx, ptr_tc);
-				if (!(cpu_flags & CPU_FORCE_INSERT)) {
-					cpu->jit->free_code_block(reinterpret_cast<void *>(ptr_tc->ptr_exit));
-					prev_tc = nullptr;
-				}
+				cpu->cpu_flags &= ~CPU_DISAS_ONE;
+				tc_run_code(&cpu->cpu_ctx, ptr_tc);
+				cpu->jit->free_code_block(reinterpret_cast<void *>(ptr_tc->ptr_exit));
+				prev_tc = nullptr;
 				continue;
 			}
 			else {

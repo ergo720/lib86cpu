@@ -140,7 +140,8 @@ JIT_API uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 // tc flags
 #define TC_FLG_JMP        (1 << 0)
 #define TC_FLG_RET        (1 << 1)
-#define TC_FLG_LINK_MASK  (TC_FLG_JMP | TC_FLG_RET)
+#define TC_FLG_JMP_RET    (TC_FLG_JMP | TC_FLG_RET)
+#define TC_FLG_LINK_MASK  TC_FLG_JMP_RET
 
 // segment descriptor flags
 #define SEG_DESC_TY   (15ULL << 40) // type
@@ -503,3 +504,7 @@ CR0_TS_MASK | CR0_EM_MASK | CR0_MP_MASK | CR0_PE_MASK)
 // misc macros
 #define X86_MAX_INSTR_LENGTH 15
 #define INTEL_MICROCODE_ID   (1ULL << 32)
+#define RSB_PTR_MASK         (RSB_MAX_SIZE - 1)
+#define RSB_TARGET_PC_MASK   0xFFFFFFFF
+#define RSB_OFFSET_MASK      (0x7FFFFFFFULL << 32)
+#define RSB_VALID_ENTRY      (1ULL << 63)

@@ -29,6 +29,7 @@
 
 #define CODE_CACHE_MAX_SIZE (1 << 15)
 #define SMC_MAX_SIZE (1 << 20)
+#define RSB_MAX_SIZE 64
 // jmp_table: 4096 entries of 3 uint32_t + 1 pointer -> virt_pc, cs_base, hflags | eflags, tc->ptr_code
 #define JMP_TABLE_NUM_ELEMENTS (1 << 12)
 #define JMP_TABLE_ELEMENT_SIZE (12 + sizeof(entry_t))
@@ -230,6 +231,8 @@ struct cpu_t {
 	std::bitset<SMC_MAX_SIZE> smc; // self-modifying code tracking, one bit for each possible physical page
 	tlb_t itlb[ITLB_NUM_SETS][ITLB_NUM_LINES]; // instruction tlb
 	tlb_t dtlb[DTLB_NUM_SETS][DTLB_NUM_LINES]; // data tlb
+	uint64_t rsb[RSB_MAX_SIZE][2]; // return stack buffer, used to predict the target pc of RETs
+	uint32_t rsb_ptr;
 	uint16_t num_tc; // num of tc actually emitted, tc might not be present in the code cache
 	uint8_t microcode_updated, is_halted;
 	bool state_loaded, exit_requested;

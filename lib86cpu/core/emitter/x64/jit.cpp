@@ -817,34 +817,45 @@ lc86_jit::gen_timeout_check()
 		CALL_F(&cpu_timer_helper);
 		TEST(EAX, CPU_TIMEOUT_INT);
 		BR_EQ(no_timeout);
-		gen_epilogue_main<ret_tc_t::zero>();
+		if (m_rsb_push.isValid()) {
+			MOV(RDX, &m_cpu->tc->ptr_exit);
+			MOV(RAX, MEM64(RDX)); // get pointer to tc exit function
+			BR_UNCOND(m_rsb_push); // need to push the ret pc to rsb before exiting
+		}
+		else {
+			gen_epilogue_main<ret_tc_t::zero>();
+		}
 		m_a.bind(no_timeout);
 	}
 }
 
-void
+bool
 lc86_jit::gen_no_link_checks()
 {
 	// NOTE: call gen_check_rf_single_step before checking for interrupts, to make sure the debugger can single step instructions
 	// even when there are pending interrupts
 
 	if (gen_check_rf_single_step()) {
-		return;
+		return true;
 	}
 
 	gen_interrupt_check();
 
 	gen_timeout_check();
+
+	return false;
 }
 
 void
 lc86_jit::gen_tc_epilogue()
 {
 	if (m_cpu->translate_next == 1) {
+		// This code block is going to be deleted after execution, so it must not be linked with the others
 		assert((m_cpu->disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_PAGE_CROSS_NEXT | DISAS_FLG_ONE_INSTR)) != 0);
-		assert((m_cpu->tc->flags & TC_FLG_LINK_MASK) == 0);
+		assert((m_cpu->tc->flags & TC_FLG_RET) == 0);
 
-		gen_tc_linking_jmp<std::nullptr_t, true>(nullptr);
+		gen_no_link_checks();
+		gen_epilogue_main<ret_tc_t::zero>();
 	}
 
 	// Generate the interrupt handling code block which is reached when an interrupt happens between instructions of the tc
@@ -901,11 +912,6 @@ bool
 lc86_jit::gen_check_rf_single_step()
 {
 	if ((m_cpu->cpu_ctx.regs.eflags & (RF_MASK | TF_MASK)) | (m_cpu->cpu_flags & CPU_SINGLE_STEP)) {
-
-		if (m_cpu->cpu_ctx.regs.eflags & (RF_MASK | TF_MASK)) {
-			m_cpu->cpu_flags |= CPU_FORCE_INSERT;
-		}
-
 		if (m_cpu->cpu_ctx.regs.eflags & RF_MASK) {
 			// clear rf if it is set. This happens in the one-instr tc that contains the instr that originally caused the instr breakpoint. This must be done at runtime
 			// because otherwise tc_cache_insert will register rf as clear, when it was set at the beginning of this tc
@@ -946,7 +952,9 @@ void lc86_jit::gen_tc_linking_jmp(T target_pc)
 	m_cpu->tc->flags |= TC_FLG_JMP;
 
 	if constexpr (emit_checks) {
-		gen_no_link_checks();
+		if (gen_no_link_checks()) {
+			return;
+		}
 	}
 
 	if constexpr (std::is_integral_v<T>) { // target_pc known at compile time
@@ -961,41 +969,81 @@ void lc86_jit::gen_tc_linking_jmp(T target_pc)
 		assert(target_pc == EBX);
 	}
 
-	Label ret = m_a.newLabel();
-	LEA(R8, MEMD64(RCX, CPU_CTX_JMP_TABLE));
-	MOV(EDX, EBX);
-	AND(EBX, JMP_TABLE_MASK); // hash_idx = target virt_pc & JMP_TABLE_MASK
-	LEA(RBX, MEMS64(RBX, RBX, 2));
-	SHL(RBX, 2); // hash_idx * JMP_TABLE_NUM_ELEMENTS; element offset at hash_idx
-	CMP(MEMS32(R8, RBX, 0), EDX); // if zero, virt_pc matches
-	MOV(RDX, &m_cpu->tc->ptr_exit);
-	MOV(RAX, MEM64(RDX)); // get pointer to tc exit function
-	BR_NE(ret);
-	MOV(R10D, MEMD32(RCX, CPU_CTX_HFLG));
-	AND(R10D, HFLG_CONST);
-	MOV(R11D, MEMD32(RCX, CPU_CTX_EFLAGS));
-	AND(R11D, EFLAGS_CONST);
-	OR(R10D, R11D);
-	if constexpr (!std::is_null_pointer_v<T>) {
-		LD_SEG_BASE(R9D, CPU_CTX_CS);
+	auto &&lambda = [this]()
+		{
+			Label ret = m_a.newLabel();
+			LEA(R8, MEMD64(RCX, CPU_CTX_JMP_TABLE));
+			MOV(EDX, EBX);
+			AND(EBX, JMP_TABLE_MASK); // hash_idx = target virt_pc & JMP_TABLE_MASK
+			LEA(RBX, MEMS64(RBX, RBX, 2));
+			SHL(RBX, 2); // hash_idx * JMP_TABLE_NUM_ELEMENTS; element offset at hash_idx
+			CMP(MEMS32(R8, RBX, 0), EDX); // if zero, virt_pc matches
+			MOV(RDX, &m_cpu->tc->ptr_exit);
+			MOV(RAX, MEM64(RDX)); // get pointer to tc exit function
+			BR_NE(ret);
+			MOV(R10D, MEMD32(RCX, CPU_CTX_HFLG));
+			AND(R10D, HFLG_CONST);
+			MOV(R11D, MEMD32(RCX, CPU_CTX_EFLAGS));
+			AND(R11D, EFLAGS_CONST);
+			OR(R10D, R11D);
+			if constexpr (!std::is_null_pointer_v<T>) {
+				LD_SEG_BASE(R9D, CPU_CTX_CS);
+			}
+			SHL(R10, 32);
+			OR(R9, R10); // runtime cs_base and (hflags | eflags)
+			MOV(RDX, MEMSD64(R8, RBX, 0, 12)); // get tc->ptr_code from jmp_table
+			CMP(MEMSD64(R8, RBX, 0, 4), R9); // compare cs_base and (hflags | eflags) from jmp_table -> if zero, they match
+			CMOV_EQ(RAX, RDX);
+			m_a.bind(ret);
+		};
+
+	if (m_rsb_push.isValid()) {
+		lambda();
+		gen_rsb_push();
+		MOV(RAX, MEMD64(RSP, LOCAL_VARS_off(0)));
+		gen_tail_call(RAX);
+		return;
 	}
-	SHL(R10, 32);
-	OR(R9, R10); // runtime cs_base and (hflags | eflags)
-	MOV(RDX, MEMSD64(R8, RBX, 0, 12)); // get tc->ptr_code from jmp_table
-	CMP(MEMSD64(R8, RBX, 0, 4), R9); // compare cs_base and (hflags | eflags) from jmp_table -> if zero, they match
+
+	lambda();
+	gen_tail_call(RAX);
+}
+
+void
+lc86_jit::gen_rsb_push()
+{
+	m_a.bind(m_rsb_push);
+	translated_code_t *tc = m_cpu->tc;
+	MOV(MEMD64(RSP, LOCAL_VARS_off(0)), RAX);
+	if (m_cpu->disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR)) {
+		// if this tc is not going to be cached in the code cache, then we cannot jump to it from the RET instruction
+		tc = nullptr;
+	}
+	MOV(RDX, tc);
+	MOV(R9D, m_cpu->cpu_ctx.regs.cs_hidden.base + m_cpu->instr_eip + m_cpu->instr_bytes);
+	size_t next_instr_off = m_a.offset() + 61; // offset of this MOV + remaining instructions before reaching the target instruction of RET
+	size_t next_instr_off_aligned16 = (next_instr_off + 15) & ~15;
+	m_instr_after_call_byte_align = next_instr_off_aligned16 - next_instr_off;
+	MOV(R8, next_instr_off + m_instr_after_call_byte_align);
+	CALL_F(&rsb_push);
+}
+
+void
+lc86_jit::gen_rsb_pop()
+{
+	CALL_F(&rsb_pop);
+	TEST(RAX, RAX);
+	MOV(R8, &m_cpu->tc->ptr_exit);
+	MOV(RDX, MEM64(R8)); // get pointer to tc exit function
 	CMOV_EQ(RAX, RDX);
-	m_a.bind(ret);
 	gen_tail_call(RAX);
 }
 
 void
 lc86_jit::gen_tc_linking_ret()
 {
-	// NOTE: perhaps find a way to use a return stack buffer to link to the next tc
-
-	// m_cpu->tc->flags |= TC_FLG_RET;
-
-	gen_tc_linking_jmp(nullptr);
+	m_cpu->tc->flags |= TC_FLG_RET;
+	gen_rsb_pop();
 }
 
 template<bool add_seg_base>
@@ -4757,6 +4805,8 @@ lc86_jit::BTS_(decoded_instr *instr)
 void
 lc86_jit::CALL_(decoded_instr *instr)
 {
+	m_rsb_push = m_a.newLabel();
+
 	switch (instr->i.opcode)
 	{
 	case 0x9A: {
@@ -4769,17 +4819,17 @@ lc86_jit::CALL_(decoded_instr *instr)
 		}
 
 		if (IS_PE_NOT_VM86()) {
-			Label exp = m_a.newLabel();
+			Label ok = m_a.newLabel();
 			MOV(MEMD32(RSP, STACK_ARGS_off), ret_eip);
 			MOV(R9B, m_cpu->size_mode);
 			MOV(R8D, call_eip);
 			MOV(EDX, new_sel);
 			CALL_F( &lcall_pe_helper);
 			TEST(EAX, EAX);
-			BR_NE(exp);
-			gen_tc_linking_jmp(nullptr);
-			m_a.bind(exp);
+			BR_EQ(ok);
 			RAISEin_no_param_f();
+			m_a.bind(ok);
+			gen_tc_linking_jmp(nullptr);
 		}
 		else {
 			gen_stack_push(m_cpu->cpu_ctx.regs.cs);
@@ -4848,17 +4898,17 @@ lc86_jit::CALL_(decoded_instr *instr)
 			MOV(EBX, EAX);
 			LD_MEMs(SIZE16);
 			if (IS_PE_NOT_VM86()) {
-				Label exp = m_a.newLabel();
+				Label ok = m_a.newLabel();
 				MOV(MEMD32(RSP, STACK_ARGS_off), ret_eip);
 				MOV(R9B, m_cpu->size_mode);
 				MOV(R8D, EBX);
 				MOV(EDX, EAX);
 				CALL_F(&lcall_pe_helper);
 				TEST(EAX, EAX);
-				BR_NE(exp);
-				gen_tc_linking_jmp(nullptr);
-				m_a.bind(exp);
+				BR_EQ(ok);
 				RAISEin_no_param_f();
+				m_a.bind(ok);
+				gen_tc_linking_jmp(nullptr);
 			}
 			else {
 				MOV(MEMD16(RSP, LOCAL_VARS_off(0)), AX);
@@ -4885,7 +4935,16 @@ lc86_jit::CALL_(decoded_instr *instr)
 		LIB86CPU_ABORT();
 	}
 
+	// Don't set translate_next to zero, but instead keep translating the instructions following the CALL. These will become the jump
+	// target of the RET instruction that returns after this CALL
+	m_rsb_push.reset();
 	m_cpu->translate_next = 0;
+	gen_tc_epilogue();
+	m_cpu->translate_next = 1;
+	for (unsigned i = 0; i < m_instr_after_call_byte_align; ++i) { // 16 bytes alignment
+		INT3();
+	}
+	gen_prologue_main(); // we'll jump here when rsb predicts the return pc
 }
 
 void
@@ -7043,21 +7102,20 @@ lc86_jit::IRET(decoded_instr *instr)
 	assert(instr->i.opcode == 0xCF);
 
 	if (IS_PE()) {
-		Label exp = m_a.newLabel();
+		Label ok = m_a.newLabel();
 		MOV(DL, m_cpu->size_mode);
 		CALL_F(&lret_pe_helper<true>);
 		TEST(EAX, EAX);
-		BR_NE(exp);
-		gen_tc_linking_ret();
-		m_a.bind(exp);
+		BR_EQ(ok);
 		RAISEin_no_param_f();
+		m_a.bind(ok);
 	}
 	else {
 		MOV(DL, m_cpu->size_mode);
 		CALL_F(&iret_real_helper);
-		gen_tc_linking_ret();
 	}
 
+	gen_tc_linking_ret();
 	m_cpu->translate_next = 0;
 }
 
@@ -7964,8 +8022,9 @@ lc86_jit::MOV_(decoded_instr *instr)
 				gen_tc_linking_jmp(nullptr);
 			}
 			else {
-				gen_no_link_checks();
-				gen_epilogue_main<ret_tc_t::zero>();
+				if (gen_no_link_checks() == false) {
+					gen_epilogue_main<ret_tc_t::zero>();
+				}
 			}
 			m_cpu->translate_next = 0;
 		}
