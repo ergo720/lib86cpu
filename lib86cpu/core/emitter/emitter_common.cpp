@@ -111,6 +111,13 @@ static_assert(CPU_CTX_XMM5       <= std::numeric_limits<int32_t>::max());
 static_assert(CPU_CTX_XMM6       <= std::numeric_limits<int32_t>::max());
 static_assert(CPU_CTX_XMM7       <= std::numeric_limits<int32_t>::max());
 
+// Used by gen_tc_linking_jmp
+static_assert(sizeof(cpu_ctx_t::jmp_table[0]) == 24);
+static_assert(CPU_CTX_JMP_PC == 0);
+static_assert(CPU_CTX_JMP_CS == 4);
+static_assert(CPU_CTX_JMP_FLG == 8);
+static_assert(CPU_CTX_JMP_PTR == 16);
+
 
 static const std::unordered_map<ZydisRegister, const std::pair<int, size_t>> zydis_to_reg_offset_table = {
 	{ ZYDIS_REGISTER_AL,         { EAX_idx,       CPU_CTX_EAX     }  },

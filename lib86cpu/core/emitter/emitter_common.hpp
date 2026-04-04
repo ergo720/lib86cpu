@@ -125,6 +125,11 @@
 #define CPU_EXP_CODE         offsetof(cpu_ctx_t, exp_info.exp_data.code)
 #define CPU_EXP_IDX          offsetof(cpu_ctx_t, exp_info.exp_data.idx)
 
+#define CPU_CTX_JMP_PC       offsetof(jmp_table_elem, virt_pc)
+#define CPU_CTX_JMP_CS       offsetof(jmp_table_elem, cs_base)
+#define CPU_CTX_JMP_FLG      offsetof(jmp_table_elem, guest_flags)
+#define CPU_CTX_JMP_PTR      offsetof(jmp_table_elem, ptr_code)
+
 #define REG_off(reg) get_reg_offset(reg)
 #define REG_idx(reg) get_reg_idx(reg)
 #define REG_pair(reg) get_reg_pair(reg)

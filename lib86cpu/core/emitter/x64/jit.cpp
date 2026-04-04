@@ -975,9 +975,9 @@ void lc86_jit::gen_tc_linking_jmp(T target_pc)
 			LEA(R8, MEMD64(RCX, CPU_CTX_JMP_TABLE));
 			MOV(EDX, EBX);
 			AND(EBX, JMP_TABLE_MASK); // hash_idx = target virt_pc & JMP_TABLE_MASK
-			LEA(RBX, MEMS64(RBX, RBX, 2));
-			SHL(RBX, 2); // hash_idx * JMP_TABLE_NUM_ELEMENTS; element offset at hash_idx
-			CMP(MEMS32(R8, RBX, 0), EDX); // if zero, virt_pc matches
+			LEA(RBX, MEMS64(RBX, RBX, 1));
+			SHL(RBX, 3); // element offset at hash_idx; (idx + 2 * idx) * 8
+			CMP(MEMS32(R8, RBX, CPU_CTX_JMP_PC), EDX); // if zero, virt_pc matches
 			MOV(RDX, &m_cpu->tc->ptr_exit);
 			MOV(RAX, MEM64(RDX)); // get pointer to tc exit function
 			BR_NE(ret);
@@ -991,8 +991,8 @@ void lc86_jit::gen_tc_linking_jmp(T target_pc)
 			}
 			SHL(R10, 32);
 			OR(R9, R10); // runtime cs_base and (hflags | eflags)
-			MOV(RDX, MEMSD64(R8, RBX, 0, 12)); // get tc->ptr_code from jmp_table
-			CMP(MEMSD64(R8, RBX, 0, 4), R9); // compare cs_base and (hflags | eflags) from jmp_table -> if zero, they match
+			MOV(RDX, MEMSD64(R8, RBX, 0, CPU_CTX_JMP_PTR)); // get tc->ptr_code from jmp_table
+			CMP(MEMSD64(R8, RBX, 0, CPU_CTX_JMP_CS), R9); // compare cs_base and (hflags | eflags) from jmp_table -> if zero, they match
 			CMOV_EQ(RAX, RDX);
 			m_a.bind(ret);
 		};

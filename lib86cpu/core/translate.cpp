@@ -1004,8 +1004,7 @@ tc_unlink(cpu_t *cpu, addr_t virt_pc)
 				cpu->jmp_page_map.erase(it_map);
 			}
 			uint32_t idx = virt_pc & JMP_TABLE_MASK;
-			jmp_table_elem *jmp_elem_off = (jmp_table_elem *)&cpu->cpu_ctx.jmp_table[idx * JMP_TABLE_ELEMENT_SIZE];
-			jmp_elem_off->guest_flags = HFLG_INVALID;
+			cpu->cpu_ctx.jmp_table[idx].guest_flags = HFLG_INVALID;
 		}
 	}
 	rsb_flush(cpu, virt_pc);
@@ -1017,8 +1016,7 @@ tc_unlink_page(cpu_t *cpu, addr_t virt_pc)
 	if (auto it_map = cpu->jmp_page_map.find(virt_pc >> PAGE_SHIFT); it_map != cpu->jmp_page_map.end()) {
 		for (auto addr : it_map->second) {
 			uint32_t idx = addr & JMP_TABLE_MASK;
-			jmp_table_elem *jmp_elem_off = (jmp_table_elem *)&cpu->cpu_ctx.jmp_table[idx * JMP_TABLE_ELEMENT_SIZE];
-			jmp_elem_off->guest_flags = HFLG_INVALID;
+			cpu->cpu_ctx.jmp_table[idx].guest_flags = HFLG_INVALID;
 		}
 		cpu->jmp_page_map.erase(it_map);
 	}
@@ -1029,8 +1027,8 @@ void
 tc_unlink_all(cpu_t *cpu)
 {
 	cpu->jmp_page_map.clear();
-	for (unsigned i = 0; i < (sizeof(cpu->cpu_ctx.jmp_table) / JMP_TABLE_ELEMENT_SIZE); ++i) {
-		*((uint32_t *)(cpu->cpu_ctx.jmp_table + 8 + i * JMP_TABLE_ELEMENT_SIZE)) = HFLG_INVALID;
+	for (unsigned i = 0; i < JMP_TABLE_NUM_ELEMENTS; ++i) {
+		cpu->cpu_ctx.jmp_table[i].guest_flags = HFLG_INVALID;
 	}
 	rsb_flush(cpu);
 }
@@ -1179,13 +1177,13 @@ static void
 tc_link_jmp(cpu_t *cpu, translated_code_t *ptr_tc)
 {
 	uint32_t idx = ptr_tc->virt_pc & JMP_TABLE_MASK;
-	jmp_table_elem *jmp_elem_off = (jmp_table_elem *)&cpu->cpu_ctx.jmp_table[idx * JMP_TABLE_ELEMENT_SIZE];
+	jmp_table_elem *elem = &cpu->cpu_ctx.jmp_table[idx];
 
 	// If there is an existing entry in the table, we must flush it first before inserting the new entry
-	if (!(jmp_elem_off->guest_flags & HFLG_INVALID)) {
-		auto it_map = cpu->jmp_page_map.find(jmp_elem_off->virt_pc >> PAGE_SHIFT);
+	if (!(elem->guest_flags & HFLG_INVALID)) {
+		auto it_map = cpu->jmp_page_map.find(elem->virt_pc >> PAGE_SHIFT);
 		assert(it_map != cpu->jmp_page_map.end());
-		auto it_set = it_map->second.find(jmp_elem_off->virt_pc);
+		auto it_set = it_map->second.find(elem->virt_pc);
 		assert(it_set != it_map->second.end());
 		it_map->second.erase(it_set);
 		if (it_map->second.empty()) {
@@ -1193,10 +1191,10 @@ tc_link_jmp(cpu_t *cpu, translated_code_t *ptr_tc)
 		}
 	}
 
-	jmp_elem_off->virt_pc = ptr_tc->virt_pc;
-	jmp_elem_off->cs_base = ptr_tc->cs_base;
-	jmp_elem_off->guest_flags = ptr_tc->guest_flags;
-	jmp_elem_off->ptr_code = ptr_tc->ptr_code;
+	elem->virt_pc = ptr_tc->virt_pc;
+	elem->cs_base = ptr_tc->cs_base;
+	elem->guest_flags = ptr_tc->guest_flags;
+	elem->ptr_code = ptr_tc->ptr_code;
 	cpu->jmp_page_map[ptr_tc->virt_pc >> PAGE_SHIFT].insert(ptr_tc->virt_pc);
 }
 

@@ -32,9 +32,8 @@
 #define RSB_MAX_SIZE 64
 // jmp_table: 4096 entries of 3 uint32_t + 1 pointer -> virt_pc, cs_base, hflags | eflags, tc->ptr_code
 #define JMP_TABLE_NUM_ELEMENTS (1 << 12)
-#define JMP_TABLE_ELEMENT_SIZE (12 + sizeof(entry_t))
 #define JMP_TABLE_MASK (JMP_TABLE_NUM_ELEMENTS - 1)
-#define JMP_TABLE_MAX_SIZE (JMP_TABLE_NUM_ELEMENTS * JMP_TABLE_ELEMENT_SIZE)
+#define JMP_TABLE_MAX_SIZE JMP_TABLE_NUM_ELEMENTS
 // itlb: 512 sets * 8 lines = 4096 entries -> offset 12 bits, index 9 bites, tag 11 bits
 #define ITLB_NUM_SETS (1 << 9)
 #define ITLB_NUM_LINES (1 << 3)
@@ -140,6 +139,14 @@ struct translated_code_t {
 	explicit translated_code_t() noexcept;
 };
 
+struct jmp_table_elem
+{
+	uint32_t virt_pc;
+	uint32_t cs_base;
+	uint32_t guest_flags;
+	entry_t ptr_code;
+};
+
 struct disas_ctx_t {
 	uint8_t flags;
 	addr_t virt_pc, pc;
@@ -171,13 +178,6 @@ struct fpu_data_t {
 	uint16_t frp; // same as fctrl, but with all floating exceptions always masked
 };
 
-PACKED(struct jmp_table_elem {
-	uint32_t virt_pc;
-	uint32_t cs_base;
-	uint32_t guest_flags;
-	entry_t ptr_code;
-});
-
 // this struct should contain all cpu variables which need to be visible from the jitted code
 struct cpu_ctx_t {
 	cpu_t *cpu;
@@ -188,7 +188,7 @@ struct cpu_ctx_t {
 	uint32_t int_pending;
 	fpu_data_t fpu_data;
 	uint32_t shadow_mxcsr; // same as mxcsr, but with all exceptions masked and daz and unmasked exceptions flags cleared
-	uint8_t jmp_table[JMP_TABLE_MAX_SIZE];
+	jmp_table_elem jmp_table[JMP_TABLE_MAX_SIZE];
 #ifdef XBOX_CPU
 	uint8_t *ipt[NUM_OF_PAGES]; // inline page table: translates a guest to a host virtual address, one for each possible virtual page of the xbox
 #endif
