@@ -18,6 +18,14 @@
 #  define API_FUNC /* nothing */
 #endif
 
+#if HAVE_ATTRIBUTE_PACKED
+#  define PACKED(x) x __attribute__((__packed__))
+#elif HAVE_PRAGMA_PACK
+#  define PACKED(x) __pragma(pack(push, 1)) x __pragma(pack(pop))
+#else
+#  error "Do not know how to pack structs on this platform"
+#endif
+
 #ifndef LIB86CPU_X64_EMITTER
 #if defined(_M_X64) || defined(__x86_64__)
 #  define LIB86CPU_X64_EMITTER
