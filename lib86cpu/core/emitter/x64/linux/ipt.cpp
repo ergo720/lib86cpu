@@ -4,9 +4,9 @@
 * ergo720                Copyright (c) 2025
 */
 
-#include "ipt.h"
-#include "memory_management.h"
-#include "os_mem.h"
+#include "ipt.hpp"
+#include "memory_management.hpp"
+#include "os_mem.hpp"
 #include <stdlib.h>
 #include <unistd.h>
 #include <sys/mman.h>

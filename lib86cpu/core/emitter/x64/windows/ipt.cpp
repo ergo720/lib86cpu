@@ -4,9 +4,9 @@
 * ergo720                Copyright (c) 2024
 */
 
-#include "os_mem.h"
-#include "ipt.h"
-#include "memory_management.h"
+#include "os_mem.hpp"
+#include "ipt.hpp"
+#include "memory_management.hpp"
 #include "Windows.h"
 #undef min // allows using std::min
 

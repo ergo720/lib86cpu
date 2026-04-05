@@ -4,7 +4,7 @@
 * ergo720                Copyright (c) 2024
 */
 
-#include "lib86cpu_priv.h"
+#include "lib86cpu_priv.hpp"
 
 
 inline bool is_multi_nop_supported = false;
