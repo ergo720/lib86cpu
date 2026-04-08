@@ -643,7 +643,6 @@ lc86_jit::gen_code_block()
 	// This code block is complete, so protect and flush the instruction cache now
 	m_mem.flush_instr_cache(block);
 
-	tc->ptr_code = reinterpret_cast<entry_t>(main_offset);
 	tc->ptr_exit = reinterpret_cast<entry_t>(exit_offset);
 
 	// we are done with code generation for this block, so we null the tc pointer to prevent accidental usage
@@ -725,7 +724,7 @@ lc86_jit::gen_aux_funcs()
 void
 lc86_jit::gen_exit_func()
 {
-	// this should be emitted before main(), so that we can calculate the tc ptr from tc->ptr_code by simply subtracting an offset
+	// this should be emitted before main(), so that we can calculate the tc ptr from tc->ptr_exit by simply dereferencing it
 
 	size_t exit_off_start = m_a.offset();
 	MOV(RAX, m_cpu->tc);

@@ -482,7 +482,7 @@ translated_code_t *
 ipt_run_guarded_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 {
 	__try {
-		return tc->ptr_code(cpu_ctx);
+		return GET_PTR_CODE(tc->ptr_exit)(cpu_ctx);
 	}
 	__except (ipt_exception_filter(cpu_ctx->cpu, GetExceptionInformation())) {
 		if (raise_page_fault) {

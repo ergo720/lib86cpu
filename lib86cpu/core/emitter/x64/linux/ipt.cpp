@@ -502,7 +502,7 @@ ipt_run_guarded_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 {
 	int ret = sigsetjmp(env, 1);
 	if (ret == SIG_SAVE_CTX) {
-		return tc->ptr_code(cpu_ctx);
+		return GET_PTR_CODE(tc->ptr_exit)(cpu_ctx);
 	}
 	else if (ret == SIG_GUEST_PF) {
 		return ipt_raise_exception(cpu_ctx);
@@ -510,4 +510,3 @@ ipt_run_guarded_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 
 	LIB86CPU_ABORT();
 }
-

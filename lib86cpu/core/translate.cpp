@@ -982,7 +982,6 @@ translated_code_t::translated_code_t() noexcept
 	pc = 0,
 	virt_pc = 0;
 	guest_flags = 0;
-	ptr_code = nullptr;
 	ptr_exit = nullptr;
 	flags = 0;
 	size = 0;
@@ -1194,7 +1193,7 @@ tc_link_jmp(cpu_t *cpu, translated_code_t *ptr_tc)
 	elem->virt_pc = ptr_tc->virt_pc;
 	elem->cs_base = ptr_tc->cs_base;
 	elem->guest_flags = ptr_tc->guest_flags;
-	elem->ptr_code = ptr_tc->ptr_code;
+	elem->ptr_code = GET_PTR_CODE(ptr_tc->ptr_exit);
 	cpu->jmp_page_map[ptr_tc->virt_pc >> PAGE_SHIFT].insert(ptr_tc->virt_pc);
 }
 
@@ -1595,7 +1594,7 @@ tc_run_code(cpu_ctx_t *cpu_ctx, translated_code_t *tc)
 #ifdef XBOX_CPU
 		return ipt_run_guarded_code(cpu_ctx, tc);
 #else
-		return tc->ptr_code(cpu_ctx);
+		return GET_PTR_CODE(tc->ptr_exit)(cpu_ctx);
 #endif
 	}
 	catch (host_exp_t type) {

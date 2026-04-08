@@ -52,6 +52,8 @@
 #define P6(n) P4(n), P4(n ^ 1), P4(n ^ 1), P4(n)
 #define GEN_TABLE P6(0), P6(1), P6(1), P6(0)
 
+#define GET_PTR_CODE(ptr_exit) ((entry_t)((uint8_t *)(ptr_exit) + 16))
+
 inline bool g_is_avx_supported = false;
 
  // memory region type
@@ -132,7 +134,6 @@ struct translated_code_t {
 	addr_t pc;
 	addr_t virt_pc;
 	uint32_t guest_flags;
-	entry_t ptr_code;
 	entry_t ptr_exit;
 	uint32_t flags;
 	uint64_t size;
