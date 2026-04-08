@@ -799,7 +799,7 @@ lc86_jit::update_eip()
 void
 lc86_jit::gen_interrupt_check()
 {
-	m_next_instr = m_a.newLabel();
+	Label m_next_instr = m_a.newLabel();
 	MOV(EDX, MEMD32(RCX, CPU_CTX_INT));
 	MOV(EAX, MEMD32(RCX, CPU_CTX_EFLAGS));
 	OR(EAX, ~(CPU_HW_INT));
@@ -817,10 +817,10 @@ lc86_jit::gen_timeout_check()
 		CALL_F(&cpu_timer_helper);
 		TEST(EAX, CPU_TIMEOUT_INT);
 		BR_EQ(no_timeout);
-		if (m_rsb_push.isValid()) {
+		if (m_rsb_push_pop.isValid()) {
 			MOV(RDX, &m_cpu->tc->ptr_exit);
 			MOV(RAX, MEM64(RDX)); // get pointer to tc exit function
-			BR_UNCOND(m_rsb_push); // need to push the ret pc to rsb before exiting
+			BR_UNCOND(m_rsb_push_pop); // need to push the ret pc to rsb before exiting
 		}
 		else {
 			gen_epilogue_main<ret_tc_t::zero>();
@@ -850,9 +850,8 @@ void
 lc86_jit::gen_tc_epilogue()
 {
 	if (m_cpu->translate_next == 1) {
-		// This code block is going to be deleted after execution, so it must not be linked with the others
-		assert((m_cpu->disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_PAGE_CROSS_NEXT | DISAS_FLG_ONE_INSTR)) != 0);
-		assert((m_cpu->tc->flags & TC_FLG_RET) == 0);
+		// This code block terminated because of a page crossing or because of single stepping, so it must not be linked with the others
+		assert((m_cpu->disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_PAGE_CROSS_NEXT_INSTR | DISAS_FLG_ONE_INSTR)) != 0);
 
 		gen_no_link_checks();
 		gen_epilogue_main<ret_tc_t::zero>();
@@ -949,8 +948,6 @@ void lc86_jit::gen_tc_linking_jmp(T target_pc)
 	// target_pc: pc where instr jumps to at runtime. If it's in a reg, it must be ebx because otherwise a volatile reg might be trashed by the timer and
 	// interrupt calls in gen_no_link_checks
 
-	m_cpu->tc->flags |= TC_FLG_JMP;
-
 	if constexpr (emit_checks) {
 		if (gen_no_link_checks()) {
 			return;
@@ -997,7 +994,8 @@ void lc86_jit::gen_tc_linking_jmp(T target_pc)
 			m_a.bind(ret);
 		};
 
-	if (m_rsb_push.isValid()) {
+	if (m_rsb_push_pop.isValid()) {
+		m_cpu->tc->flags |= TC_FLG_CALL;
 		lambda();
 		gen_rsb_push();
 		MOV(RAX, MEMD64(RSP, LOCAL_VARS_off(0)));
@@ -1005,6 +1003,7 @@ void lc86_jit::gen_tc_linking_jmp(T target_pc)
 		return;
 	}
 
+	m_cpu->tc->flags |= TC_FLG_JMP;
 	lambda();
 	gen_tail_call(RAX);
 }
@@ -1012,7 +1011,7 @@ void lc86_jit::gen_tc_linking_jmp(T target_pc)
 void
 lc86_jit::gen_rsb_push()
 {
-	m_a.bind(m_rsb_push);
+	m_a.bind(m_rsb_push_pop);
 	translated_code_t *tc = m_cpu->tc;
 	MOV(MEMD64(RSP, LOCAL_VARS_off(0)), RAX);
 	if (m_cpu->disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR)) {
@@ -1021,11 +1020,14 @@ lc86_jit::gen_rsb_push()
 	}
 	MOV(RDX, tc);
 	MOV(R9D, m_cpu->cpu_ctx.regs.cs_hidden.base + m_cpu->instr_eip + m_cpu->instr_bytes);
-	size_t next_instr_off = m_a.offset() + 61; // offset of this MOV + remaining instructions before reaching the target instruction of RET
+	size_t next_instr_off = m_a.offset() + 44; // offset of this MOV + remaining instructions before reaching the target instruction of RET
 	size_t next_instr_off_aligned16 = (next_instr_off + 15) & ~15;
 	m_instr_after_call_byte_align = next_instr_off_aligned16 - next_instr_off;
-	MOV(R8, next_instr_off + m_instr_after_call_byte_align);
-	CALL_F(&rsb_push);
+	// asmjit emits mov or movabs depending on the value of the argument. To avoid screwing the offset calculation, we explicitly emit movabs
+	m_a.movabs(R8, next_instr_off + m_instr_after_call_byte_align);
+	m_a.movabs(RAX, &rsb_push);
+	m_a.call(RAX);
+	m_a.movabs(RCX, &m_cpu->cpu_ctx);
 }
 
 void
@@ -1043,7 +1045,15 @@ void
 lc86_jit::gen_tc_linking_ret()
 {
 	m_cpu->tc->flags |= TC_FLG_RET;
+
+	m_rsb_push_pop = m_a.newLabel();
+	if (gen_no_link_checks()) {
+		m_rsb_push_pop.reset();
+		return;
+	}
+	m_a.bind(m_rsb_push_pop);
 	gen_rsb_pop();
+	m_rsb_push_pop.reset();
 }
 
 template<bool add_seg_base>
@@ -4805,7 +4815,7 @@ lc86_jit::BTS_(decoded_instr *instr)
 void
 lc86_jit::CALL_(decoded_instr *instr)
 {
-	m_rsb_push = m_a.newLabel();
+	m_rsb_push_pop = m_a.newLabel();
 
 	switch (instr->i.opcode)
 	{
@@ -4937,14 +4947,14 @@ lc86_jit::CALL_(decoded_instr *instr)
 
 	// Don't set translate_next to zero, but instead keep translating the instructions following the CALL. These will become the jump
 	// target of the RET instruction that returns after this CALL
-	m_rsb_push.reset();
-	m_cpu->translate_next = 0;
-	gen_tc_epilogue();
-	m_cpu->translate_next = 1;
+	m_rsb_push_pop.reset();
 	for (unsigned i = 0; i < m_instr_after_call_byte_align; ++i) { // 16 bytes alignment
 		INT3();
 	}
-	gen_prologue_main(); // we'll jump here when rsb predicts the return pc
+
+	// NOTE: don't call gen_prologue_main as that will create a new m_exit_int label
+	PUSH(RBX); // we'll jump here when rsb predicts the return pc
+	SUB(RSP, get_jit_stack_required());
 }
 
 void

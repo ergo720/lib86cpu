@@ -1202,23 +1202,26 @@ static void
 tc_link_prev(cpu_t *cpu, translated_code_t *prev_tc, translated_code_t *ptr_tc)
 {
 	// see if we can link the previous tc with the current one
-	if (prev_tc != nullptr) {
+	if (prev_tc) {
 		switch (prev_tc->flags)
 		{
-		case TC_FLG_JMP_RET:
-			// This happens when the terminating instruction after a CALL is a RET. In this case, we still need to link with prev_tc
-			[[fallthrough]];
-
-		case TC_FLG_JMP:
+		case TC_FLG_CALL: // this happens when a CALL is the very last instruction on a page boundary (that is, when DISAS_FLG_PAGE_CROSS_NEXT_INSTR is set). Alternatively, it can
+			// also happen if block terminated with an instruction that never links to other blocks (INT3, HLT or MOV drN, reg)
+		case TC_FLG_JMP: // standard case with a terminating jumping instruction
+		case TC_FLG_CALL | TC_FLG_RET: // this happens when the terminating instruction after a CALL is a RET. Note that, if we are at the last RET and the rsb mispredicted, then
+			// tc_link_jmp will cache an unnecessary ptr_tc->virt_pc in the jmp table, because rsb_pop was supposed to have handled it instead
+		case TC_FLG_CALL | TC_FLG_JMP: // this happens when the terminating instruction after a CALL is any jumping instruction
+			// link the current with the preceding block
 			tc_link_jmp(cpu, ptr_tc);
 			break;
 
-		case TC_FLG_RET:
-			// already handled by rsb_pop
+		case TC_FLG_RET: // already handled by rsb_pop
+			// don't link the blocks
 			break;
 
+		case 0: // same as TC_FLG_CALL, but without a CALL in the block. Note that this should never happen because in all cases, prev_tc is always set to nullptr
 		default:
-			LIB86CPU_ABORT();
+			LIB86CPU_ABORT_msg("prev_tc->flags was 0x%08" PRIx32, prev_tc->flags);
 		}
 	}
 }
@@ -1257,10 +1260,10 @@ cpu_translate(cpu_t *cpu)
 
 			// NOTE: the second OR for disas_ctx->flags is to handle the edge case where the last byte of the current instructions ends exactly at a page boundary. In this case,
 			// the current block can be added to the code cache (so DISAS_FLG_PAGE_CROSS should not be set), but the translation of this block must terminate now (so
-			// DISAS_FLG_PAGE_CROSS_NEXT should be set)
+			// DISAS_FLG_PAGE_CROSS_NEXT_INSTR should be set)
 			cpu->instr_bytes = instr.i.length;
-			disas_ctx->flags |= ((disas_ctx->virt_pc & ~PAGE_MASK) != ((disas_ctx->virt_pc + cpu->instr_bytes - 1) & ~PAGE_MASK)) << 2;
-			disas_ctx->flags |= ((disas_ctx->virt_pc & ~PAGE_MASK) != ((disas_ctx->virt_pc + cpu->instr_bytes) & ~PAGE_MASK)) << 5;
+			disas_ctx->flags |= ((disas_ctx->virt_pc & ~PAGE_MASK) != ((disas_ctx->virt_pc + cpu->instr_bytes - 1) & ~PAGE_MASK)) << 2; // checks last byte of curr instr, DISAS_FLG_PAGE_CROSS
+			disas_ctx->flags |= ((disas_ctx->virt_pc & ~PAGE_MASK) != ((disas_ctx->virt_pc + cpu->instr_bytes) & ~PAGE_MASK)) << 5; // check 1st byte of next instr, DISAS_FLG_PAGE_CROSS_NEXT_INSTR
 			disas_ctx->pc += cpu->instr_bytes;
 			disas_ctx->virt_pc += cpu->instr_bytes;
 
@@ -1339,14 +1342,14 @@ cpu_translate(cpu_t *cpu)
 		cpu->tc->size += cpu->instr_bytes;
 
 		// Only generate an interrupt check if the current instruction didn't terminate this tc. Terminating instructions already check for interrupts
-		if (cpu->translate_next == 1) {
+		if ((cpu->translate_next == 1) && (func != &lc86_jit::CALL_)) {
 			cpu->jit->update_eip();
-			if ((disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR | DISAS_FLG_PAGE_CROSS_NEXT)) == 0) {
+			if ((disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR | DISAS_FLG_PAGE_CROSS_NEXT_INSTR)) == 0) {
 				cpu->jit->gen_interrupt_check();
 			}
 		}
 
-	} while ((cpu->translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR | DISAS_FLG_PAGE_CROSS_NEXT))) == 1);
+	} while ((cpu->translate_next | (disas_ctx->flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR | DISAS_FLG_PAGE_CROSS_NEXT_INSTR))) == 1);
 }
 
 uint32_t
@@ -1527,6 +1530,12 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 			cpu->disas_ctx.virt_pc = virt_pc;
 			cpu->disas_ctx.pc = pc;
 
+			cpu->tc->pc = pc;
+			cpu->tc->virt_pc = virt_pc;
+			cpu->tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
+			cpu->tc->guest_flags = (cpu->cpu_ctx.hflags & HFLG_CONST) | (cpu->cpu_ctx.regs.eflags & EFLAGS_CONST);
+			ptr_tc = cpu->tc;
+
 			const auto it = cpu->hook_map.find(cpu->disas_ctx.virt_pc);
 			bool take_hook;
 			if constexpr (is_tramp) {
@@ -1546,28 +1555,25 @@ void cpu_main_loop(cpu_t *cpu, T &&lambda)
 
 			cpu->jit->gen_tc_epilogue();
 
-			cpu->tc->pc = pc;
-			cpu->tc->virt_pc = virt_pc;
-			cpu->tc->cs_base = cpu->cpu_ctx.regs.cs_hidden.base;
-			cpu->tc->guest_flags = (cpu->cpu_ctx.hflags & HFLG_CONST) | (cpu->cpu_ctx.regs.eflags & EFLAGS_CONST);
-			ptr_tc = cpu->tc;
+			if (cpu->num_tc == CODE_CACHE_MAX_SIZE) {
+				tc_cache_purge(cpu);
+				prev_tc = nullptr;
+			}
+			cpu->jit->gen_code_block();
 
 			if (cpu->disas_ctx.flags & (DISAS_FLG_PAGE_CROSS | DISAS_FLG_ONE_INSTR)) {
-				cpu->jit->gen_code_block();
-				uint32_t cpu_flags = cpu->cpu_flags;
 				cpu_suppress_trampolines<is_tramp>(cpu);
 				cpu->cpu_flags &= ~CPU_DISAS_ONE;
 				tc_run_code(&cpu->cpu_ctx, ptr_tc);
+				if (ptr_tc->flags & TC_FLG_CALL) {
+					// the rsb might have cached the return value that would point to this tc that we are going to delete now, so flush it out
+					rsb_flush(cpu, ptr_tc->virt_pc);
+				}
 				cpu->jit->free_code_block(reinterpret_cast<void *>(ptr_tc->ptr_exit));
 				prev_tc = nullptr;
 				continue;
 			}
 			else {
-				if ((cpu->num_tc) == CODE_CACHE_MAX_SIZE) {
-					tc_cache_purge(cpu);
-					prev_tc = nullptr;
-				}
-				cpu->jit->gen_code_block();
 				tc_cache_insert(cpu, pc, std::move(tc));
 			}
 		}

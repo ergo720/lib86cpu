@@ -451,7 +451,7 @@ private:
 	x86::Assembler m_a;
 	Environment m_environment;
 	mem_manager m_mem;
-	Label m_exit_int, m_next_instr, m_rsb_push;
+	Label m_exit_int, m_rsb_push_pop;
 	std::size_t m_instr_after_call_byte_align;
 };
 

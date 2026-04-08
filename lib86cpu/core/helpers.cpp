@@ -335,7 +335,7 @@ rsb_flush(cpu_t *cpu, addr_t addr)
 {
 	// This must check the entire page because addr might be tc->virt_pc, which also holds the target RET address
 	for (unsigned i = 0; i < RSB_MAX_SIZE; ++i) {
-		if ((cpu->rsb[i][0] & ~PAGE_MASK) == (addr & ~PAGE_MASK)) {
+		if (((addr_t)cpu->rsb[i][0] & ~PAGE_MASK) == (addr & ~PAGE_MASK)) {
 			cpu->rsb[i][0] = 0;
 		}
 	}

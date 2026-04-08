@@ -128,20 +128,19 @@ JIT_API uint32_t cpu_do_int(cpu_ctx_t *cpu_ctx, uint32_t int_flg);
 #define MMU_SET_CODE    (1 << 4)
 
 // disassembly context flags
-#define DISAS_FLG_CS32             (1 << 0)
-#define DISAS_FLG_SS32             (1 << 1)
-#define DISAS_FLG_PAGE_CROSS       (1 << 2)
-#define DISAS_FLG_PAGE_CROSS_NEXT  (1 << 5)
-#define DISAS_FLG_PE               HFLG_PE_MODE          // (1 << 4)
-#define DISAS_FLG_FETCH_FAULT      DISAS_FLG_PAGE_CROSS  // (1 << 2)
-#define DISAS_FLG_ONE_INSTR        CPU_DISAS_ONE         // (1 << 7)
-#define DISAS_INSTR_BREAKPOINT     DISAS_FLG_PAGE_CROSS  // (1 << 2)
+#define DISAS_FLG_CS32                   (1 << 0)
+#define DISAS_FLG_SS32                   (1 << 1)
+#define DISAS_FLG_PAGE_CROSS             (1 << 2)
+#define DISAS_FLG_PAGE_CROSS_NEXT_INSTR  (1 << 5)
+#define DISAS_FLG_PE                     HFLG_PE_MODE          // (1 << 4)
+#define DISAS_FLG_FETCH_FAULT            DISAS_FLG_PAGE_CROSS  // (1 << 2)
+#define DISAS_FLG_ONE_INSTR              CPU_DISAS_ONE         // (1 << 7)
+#define DISAS_INSTR_BREAKPOINT           DISAS_FLG_PAGE_CROSS  // (1 << 2)
 
 // tc flags
 #define TC_FLG_JMP        (1 << 0)
 #define TC_FLG_RET        (1 << 1)
-#define TC_FLG_JMP_RET    (TC_FLG_JMP | TC_FLG_RET)
-#define TC_FLG_LINK_MASK  TC_FLG_JMP_RET
+#define TC_FLG_CALL       (1 << 2)
 
 // segment descriptor flags
 #define SEG_DESC_TY   (15ULL << 40) // type
