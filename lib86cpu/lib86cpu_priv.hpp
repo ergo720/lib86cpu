@@ -204,13 +204,13 @@ struct cpu_t {
 	cpu_ctx_t cpu_ctx;
 	disas_ctx_t disas_ctx;
 	translated_code_t *tc; // tc for which we are currently generating code
-#ifdef XBOX_CPU
 	uint8_t *ram; // accessed with memory handlers
+	uint64_t ram_size;
+	uintptr_t alignment_bias; // alignment correction applied to ram pointers
+#ifdef XBOX_CPU
 	uint8_t *ram_alias; // alias of ram, accessed with the ipt
 	uint8_t *ram_contiguous; // alias of ram, accessed with the ipt
 	uint8_t *ram_tiled; // alias of ram, accessed with the ipt
-#else
-	std::vector<uint8_t> ram;
 #endif
 	std::atomic_flag suspend_flg;
 	std::atomic_flag is_suspended;

@@ -9,7 +9,7 @@
 
 inline bool is_multi_nop_supported = false;
 
-void ipt_ram_init(cpu_t *cpu, uint64_t ramsize);
+void ipt_ram_init(cpu_t *cpu, uint64_t ramsize, uint64_t alignment);
 lc86_status ipt_rom_init(cpu_t *cpu, uint64_t romsize, memory_region_t<addr_t> *rom, uint8_t *buffer);
 void ipt_ram_deinit(cpu_t *cpu);
 void ipt_rom_deinit(uint8_t *rom_ptr, uint8_t *rom_alias_ptr, addr_t start);

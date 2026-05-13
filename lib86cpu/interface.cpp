@@ -111,10 +111,11 @@ default_pmio_write_handler32(addr_t addr, const uint32_t value, void *opaque)
 * out: returned cpu instance
 * (optional) int_fn: a pair where 1st is a function that returns the vector number when a hw interrupt is serviced, and 2nd is an opaque argument passed to
 * the function when lib86cpu calls it. Not necessary if you never generate hw interrupts
+* (optional) ram_alignment: the alignment to use for the ram buffer (must be a power of two)
 * ret: the status of the operation
 */
 lc86_status
-cpu_new(uint64_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data)
+cpu_new(uint64_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data, uint64_t ram_alignment)
 {
 	out = nullptr;
 
@@ -133,12 +134,24 @@ cpu_new(uint64_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data)
 		return set_last_error(lc86_status::invalid_parameter);
 	}
 
+	cpu->ram_size = ramsize + 16 + ram_alignment - 1; // valid for both normal and xbox code paths
+	if (ram_alignment != 1) {
+		if (ram_alignment & (ram_alignment - 1)) { // power of two required
+			cpu_free(cpu);
+			return set_last_error(lc86_status::invalid_parameter);
+		}
+	}
+
 	try {
 #ifdef XBOX_CPU
-		ipt_ram_init(cpu, ramsize);
+		ipt_ram_init(cpu, ramsize, ram_alignment);
 #else
 		// allocate 16 extra bytes at then end in the case something ever does a 2,4,8,10,16 byte access on the last valid byte of ram
-		cpu->ram = std::vector<uint8_t>(ramsize + 16, 0);
+		cpu->ram = new uint8_t[cpu->ram_size]();
+		uintptr_t unaligned_ptr = reinterpret_cast<uintptr_t>(cpu->ram);
+		uintptr_t aligned_ptr = (unaligned_ptr + ram_alignment - 1) & ~(ram_alignment - 1);
+		cpu->alignment_bias = aligned_ptr - unaligned_ptr;
+		cpu->ram = reinterpret_cast<uint8_t *>(aligned_ptr);
 #endif
 	}
 	catch (const lc86_exp_abort &exp) {
@@ -188,6 +201,8 @@ cpu_free(cpu_t *cpu)
 {
 #ifdef XBOX_CPU
 	ipt_ram_deinit(cpu);
+#else
+	delete[] (cpu->ram - cpu->alignment_bias);
 #endif
 
 	for (auto &bucket : cpu->code_cache) {
@@ -591,11 +606,7 @@ get_last_error()
 uint8_t *
 get_ram_ptr(cpu_t *cpu)
 {
-#if XBOX_CPU
 	return cpu->ram;
-#else
-	return cpu->ram.data();
-#endif
 }
 
 /*

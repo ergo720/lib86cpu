@@ -24,7 +24,7 @@ static bool raise_page_fault;
 // reverts to no-access because the ipt points to the guard page again, and the cycle repeats
 
 void
-ipt_ram_init(cpu_t *cpu, uint64_t ramsize)
+ipt_ram_init(cpu_t *cpu, uint64_t ramsize, uint64_t alignment)
 {
 	if ((ramsize != (64 * 1024 * 1024)) && (ramsize != (128 * 1024 * 1024))) {
 		throw lc86_exp_abort("Invalid ram size", lc86_status::invalid_parameter);
@@ -38,7 +38,7 @@ ipt_ram_init(cpu_t *cpu, uint64_t ramsize)
 	// Create a regular ram allocation (accessed from the host with normal memory handlers) and also an alias of it which is only accessed from the
 	// jitted code with the ipt. We need to create one alias for each xbox ram pool so that we are able to emulate the guest page permissions
 	// with the host page permissions
-	ram_handle = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, DWORD(ramsize + 16), NULL);
+	ram_handle = CreateFileMapping(INVALID_HANDLE_VALUE, NULL, PAGE_READWRITE, 0, DWORD(cpu->ram_size), NULL);
 	if (ram_handle == NULL) {
 		throw lc86_exp_abort("Failed to create the ram memory mapping", lc86_status::no_memory);
 	}
@@ -46,6 +46,10 @@ ipt_ram_init(cpu_t *cpu, uint64_t ramsize)
 	if (cpu->ram = (uint8_t *)MapViewOfFile(ram_handle, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, 0); cpu->ram == NULL) {
 		throw lc86_exp_abort("Failed to map the ram view", lc86_status::no_memory);
 	}
+	uintptr_t unaligned_ptr = reinterpret_cast<uintptr_t>(cpu->ram);
+	uintptr_t aligned_ptr = (unaligned_ptr + alignment - 1) & ~(alignment - 1);
+	cpu->alignment_bias = aligned_ptr - unaligned_ptr;
+	cpu->ram = reinterpret_cast<uint8_t *>(aligned_ptr);
 
 	if (cpu->ram_alias = (uint8_t *)MapViewOfFile(ram_handle, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, 0); cpu->ram_alias == NULL) {
 		throw lc86_exp_abort("Failed to map the aliased ram view", lc86_status::no_memory);
@@ -55,10 +59,13 @@ ipt_ram_init(cpu_t *cpu, uint64_t ramsize)
 		throw lc86_exp_abort("Failed to map the contiguous ram view", lc86_status::no_memory);
 	}
 
-	if (cpu->ram_tiled = (uint8_t *)MapViewOfFile(ram_handle, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, 64 * 1024 * 1024 + 16); cpu->ram_tiled == NULL) {
+	if (cpu->ram_tiled = (uint8_t *)MapViewOfFile(ram_handle, FILE_MAP_READ | FILE_MAP_WRITE, 0, 0, 0); cpu->ram_tiled == NULL) {
 		throw lc86_exp_abort("Failed to map the tiled ram view", lc86_status::no_memory);
 	}
 
+	cpu->ram_alias += cpu->alignment_bias;
+	cpu->ram_contiguous += cpu->alignment_bias;
+	cpu->ram_tiled += cpu->alignment_bias;
 	std::fill(std::begin(cpu->cpu_ctx.ipt), std::end(cpu->cpu_ctx.ipt), cpu->guard_page);
 }
 
@@ -104,16 +111,16 @@ ipt_ram_deinit(cpu_t *cpu)
 		VirtualFree(cpu->guard_page, 0, MEM_RELEASE);
 	}
 	if (cpu->ram) {
-		UnmapViewOfFile(cpu->ram);
+		UnmapViewOfFile(cpu->ram - cpu->alignment_bias);
 	}
 	if (cpu->ram_alias) {
-		UnmapViewOfFile(cpu->ram_alias);
+		UnmapViewOfFile(cpu->ram_alias - cpu->alignment_bias);
 	}
 	if (cpu->ram_contiguous) {
-		UnmapViewOfFile(cpu->ram_contiguous);
+		UnmapViewOfFile(cpu->ram_contiguous - cpu->alignment_bias);
 	}
 	if (cpu->ram_tiled) {
-		UnmapViewOfFile(cpu->ram_tiled);
+		UnmapViewOfFile(cpu->ram_tiled - cpu->alignment_bias);
 	}
 	if (ram_handle) {
 		CloseHandle(ram_handle);

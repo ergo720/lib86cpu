@@ -26,7 +26,6 @@ static int ram_fd;
 static int rom_fd[2];
 static std::string ram_tmp_name;
 static std::string rom_tmp_name[2];
-static uint64_t g_ramsize;
 static uint64_t g_romsize[2];
 static bool signal_updated;
 static struct sigaction old_sa;
@@ -56,11 +55,10 @@ ipt_signal_init()
 }
 
 void
-ipt_ram_init(cpu_t *cpu, uint64_t ramsize)
+ipt_ram_init(cpu_t *cpu, uint64_t ramsize, uint64_t alignment)
 {
 	// Do these assignemnts now so that ipt_ram_deinit knows when it needs to cleanup
 	g_cpu = cpu;
-	g_ramsize = ramsize;
 	cpu->guard_page = (uint8_t *)MAP_FAILED;
 	cpu->ram = (uint8_t *)MAP_FAILED;
 	cpu->ram_alias = (uint8_t *)MAP_FAILED;
@@ -86,26 +84,33 @@ ipt_ram_init(cpu_t *cpu, uint64_t ramsize)
 		throw lc86_exp_abort("Failed to create the ram memory file", lc86_status::internal_error);
 	}
 	
-	if (ftruncate(ram_fd, ramsize + 16) == -1) {
+	if (ftruncate(ram_fd, cpu->ram_size) == -1) {
 		throw lc86_exp_abort("Failed to resize the temporary ram file",  lc86_status::internal_error);
 	}
 	
-	if (cpu->ram = (uint8_t *)mmap(NULL, ramsize + 16, PROT_READ | PROT_WRITE, MAP_SHARED, ram_fd, 0); cpu->ram == MAP_FAILED) {
+	if (cpu->ram = (uint8_t *)mmap(NULL, cpu->ram_size, PROT_READ | PROT_WRITE, MAP_SHARED, ram_fd, 0); cpu->ram == MAP_FAILED) {
 		throw lc86_exp_abort("Failed to map the ram view", lc86_status::no_memory);
 	}
+	uintptr_t unaligned_ptr = reinterpret_cast<uintptr_t>(cpu->ram);
+	uintptr_t aligned_ptr = (unaligned_ptr + alignment - 1) & ~(alignment - 1);
+	cpu->alignment_bias = aligned_ptr - unaligned_ptr;
+	cpu->ram = reinterpret_cast<uint8_t *>(aligned_ptr);
 
-	if (cpu->ram_alias = (uint8_t *)mmap(NULL, ramsize + 16, PROT_READ | PROT_WRITE, MAP_SHARED, ram_fd, 0); cpu->ram_alias == MAP_FAILED) {
+	if (cpu->ram_alias = (uint8_t *)mmap(NULL, cpu->ram_size, PROT_READ | PROT_WRITE, MAP_SHARED, ram_fd, 0); cpu->ram_alias == MAP_FAILED) {
 		throw lc86_exp_abort("Failed to map the aliased ram view", lc86_status::no_memory);
 	}
 
-	if (cpu->ram_contiguous = (uint8_t *)mmap(NULL, ramsize + 16, PROT_READ | PROT_WRITE, MAP_SHARED, ram_fd, 0); cpu->ram_contiguous == MAP_FAILED) {
+	if (cpu->ram_contiguous = (uint8_t *)mmap(NULL, cpu->ram_size, PROT_READ | PROT_WRITE, MAP_SHARED, ram_fd, 0); cpu->ram_contiguous == MAP_FAILED) {
 		throw lc86_exp_abort("Failed to map the contiguous ram view", lc86_status::no_memory);
 	}
 
-	if (cpu->ram_tiled = (uint8_t *)mmap(NULL, 64 * 1024 * 1024 + 16, PROT_READ | PROT_WRITE, MAP_SHARED, ram_fd, 0); cpu->ram_tiled == MAP_FAILED) {
+	if (cpu->ram_tiled = (uint8_t *)mmap(NULL, cpu->ram_size, PROT_READ | PROT_WRITE, MAP_SHARED, ram_fd, 0); cpu->ram_tiled == MAP_FAILED) {
 		throw lc86_exp_abort("Failed to map the tiled ram view", lc86_status::no_memory);
 	}
 
+	cpu->ram_alias += cpu->alignment_bias;
+	cpu->ram_contiguous += cpu->alignment_bias;
+	cpu->ram_tiled += cpu->alignment_bias;
 	unlink(ram_tmp_name.c_str());
 	close(ram_fd);
 	std::fill(std::begin(cpu->cpu_ctx.ipt), std::end(cpu->cpu_ctx.ipt), cpu->guard_page);
@@ -168,16 +173,16 @@ ipt_ram_deinit(cpu_t *cpu)
 		munmap(cpu->guard_page, PAGE_SIZE);
 	}
 	if (cpu->ram != MAP_FAILED) {
-		munmap(cpu->ram, g_ramsize + 16);
+		munmap(cpu->ram, cpu->ram_size);
 	}
 	if (cpu->ram_alias != MAP_FAILED) {
-		munmap(cpu->ram_alias, g_ramsize + 16);
+		munmap(cpu->ram_alias, cpu->ram_size);
 	}
 	if (cpu->ram_contiguous != MAP_FAILED) {
-		munmap(cpu->ram_contiguous, g_ramsize + 16);
+		munmap(cpu->ram_contiguous, cpu->ram_size);
 	}
 	if (cpu->ram_tiled != MAP_FAILED) {
-		munmap(cpu->ram_tiled, 64 * 1024 * 1024 + 16);
+		munmap(cpu->ram_tiled, cpu->ram_size);
 	}
 	if (ram_fd != -1) {
 		unlink(ram_tmp_name.c_str());

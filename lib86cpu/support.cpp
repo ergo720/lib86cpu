@@ -111,15 +111,8 @@ cpu_save_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_st
 	cpu_state->tsc_offset = (static_cast<uint64_t>(cpu->cpu_ctx.regs.edx) << 32) | cpu->cpu_ctx.regs.eax;
 	cpu->cpu_ctx.regs.edx = old_edx;
 	cpu->cpu_ctx.regs.eax = old_eax;
-
 	ram_state->id = SAVE_STATE_ID;
-#ifdef XBOX_CPU
-	auto ram = as_memory_search_addr(cpu, 0);
-	assert(ram);
-	std::copy(cpu->ram, cpu->ram + (ram->end - ram->start + 1), ram_state->ram.begin());
-#else
-	ram_state->ram = cpu->ram;
-#endif
+	std::copy(cpu->ram, cpu->ram + cpu->ram_size, ram_state->ram.data());
 
 	return lc86_status::success;
 }
@@ -145,13 +138,7 @@ cpu_load_state(cpu_t *cpu, cpu_save_state_t *cpu_state, ram_save_state_t *ram_st
 	cpu->a20_mask = cpu_state->a20_mask;
 	cpu->tsc_clock.offset = cpu_state->tsc_offset;
 	cpu->tsc_clock.last_host_ticks = get_current_time();
-
-#ifdef XBOX_CPU
 	std::copy(ram_state->ram.begin(), ram_state->ram.end(), cpu->ram);
-#else
-	cpu->ram = ram_state->ram;
-#endif
-
 	cpu->int_data = int_data.first ? int_data : std::pair<fp_int, void *>{ default_get_int_vec, nullptr };
 	cpu->clear_int_fn(&cpu->cpu_ctx, CPU_ALL_INT);
 	update_drN_helper(&cpu->cpu_ctx, 0, cpu->cpu_ctx.regs.dr[0]);

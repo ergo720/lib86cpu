@@ -118,7 +118,7 @@ struct dbg_opt_t {
 struct cpu_t;
 
 // cpu api
-API_FUNC lc86_status cpu_new(uint64_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data = { nullptr, nullptr });
+API_FUNC lc86_status cpu_new(uint64_t ramsize, cpu_t *&out, std::pair<fp_int, void *> int_data = { nullptr, nullptr }, uint64_t ram_alignment = 1);
 API_FUNC void cpu_free(cpu_t *cpu);
 API_FUNC lc86_status cpu_run(cpu_t *cpu);
 API_FUNC lc86_status cpu_run_until(cpu_t *cpu, uint64_t timeout_time);
