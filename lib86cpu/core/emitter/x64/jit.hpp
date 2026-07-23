@@ -215,6 +215,7 @@ public:
 	void MOVSB(decoded_instr *instr);
 	void MOVSS_(decoded_instr *instr);
 	void MOVSX_(decoded_instr *instr);
+	void MOVUPS(decoded_instr *instr);
 	void MOVZX_(decoded_instr *instr);
 	void MUL_(decoded_instr *instr);
 	void MULSS_(decoded_instr *instr);

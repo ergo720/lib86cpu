@@ -8233,10 +8233,12 @@ lc86_jit::MOVAPS_(decoded_instr *instr)
 		RAISEin0_t((m_cpu->cpu_ctx.hflags & HFLG_CR0_TS) ? EXP_NM : EXP_UD);
 	}
 	else {
+		bool check_alignment = (instr->i.opcode == 0x28) || (instr->i.opcode == 0x29);
 		gen_vzeroupper();
 
 		switch (instr->i.opcode)
 		{
+		case 0x10:
 		case 0x28: {
 			const auto dst = GET_REG(OPNUM_DST);
 			get_rm<OPNUM_SRC>(instr,
@@ -8245,9 +8247,11 @@ lc86_jit::MOVAPS_(decoded_instr *instr)
 					MOVAPS(XMM0, MEMD128(RCX, rm.val));
 					MOVAPS(MEMD128(RCX, dst.val), XMM0);
 				},
-				[this, dst](const op_info rm)
+				[this, dst, check_alignment](const op_info rm)
 				{
-					gen_simd_mem_align_check();
+					if (check_alignment) {
+						gen_simd_mem_align_check();
+					}
 					LD_MEMs(SIZE128);
 					MOVAPS(XMM0, MEM128(RAX));
 					MOVAPS(MEMD128(RCX, dst.val), XMM0);
@@ -8255,6 +8259,7 @@ lc86_jit::MOVAPS_(decoded_instr *instr)
 		}
 		break;
 
+		case 0x11:
 		case 0x29: {
 			const auto src = GET_REG(OPNUM_SRC);
 			get_rm<OPNUM_DST>(instr,
@@ -8263,9 +8268,11 @@ lc86_jit::MOVAPS_(decoded_instr *instr)
 					MOVAPS(XMM0, MEMD128(RCX, src.val));
 					MOVAPS(MEMD128(RCX, rm.val), XMM0);
 				},
-				[this, src](const op_info rm)
+				[this, src, check_alignment](const op_info rm)
 				{
-					gen_simd_mem_align_check();
+					if (check_alignment) {
+						gen_simd_mem_align_check();
+					}
 					LEA(R8, MEMD64(RCX, src.val));
 					ST_MEMs(SIZE128);
 				});
@@ -8657,6 +8664,12 @@ lc86_jit::MOVSX_(decoded_instr *instr)
 	default:
 		LIB86CPU_ABORT();
 	}
+}
+
+void
+lc86_jit::MOVUPS(decoded_instr *instr)
+{
+	MOVAPS_(instr);
 }
 
 void
