@@ -1,6 +1,6 @@
 # ergo720 Copyright (c) 2020
 
-cmake_minimum_required(VERSION 3.25)
+cmake_minimum_required(VERSION 4.2.3)
 project(lib86cpu)
 
 # Suppress build failures caused by deprecation warnings treated as errors. CI seems to be using "-Werror=deprecated" which causes the issue
