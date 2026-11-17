@@ -3,10 +3,6 @@
 cmake_minimum_required(VERSION 4.2.3)
 project(lib86cpu)
 
-if (POLICY CMP0072)
- set(OpenGL_GL_PREFERENCE LEGACY)
-endif(POLICY CMP0072)
-
 if(NOT DEFINED CMAKE_RUNTIME_OUTPUT_DIRECTORY)
  set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${lib86cpu_BINARY_DIR}/bin")
 endif()
