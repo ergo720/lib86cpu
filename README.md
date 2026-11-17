@@ -10,7 +10,7 @@ There are no plans to support x86-32.
 
 ## Building
 
-Cmake version 3.4.3 or higher is required.\
+Cmake version 4.2.3 or higher is required.\
 Visual Studio 2022 (Windows), Visual Studio Code (Linux, optional).\
 NOTE: there is a known bug in versions of Visual Studio 2022 between 17.1.5 and 17.14.12, that prevents the project from building successfully, so use a version outside of that range.
 
@@ -19,7 +19,7 @@ NOTE: there is a known bug in versions of Visual Studio 2022 between 17.1.5 and 
 1. `git clone --recurse-submodules https://github.com/ergo720/lib86cpu`
 2. `cd` to the directory of lib86cpu
 3. `mkdir build && cd build`
-4. `cmake .. -G "Visual Studio 17 2022" -A x64 -Thost=x64`
+4. `cmake .. -G "Visual Studio 17 2022" -A x64 -Thost=x64 -DCMAKE_POLICY_VERSION_MINIMUM="4.2.3"`
 5. Build the resulting solution file lib86cpu.sln with Visual Studio
 
 **On Linux:**
@@ -27,7 +27,7 @@ NOTE: there is a known bug in versions of Visual Studio 2022 between 17.1.5 and 
 1. `git clone --recurse-submodules https://github.com/ergo720/lib86cpu`
 2. `cd` to the directory of lib86cpu
 3. `mkdir build && cd build`
-4. `cmake .. -G "Unix Makefiles"`
+4. `cmake .. -G "Unix Makefiles" -DCMAKE_POLICY_VERSION_MINIMUM="4.2.3"`
 5. Build the resulting Makefile with make, or use Visual Studio Code
 
 #### Additional options:
