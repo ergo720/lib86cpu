@@ -60,7 +60,7 @@ jobs:
         if: matrix.install-dep != 0
         run: ${{ matrix.install-dep }}
       - name: Generate CMake Files
-        run: cmake -B build ${{ matrix.cmake-generator }}
+        run: cmake -B build -DCMAKE_POLICY_VERSION_MINIMUM="4.2.3" ${{ matrix.cmake-generator }}
       - name: Build
         run: cmake --build build --config ${{ matrix.configuration }} ${{ matrix.cmake-build-param }}
       #- name: CTests
