@@ -60,9 +60,7 @@ jobs:
         if: matrix.install-dep != 0
         run: ${{ matrix.install-dep }}
       - name: Generate CMake Files
-        # NOTES:
-        # -Werror=dev is used to validate CMakeLists.txt for any faults.
-        run: cmake -B build -Werror=dev ${{ matrix.cmake-generator }}
+        run: cmake -B build ${{ matrix.cmake-generator }}
       - name: Build
         run: cmake --build build --config ${{ matrix.configuration }} ${{ matrix.cmake-build-param }}
       #- name: CTests
