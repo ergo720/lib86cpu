@@ -18,7 +18,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(OpenGL)
-if(NOT OpenGL_OpenGL_FOUND)
+if(NOT OpenGL_FOUND)
  message(FATAL_ERROR "OpenGL was not found")
 endif()
 
